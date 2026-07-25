@@ -1,12 +1,12 @@
-"""Caso de uso de venta POS: la orquestacion que SqliteCommerceRepository
-deliberadamente no hace sola (ver wiki/entities/libracommerce.md, seccion
-"Decisiones de esta ronda" -- confirmar una venta no dispara stock por
-diseno, queda para la capa de casos de uso del producto consumidor).
+"""Caso de uso de venta POS.
+
+Confirmar una venta delega en libracommerce.usecases.sales.confirm_sale
+(v0.1.2) -- antes esta orquestacion (stock por cada linea de producto) se
+reimplementaba aca porque LibraCommerce todavia no la ofrecia. Ver
+wiki/entities/libracommerce.md, seccion "Capa de casos de uso".
 
 Flujo: crear venta en borrador -> agregar lineas (snapshot de precio/costo
-del CatalogItem al momento de agregarla) -> confirmar (recalcula totales,
-fija confirmed_at, y por cada linea de tipo "product" genera un
-StockMovement de tipo "sale" con cantidad negativa en la ubicacion dada).
+del CatalogItem al momento de agregarla) -> confirmar.
 """
 import sqlite3
 from dataclasses import replace
@@ -14,9 +14,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from libracommerce.db.repository import SqliteCommerceRepository
-from libracommerce.domain.catalog import CatalogItemType
-from libracommerce.domain.inventory import StockMovement, StockMovementType
 from libracommerce.domain.sales import Sale, SaleItem, SaleStatus
+from libracommerce.usecases.sales import confirm_sale
+
+from ..db import next_sequence
 
 
 class SaleNotFound(Exception):
@@ -28,25 +29,7 @@ class InvalidSaleState(Exception):
 
 
 def _next_sale_number(conn: sqlite3.Connection) -> str:
-    """Numeracion propia sobre la tabla local_sequences ya presente en el
-    esquema de LibraCommerce (usada tambien por su especificacion offline,
-    con nombres de secuencia distintos -- no colisiona)."""
-    row = conn.execute(
-        "SELECT next_value FROM local_sequences WHERE name = ?", ("tiendalibra_sale",)
-    ).fetchone()
-    if row is None:
-        conn.execute(
-            "INSERT INTO local_sequences (name, next_value) VALUES (?, 2)",
-            ("tiendalibra_sale",),
-        )
-        sequence = 1
-    else:
-        sequence = row[0]
-        conn.execute(
-            "UPDATE local_sequences SET next_value = ? WHERE name = ?",
-            (sequence + 1, "tiendalibra_sale"),
-        )
-    return f"POS-{sequence:06d}"
+    return f"POS-{next_sequence(conn, 'tiendalibra_sale'):06d}"
 
 
 class SaleService:
@@ -100,21 +83,7 @@ class SaleService:
             raise InvalidSaleState(f"la venta {sale_id} no esta en borrador (status={sale.status})")
         if not sale.items:
             raise InvalidSaleState("no se puede confirmar una venta sin lineas")
-        confirmed = replace(
-            sale, status=SaleStatus.CONFIRMED, confirmed_at=datetime.now(timezone.utc),
-        )
-        saved = self._save_with_totals(confirmed)
-        for line in saved.items:
-            if line.kind == CatalogItemType.PRODUCT:
-                movement = StockMovement(
-                    id=None, item_id=line.item_id, location_id=location_id,
-                    movement_type=StockMovementType.SALE,
-                    quantity_delta=-line.quantity,
-                    occurred_at=saved.confirmed_at,
-                    source_type="sale", source_id=saved.id,
-                )
-                self._repo.append_stock_movement(movement)
-        return saved
+        return confirm_sale(self._repo, sale, location_id, datetime.now(timezone.utc))
 
     def _save_with_totals(self, sale: Sale) -> Sale:
         subtotal = sum((item.quantity * item.unit_price for item in sale.items), Decimal("0"))

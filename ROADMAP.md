@@ -5,13 +5,14 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 
 ## Objetivo actual
 
-- [ ] Fase 1: probar de punta a punta que TiendaLibra puede componer
+- [x] Fase 1: probar de punta a punta que TiendaLibra puede componer
   LibraCore (auth) + LibraCommerce (catálogo/inventario/ventas) con un
   flujo de POS real, antes de construir el resto del alcance.
+- [x] Fase 2: compras (orden/recepción con orquestación de stock).
 
 ## Fases
 
-### Fase 1 — Auth + catálogo + inventario + POS básico (en curso)
+### Fase 1 — Auth + catálogo + inventario + POS básico (completa)
 
 - Resultado esperado: API FastAPI con login por sesión, CRUD de
   categorías/unidades/items de catálogo, ubicaciones, movimientos de stock
@@ -22,12 +23,25 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 - Dependencias: `libracommerce` v0.1.1 (tag cortado para esta fase),
   `libracore` v0.17.1.
 
-### Fase 2 — Compras
+### Fase 2 — Compras (completa, 2026-07-25)
 
-- Recepción de mercadería (`PurchaseOrder`/`PurchaseReceipt`, ya modelados
-  en LibraCommerce) con la orquestación recepción→stock que LibraCommerce
-  deliberadamente no automatiza.
-- Proveedores como `Party` con rol `supplier`.
+- Proveedores como `Party` (rol `supplier` contextual, sin columna propia —
+  `app/services/suppliers.py`/`app/routers/suppliers.py`).
+- Órdenes de compra (`PurchaseOrder`/`PurchaseOrderItem`) y recepciones
+  (`PurchaseReceipt`/`PurchaseReceiptItem`), con o sin orden vinculada
+  (`app/services/purchasing.py`/`app/routers/purchasing.py`).
+- La orquestación recepción→stock **ya no se reimplementa acá**: delega
+  enteramente en `libracommerce.usecases.purchasing.confirm_purchase_receipt`
+  (v0.1.2), que genera el movimiento de stock, actualiza
+  `CatalogItem.default_cost` (last-cost) y sincroniza `quantity_received`/
+  estado de la orden vinculada — a diferencia de las ventas en Fase 1, que
+  tuvo que reimplementar esa orquestación porque LibraCommerce todavía no
+  la ofrecía (ver `wiki/entities/libracommerce.md`, sección "Capa de casos
+  de uso").
+- 10 tests nuevos (30 en total) + smoke end-to-end real contra `uvicorn`.
+- Pin de `libracommerce` actualizado a `v0.1.2` (necesario para la capa de
+  casos de uso). Ver DECISIONS.md ADR-004/ADR-005 sobre los dos ajustes que
+  requirió ese bump.
 
 ### Fase 3 — Caja y facturación ARCA
 

@@ -15,6 +15,7 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     init_schema(conn)
     init_users_schema(conn)
+    init_sequences_schema(conn)
     return conn
 
 
@@ -32,3 +33,33 @@ def init_users_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+
+def init_sequences_schema(conn: sqlite3.Connection) -> None:
+    """Numeracion propia de TiendaLibra (POS-, OC-, REC-).
+
+    Antes reusaba la tabla `local_sequences` del esquema de LibraCommerce
+    (infraestructura interna de su especificacion offline) -- rompio al
+    pinnear v0.1.2, que la retiro por completo al migrar esa
+    responsabilidad a LibraEdge. No depender mas de tablas internas de una
+    dependencia que no forman parte de su contrato publico.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS sequences (
+            name TEXT PRIMARY KEY,
+            next_value INTEGER NOT NULL
+        );
+        """
+    )
+    conn.commit()
+
+
+def next_sequence(conn: sqlite3.Connection, name: str) -> int:
+    row = conn.execute("SELECT next_value FROM sequences WHERE name = ?", (name,)).fetchone()
+    if row is None:
+        conn.execute("INSERT INTO sequences (name, next_value) VALUES (?, 2)", (name,))
+        return 1
+    sequence = row[0]
+    conn.execute("UPDATE sequences SET next_value = ? WHERE name = ?", (sequence + 1, name))
+    return sequence

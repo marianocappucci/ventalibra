@@ -62,3 +62,111 @@ reemplazadas.
   configuración) mientras no aporta valor real.
 - Alternativas descartadas: adelantar la segunda base desde Fase 1 "por las
   dudas" — descartado, YAGNI.
+
+## ADR-004 — Confirmar recepción de compra delega en `libracommerce.usecases`, no se reimplementa
+
+- Estado: aceptada
+- Fecha: 2026-07-25
+- Contexto: en Fase 1, confirmar una venta (stock por línea de producto) se
+  reimplementó dentro de `app/services/sales.py` porque LibraCommerce
+  todavía no ofrecía esa orquestación (ver ADR-001 y el hallazgo de esa
+  fase). Entre esa fase y esta, LibraCommerce agregó
+  `libracommerce.usecases.sales.confirm_sale` y
+  `libracommerce.usecases.purchasing.confirm_purchase_receipt` (v0.1.2) —
+  la misma orquestación que antes faltaba, ahora resuelta upstream.
+- Decisión: `PurchasingService.confirm_receipt` delega enteramente en
+  `confirm_purchase_receipt`, sin reimplementar nada. Se aprovechó además
+  para refactorizar `SaleService.confirm` (Fase 1) y que también delegue en
+  `confirm_sale`, cerrando la duplicación que había quedado documentada en
+  el wiki de LibraCommerce.
+- Consecuencias: TiendaLibra ya no mantiene dos copias de la misma lógica
+  de negocio (una acá, otra en LibraCommerce) — cualquier cambio futuro a
+  esa orquestación (ej. costo promedio ponderado en vez de last-cost) se
+  hace una sola vez, en LibraCommerce, y llega acá con el próximo bump de
+  versión.
+- Alternativas descartadas: mantener la reimplementación propia de Fase 1
+  "porque ya funciona" — descartado, es exactamente la duplicación que el
+  propio wiki de LibraCommerce señaló como pendiente de resolver.
+
+## ADR-005 — Secuencias propias (`sequences`), no reutilizar `local_sequences` de LibraCommerce
+
+- Estado: aceptada
+- Fecha: 2026-07-25
+- Contexto: `_next_sale_number` (Fase 1) reusaba la tabla `local_sequences`
+  del esquema de LibraCommerce como atajo, documentado explícitamente como
+  "ya presente en el esquema, no colisiona". Al bumpear a `libracommerce`
+  v0.1.2 para la Fase 2, esa tabla dejó de existir — era infraestructura
+  interna de la especificación offline de LibraCommerce, retirada por
+  completo al migrar esa responsabilidad a LibraEdge. Rompió los 5 tests
+  del flujo de venta hasta corregirlo.
+- Decisión: `app/db.py` gana su propia tabla `sequences` (`init_sequences_schema`/
+  `next_sequence`), separada del esquema de LibraCommerce. La usan tanto
+  `_next_sale_number` (Fase 1) como la numeración de órdenes de compra
+  (Fase 2, `OC-000001`).
+- Consecuencias: TiendaLibra deja de depender de una tabla de implementación
+  interna de una dependencia que no forma parte de su contrato público
+  (`CommerceRepository`) — un futuro bump de `libracommerce` no puede volver
+  a romper esto de la misma forma.
+- Alternativas descartadas: seguir reusando `local_sequences` con otro
+  nombre de secuencia si LibraCommerce la reintrodujera — descartado, ya
+  demostró ser frágil una vez.
+
+## ADR-006 — 401 intermitente en la suite: reloj de WSL2 inestable, no un bug de código (sin cambios de código)
+
+- Estado: investigado y cerrado — no aplica ningún cambio de código
+- Fecha: 2026-07-25
+- Contexto: al validar Fase 2 corriendo la suite muchas veces (no solo una),
+  apareció un `401 not authenticated` intermitente (~15-30% de las corridas
+  completas) en medio de una sesión ya autenticada exitosamente. Reproducido
+  en `test_sales.py`/`test_catalog.py`/`test_stock.py` (Fase 1, no tocado en
+  esta ronda) y `test_purchasing.py`/`test_suppliers.py` (Fase 2) por igual —
+  no es un bug de Compras. Confirmado también en GestioLibra (10 corridas,
+  3 fallos, en módulos sin ninguna relación con TiendaLibra).
+- **Investigación fallida primero, documentada para no repetirla**: se probó
+  (1) `threading.Lock()` en un middleware, (2) forzar
+  `anyio.to_thread.current_default_thread_limiter()` a 1 token, (3)
+  `anyio.Lock()` en el mismo middleware, y (4) convertir **todas** las
+  dependencias/endpoints de auth a `async def` (eliminando por completo el
+  despacho a threadpool de Starlette). Cada intento parecía funcionar en
+  validaciones cortas, pero **ninguno sobrevivió una revalidación rigurosa**
+  — incluida una falsa señal de "0 fallos en 50/80 corridas" que resultó ser
+  un falso negativo: el detector de fallos solo buscaba la palabra `failed`
+  en el resumen de pytest, pero un bug real introducido al mover
+  `get_session_auth` a `async def` (se llama directamente, no vía `Depends`,
+  en `routers/auth.py`) rompía el login con un error de **fixture** ("1
+  error"), que no contiene la palabra `failed` y no lo detectaba el grep.
+  Con todo async y el bug de fixture corregido, el 401 intermitente **seguía
+  ocurriendo igual** — descartando threading/`anyio` como causa por completo.
+- **Causa raíz real**: instrumentando `get_current_user` para capturar la
+  excepción exacta de `itsdangerous`, apareció `SignatureExpired` con
+  `date_signed` prácticamente idéntico al momento de la verificación (no
+  vencido por ningún margen real — `max_age` es de 7 días). Un script de
+  diagnóstico que monitorea `time.time()` en un loop con `sleep(0.005)`
+  durante ~10s confirmó **saltos de reloj de ~15.18 segundos, hacia adelante
+  y hacia atrás, de forma recurrente**, dentro del mismo proceso Python —
+  el reloj virtualizado de este WSL2 se desincroniza del reloj del host y se
+  resincroniza con saltos instantáneos (no un ajuste gradual). Cualquier
+  comparación de timestamps de corta duración entre dos llamadas a
+  `time.time()` separadas por unos segundos de trabajo real (exactamente el
+  rango de duración de una corrida de pytest) puede toparse con uno de estos
+  saltos y producir una firma que parece "expirada" o inválida sin ninguna
+  relación con el código de la aplicación.
+- **Decisión: no se aplica ningún cambio de código.** El problema es del
+  entorno (reloj de WSL2 en esta máquina), no de `SessionAuth`, ni de
+  TiendaLibra, ni de ningún producto de la familia — revertidos todos los
+  intentos de fix (async, locks, thread-limiter) a como estaba el código
+  antes de esta investigación. Confirmado que el flaky sigue ocurriendo
+  igual con el código revertido, cerrando el caso.
+- Consecuencias: el flaky **puede seguir apareciendo** en corridas locales de
+  la suite en este entorno específico mientras el reloj de WSL2 no se
+  estabilice — no indica una regresión real si aparece de nuevo. Recomendado
+  para el usuario, fuera del alcance de esta sesión: verificar la versión de
+  WSL2 (`wsl --version` desde PowerShell) y considerar `wsl --update`, o
+  revisar si hay suspensión/hibernación frecuente del host disparando la
+  resincronización. Mismo diagnóstico aplica a GestioLibra/MedLibra/cualquier
+  otro producto corriendo en esta misma máquina — no es específico de ningún
+  repo.
+- Alternativas descartadas: las cuatro variantes de "arreglar con código"
+  listadas arriba — ninguna ataca la causa real, y añaden complejidad
+  (middleware, locks, cambios de `def` a `async def` en 9 archivos) sin
+  ningún beneficio real.

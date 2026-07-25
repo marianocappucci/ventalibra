@@ -15,8 +15,10 @@ documentados en la wiki del ecosistema
 
 ## Estado
 
-- Fase 1 en desarrollo: auth + catálogo + inventario + venta POS básica,
+- Fase 1 completa: auth + catálogo + inventario + venta POS básica,
   wireados de punta a punta sobre LibraCommerce/LibraCore.
+- Fase 2 completa: compras (proveedores, órdenes de compra, recepciones con
+  orquestación de stock/costo).
 - Entorno dev: `dev.tiendalibra.com.ar` (pendiente de provisionar).
 - Demo: `demo.tiendalibra.com.ar` (pendiente).
 - Producción: `cliente.tiendalibra.com.ar` (pendiente, arquitectura silo por cliente).

@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI
 from . import db
 from .auth import build_session_auth, require_admin, require_staff
 from .routers import auth as auth_router
-from .routers import catalog, health, locations, sales, stock
+from .routers import catalog, health, locations, purchasing, sales, stock, suppliers
 from .routers import users as users_router
 from .services.users import UserRepository, ensure_default_admin
 
@@ -32,5 +32,7 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(locations.router, dependencies=staff_or_admin)
     app.include_router(stock.router, dependencies=staff_or_admin)
     app.include_router(sales.router, dependencies=staff_or_admin)
+    app.include_router(suppliers.router, dependencies=staff_or_admin)
+    app.include_router(purchasing.router, dependencies=staff_or_admin)
 
     return app
