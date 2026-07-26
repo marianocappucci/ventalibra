@@ -27,24 +27,14 @@ def modulos_de_plan(plan: str) -> set[str]:
 
 
 def aplicar_plan_en_db(db_path: str, plan: str) -> None:
-    """Escribe el estado de modulos directo en la DB sqlite de un cliente
-    -- idempotente (INSERT OR IGNORE + UPDATE), mismo patron que
-    gestiolibra/medlibra."""
-    import sqlite3
+    """Escribe el estado de modulos directo en la DB sqlite de un cliente.
 
-    activos = modulos_de_plan(plan)
-    con = sqlite3.connect(db_path)
-    try:
-        for modulo in sorted(TODOS_LOS_MODULOS):
-            habilitado = 1 if modulo in activos else 0
-            con.execute(
-                "INSERT OR IGNORE INTO modulos (modulo, habilitado, plan) VALUES (?, ?, ?)",
-                (modulo, habilitado, plan),
-            )
-            con.execute(
-                "UPDATE modulos SET habilitado = ?, plan = ? WHERE modulo = ?",
-                (habilitado, plan, modulo),
-            )
-        con.commit()
-    finally:
-        con.close()
+    Shim sobre libracore.provisioning.apply_plan_modules (extraído
+    2026-07-26: el cuerpo era idéntico en Gestiolibra/MedLibra/VentaLibra
+    salvo el nombre de la variable, ver
+    wiki/analyses/auditoria-duplicacion-familia-libra.md)."""
+    from libracore.provisioning import apply_plan_modules
+    apply_plan_modules(
+        db_path, active_modules=modulos_de_plan(plan),
+        all_modules=TODOS_LOS_MODULOS, plan=plan,
+    )

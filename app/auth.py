@@ -1,13 +1,19 @@
-"""Session auth para la API JSON de VentaLibra.
+"""Session auth para la API JSON de VentaLibra -- shim sobre libracore.auth.
 
-Reusa libracore.auth.SessionAuth para la mecanica de cookie firmada (mismo
-patron que gestiolibra/app/auth.py y medlibra/app/auth.py). No reusa
-SessionAuth.require_auth/require_role porque redirigen con 307 a "/login",
-pensado para apps server-rendered -- esta es una API JSON sin paginas HTML,
-asi que las dependencias propias devuelven 401/403 con cuerpo JSON.
+Extraído 2026-07-26: reusa libracore.auth.SessionAuth para la mecánica de
+cookie firmada, y las dependencias json_api_* de libracore.auth (401/403
+JSON sin redirect, pensadas para APIs JSON puras sin página de login
+server-rendered) -- eran byte-idénticas en Gestiolibra/MedLibra/VentaLibra,
+ver wiki/analyses/auditoria-duplicacion-familia-libra.md.
 """
-from fastapi import Depends, HTTPException, Request
-from libracore.auth import SessionAuth
+from libracore.auth import (
+    SessionAuth,
+    json_api_get_current_user as get_current_user,
+    json_api_get_session_auth as get_session_auth,
+    json_api_require_admin as require_admin,
+    json_api_require_role as require_role,
+    json_api_require_staff as require_staff,
+)
 
 from .services.users import UserRepository
 
@@ -19,33 +25,3 @@ def build_session_auth(users: UserRepository) -> SessionAuth:
         check_credentials=users.check_credentials,
         cookie_name="vl_session",
     )
-
-
-def get_session_auth(request: Request) -> SessionAuth:
-    return request.app.state.session_auth
-
-
-def get_current_user(
-    request: Request, auth: SessionAuth = Depends(get_session_auth),
-) -> dict:
-    username = auth.get_current_user(request)
-    if username is None:
-        raise HTTPException(401, "not authenticated")
-    users: UserRepository = request.app.state.users
-    user = users.get_by_username(username)
-    if user is None or not user["active"]:
-        raise HTTPException(401, "not authenticated")
-    return user
-
-
-def require_role(*roles: str):
-    def _dependency(user: dict = Depends(get_current_user)) -> dict:
-        if user["role"] not in roles:
-            raise HTTPException(403, "forbidden")
-        return user
-
-    return _dependency
-
-
-require_admin = require_role("admin")
-require_staff = require_role("admin", "staff")
