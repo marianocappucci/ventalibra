@@ -280,3 +280,100 @@ reemplazadas.
   el dominio "ventalibra.com.ar" sin relación aparente — descartado por
   el usuario, rompería la convención de la familia y generaría confusión
   permanente entre nombre de producto y dominio real.
+
+## ADR-009 — Fase 5: planes y gating por módulo (onboarding multi-cliente)
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: para poder onboardear clientes reales hace falta un modelo de
+  planes (mismo patrón que Gestiolibra/MedLibra) que gatee qué funciona
+  para cada cliente según lo que paga.
+- Decisión: tres planes — Básico ($20.000), Estándar ($35.000) y Premium
+  ($55.000, sugerido) — con un único módulo gateable por ahora:
+  `facturacion`, incluido desde Estándar. Catálogo, stock y venta/POS
+  nunca se gatean (son el núcleo del producto, no un extra de plan).
+  Dashboard/reportes se sumarán a Premium cuando existan.
+- Implementación: `plans.py` en la raíz del repo (`PLANES`/`PLAN_LABELS`/
+  `PLAN_PRECIOS`/`PLAN_MODULOS`/`aplicar_plan_en_db`, mismo shape que
+  gestiolibra/medlibra) + tabla `modulos` (sqlite3 crudo, `app/db.py::
+  init_modules_schema`, sembrada en `habilitado=1` para todo módulo
+  conocido por defecto) + `ModuleRepository` (`app/services/modules.py`,
+  `is_enabled`/`get_all`/`set_enabled`) + `require_module()` (`app/
+  modules_gate.py`, dependency factory FastAPI, 403 si el módulo no está
+  habilitado). `app.state.modules` es una instancia persistente creada
+  una sola vez en `create_app()` — `get_module_repository()` la reusa
+  (no reconstruye `ModuleRepository` por request), necesario para que
+  `admin_client.app.state.modules.set_enabled(...)` en los tests mute el
+  mismo objeto que ve la app.
+- `confirm_sale` (`app/routers/sales.py`) chequea el módulo *antes* de
+  tocar nada: si se pide `invoice=True` sin el módulo `facturacion`
+  habilitado, corta con 403 antes de confirmar la venta — mismo criterio
+  fail-closed que Gestiolibra/MedLibra (ver ADR-007 de este repo: caja
+  siempre se registra, facturar es lo único condicionado al plan).
+  Confirmar la venta sin pedir factura nunca depende del plan.
+- Verificado real: 45/45 tests (39 preexistentes + 6 nuevos en
+  `tests/test_modules.py`, patrón `admin_client.app.state.modules.
+  set_enabled(modulo, bool)` — mismo que `gestiolibra/tests/
+  test_module_gating.py`, no `aplicar_plan_en_db` contra un path de DB
+  que el fixture de tests no expone), `compileall` limpio.
+- Pendiente: `scripts/nuevo_cliente.py` (ver ADR-010) no aplica un plan
+  todavía al crear un cliente — por ahora todo cliente nuevo arranca en
+  Premium (default de `init_modules_schema`) hasta que se decida cómo
+  se captura el plan elegido en el onboarding.
+
+## ADR-010 — Infraestructura de deploy: Dockerfile, docker-compose, scripts y deploy keys
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: hasta ahora VentaLibra no tenía forma de deployarse — sin
+  `Dockerfile` ni `docker-compose.yml` ni scripts de onboarding. Para
+  levantar el primer contenedor real en el VPS hacía falta todo eso más
+  el acceso SSH a las dos dependencias privadas (`libracore`,
+  `libracommerce`).
+- Decisión: replicar el patrón exacto de Gestiolibra/MedLibra, sin el
+  stage de frontend (VentaLibra todavía no tiene uno — se suma cuando
+  llegue esa fase):
+  - `Dockerfile`: mismo mecanismo de `--mount=type=ssh` + alias de `Host`
+    por dependencia con `IdentitiesOnly yes` (evita que GitHub autentique
+    el transporte con la key equivocada del agente — bug real ya
+    documentado en `gestiolibra/DECISIONS.md` ADR-014).
+  - `docker-compose.yml`: contenedor `ventalibra-dev`, puerto `8081`
+    (siguiente libre después de `medlibra-dev` en `8077`; confirmado
+    contra `docker ps` real en el VPS, no asumido), red `stack-net`
+    externa, healthcheck sobre `/health`.
+  - `scripts/nuevo_cliente.py`/`panel_admin.py`/`npm_api.py`/
+    `npm_setup.py`: wrappers delgados sobre `libracore.provisioning` /
+    `libracore.npm_api`, `base_port=8082` (siguiente libre después de
+    `medlibra`'s `8078`).
+  - `app/asgi.py`: puentea el contrato `DATA_DIR`/`ADMIN_USER`/
+    `ADMIN_PASSWORD` que escribe `libracore.provisioning` para clientes
+    reales, sin romper el arranque explícito por env vars que usa el
+    `docker-compose.yml` de dev (`VENTALIBRA_DB_PATH`/
+    `VENTALIBRA_ADMIN_*`).
+  - Deploy keys SSH nuevas (convención de `CLAUDE.md`/`AGENTS.md` del
+    wiki, sin PAT embebido): `id_ed25519_libracommerce` (solo lectura,
+    primera vez que un producto depende de LibraCommerce — no se puede
+    reusar la de LibraCore, GitHub no permite compartir una deploy key
+    entre repos) y `id_ed25519_ventalibra` (read-write, propia del repo,
+    para el `git pull` de deploy). Ambas generadas en el VPS y cargadas
+    en el ssh-agent persistente compartido (`agent-multi-libra.sock`,
+    ya tenía las de LibraCore/LibraGenda); alias `github-ventalibra`
+    agregado a `~/.ssh/config` del VPS **antes** del bloque genérico
+    `Host *` (el orden importa, ver incidente documentado en
+    `CLAUDE.md`).
+- Verificado real en el VPS (no solo localmente): clone vía
+  `github-ventalibra`, `docker compose build` con
+  `LIBRACORE_SSH_KEY=~/.ssh/agent-multi-libra.sock` resolviendo
+  `libracommerce`/`libracore` por SSH sin exponer ninguna clave privada
+  en capas de la imagen, `docker compose up -d` con contenedor healthy,
+  `GET /health` → 200, login real contra `/auth/login` con las
+  credenciales default de dev (`admin`/`admin`, vía `ENV=development`
+  en `ensure_default_admin`) → 200.
+- Bloqueado (no depende de este repo): `ventalibra.com.ar` está
+  registrado pero su delegación DNS está mal configurada — los
+  nameservers delegados (`200.58.112.193`/`.101`) devuelven `REFUSED`
+  ("lame delegation", confirmado vía DNS-over-HTTPS contra
+  `dns.google`) en vez de responder por la zona. No se puede provisionar
+  NPM+SSL para `dev.ventalibra.com.ar` hasta que se corrija esto en el
+  proveedor de DNS — el contenedor `ventalibra-dev` queda accesible solo
+  por IP:puerto (`8081`) hasta entonces.

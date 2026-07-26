@@ -5,7 +5,9 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 ## En curso
 
-- [ ] Ninguna por ahora.
+- [ ] Fase 5: `scripts/nuevo_cliente.py` no captura el plan elegido al
+  crear un cliente — todo cliente nuevo arranca en Premium por default.
+  Onboardear el primer cliente de prueba real una vez decidido.
 
 ## Completadas
 
@@ -21,6 +23,13 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   segunda base SQLite dedicada, clientes con extensión `party_billing`,
   facturación opcional por venta, caja siempre al confirmar) — 8 tests
   nuevos (39 en total) + smoke end-to-end — responsable: LLM.
+- [x] Fase 5 (código): planes y gating por módulo (`plans.py`, tabla
+  `modulos`, `ModuleRepository`, `require_module()`) — 6 tests nuevos
+  (45 en total) — responsable: LLM.
+- [x] Fase 5 (infraestructura): `Dockerfile`/`docker-compose.yml`/scripts
+  de onboarding, deploy keys SSH (`libracommerce`/`ventalibra`),
+  contenedor `ventalibra-dev` verificado en el VPS (puerto 8081) —
+  responsable: LLM.
 
 ## Próximas
 
@@ -29,4 +38,8 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 ## Bloqueadas
 
-- [ ] Ninguna por ahora.
+- [ ] Provisionar NPM+SSL para `dev.ventalibra.com.ar` — el dominio
+  `ventalibra.com.ar` está registrado pero su delegación DNS está mal
+  configurada (nameservers `200.58.112.193`/`.101` devuelven REFUSED,
+  "lame delegation" — confirmado vía DNS-over-HTTPS contra `dns.google`
+  el 2026-07-26). Corregir en el proveedor de DNS antes de continuar.

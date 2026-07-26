@@ -10,6 +10,8 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   flujo de POS real, antes de construir el resto del alcance.
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
 - [x] Fase 3: caja y facturación ARCA vía LibraCore.
+- [~] Fase 5: onboarding multi-cliente (planes/gating de código completo;
+  infraestructura de deploy verificada en el VPS; falta el dominio/SSL).
 
 ## Fases
 
@@ -85,12 +87,29 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   análisis de arquitectura de la familia. Se decide de forma explícita
   cuando se llegue a esta fase, no de pasada.
 
-### Fase 5 — Onboarding, planes, frontend, reportes
+### Fase 5 — Onboarding, planes, frontend, reportes (en curso, 2026-07-26)
 
-- Onboarding multi-cliente con enforcement de planes (mismo patrón que
-  GestioLibra/MedLibra).
-- Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
-- Reportes de ventas, caja y stock.
+- [x] Planes (Básico $20k / Estándar $35k / Premium $55k) y gating por
+  módulo (`facturacion` desde Estándar; catálogo/stock/venta nunca se
+  gatean) — `plans.py` + tabla `modulos` + `ModuleRepository` +
+  `require_module()`, mismo patrón que GestioLibra/MedLibra. 45/45 tests.
+  Ver DECISIONS.md ADR-009.
+- [x] Infraestructura de deploy: `Dockerfile`/`docker-compose.yml`/
+  `scripts/nuevo_cliente.py`/`panel_admin.py`/`npm_api.py`/`npm_setup.py`,
+  deploy keys SSH (`libracommerce` solo lectura + `ventalibra` propia).
+  Contenedor `ventalibra-dev` levantado y verificado en el VPS (puerto
+  `8081`, `/health` → 200, login real). Ver DECISIONS.md ADR-010.
+- [ ] **Bloqueado**: `ventalibra.com.ar` tiene delegación DNS mal
+  configurada (nameservers devuelven REFUSED) — sin esto no se puede
+  provisionar NPM+SSL para `dev.ventalibra.com.ar`. Corregir en el
+  proveedor de DNS antes de seguir con esta parte.
+- [ ] `scripts/nuevo_cliente.py` no captura el plan elegido al crear un
+  cliente todavía — todo cliente nuevo arranca en Premium por default.
+- [ ] Primer cliente de prueba real (`docker compose` vía
+  `scripts/nuevo_cliente.py`, no el contenedor `-dev` manual usado para
+  verificar la infraestructura).
+- [ ] Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
+- [ ] Reportes de ventas, caja y stock.
 - Validar con un comercio real antes de sumar promociones avanzadas,
   multi-sucursal o modo offline (ver `wiki/analyses/arquitectura-familia-libra-alcance.md`,
   "Orden de implementación").

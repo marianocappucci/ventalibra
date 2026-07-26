@@ -42,3 +42,15 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   toda la documentación del producto actualizados para mantener la
   convención de la familia (nombre de producto = dominio). Ver
   DECISIONS.md ADR-008.
+- Fase 5 — planes y gating por módulo: tres planes (Básico $20k/Estándar
+  $35k/Premium $55k), módulo `facturacion` gateado desde Estándar,
+  catálogo/stock/venta sin gating. `confirm_sale` corta con 403 antes de
+  tocar nada si se pide factura sin el módulo habilitado. 6 tests nuevos
+  (45 en total). Ver DECISIONS.md ADR-009.
+- Fase 5 — infraestructura de deploy: `Dockerfile`/`docker-compose.yml`/
+  scripts de onboarding (`nuevo_cliente.py`/`panel_admin.py`/`npm_api.py`/
+  `npm_setup.py`), deploy keys SSH nuevas (`libracommerce` solo lectura,
+  `ventalibra` propia). Primer contenedor real (`ventalibra-dev`, puerto
+  `8081`) construido y verificado en el VPS. Dominio/SSL pendiente —
+  `ventalibra.com.ar` tiene la delegación DNS mal configurada. Ver
+  DECISIONS.md ADR-010.
