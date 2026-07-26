@@ -11,10 +11,18 @@ presente tiene prioridad para todo lo que no este ya seteado
 explicitamente, asi un contenedor de cliente provisionado no necesita
 ninguna env var especifica de VentaLibra.
 
-Sin frontend todavia -- se suma cuando Fase 5 lo requiera (mismo patron
-que gestiolibra/app/asgi.py cuando llegue el momento).
+Tambien sirve el build de la SPA (`frontend/dist`) -- mismo patron que
+gestiolibra/app/asgi.py: las rutas de la API ya registradas por
+create_app() tienen prioridad, cualquier otra cosa cae al catch-all que
+sirve `index.html` (ruteo del lado del cliente, ver DECISIONS.md ADR-014).
+Corriendo `uvicorn app.asgi:app` sin haber buildeado el frontend sigue
+funcionando como API pura -- el mount se salta en silencio si no existe.
 """
 import os
+from pathlib import Path
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .main import create_app
 
@@ -33,3 +41,18 @@ else:
     db_path = os.environ["VENTALIBRA_DB_PATH"]
 
 app = create_app(db_path)
+
+_DOCKER_FRONTEND_DIST = Path("/opt/frontend-dist")
+_LOCAL_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+FRONTEND_DIST = (
+    _DOCKER_FRONTEND_DIST if _DOCKER_FRONTEND_DIST.is_dir() else _LOCAL_FRONTEND_DIST
+)
+if FRONTEND_DIST.is_dir():
+    app.mount(
+        "/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets"
+    )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        del full_path  # unused: catch-all para el ruteo del lado del cliente
+        return FileResponse(FRONTEND_DIST / "index.html")
