@@ -239,7 +239,7 @@ reemplazadas.
 ## ADR-008 — Renombrado TiendaLibra → VentaLibra
 
 - Estado: aceptada
-- Fecha: 2026-07-26
+- Fecha: 2026-07-25
 - Contexto: el usuario intentó registrar `tiendalibra.com.ar` (el dominio
   que la familia usa siempre para el nombre del producto — Contalibra→
   contalibra.com.ar, Restolibra→restolibra.com.ar, etc.) y no estaba
