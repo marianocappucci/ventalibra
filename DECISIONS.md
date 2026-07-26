@@ -632,3 +632,82 @@ reemplazadas.
   (compras/proveedores/clientes/config ARCA/usuarios/sucursales) y
   reportes — se suman cuando el usuario los priorice, un corte a la vez,
   mismo criterio que el resto de Fase 5.
+
+## ADR-015 — Frontend: resto del back office (sucursales, proveedores, clientes, compras, usuarios, config ARCA)
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: con el MVP del frontend cerrado (ADR-014), el usuario pidió
+  seguir con el resto del back office en el mismo frontend.
+- **Gap real encontrado antes de codificar Compras**: no existía forma
+  de *listar* órdenes de compra ni recepciones — `PurchasingService`/
+  `SqliteCommerceRepository` solo tenían `get_*_by_id`. Se agregó
+  `list_purchase_orders()`/`list_purchase_receipts()` en LibraCommerce
+  (reusando `_purchase_order_from_row()`/`_purchase_receipt_from_row()`
+  extraídos de los `get_*` existentes), se cortó `v0.1.4` y se actualizó
+  el pin. `GET /purchase-orders`/`GET /purchase-receipts` nuevos en este
+  repo (sin ambigüedad de rutas con `/purchase-orders/{id}`: distinta
+  profundidad de path, a diferencia del caso `/items/scan` vs
+  `/items/{id}` de ADR-012).
+- **Bug real encontrado y corregido** (no introducido en esta ronda,
+  preexistente desde Fase 2, pero invisible hasta que una UI lista
+  ambas cosas juntas): `SupplierService.list_all()`/
+  `CustomerService.list_all()` consultaban *todas* las `parties` activas
+  sin filtrar por rol — un cliente aparecía mezclado en la lista de
+  proveedores y viceversa. La causa raíz: `Party.party_type` es
+  persona/organización, un eje totalmente distinto al de
+  cliente/proveedor (un proveedor puede ser persona, un cliente puede
+  ser organización), y el rol se documentaba como "contextual" sin
+  ninguna columna que lo persista. Fix: tabla local `party_roles`
+  (`party_id`, `role`, PK compuesta para no cerrar la puerta a que una
+  misma party tenga los dos roles a la vez más adelante) — mismo patrón
+  exacto que `party_billing` (extensión propia de este repo con FK a
+  `parties.id`, sin tocar el esquema genérico de LibraCommerce).
+  `SupplierService.create()`/`CustomerService.create()` ahora insertan
+  el rol correspondiente; `list_all()` de ambos hace `JOIN` contra
+  `party_roles` filtrando por rol. 2 tests nuevos confirmando que las
+  listas no se cruzan.
+- **Páginas nuevas**:
+  - Sucursales/Proveedores/Clientes: alta + listado únicamente — esos
+    tres routers no tienen `PUT`/`DELETE` en el backend, así que no hay
+    edición/baja en la UI tampoco (no se agregaron endpoints nuevos para
+    esto, fuera de lo pedido).
+  - Usuarios: CRUD completo (ya existía `PUT`/`DELETE` en el backend),
+    admin-only.
+  - Config ARCA: formulario simple `GET`/`PUT`, admin-only.
+  - Compras: dos paneles (órdenes de compra, recepciones), cada uno con
+    lista + panel de detalle para la orden/recepción seleccionada
+    (crear, agregar líneas, y en recepciones también confirmar con
+    depósito de destino).
+- `App.tsx`/`Layout.tsx`: 6 rutas nuevas. Nav items de Usuarios/Config
+  ARCA marcados `adminOnly` (mismo patrón que Gestiolibra) — ocultos del
+  sidebar para `staff` y la ruta redirige a `/pos` si se navega directo
+  (sin depender solo del 403 del backend para la UX).
+- **Bug propio encontrado y corregido durante la verificación real**
+  (no un bug de LibraCommerce ni del backend de este repo):
+  `Compras.tsx` usaba `!selected.is_fully_received` para decidir si
+  mostrar el formulario de alta de líneas en una orden — pero
+  `is_fully_received()` es `all(item.pending_quantity <= 0 for item in
+  self.items)`, que da **vacuamente `true`** sobre una colección vacía.
+  Resultado: una orden recién creada (sin líneas todavía) ocultaba el
+  formulario justo cuando hacía falta. Corregido para mirar `status`
+  (`draft`/`sent` permiten agregar líneas), el mismo criterio que ya
+  valida `PurchasingService.add_order_item()` del lado del backend —
+  encontrado recién al probar el flujo completo en el navegador real,
+  no por revisión de código.
+- **Verificado real de punta a punta contra un build de producción**
+  servido por `uvicorn` (mismo método que ADR-014, no solo `npm run
+  build`): las 6 páginas nuevas navegadas y ejercitadas, incluido un
+  flujo completo de compras (crear recepción → agregar línea → confirmar
+  → stock y `default_cost` actualizados, verificado por API) y de
+  órdenes (crear orden → agregar línea, verificado que la línea con
+  cantidad pedida 20 aparece correctamente tras el fix del bug de
+  arriba). Nota metodológica: los selects de Radix/shadcn quedaron en un
+  estado de overlay "pegado" al reusar la misma pestaña para múltiples
+  interacciones seguidas dentro de la misma sesión de verificación — se
+  resolvió recargando la página entre bloques de prueba, no es un bug
+  de la app.
+- `npm run build` sin errores de tipos. Suite de tests del backend:
+  66/66 (2 de `party_roles`, 2 de `list_purchase_orders`/
+  `list_purchase_receipts`), `compileall` limpio.
+- Pendiente (fuera de esta ronda): reportes de ventas/caja/stock.

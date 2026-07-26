@@ -11,8 +11,8 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
 - [x] Fase 3: caja y facturación ARCA vía LibraCore.
 - [~] Fase 5: onboarding multi-cliente (planes/gating de código,
-  infraestructura de deploy, dominio/SSL y frontend MVP completos; falta
-  el resto del back office en el frontend y reportes).
+  infraestructura de deploy, dominio/SSL, y frontend completo salvo
+  reportes).
 
 ## Fases
 
@@ -130,9 +130,16 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   venta (buscar/escanear, variantes, confirmar), catálogo (unidades,
   items, códigos de barra, variantes). Verificado real de punta a punta
   contra un build de producción servido por `uvicorn`. Ver DECISIONS.md
-  ADR-014. Resto del back office (compras/proveedores/clientes/config
-  ARCA/usuarios/sucursales) sigue por API directa, se suma cuando se
-  priorice.
+  ADR-014.
+- [x] Frontend — resto del back office (2026-07-26): sucursales,
+  proveedores, clientes (alta+listado), compras (órdenes/recepciones),
+  usuarios (CRUD, admin-only), config ARCA (admin-only). Bug real
+  encontrado y corregido en el camino: `SupplierService`/
+  `CustomerService.list_all()` mezclaban clientes y proveedores en la
+  misma lista (tabla `party_roles` nueva, propia de este repo). Pin de
+  `libracommerce` a `v0.1.4` (`list_purchase_orders`/
+  `list_purchase_receipts`, gap real encontrado al construir la
+  pantalla). Verificado real de punta a punta. Ver DECISIONS.md ADR-015.
 - [ ] Reportes de ventas, caja y stock.
 - Validar con un comercio real antes de sumar promociones avanzadas,
   multi-sucursal o modo offline (ver `wiki/analyses/arquitectura-familia-libra-alcance.md`,

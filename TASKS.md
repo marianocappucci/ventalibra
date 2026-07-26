@@ -49,11 +49,14 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   venta (buscar/escanear/variantes/confirmar), catálogo (unidades,
   items, códigos, variantes). Verificado real de punta a punta contra
   un build de producción. Ver DECISIONS.md ADR-014 — responsable: LLM.
+- [x] Frontend: resto del back office (sucursales, proveedores,
+  clientes, compras, usuarios, config ARCA). Bug real corregido en el
+  camino (`party_roles`, mezcla de clientes/proveedores). Pin de
+  `libracommerce` a `v0.1.4`. Verificado real de punta a punta,
+  66/66 tests. Ver DECISIONS.md ADR-015 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Frontend: resto del back office (compras, proveedores, clientes,
-  config ARCA, usuarios, sucursales).
 - [ ] Reportes de ventas, caja y stock.
 
 ## Bloqueadas

@@ -88,3 +88,16 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   punta a punta contra un build de producción servido por `uvicorn`
   (login → catálogo → escaneo → venta con variante → confirmación →
   stock de esa variante actualizado). Ver DECISIONS.md ADR-014.
+- Frontend — resto del back office: sucursales, proveedores, clientes
+  (alta+listado), compras (órdenes de compra y recepciones con
+  confirmación), usuarios (CRUD, admin-only), config ARCA (admin-only).
+  Pin de `libracommerce` actualizado a `v0.1.4` (`list_purchase_orders`/
+  `list_purchase_receipts`, endpoints de listado que no existían).
+  Bug real corregido: `SupplierService`/`CustomerService.list_all()`
+  mezclaban clientes y proveedores en la misma lista — tabla
+  `party_roles` nueva (propia de este repo, mismo patrón que
+  `party_billing`). Verificado real de punta a punta contra un build de
+  producción, incluido un bug propio de UI corregido en el camino
+  (gating del formulario de líneas de una orden usaba
+  `is_fully_received()`, que da vacuamente `true` sin líneas). 66/66
+  tests. Ver DECISIONS.md ADR-015.
