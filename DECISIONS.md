@@ -1,4 +1,4 @@
-# Decisiones arquitectónicas — TiendaLibra
+# Decisiones arquitectónicas — VentaLibra
 
 Registro ADR. No borrar decisiones: si dejan de aplicar, marcarlas como
 reemplazadas.
@@ -11,14 +11,14 @@ reemplazadas.
   ya define LibraCommerce como el motor reutilizable de catálogo, compras,
   inventario y ventas, con esquema SQLite y `SqliteCommerceRepository`
   estables (55 tests pasando al momento de esta decisión).
-- Decisión: TiendaLibra depende de `libracommerce` como paquete versionado
+- Decisión: VentaLibra depende de `libracommerce` como paquete versionado
   (git tag), no copia ni reimplementa su dominio.
-- Consecuencias: TiendaLibra queda acoplado al ritmo de release de
+- Consecuencias: VentaLibra queda acoplado al ritmo de release de
   LibraCommerce; cualquier extensión de catálogo que otro vertical también
   necesite (código de barras, variantes, listas de precio) debe evaluarse
   primero como cambio en LibraCommerce, no como parche local.
 - Alternativas descartadas: reimplementar un catálogo/inventario propio
-  dentro de TiendaLibra — descartado porque duplicaría exactamente lo que
+  dentro de VentaLibra — descartado porque duplicaría exactamente lo que
   LibraCommerce ya resuelve y probó contra datos reales de Contalibra.
 
 ## ADR-002 — Tabla `users` propia en vez de `libracore.db.usuarios`
@@ -26,11 +26,11 @@ reemplazadas.
 - Estado: aceptada
 - Fecha: 2026-07-25
 - Contexto: `libracore.db.usuarios` ya resuelve alta/baja/auth de usuarios
-  contra SQLite, y TiendaLibra (a diferencia de GestioLibra/MedLibra, que
+  contra SQLite, y VentaLibra (a diferencia de GestioLibra/MedLibra, que
   usan SQLAlchemy/Postgres para su dominio propio) es 100% SQLite nativo, así
   que técnicamente podría reusarlo sin el problema de acoplamiento que tienen
   esos dos productos.
-- Decisión: TiendaLibra mantiene su propia tabla `users` y su propio
+- Decisión: VentaLibra mantiene su propia tabla `users` y su propio
   `security.py` (PBKDF2), igual que GestioLibra y MedLibra, en vez de
   importar `libracore.db.usuarios`.
 - Consecuencias: se duplica por tercera vez el mismo algoritmo de hashing
@@ -58,9 +58,9 @@ reemplazadas.
   `db_path` de proceso; MedLibra usa una segunda base SQLite dedicada
   exclusivamente para los módulos de LibraCore que la necesitan
   (`caja`/`arca_facturacion`), separada de su motor de dominio principal.
-  TiendaLibra en Fase 1 no usa ningún módulo de `libracore.db` todavía (solo
+  VentaLibra en Fase 1 no usa ningún módulo de `libracore.db` todavía (solo
   `libracore.auth`, que no toca SQLite).
-- Decisión: Fase 1 usa una única base SQLite (`data/tiendalibra.db`) para
+- Decisión: Fase 1 usa una única base SQLite (`data/ventalibra.db`) para
   LibraCommerce + `users`. La segunda base para LibraCore se suma recién en
   Fase 3, cuando haga falta.
 - Consecuencias: evita complejidad prematura (dos conexiones, dos rutas de
@@ -84,7 +84,7 @@ reemplazadas.
   para refactorizar `SaleService.confirm` (Fase 1) y que también delegue en
   `confirm_sale`, cerrando la duplicación que había quedado documentada en
   el wiki de LibraCommerce.
-- Consecuencias: TiendaLibra ya no mantiene dos copias de la misma lógica
+- Consecuencias: VentaLibra ya no mantiene dos copias de la misma lógica
   de negocio (una acá, otra en LibraCommerce) — cualquier cambio futuro a
   esa orquestación (ej. costo promedio ponderado en vez de last-cost) se
   hace una sola vez, en LibraCommerce, y llega acá con el próximo bump de
@@ -108,7 +108,7 @@ reemplazadas.
   `next_sequence`), separada del esquema de LibraCommerce. La usan tanto
   `_next_sale_number` (Fase 1) como la numeración de órdenes de compra
   (Fase 2, `OC-000001`).
-- Consecuencias: TiendaLibra deja de depender de una tabla de implementación
+- Consecuencias: VentaLibra deja de depender de una tabla de implementación
   interna de una dependencia que no forma parte de su contrato público
   (`CommerceRepository`) — un futuro bump de `libracommerce` no puede volver
   a romper esto de la misma forma.
@@ -126,7 +126,7 @@ reemplazadas.
   en `test_sales.py`/`test_catalog.py`/`test_stock.py` (Fase 1, no tocado en
   esta ronda) y `test_purchasing.py`/`test_suppliers.py` (Fase 2) por igual —
   no es un bug de Compras. Confirmado también en GestioLibra (10 corridas,
-  3 fallos, en módulos sin ninguna relación con TiendaLibra).
+  3 fallos, en módulos sin ninguna relación con VentaLibra).
 - **Investigación fallida primero, documentada para no repetirla**: se probó
   (1) `threading.Lock()` en un middleware, (2) forzar
   `anyio.to_thread.current_default_thread_limiter()` a 1 token, (3)
@@ -158,7 +158,7 @@ reemplazadas.
   relación con el código de la aplicación.
 - **Decisión: no se aplica ningún cambio de código.** El problema es del
   entorno (reloj de WSL2 en esta máquina), no de `SessionAuth`, ni de
-  TiendaLibra, ni de ningún producto de la familia — revertidos todos los
+  VentaLibra, ni de ningún producto de la familia — revertidos todos los
   intentos de fix (async, locks, thread-limiter) a como estaba el código
   antes de esta investigación. Confirmado que el flaky sigue ocurriendo
   igual con el código revertido, cerrando el caso.
@@ -183,7 +183,7 @@ reemplazadas.
 - Contexto: MedLibra/Gestiolibra ya resolvieron este mismo problema para
   turnos — `app/services/billing.py` (segunda base SQLite dedicada a
   `libracore.db`, `arca_facturacion`, `caja`) es el patrón de referencia,
-  portado a TiendaLibra casi verbatim en la mecánica (`configure()`,
+  portado a VentaLibra casi verbatim en la mecánica (`configure()`,
   `get_arca_config()`/`set_arca_config()`, `_tipo_comprobante()`,
   `_split_iva()` al 21% fijo). Pero el dominio de retail difiere del de
   turnos en dos puntos reales, resueltos con el usuario antes de codificar
@@ -225,7 +225,7 @@ reemplazadas.
   tipo A con CAE (mock de dev), venta sin cliente facturada tipo B
   "Consumidor Final", venta sin pedir factura con `factura: null`, y
   movimiento de caja confirmado en ambos casos vía `libracore.db.caja`.
-- Consecuencias: TiendaLibra diverge del patrón exacto de MedLibra/Gestiolibra
+- Consecuencias: VentaLibra diverge del patrón exacto de MedLibra/Gestiolibra
   en el punto de "cuándo toca caja" — es una decisión de dominio real
   (retail vs. turnos), no una inconsistencia accidental; documentado acá
   para que quede claro que es intencional si alguien compara los tres
@@ -235,3 +235,48 @@ reemplazadas.
   control explícito por venta; caja solo si hay factura (mismo patrón
   exacto que MedLibra/Gestiolibra) — descartado, no refleja cómo funciona
   el control de caja en un comercio real.
+
+## ADR-008 — Renombrado TiendaLibra → VentaLibra
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: el usuario intentó registrar `tiendalibra.com.ar` (el dominio
+  que la familia usa siempre para el nombre del producto — Contalibra→
+  contalibra.com.ar, Restolibra→restolibra.com.ar, etc.) y no estaba
+  disponible. Registró `ventalibra.com.ar` en su lugar, ya apuntando al
+  servidor.
+- Decisión: renombrar el producto completo a VentaLibra, no solo el
+  dominio de hosting, para mantener la convención de la familia
+  (nombre de producto = dominio) — se le preguntó explícitamente al
+  usuario entre las dos opciones y eligió el rename completo.
+- Alcance del rename: repo de GitHub (`marianocappucci/tiendalibra` →
+  `marianocappucci/ventalibra`, vía `gh repo rename`), directorio local
+  WSL, nombre del paquete Python (`pyproject.toml`), título de la app
+  FastAPI, cookie de sesión (`tl_session` → `vl_session`, mismo patrón
+  `gl_session`/`ml_session` de Gestiolibra/MedLibra), variables de entorno
+  (`TIENDALIBRA_*` → `VENTALIBRA_*`), nombres de archivo de base SQLite
+  por defecto (`tiendalibra.db`/`tiendalibra_libracore.db` →
+  `ventalibra.db`/`ventalibra_libracore.db`), constante `EMPRESA` de
+  `billing.py` (`"tienda"` → `"venta"`), y toda la documentación del
+  propio repo (`README.md`/`ROADMAP.md`/`TASKS.md`/`DECISIONS.md`/
+  `CHANGELOG.md`/`ARCHITECTURE.md`/`CONVENTIONS.md`) — reemplazo mecánico
+  (`TIENDALIBRA`→`VENTALIBRA`, `TiendaLibra`→`VentaLibra`,
+  `tiendalibra`→`ventalibra`), sin reescribir la narrativa de decisiones
+  pasadas más allá del nombre del producto.
+- Deliberadamente **no** se tocó el wiki `log.md` (append-only, nunca se
+  reescriben entradas pasadas) — las entradas históricas siguen diciendo
+  "TiendaLibra"/"RetailLibra", que es exactamente lo que se llamaba el
+  producto en ese momento; la wiki registra un nuevo evento aparte para
+  el rename, no reescribe el pasado.
+- Verificado real: `pytest -q` 39/39 tras el rename y tras recrear el
+  venv (roto por rutas absolutas del venv viejo tras mover el
+  directorio), `compileall` limpio, remoto de git y `gh repo view`
+  confirmando el nuevo nombre.
+- Consecuencias: nada en producción se ve afectado — el dominio nunca
+  había sido provisionado todavía (Fase de "provisionar dev.*.com.ar"
+  sigue pendiente en ROADMAP.md), así que no hay infraestructura viva
+  apuntando al nombre viejo que migrar.
+- Alternativas descartadas: mantener el producto como "TiendaLibra" con
+  el dominio "ventalibra.com.ar" sin relación aparente — descartado por
+  el usuario, rompería la convención de la familia y generaría confusión
+  permanente entre nombre de producto y dominio real.

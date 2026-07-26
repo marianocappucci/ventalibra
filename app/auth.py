@@ -1,4 +1,4 @@
-"""Session auth para la API JSON de TiendaLibra.
+"""Session auth para la API JSON de VentaLibra.
 
 Reusa libracore.auth.SessionAuth para la mecanica de cookie firmada (mismo
 patron que gestiolibra/app/auth.py y medlibra/app/auth.py). No reusa
@@ -14,10 +14,10 @@ from .services.users import UserRepository
 
 def build_session_auth(users: UserRepository) -> SessionAuth:
     return SessionAuth(
-        dev_secret_fallback="tiendalibra-dev-secret-not-for-prod",
+        dev_secret_fallback="ventalibra-dev-secret-not-for-prod",
         get_user_by_username=users.get_by_username,
         check_credentials=users.check_credentials,
-        cookie_name="tl_session",
+        cookie_name="vl_session",
     )
 
 

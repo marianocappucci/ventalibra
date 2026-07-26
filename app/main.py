@@ -1,4 +1,4 @@
-"""TiendaLibra app factory: abre la conexion SQLite unica de Fase 1 y monta
+"""VentaLibra app factory: abre la conexion SQLite unica de Fase 1 y monta
 los routers con gating por rol (mismo patron que gestiolibra/medlibra:
 dependencias en include_router, no por endpoint suelto)."""
 import os
@@ -19,9 +19,9 @@ def create_app(db_path: str) -> FastAPI:
     conn = db.connect(db_path)
     user_repository = UserRepository(conn)
     ensure_default_admin(user_repository)
-    billing.configure(os.environ.get("TIENDALIBRA_LIBRACORE_DB_PATH", "./data/tiendalibra_libracore.db"))
+    billing.configure(os.environ.get("VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"))
 
-    app = FastAPI(title="TiendaLibra")
+    app = FastAPI(title="VentaLibra")
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)

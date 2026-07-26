@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tiendalibra"
+name = "ventalibra"
 version = "0.1.0.dev0"
 description = "Vertical de despensas, autoservicios y comercios minoristas de la familia Libra."
 readme = "README.md"

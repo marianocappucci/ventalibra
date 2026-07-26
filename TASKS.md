@@ -1,4 +1,4 @@
-# Tasks — TiendaLibra
+# Tasks — VentaLibra
 
 Trabajo concreto y vigente. Al completar o descartar una tarea, actualizarla;
 no usar este archivo como historial (para eso está `CHANGELOG.md`).

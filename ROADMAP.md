@@ -1,11 +1,11 @@
-# Roadmap — TiendaLibra
+# Roadmap — VentaLibra
 
 Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 (ver `TASKS.md`).
 
 ## Objetivo actual
 
-- [x] Fase 1: probar de punta a punta que TiendaLibra puede componer
+- [x] Fase 1: probar de punta a punta que VentaLibra puede componer
   LibraCore (auth) + LibraCommerce (catálogo/inventario/ventas) con un
   flujo de POS real, antes de construir el resto del alcance.
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
@@ -48,7 +48,7 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 
 - Segunda base SQLite dedicada a `libracore.db` (`app/services/billing.py::configure()`,
   mismo patrón exacto que `medlibra`/`gestiolibra`): `init_core_schema`,
-  `caja`, `arca_facturacion`. Path por `TIENDALIBRA_LIBRACORE_DB_PATH`.
+  `caja`, `arca_facturacion`. Path por `VENTALIBRA_LIBRACORE_DB_PATH`.
 - **Clientes** (`app/services/customers.py`/`app/routers/customers.py`):
   `Party` con extensión opcional `party_billing` (`cuit`/`condicion_iva`),
   mismo patrón que `client_billing` de Gestiolibra — tabla propia con FK,

@@ -1,4 +1,4 @@
-"""Usuarios propios de TiendaLibra (no pertenecen al dominio de LibraCommerce).
+"""Usuarios propios de VentaLibra (no pertenecen al dominio de LibraCommerce).
 
 Sobre sqlite3 crudo, misma conexion que el resto de la app (ver
 DECISIONS.md ADR-002/ADR-003).
@@ -100,16 +100,16 @@ def ensure_default_admin(repo: UserRepository) -> None:
     """Crea el admin inicial si la tabla users todavia esta vacia.
 
     Mismo criterio fail-closed que gestiolibra/medlibra: sin
-    TIENDALIBRA_ADMIN_PASSWORD la app no arranca en produccion.
+    VENTALIBRA_ADMIN_PASSWORD la app no arranca en produccion.
     """
     if repo.list():
         return
-    username = os.environ.get("TIENDALIBRA_ADMIN_USERNAME", "admin")
-    password = os.environ.get("TIENDALIBRA_ADMIN_PASSWORD", "")
+    username = os.environ.get("VENTALIBRA_ADMIN_USERNAME", "admin")
+    password = os.environ.get("VENTALIBRA_ADMIN_PASSWORD", "")
     if not password:
         if os.environ.get("ENV", "production") != "development":
             raise RuntimeError(
-                "TIENDALIBRA_ADMIN_PASSWORD no esta seteado. No se levanta la "
+                "VENTALIBRA_ADMIN_PASSWORD no esta seteado. No se levanta la "
                 "app sin una contrasena de admin inicial (setear ENV=development "
                 "para desarrollo local)."
             )

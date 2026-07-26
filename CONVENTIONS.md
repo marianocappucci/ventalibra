@@ -1,4 +1,4 @@
-# Convenciones — TiendaLibra
+# Convenciones — VentaLibra
 
 Reglas específicas del código y del repositorio. Las instrucciones generales
 del ecosistema siguen en `AGENTS.md`/`CLAUDE.md` y la wiki
@@ -32,7 +32,7 @@ del ecosistema siguen en `AGENTS.md`/`CLAUDE.md` y la wiki
 
 ## Seguridad y configuración
 
-- No hardcodear secretos. `TIENDALIBRA_ADMIN_PASSWORD` obligatorio en
+- No hardcodear secretos. `VENTALIBRA_ADMIN_PASSWORD` obligatorio en
   producción (`ENV=production`), la app no arranca sin él.
 - Contraseñas: PBKDF2-SHA256, 260k iteraciones, salt por password,
   comparación en tiempo constante, hash señuelo contra enumeración de

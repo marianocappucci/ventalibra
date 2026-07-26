@@ -36,10 +36,10 @@ def test_get_arca_config_defaults_to_none(admin_client):
 def test_set_and_get_arca_config(admin_client):
     created = admin_client.put("/config/arca", json={
         "cuit": "30-12345678-9", "punto_venta": 1,
-        "certificado_path": "/certs/tienda.crt", "clave_path": "/certs/tienda.key",
+        "certificado_path": "/certs/venta.crt", "clave_path": "/certs/venta.key",
     })
     assert created.status_code == 200, created.text
-    assert created.json()["empresa"] == "tienda"
+    assert created.json()["empresa"] == "venta"
 
     fetched = admin_client.get("/config/arca")
     assert fetched.json()["cuit"] == "30-12345678-9"

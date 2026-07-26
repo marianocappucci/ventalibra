@@ -1,4 +1,4 @@
-# Changelog — TiendaLibra
+# Changelog — VentaLibra
 
 Cambios funcionales y releases publicados. Para tareas internas usar
 `TASKS.md` y para operaciones del wiki usar `log.md` (repo de wiki).
@@ -34,3 +34,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   solo tocan caja si hay factura. Config ARCA vía `GET`/`PUT /config/arca`.
   8 tests nuevos (39 en total) + smoke end-to-end real. Ver DECISIONS.md
   ADR-007.
+- **Renombrado TiendaLibra → VentaLibra** (2026-07-26): `tiendalibra.com.ar`
+  no estaba disponible para registrar; se registró `ventalibra.com.ar` en
+  su lugar. Repo de GitHub, directorio local, paquete Python, título de la
+  app, cookie de sesión (`tl_session` → `vl_session`), env vars
+  (`TIENDALIBRA_*` → `VENTALIBRA_*`), nombres de archivo de base SQLite y
+  toda la documentación del producto actualizados para mantener la
+  convención de la familia (nombre de producto = dominio). Ver
+  DECISIONS.md ADR-008.

@@ -1,8 +1,8 @@
-"""Facturacion/caja para TiendaLibra, compuesto sobre libracore.db.
+"""Facturacion/caja para VentaLibra, compuesto sobre libracore.db.
 
 libracore.db es sqlite3 crudo, sin capa de abstraccion -- una conexion
 propia, separada de la base principal de LibraCommerce/users/sequences
-(ver DECISIONS.md ADR-007). TiendaLibra es de instancia unica por cliente
+(ver DECISIONS.md ADR-007). VentaLibra es de instancia unica por cliente
 (arquitectura silo), asi que hay una sola "empresa" ARCA -- una constante
 fija, no una tabla de empresas. Mismo patron que
 medlibra/app/services/billing.py y gestiolibra/app/services/billing.py.
@@ -25,7 +25,7 @@ from libracore.db import core as libracore_core
 from libracore.db import facturas as db_facturas
 from libracore.db.schema import init_core_schema
 
-EMPRESA = "tienda"
+EMPRESA = "venta"
 
 TIPO_FACTURA_A = 1
 TIPO_FACTURA_B = 6
@@ -63,7 +63,7 @@ def configure(db_path: str) -> None:
         conn.close()
     if db_caja.get_default_caja_id() is None:
         caja_id = db_caja.create_caja_config(
-            "Caja TiendaLibra", "", list(db_caja.MEDIOS_PAGO_LABELS),
+            "Caja VentaLibra", "", list(db_caja.MEDIOS_PAGO_LABELS),
         )
         db_caja.set_default_caja(caja_id)
 

@@ -1,4 +1,4 @@
-"""Password hashing para la tabla `users` propia de TiendaLibra.
+"""Password hashing para la tabla `users` propia de VentaLibra.
 
 Misma construccion PBKDF2 (260k iteraciones, salt por password, comparacion
 en tiempo constante) que gestiolibra/app/security.py y

@@ -1,4 +1,4 @@
-"""Catalogo de TiendaLibra: wrapper fino sobre SqliteCommerceRepository.
+"""Catalogo de VentaLibra: wrapper fino sobre SqliteCommerceRepository.
 
 SqliteCommerceRepository ya resuelve alta/edicion/lectura por id de
 CatalogItem, y hace upsert de Unit al guardar un item. No expone list_* ni

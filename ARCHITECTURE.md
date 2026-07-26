@@ -1,15 +1,15 @@
-# Arquitectura — TiendaLibra
+# Arquitectura — VentaLibra
 
 Descripción del estado técnico actual. Las decisiones y sus motivos viven en
 `DECISIONS.md`.
 
 ## Propósito y límites
 
-TiendaLibra es la API y producto vertical para despensas, autoservicios,
+VentaLibra es la API y producto vertical para despensas, autoservicios,
 comercios de alimentos y tiendas de ropa. Cubre la experiencia de POS,
 catálogo, inventario, compras y (en fases posteriores) caja/facturación
 propias del rubro minorista. No reimplementa dominio de catálogo, inventario,
-compras o ventas — todo eso vive en LibraCommerce; TiendaLibra aporta el flujo
+compras o ventas — todo eso vive en LibraCommerce; VentaLibra aporta el flujo
 HTTP, auth propia y la orquestación de casos de uso entre motores.
 
 ## Componentes
@@ -18,7 +18,7 @@ HTTP, auth propia y la orquestación de casos de uso entre motores.
   GestioLibra/MedLibra: `create_app(...)` configura las conexiones y monta
   routers con gating por rol a nivel de `include_router`).
 - **Persistencia**: una única base SQLite en Fase 1
-  (`data/tiendalibra.db`), abierta directamente (no hay pool ni ORM — mismo
+  (`data/ventalibra.db`), abierta directamente (no hay pool ni ORM — mismo
   estilo que LibraCommerce). Contiene el esquema de LibraCommerce
   (`libracommerce.db.schema.init_schema`) más una tabla `users` propia
   (`app/db.py::init_users_schema`). Ver `DECISIONS.md` ADR-002 sobre por qué

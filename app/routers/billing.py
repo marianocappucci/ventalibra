@@ -1,6 +1,6 @@
-"""Configuracion ARCA de TiendaLibra (admin-only).
+"""Configuracion ARCA de VentaLibra (admin-only).
 
-TiendaLibra es de instancia unica por cliente -- una sola "empresa" ARCA,
+VentaLibra es de instancia unica por cliente -- una sola "empresa" ARCA,
 sin lista de empresas para elegir. Certificado/clave se referencian por
 path en el filesystem del servidor (mismo patron que medlibra/gestiolibra);
 subir el archivo real es tarea manual del admin todavia.

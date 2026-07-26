@@ -9,6 +9,6 @@ from .main import create_app
 
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
 os.makedirs(DATA_DIR, exist_ok=True)
-db_path = os.environ.get("TIENDALIBRA_DB_PATH", f"{DATA_DIR}/tiendalibra.db")
+db_path = os.environ.get("VENTALIBRA_DB_PATH", f"{DATA_DIR}/ventalibra.db")
 
 app = create_app(db_path)

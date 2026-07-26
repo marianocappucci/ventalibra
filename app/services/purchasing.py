@@ -5,7 +5,7 @@ Confirmar una recepcion delega enteramente en
 libracommerce.usecases.purchasing.confirm_purchase_receipt (v0.1.2):
 movimiento de stock por linea, actualizacion de CatalogItem.default_cost
 (last-cost) y, si la recepcion esta vinculada a una orden, sincronizacion
-de quantity_received/estado de esa orden. TiendaLibra no reimplementa esa
+de quantity_received/estado de esa orden. VentaLibra no reimplementa esa
 orquestacion (a diferencia de las ventas en la Fase 1, que la reimplemento
 porque LibraCommerce todavia no la ofrecia -- ver app/services/sales.py).
 """
@@ -48,7 +48,7 @@ class PurchasingService:
     # ordenes de compra
 
     def create_order(self, *, supplier_party_id: int, branch_id: int | None = None) -> PurchaseOrder:
-        number = f"OC-{next_sequence(self._conn, 'tiendalibra_purchase_order'):06d}"
+        number = f"OC-{next_sequence(self._conn, 'ventalibra_purchase_order'):06d}"
         order = PurchaseOrder(
             id=None, number=number, supplier_party_id=supplier_party_id,
             items=(), branch_id=branch_id,

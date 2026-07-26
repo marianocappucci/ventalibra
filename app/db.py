@@ -1,7 +1,7 @@
-"""Conexion SQLite unica de TiendaLibra.
+"""Conexion SQLite unica de VentaLibra.
 
 Fase 1: una sola base para el esquema de LibraCommerce (catalogo, inventario,
-compras, ventas) y la tabla `users` propia de TiendaLibra -- ver
+compras, ventas) y la tabla `users` propia de VentaLibra -- ver
 DECISIONS.md ADR-002/ADR-003. No hay pool ni ORM, mismo estilo que
 libracommerce/libracore.db.
 """
@@ -37,7 +37,7 @@ def init_users_schema(conn: sqlite3.Connection) -> None:
 
 
 def init_sequences_schema(conn: sqlite3.Connection) -> None:
-    """Numeracion propia de TiendaLibra (POS-, OC-, REC-).
+    """Numeracion propia de VentaLibra (POS-, OC-, REC-).
 
     Antes reusaba la tabla `local_sequences` del esquema de LibraCommerce
     (infraestructura interna de su especificacion offline) -- rompio al

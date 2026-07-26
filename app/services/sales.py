@@ -29,7 +29,7 @@ class InvalidSaleState(Exception):
 
 
 def _next_sale_number(conn: sqlite3.Connection) -> str:
-    return f"POS-{next_sequence(conn, 'tiendalibra_sale'):06d}"
+    return f"POS-{next_sequence(conn, 'ventalibra_sale'):06d}"
 
 
 class SaleService:
