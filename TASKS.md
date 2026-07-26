@@ -54,10 +54,14 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   camino (`party_roles`, mezcla de clientes/proveedores). Pin de
   `libracommerce` a `v0.1.4`. Verificado real de punta a punta,
   66/66 tests. Ver DECISIONS.md ADR-015 — responsable: LLM.
+- [x] Reportes de ventas, caja y stock (admin-only, sin tabla propia).
+  Verificado real de punta a punta, 74/74 tests. Ver DECISIONS.md
+  ADR-016 — responsable: LLM. **Cierra Fase 5.**
 
 ## Próximas
 
-- [ ] Reportes de ventas, caja y stock.
+- [ ] Ninguna por ahora — próximo hito de VentaLibra a definir (fuera
+  de Fase 5).
 
 ## Bloqueadas
 

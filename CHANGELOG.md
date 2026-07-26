@@ -101,3 +101,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   (gating del formulario de líneas de una orden usaba
   `is_fully_received()`, que da vacuamente `true` sin líneas). 66/66
   tests. Ver DECISIONS.md ADR-015.
+- Reportes de ventas, caja y stock (admin-only): ventas confirmadas por
+  rango de fechas con total, desglose por día y top-10 de items más
+  vendidos; resumen de caja (ingresos/egresos/saldo) vía
+  `libracore.db.caja`; stock actual por item con flag de stock bajo/cero.
+  Sin tabla ni estado propio — lectura de agregación pura sobre datos ya
+  generados, mismo patrón que el dashboard de Gestiolibra/MedLibra.
+  Verificado real de punta a punta contra un build de producción. 74/74
+  tests. Ver DECISIONS.md ADR-016. **Cierra Fase 5.**

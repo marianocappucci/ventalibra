@@ -711,3 +711,55 @@ reemplazadas.
   66/66 (2 de `party_roles`, 2 de `list_purchase_orders`/
   `list_purchase_receipts`), `compileall` limpio.
 - Pendiente (fuera de esta ronda): reportes de ventas/caja/stock.
+
+## ADR-016 — Reportes de ventas, caja y stock (cierra Fase 5)
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: único pendiente que quedaba de Fase 5 tras el back office
+  completo (ADR-015). Mismo patrón que el dashboard de Gestiolibra/
+  MedLibra (`app/services/dashboard.py` de esos repos): lectura pura de
+  agregación sobre datos que ya se generan, sin tabla ni estado propio.
+- **`/reports/sales`**: cuenta y suma `sales` con `status='confirmed'`
+  en un rango de fechas, agrupa por día, y arma un top-10 de items más
+  vendidos (`sale_items` con `kind='product'`). Decisión técnica: filtrar
+  por el **prefijo `YYYY-MM-DD` de `confirmed_at` como string**
+  (`substr(confirmed_at, 1, 10) BETWEEN ? AND ?`) en vez de las funciones
+  `date()`/`datetime()` de SQLite — `confirmed_at` se guarda con offset
+  de timezone (`...+00:00`, vía `datetime.now(timezone.utc).isoformat()`
+  en `libracommerce.usecases.sales.confirm_sale`), y comparar el prefijo
+  ISO como string evita cualquier ambigüedad de cómo SQLite parsea ese
+  formato — un string ISO bien formado siempre compara/ordena
+  correctamente de forma lexicográfica.
+- **`/reports/caja`**: delega enteramente en
+  `libracore.db.caja.get_caja_resumen(desde, hasta)` — la misma conexión
+  global que ya configura `app/services/billing.py::configure()` al
+  arrancar la app, sin wiring adicional. Mismo patrón exacto que usa el
+  dashboard de Gestiolibra/MedLibra para su bloque de facturación/caja.
+- **`/reports/stock`**: stock actual por item = `SUM(quantity_delta)` de
+  `stock_movements` agrupado por item (mismo cálculo que ya usa
+  `current_stock()` de `SqliteCommerceRepository`, pero agregado por
+  todos los depósitos en vez de uno solo — a propósito, un reporte
+  gerencial no necesita el desglose por depósito todavía). Lista
+  `low_stock` con un threshold configurable (default `0`) para flaggear
+  items sin stock.
+- Gating: **admin-only**, sin módulo de plan asociado — mismo criterio
+  que el dashboard de Gestiolibra (`adminOnly: true` en el nav, sin
+  gatear por `require_module`, a diferencia de facturación que sí
+  depende del plan).
+- **Verificado real de punta a punta contra un build de producción**:
+  venta confirmada de $4.000 con 2 unidades de "Yerba 1kg" → el reporte
+  de ventas la cuenta (`total_ventas=1`, `total_facturado=4000`) y la
+  lista en `top_items`; el reporte de caja refleja el ingreso
+  (`ingresos=4000`, `saldo_periodo=4000`); el reporte de stock muestra
+  8 unidades restantes (10 cargadas − 2 vendidas) y marca un segundo
+  item sin stock como `low_stock`.
+- 8 tests nuevos (**74 en total**), incluido que un usuario `staff`
+  recibe 403 al intentar acceder. `npm run build` sin errores,
+  `compileall` limpio.
+- **Con esto, Fase 5 queda completa**: planes/gating, infraestructura
+  de deploy, dominio/SSL, frontend completo (POS/catálogo/back
+  office/reportes). Próximo hito de VentaLibra queda fuera de Fase 5 —
+  a definir cuando el usuario lo priorice (ej. onboardear el primer
+  cliente pagante real, Fase 4 residual como `item_prices.variant_id`,
+  u otro producto de la familia).

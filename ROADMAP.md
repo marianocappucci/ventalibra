@@ -10,9 +10,9 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   flujo de POS real, antes de construir el resto del alcance.
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
 - [x] Fase 3: caja y facturación ARCA vía LibraCore.
-- [~] Fase 5: onboarding multi-cliente (planes/gating de código,
-  infraestructura de deploy, dominio/SSL, y frontend completo salvo
-  reportes).
+- [x] Fase 5: onboarding multi-cliente (planes/gating de código,
+  infraestructura de deploy, dominio/SSL, frontend completo, reportes).
+  **Fase 5 completa** — próximo hito a definir.
 
 ## Fases
 
@@ -140,7 +140,11 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   `libracommerce` a `v0.1.4` (`list_purchase_orders`/
   `list_purchase_receipts`, gap real encontrado al construir la
   pantalla). Verificado real de punta a punta. Ver DECISIONS.md ADR-015.
-- [ ] Reportes de ventas, caja y stock.
+- [x] Reportes de ventas, caja y stock (2026-07-26): admin-only, lectura
+  pura sobre datos ya existentes (sin tabla propia) — ventas confirmadas
+  por rango con top items, resumen de caja vía `libracore.db.caja`, stock
+  actual con flag de stock bajo. Verificado real de punta a punta contra
+  un build de producción. Ver DECISIONS.md ADR-016. **Cierra Fase 5.**
 - Validar con un comercio real antes de sumar promociones avanzadas,
   multi-sucursal o modo offline (ver `wiki/analyses/arquitectura-familia-libra-alcance.md`,
   "Orden de implementación").
