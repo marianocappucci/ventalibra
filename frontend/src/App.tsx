@@ -11,6 +11,7 @@ import { Compras } from './pages/Compras'
 import { Clientes } from './pages/Clientes'
 import { Usuarios } from './pages/Usuarios'
 import { ConfigArca } from './pages/ConfigArca'
+import { Reportes } from './pages/Reportes'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
   const { user, loading } = useAuth()
@@ -91,6 +92,14 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <ConfigArca />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reportes"
+        element={
+          <ProtectedRoute adminOnly>
+            <Reportes />
           </ProtectedRoute>
         }
       />

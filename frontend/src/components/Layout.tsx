@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  Building2, LogOut, Package, Receipt, ShoppingBag, ShoppingCart, Truck, Users, Warehouse,
+  BarChart3, Building2, LogOut, Package, Receipt, ShoppingBag, ShoppingCart, Truck, Users, Warehouse,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -30,6 +30,7 @@ const NAV_ITEMS = [
   { to: '/proveedores', label: 'Proveedores', icon: Truck },
   { to: '/clientes', label: 'Clientes', icon: Users },
   { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
+  { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
   { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
   { to: '/config-arca', label: 'Config. ARCA', icon: Receipt, adminOnly: true },
 ]
