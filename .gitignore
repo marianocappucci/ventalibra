@@ -7,3 +7,11 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 .env
+
+# Datos por cliente (generados por scripts/nuevo_cliente.py, mismo patrón
+# que Contalibra/Restolibra/Gestiolibra/MedLibra) y datos locales de -dev.
+/clientes/
+dev-data/
+
+# Config de NPM (credenciales de Nginx Proxy Manager para scripts/npm_*.py).
+scripts/.npm_config.json

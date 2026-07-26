@@ -1,0 +1,36 @@
+services:
+  ventalibra-dev:
+    build:
+      context: .
+      ssh:
+        - default=${LIBRACORE_SSH_KEY:-~/.ssh/id_ed25519_libracore}
+    container_name: ventalibra-dev
+    restart: unless-stopped
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "8081:8000"
+    volumes:
+      - ./:/app
+    command: uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
+      - VENTALIBRA_ADMIN_USERNAME=${VENTALIBRA_ADMIN_USERNAME:-admin}
+      - VENTALIBRA_ADMIN_PASSWORD=${VENTALIBRA_ADMIN_PASSWORD:-}
+      - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
+      - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
+      - ENV=development
+    networks:
+      - stack-net
+
+networks:
+  stack-net:
+    external: true
+    name: stack_stack-net

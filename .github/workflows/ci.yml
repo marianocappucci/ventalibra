@@ -20,9 +20,8 @@ jobs:
       # libracommerce y libracore son repos privados, inalcanzables con el
       # GITHUB_TOKEN por defecto (scopeado solo a este repo). LIBRA_PAT es
       # un PAT fine-grained con acceso de lectura a esos repos -- mismo
-      # secreto que usan gestiolibra/medlibra. Pendiente: dar de alta este
-      # secreto en este repo nuevo (y confirmar que su alcance incluye
-      # libracommerce, no solo libragenda/libracore).
+      # secreto que usan gestiolibra/medlibra, con el alcance ya confirmado
+      # para incluir libracommerce.
       - name: Configure git for private Libra dependencies
         run: git config --global url."https://${{ secrets.LIBRA_PAT }}@github.com/".insteadOf "https://github.com/"
 
