@@ -9,6 +9,7 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   LibraCore (auth) + LibraCommerce (catálogo/inventario/ventas) con un
   flujo de POS real, antes de construir el resto del alcance.
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
+- [x] Fase 3: caja y facturación ARCA vía LibraCore.
 
 ## Fases
 
@@ -43,14 +44,37 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   casos de uso). Ver DECISIONS.md ADR-004/ADR-005 sobre los dos ajustes que
   requirió ese bump.
 
-### Fase 3 — Caja y facturación ARCA
+### Fase 3 — Caja y facturación ARCA (completa, 2026-07-25)
 
-- Segunda base SQLite dedicada a `libracore.db` (mismo patrón que
-  `medlibra/app/services/billing.py`): `init_core_schema`, `caja`,
-  `arca_facturacion`.
-- Decisión pendiente en esa fase: si conviene reusar `libracore.db.usuarios`
-  para esa base en vez de mantener una tabla de usuarios propia (para
-  entonces ya existiría de todos modos).
+- Segunda base SQLite dedicada a `libracore.db` (`app/services/billing.py::configure()`,
+  mismo patrón exacto que `medlibra`/`gestiolibra`): `init_core_schema`,
+  `caja`, `arca_facturacion`. Path por `TIENDALIBRA_LIBRACORE_DB_PATH`.
+- **Clientes** (`app/services/customers.py`/`app/routers/customers.py`):
+  `Party` con extensión opcional `party_billing` (`cuit`/`condicion_iva`),
+  mismo patrón que `client_billing` de Gestiolibra — tabla propia con FK,
+  nunca columnas agregadas al motor genérico.
+- **Facturación opcional por venta** (decisión del usuario, no siempre que
+  haya CUIT): `POST /sales/{id}/confirm` suma `invoice: bool = False`. Si
+  `true`, factura A (Responsable Inscripto) o B (cualquier otro caso,
+  incluido sin cliente → "Consumidor Final") por el total de la venta —
+  sin seña/saldo, a diferencia de `invoice_appointment` de MedLibra/Gestiolibra.
+- **Caja siempre** (decisión del usuario, distinta a MedLibra/Gestiolibra
+  donde solo se toca si hay factura): confirmar ahora exige `medio_pago` y
+  registra un movimiento de caja por cada venta cobrada, facture o no. El
+  control de caja es independiente del tema fiscal.
+- Un solo medio de pago por venta por ahora — `ventas_pagos` (multi-medio)
+  queda para una fase posterior si hace falta.
+- Config ARCA vía `app/routers/billing.py` (`GET`/`PUT /config/arca`,
+  admin-only) — igual que MedLibra/Gestiolibra, certificado/clave por path
+  de filesystem, sin upload propio todavía.
+- Decisión resuelta: no se reusó `libracore.db.usuarios` (pregunta abierta
+  desde ADR-002) — se mantuvo la tabla `users` propia, sin motivo real para
+  cambiar solo porque ahora hay una segunda base SQLite disponible.
+- 8 tests nuevos (39 en total, más 4 de test_sales.py ajustados por el
+  nuevo campo requerido `medio_pago`) + smoke end-to-end real contra
+  `uvicorn`: config ARCA → cliente Responsable Inscripto → venta con
+  factura (tipo A, CAE mock de dev, split de IVA correcto) → venta sin
+  factura (`factura: null`) → stock final correcto.
 
 ### Fase 4 — Extensiones de catálogo (requieren tocar LibraCommerce primero)
 

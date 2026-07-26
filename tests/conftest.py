@@ -5,11 +5,15 @@ from app.main import create_app
 
 
 @pytest.fixture(autouse=True)
-def _dev_env(monkeypatch):
+def _dev_env(monkeypatch, tmp_path):
     # SessionAuth's SECRET_KEY resolution and ensure_default_admin both
     # fail closed unless ENV=development -- see app/auth.py y
     # app/services/users.py::ensure_default_admin.
     monkeypatch.setenv("ENV", "development")
+    # libracore.db es sqlite3 crudo (una conexion nueva por llamada, no un
+    # engine con pool) -- ":memory:" le daria a cada llamada una base vacia
+    # distinta. Un archivo temporal real por test, igual que medlibra/gestiolibra.
+    monkeypatch.setenv("TIENDALIBRA_LIBRACORE_DB_PATH", str(tmp_path / "tiendalibra_libracore.db"))
 
 
 def https_client(app) -> TestClient:

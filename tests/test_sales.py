@@ -33,10 +33,11 @@ def test_full_pos_flow_confirms_sale_and_decrements_stock(admin_client):
     assert with_item.status_code == 200, with_item.text
     assert float(with_item.json()["total"]) == 4500.0
 
-    confirmed = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id})
+    confirmed = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["status"] == "confirmed"
     assert confirmed.json()["confirmed_at"] is not None
+    assert confirmed.json()["factura"] is None
 
     stock = admin_client.get(f"/stock/{item_id}", params={"location_id": location_id})
     assert float(stock.json()["quantity"]) == 17.0
@@ -46,7 +47,7 @@ def test_confirm_without_items_fails(admin_client):
     location_id = _make_location(admin_client)
     draft = admin_client.post("/sales", json={})
     sale_id = draft.json()["id"]
-    response = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id})
+    response = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
     assert response.status_code == 409
 
 
@@ -60,7 +61,7 @@ def test_cannot_add_item_after_confirm(admin_client):
     draft = admin_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id})
+    admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
 
     response = admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
     assert response.status_code == 409
@@ -90,5 +91,5 @@ def test_staff_can_run_full_pos_flow(admin_client, staff_client):
     draft = staff_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     staff_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
-    confirmed = staff_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id})
+    confirmed = staff_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
     assert confirmed.status_code == 200, confirmed.text

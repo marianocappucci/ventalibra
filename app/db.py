@@ -16,6 +16,7 @@ def connect(db_path: str) -> sqlite3.Connection:
     init_schema(conn)
     init_users_schema(conn)
     init_sequences_schema(conn)
+    init_party_billing_schema(conn)
     return conn
 
 
@@ -49,6 +50,24 @@ def init_sequences_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS sequences (
             name TEXT PRIMARY KEY,
             next_value INTEGER NOT NULL
+        );
+        """
+    )
+    conn.commit()
+
+
+def init_party_billing_schema(conn: sqlite3.Connection) -> None:
+    """Extension de Party para facturacion (cuit/condicion_iva), mismo
+    patron que `client_billing` de Gestiolibra: tabla propia con FK a
+    parties.id, nunca columnas agregadas al motor generico de LibraCommerce.
+    Vive en esta base (no en la de libracore.db/facturacion) porque la FK
+    es contra `parties`, que solo existe aca."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS party_billing (
+            party_id INTEGER PRIMARY KEY REFERENCES parties(id),
+            cuit TEXT,
+            condicion_iva TEXT
         );
         """
     )

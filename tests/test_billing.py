@@ -1,0 +1,103 @@
+from libracore.db import caja as db_caja
+
+
+def _make_item(client, name="Fideos 500g", price="1500.00"):
+    client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
+    created = client.post(
+        "/catalog/items",
+        json={"name": name, "unit_code": "u", "default_sale_price": price, "default_cost": "900.00"},
+    )
+    assert created.status_code == 200, created.text
+    return created.json()["id"]
+
+
+def _make_location(client, name="Sucursal 1"):
+    created = client.post("/locations", json={"name": name})
+    assert created.status_code == 200, created.text
+    return created.json()["id"]
+
+
+def _confirmed_sale(client, item_id, location_id, quantity="1", **confirm_extra):
+    draft = client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": quantity})
+    return client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "medio_pago": "efectivo", **confirm_extra},
+    )
+
+
+def test_get_arca_config_defaults_to_none(admin_client):
+    response = admin_client.get("/config/arca")
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+def test_set_and_get_arca_config(admin_client):
+    created = admin_client.put("/config/arca", json={
+        "cuit": "30-12345678-9", "punto_venta": 1,
+        "certificado_path": "/certs/tienda.crt", "clave_path": "/certs/tienda.key",
+    })
+    assert created.status_code == 200, created.text
+    assert created.json()["empresa"] == "tienda"
+
+    fetched = admin_client.get("/config/arca")
+    assert fetched.json()["cuit"] == "30-12345678-9"
+
+
+def test_confirm_without_invoice_flag_does_not_bill(admin_client):
+    item_id = _make_item(admin_client)
+    location_id = _make_location(admin_client)
+    confirmed = _confirmed_sale(admin_client, item_id, location_id)
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["factura"] is None
+
+
+def test_confirm_with_invoice_and_no_customer_bills_consumidor_final(admin_client):
+    item_id = _make_item(admin_client, price="1000.00")
+    location_id = _make_location(admin_client)
+    confirmed = _confirmed_sale(admin_client, item_id, location_id, invoice=True)
+    assert confirmed.status_code == 200, confirmed.text
+    factura = confirmed.json()["factura"]
+    assert factura is not None
+    assert factura["cliente_razon"] == "Consumidor Final"
+    assert factura["tipo"] == 6  # factura B
+    assert factura["cae"] is not None  # mock de dev, ver arca_facturacion.get_next_numero_with_arca
+
+
+def test_confirm_with_invoice_and_responsable_inscripto_customer_bills_type_a(admin_client):
+    customer = admin_client.post("/customers", json={
+        "display_name": "Empresa SA", "party_type": "organization",
+        "cuit": "30-99999999-1", "condicion_iva": "Responsable Inscripto",
+    })
+    customer_id = customer.json()["id"]
+
+    item_id = _make_item(admin_client)
+    location_id = _make_location(admin_client)
+    draft = admin_client.post("/sales", json={"customer_party_id": customer_id})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
+    confirmed = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "medio_pago": "tarjeta", "invoice": True},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    factura = confirmed.json()["factura"]
+    assert factura["tipo"] == 1  # factura A
+    assert factura["cliente_cuit"] == "30-99999999-1"
+
+
+def test_confirming_a_sale_always_records_a_caja_movement(admin_client):
+    item_id = _make_item(admin_client, price="500.00")
+    location_id = _make_location(admin_client)
+
+    before = len(db_caja.get_caja_movimientos())
+    confirmed = _confirmed_sale(admin_client, item_id, location_id)
+    assert confirmed.status_code == 200, confirmed.text
+    sale_number = confirmed.json()["number"]
+
+    movimientos = db_caja.get_caja_movimientos()
+    assert len(movimientos) == before + 1
+    assert movimientos[0]["concepto"] == f"Venta {sale_number}"
+    assert movimientos[0]["factura_id"] is None
+    assert float(movimientos[0]["monto"]) == 500.0

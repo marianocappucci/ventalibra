@@ -3,6 +3,8 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ..services import billing
+from ..services.customers import CustomerService
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -23,6 +25,8 @@ class SaleItemCreate(BaseModel):
 
 class SaleConfirm(BaseModel):
     location_id: int
+    medio_pago: str
+    invoice: bool = False
 
 
 class SaleItemOut(BaseModel):
@@ -46,6 +50,7 @@ class SaleOut(BaseModel):
     tax_total: Decimal
     total: Decimal
     confirmed_at: str | None
+    factura: dict | None = None
 
 
 def _to_sale_out(sale) -> SaleOut:
@@ -105,11 +110,29 @@ def add_item(sale_id: int, data: SaleItemCreate, request: Request):
 
 
 @router.post("/{sale_id}/confirm", response_model=SaleOut)
-def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
+async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
     try:
         sale = _service(request).confirm(sale_id, location_id=data.location_id)
     except SaleNotFound:
         raise HTTPException(404, "sale not found")
     except InvalidSaleState as exc:
         raise HTTPException(409, str(exc))
-    return _to_sale_out(sale)
+
+    referencia = f"sale-{sale.id}"
+    factura = None
+    if data.invoice:
+        customer_billing = None
+        if sale.customer_party_id is not None:
+            customer_billing = CustomerService(request.app.state.conn).get_billing(sale.customer_party_id)
+        factura = await billing.invoice_sale(customer_billing, sale, referencia)
+
+    # Caja siempre se registra al confirmar una venta cobrada, factures o
+    # no -- decision explicita del usuario (ver DECISIONS.md ADR-007):
+    # el control de caja es independiente del tema fiscal.
+    billing.record_sale_payment(
+        sale, data.medio_pago, referencia, factura_id=factura["id"] if factura else None,
+    )
+
+    out = _to_sale_out(sale)
+    out.factura = factura
+    return out

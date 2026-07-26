@@ -23,3 +23,14 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   diagnóstico), rompiendo la verificación de expiración de `itsdangerous`.
   Sin cambios de código — ver DECISIONS.md ADR-006 para el diagnóstico
   completo y los intentos descartados (locks, thread-limiter, `async def`).
+- Fase 3 (caja y facturación ARCA): segunda base SQLite dedicada a
+  `libracore.db` (`app/services/billing.py`, mismo patrón que
+  medlibra/gestiolibra). Clientes (`app/services/customers.py`) con
+  extensión opcional `party_billing` (cuit/condición de IVA). Facturación
+  **opcional por venta** (`invoice: bool` en `POST /sales/{id}/confirm`,
+  tipo A/B según condición de IVA, "Consumidor Final" sin cliente). Caja
+  **siempre** al confirmar una venta cobrada (`medio_pago` ahora
+  requerido), factures o no — a diferencia de MedLibra/Gestiolibra, que
+  solo tocan caja si hay factura. Config ARCA vía `GET`/`PUT /config/arca`.
+  8 tests nuevos (39 en total) + smoke end-to-end real. Ver DECISIONS.md
+  ADR-007.

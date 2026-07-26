@@ -44,6 +44,11 @@ reemplazadas.
   queda documentada como pregunta abierta para la Fase 3 (cuando además haga
   falta `init_core_schema` para caja/facturación, puede que sí valga la pena
   reconsiderarlo, ver `ROADMAP.md`).
+- **Revisitado en Fase 3 (2026-07-25)**: con `libracore.db` ya en uso real
+  (caja/facturación, ver ADR-007), se reconsideró y se mantuvo la decisión
+  original — no hay ganancia real en migrar `users` a `libracore.db.usuarios`
+  solo porque ahora existe esa segunda base; seguiría siendo la misma
+  duplicación de PBKDF2 que ya se acepta, sin resolver nada. Pregunta cerrada.
 
 ## ADR-003 — Una sola base SQLite en Fase 1
 
@@ -170,3 +175,63 @@ reemplazadas.
   listadas arriba — ninguna ataca la causa real, y añaden complejidad
   (middleware, locks, cambios de `def` a `async def` en 9 archivos) sin
   ningún beneficio real.
+
+## ADR-007 — Facturación/caja con LibraCore: caja siempre, factura opcional por venta
+
+- Estado: aceptada
+- Fecha: 2026-07-25
+- Contexto: MedLibra/Gestiolibra ya resolvieron este mismo problema para
+  turnos — `app/services/billing.py` (segunda base SQLite dedicada a
+  `libracore.db`, `arca_facturacion`, `caja`) es el patrón de referencia,
+  portado a TiendaLibra casi verbatim en la mecánica (`configure()`,
+  `get_arca_config()`/`set_arca_config()`, `_tipo_comprobante()`,
+  `_split_iva()` al 21% fijo). Pero el dominio de retail difiere del de
+  turnos en dos puntos reales, resueltos con el usuario antes de codificar
+  (mismo criterio que MedLibra ADR-016):
+  1. **En retail no toda venta lleva factura** (a veces es solo ticket) —
+     a diferencia de un turno completado, que siempre facturaba si tenía
+     precio configurado y el módulo estaba habilitado.
+  2. **El control de caja es independiente del tema fiscal** — un comercio
+     necesita que TODA venta cobrada quede en caja, factures o no, mientras
+     que MedLibra/Gestiolibra solo tocan caja cuando hay factura de por
+     medio (seña/saldo de un turno).
+- Decisión:
+  - `POST /sales/{id}/confirm` suma `invoice: bool = False` (opt-in
+    explícito por venta, no automático por tener CUIT cargado) y
+    `medio_pago: str` (pasa a ser **requerido**, ya no opcional). El
+    handler pasa a ser `async def` — necesario de verdad esta vez (no como
+    el experimento revertido de ADR-006): `arca_facturacion.get_next_numero_with_arca`/
+    `solicitar_cae` son corutinas reales que hacen `await` a WSAA/WSFE.
+    Los demás handlers de `sales.py` siguen síncronos.
+  - `billing.invoice_sale()` — sin seña/saldo: una sola factura por el
+    total de la venta, tipo A si el cliente es Responsable Inscripto (vía
+    la extensión `party_billing`), tipo B en cualquier otro caso incluido
+    sin cliente asociado (factura como "Consumidor Final").
+  - `billing.record_sale_payment()` — función separada de `invoice_sale`,
+    llamada **siempre** al confirmar (con o sin factura), usando
+    `create_caja_movimiento` (idempotente por `referencia`+`factura_id`,
+    ya provisto por LibraCore).
+  - Un solo medio de pago por venta por ahora (decisión del usuario) — la
+    tabla `ventas_pagos` de LibraCore (pensada para multi-medio, sin
+    consumidores todavía en ningún producto de la familia) queda para una
+    fase posterior si hace falta partir un pago entre efectivo/tarjeta.
+  - **Clientes** (`app/services/customers.py`): `Party` con extensión
+    opcional `party_billing` (tabla propia con FK a `parties.id`, mismo
+    patrón que `client_billing` de Gestiolibra) — opcional porque la
+    mayoría de las ventas de retail son a "Consumidor Final" sin cliente
+    registrado; solo hace falta si se va a facturar A/B con CUIT real.
+- Verificado real: 8 tests nuevos (39 en total) + smoke end-to-end contra
+  `uvicorn` real — config ARCA, cliente Responsable Inscripto facturado
+  tipo A con CAE (mock de dev), venta sin cliente facturada tipo B
+  "Consumidor Final", venta sin pedir factura con `factura: null`, y
+  movimiento de caja confirmado en ambos casos vía `libracore.db.caja`.
+- Consecuencias: TiendaLibra diverge del patrón exacto de MedLibra/Gestiolibra
+  en el punto de "cuándo toca caja" — es una decisión de dominio real
+  (retail vs. turnos), no una inconsistencia accidental; documentado acá
+  para que quede claro que es intencional si alguien compara los tres
+  `billing.py` lado a lado.
+- Alternativas descartadas: automatizar la factura cuando el cliente tiene
+  CUIT cargado (sin flag explícito) — descartado, el usuario prefirió
+  control explícito por venta; caja solo si hay factura (mismo patrón
+  exacto que MedLibra/Gestiolibra) — descartado, no refleja cómo funciona
+  el control de caja en un comercio real.

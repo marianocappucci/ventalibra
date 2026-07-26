@@ -6,7 +6,7 @@ inventario, compras y ventas/POS componiendo dos motores reutilizables:
 [LibraCommerce](https://github.com/marianocappucci/libracommerce) (catálogo,
 compras, inventario, ventas) y
 [LibraCore](https://github.com/marianocappucci/libracore) (auth, caja,
-facturación ARCA — se incorpora en fases posteriores).
+facturación ARCA).
 
 Alcance completo, arquitectura de la familia y orden de implementación
 documentados en la wiki del ecosistema
@@ -19,6 +19,8 @@ documentados en la wiki del ecosistema
   wireados de punta a punta sobre LibraCommerce/LibraCore.
 - Fase 2 completa: compras (proveedores, órdenes de compra, recepciones con
   orquestación de stock/costo).
+- Fase 3 completa: caja y facturación ARCA vía LibraCore (facturación
+  opcional por venta, caja siempre al confirmar).
 - Entorno dev: `dev.tiendalibra.com.ar` (pendiente de provisionar).
 - Demo: `demo.tiendalibra.com.ar` (pendiente).
 - Producción: `cliente.tiendalibra.com.ar` (pendiente, arquitectura silo por cliente).
