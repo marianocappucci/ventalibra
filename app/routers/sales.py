@@ -20,8 +20,10 @@ class SaleCreate(BaseModel):
 class SaleItemCreate(BaseModel):
     item_id: int
     quantity: Decimal
+    variant_id: int | None = None
     unit_price: Decimal | None = None
     discount_amount: Decimal = Decimal("0")
+    price_list_id: int | None = None
 
 
 class SaleConfirm(BaseModel):
@@ -33,6 +35,7 @@ class SaleConfirm(BaseModel):
 class SaleItemOut(BaseModel):
     kind: str
     item_id: int | None
+    variant_id: int | None
     description_snapshot: str
     quantity: Decimal
     unit_price: Decimal
@@ -59,7 +62,7 @@ def _to_sale_out(sale) -> SaleOut:
         id=sale.id, number=sale.number, status=sale.status,
         items=[
             SaleItemOut(
-                kind=item.kind, item_id=item.item_id,
+                kind=item.kind, item_id=item.item_id, variant_id=item.variant_id,
                 description_snapshot=item.description_snapshot,
                 quantity=item.quantity, unit_price=item.unit_price,
                 discount_amount=item.discount_amount, tax_amount=item.tax_amount,
@@ -98,8 +101,9 @@ def get_sale(sale_id: int, request: Request):
 def add_item(sale_id: int, data: SaleItemCreate, request: Request):
     try:
         sale = _service(request).add_item(
-            sale_id, item_id=data.item_id, quantity=data.quantity,
+            sale_id, item_id=data.item_id, quantity=data.quantity, variant_id=data.variant_id,
             unit_price=data.unit_price, discount_amount=data.discount_amount,
+            price_list_id=data.price_list_id,
         )
     except SaleNotFound:
         raise HTTPException(404, "sale not found")

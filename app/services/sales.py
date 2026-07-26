@@ -56,7 +56,8 @@ class SaleService:
 
     def add_item(
         self, sale_id: int, *, item_id: int, quantity: Decimal,
-        unit_price: Decimal | None = None, discount_amount: Decimal = Decimal("0"),
+        variant_id: int | None = None, unit_price: Decimal | None = None,
+        discount_amount: Decimal = Decimal("0"), price_list_id: int | None = None,
     ) -> Sale:
         sale = self.get(sale_id)
         if sale.status != SaleStatus.DRAFT:
@@ -64,11 +65,22 @@ class SaleService:
         catalog_item = self._repo.get_catalog_item(item_id)
         if catalog_item is None:
             raise KeyError(f"item de catalogo desconocido: {item_id}")
-        price = unit_price if unit_price is not None else catalog_item.default_sale_price
+        description = catalog_item.name
+        if variant_id is not None:
+            variant = self._repo.get_item_variant(variant_id)
+            if variant is None or variant.item_id != item_id:
+                raise KeyError(f"variante desconocida para el item {item_id}: {variant_id}")
+            description = f"{catalog_item.name} ({variant.name})"
+        price = unit_price
+        if price is None:
+            price = self._repo.resolve_price(item_id, price_list_id=price_list_id, quantity=quantity)
+        if price is None:
+            price = catalog_item.default_sale_price
         line = SaleItem(
             kind=catalog_item.item_type,
             item_id=catalog_item.id,
-            description_snapshot=catalog_item.name,
+            variant_id=variant_id,
+            description_snapshot=description,
             quantity=quantity,
             unit_price=price,
             discount_amount=discount_amount,

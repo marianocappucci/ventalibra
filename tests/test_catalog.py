@@ -66,3 +66,76 @@ def test_list_items_filters_by_search(admin_client):
     assert response.status_code == 200
     names = [item["name"] for item in response.json()]
     assert names == ["Arroz 1kg"]
+
+
+def _make_item(client, name="Fideos 500g"):
+    _make_unit(client, "u")
+    created = client.post("/catalog/items", json={"name": name, "unit_code": "u"})
+    return created.json()["id"]
+
+
+def test_add_and_list_codes(admin_client):
+    item_id = _make_item(admin_client)
+
+    added = admin_client.post(
+        f"/catalog/items/{item_id}/codes",
+        json={"code_type": "barcode", "code": "7791234567890", "is_primary": True},
+    )
+    assert added.status_code == 200, added.text
+
+    listed = admin_client.get(f"/catalog/items/{item_id}/codes")
+    assert listed.status_code == 200
+    codes = listed.json()
+    assert len(codes) == 1
+    assert codes[0]["code"] == "7791234567890"
+    assert codes[0]["is_primary"] is True
+
+
+def test_scan_resolves_item_by_code(admin_client):
+    item_id = _make_item(admin_client)
+    admin_client.post(
+        f"/catalog/items/{item_id}/codes", json={"code_type": "barcode", "code": "7791234567890"},
+    )
+
+    scanned = admin_client.get("/catalog/items/scan", params={"code": "7791234567890"})
+    assert scanned.status_code == 200, scanned.text
+    assert scanned.json()["id"] == item_id
+
+
+def test_scan_unknown_code_404(admin_client):
+    response = admin_client.get("/catalog/items/scan", params={"code": "nope"})
+    assert response.status_code == 404
+
+
+def test_add_duplicate_code_within_same_type_fails(admin_client):
+    item_a = _make_item(admin_client, "Item A")
+    item_b = admin_client.post("/catalog/items", json={"name": "Item B", "unit_code": "u"}).json()["id"]
+    admin_client.post(f"/catalog/items/{item_a}/codes", json={"code_type": "barcode", "code": "111"})
+
+    response = admin_client.post(f"/catalog/items/{item_b}/codes", json={"code_type": "barcode", "code": "111"})
+    assert response.status_code == 409
+
+
+def test_add_and_list_variants(admin_client):
+    item_id = _make_item(admin_client, "Remera")
+
+    added = admin_client.post(
+        f"/catalog/items/{item_id}/variants",
+        json={"sku": "REM-M-AZUL", "name": "M / Azul", "attributes": {"talle": "M", "color": "azul"}},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["attributes"] == {"talle": "M", "color": "azul"}
+
+    listed = admin_client.get(f"/catalog/items/{item_id}/variants")
+    assert listed.status_code == 200
+    variants = listed.json()
+    assert len(variants) == 1
+    assert variants[0]["sku"] == "REM-M-AZUL"
+
+
+def test_add_duplicate_variant_sku_fails(admin_client):
+    item_id = _make_item(admin_client, "Remera")
+    admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "REM-M", "name": "M"})
+
+    response = admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "REM-M", "name": "M otra vez"})
+    assert response.status_code == 409

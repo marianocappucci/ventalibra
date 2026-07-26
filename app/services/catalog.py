@@ -11,7 +11,15 @@ from dataclasses import replace
 from decimal import Decimal
 
 from libracommerce.db.repository import SqliteCommerceRepository
-from libracommerce.domain.catalog import CatalogItem, CatalogItemType, Category, Unit
+from libracommerce.domain.catalog import (
+    CatalogItem,
+    CatalogItemType,
+    Category,
+    ItemCode,
+    ItemCodeType,
+    ItemVariant,
+    Unit,
+)
 
 
 class CatalogService:
@@ -105,6 +113,34 @@ class CatalogService:
         query += " ORDER BY name"
         rows = self._conn.execute(query, params).fetchall()
         return [self._repo.get_catalog_item(row[0]) for row in rows]
+
+    # item codes (codigos de barra, sku, etc)
+
+    def add_code(
+        self, item_id: int, code_type: ItemCodeType, code: str, *, is_primary: bool = False
+    ) -> ItemCode:
+        item_code = ItemCode(id=None, item_id=item_id, code_type=code_type, code=code, is_primary=is_primary)
+        return self._repo.save_item_code(item_code)
+
+    def list_codes(self, item_id: int) -> list[ItemCode]:
+        return list(self._repo.list_item_codes(item_id))
+
+    def find_by_code(self, code: str) -> CatalogItem | None:
+        return self._repo.find_item_by_code(code)
+
+    # item variants (talle/color, presentaciones)
+
+    def add_variant(
+        self, item_id: int, sku: str, name: str, *, attributes: dict[str, str] | None = None
+    ) -> ItemVariant:
+        variant = ItemVariant(id=None, item_id=item_id, sku=sku, name=name, attributes=attributes or {})
+        return self._repo.save_item_variant(variant)
+
+    def list_variants(self, item_id: int) -> list[ItemVariant]:
+        return list(self._repo.list_item_variants(item_id))
+
+    def get_variant(self, variant_id: int) -> ItemVariant | None:
+        return self._repo.get_item_variant(variant_id)
 
     def _get_unit(self, unit_code: str) -> Unit:
         row = self._conn.execute(

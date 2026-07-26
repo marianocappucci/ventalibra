@@ -79,6 +79,83 @@ def test_get_unknown_sale_404(admin_client):
     assert response.status_code == 404
 
 
+def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
+    admin_client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
+    item = admin_client.post(
+        "/catalog/items", json={"name": "Remera", "unit_code": "u", "default_sale_price": "5000.00"},
+    ).json()
+    variant_m = admin_client.post(
+        f"/catalog/items/{item['id']}/variants", json={"sku": "REM-M", "name": "M"},
+    ).json()
+    variant_l = admin_client.post(
+        f"/catalog/items/{item['id']}/variants", json={"sku": "REM-L", "name": "L"},
+    ).json()
+    location_id = _make_location(admin_client)
+    admin_client.post(
+        "/stock/adjustments",
+        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "10", "variant_id": variant_m["id"]},
+    )
+    admin_client.post(
+        "/stock/adjustments",
+        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "5", "variant_id": variant_l["id"]},
+    )
+
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    added = admin_client.post(
+        f"/sales/{sale_id}/items",
+        json={"item_id": item["id"], "variant_id": variant_m["id"], "quantity": "2"},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["items"][0]["variant_id"] == variant_m["id"]
+
+    admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
+
+    stock_m = admin_client.get(f"/stock/{item['id']}", params={"location_id": location_id, "variant_id": variant_m["id"]})
+    stock_l = admin_client.get(f"/stock/{item['id']}", params={"location_id": location_id, "variant_id": variant_l["id"]})
+    assert float(stock_m.json()["quantity"]) == 8.0
+    assert float(stock_l.json()["quantity"]) == 5.0
+
+
+def test_add_item_with_unknown_variant_fails(admin_client):
+    item_id = _make_item(admin_client)
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+
+    response = admin_client.post(
+        f"/sales/{sale_id}/items", json={"item_id": item_id, "variant_id": 999, "quantity": "1"},
+    )
+    assert response.status_code == 422
+
+
+def test_add_item_uses_resolved_price_list_over_default(admin_client):
+    item_id = _make_item(admin_client)
+    price_list = admin_client.post("/pricing/lists", json={"name": "Mayorista"}).json()
+    admin_client.post(
+        f"/pricing/items/{item_id}/prices",
+        json={"price_list_id": price_list["id"], "amount": "1000.00", "valid_from": "2026-01-01T00:00:00"},
+    )
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+
+    added = admin_client.post(
+        f"/sales/{sale_id}/items",
+        json={"item_id": item_id, "quantity": "1", "price_list_id": price_list["id"]},
+    )
+    assert added.status_code == 200, added.text
+    assert float(added.json()["items"][0]["unit_price"]) == 1000.0
+
+
+def test_add_item_falls_back_to_default_sale_price_without_price_list_match(admin_client):
+    item_id = _make_item(admin_client)
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+
+    added = admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
+    assert added.status_code == 200, added.text
+    assert float(added.json()["items"][0]["unit_price"]) == 1500.0
+
+
 def test_staff_can_run_full_pos_flow(admin_client, staff_client):
     """El catalogo/stock lo carga un admin; el flujo de venta lo corre staff."""
     item_id = _make_item(admin_client)
