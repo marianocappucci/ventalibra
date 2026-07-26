@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+import hmac
+import os
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from ..auth import get_current_user, get_session_auth
@@ -20,6 +23,15 @@ class UserOut(BaseModel):
     active: bool
 
 
+class VerifyRequest(BaseModel):
+    username: str
+    password: str
+
+
+class VerifyResponse(BaseModel):
+    valid: bool
+
+
 @router.post("/login", response_model=UserOut)
 def login(data: LoginRequest, request: Request, response: Response):
     users: UserRepository = request.app.state.users
@@ -39,3 +51,26 @@ def logout(request: Request, response: Response):
 @router.get("/me", response_model=UserOut)
 def me(user: dict = Depends(get_current_user)):
     return user
+
+
+@router.post("/verify", response_model=VerifyResponse)
+def verify(
+    data: VerifyRequest,
+    request: Request,
+    x_internal_auth: str = Header(default=""),
+):
+    """Stateless credential check for ventalibra_web's /docs/ login.
+
+    Server-to-server only (shared secret DOCS_AUTH_SECRET), never creates a
+    session cookie -- same contract as Contalibra/Restolibra's own
+    /api/auth/verify. Fails closed if the secret isn't configured, same
+    posture as SessionAuth's SECRET_KEY resolution elsewhere in this app.
+    Read from the environment per-request (not at import time) so it can't
+    go stale relative to whatever the process actually has configured now.
+    """
+    secret = os.environ.get("DOCS_AUTH_SECRET", "")
+    if not secret or not hmac.compare_digest(x_internal_auth, secret):
+        raise HTTPException(401, "invalid internal auth")
+    users: UserRepository = request.app.state.users
+    user = users.check_credentials(data.username, data.password)
+    return VerifyResponse(valid=user is not None)

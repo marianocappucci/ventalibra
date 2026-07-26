@@ -881,3 +881,28 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   (solo `README.md`) — este incidente quedó documentado del lado
   LibraCommerce solo en mensajes de commit, no en un ADR propio de ese
   repo. Pendiente si se decide adoptar el estándar híbrido ahí también.
+
+## ADR-018 — Endpoint `POST /auth/verify` para el login de `/docs/` de ventalibra_web
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: se construyó `ventalibra_web`, la landing de marketing del
+  producto, con documentación técnica en `/docs/` gateada por login —
+  mismo patrón que ya usan Contalibra/Restolibra/Gestiolibra/MedLibra:
+  la landing no guarda usuarios propios, valida en tiempo real contra
+  la instancia real del cliente vía un endpoint interno protegido por
+  un secreto compartido (`DOCS_AUTH_SECRET`). Ese endpoint no existía
+  todavía en VentaLibra.
+- Decisión: mismo diseño exacto que Gestiolibra/MedLibra. `POST
+  /auth/verify` en `app/routers/auth.py`, junto a
+  `/login`/`/logout`/`/me`. Recibe `username`/`password`, exige el
+  header `X-Internal-Auth` comparado con `hmac.compare_digest()`
+  contra `DOCS_AUTH_SECRET` (leído del entorno en cada request) y
+  responde `{"valid": bool}` reusando
+  `UserRepository.check_credentials()`, sin crear cookie de sesión.
+  Falla cerrado (401) si el secreto no está configurado.
+- Consecuencias: 5 tests nuevos (`tests/test_auth_verify.py`). Suite
+  completa verificada en verde salvo el flake ya documentado del reloj
+  de WSL2 (un test distinto en cada corrida, no relacionado con este
+  cambio). Sin cambios de frontend ni de ningún otro endpoint. Detalle
+  del lado de la landing en `ventalibra_web` (`auth/app.py`).

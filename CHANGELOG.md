@@ -5,6 +5,10 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Endpoint `POST /auth/verify`** (ver ADR-018): chequeo de credenciales
+  sin sesión, protegido por `X-Internal-Auth`/`DOCS_AUTH_SECRET`, para que
+  el login de `/docs/` de `ventalibra_web` valide contra la instancia real
+  del cliente. 5 tests nuevos.
 - Scaffold inicial (Fase 1): auth por sesión, catálogo (categorías,
   unidades, items), ubicaciones, movimientos de stock manuales y flujo de
   venta POS (crear → agregar líneas → confirmar → descuenta stock real),
