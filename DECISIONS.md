@@ -451,3 +451,59 @@ reemplazadas.
   `gestiolibra/app/services/users.py::ensure_default_admin` tiene
   exactamente el mismo hardcodeo. No se toca sin decisión explícita, ya
   que cambiarlo solo acá rompería la consistencia entre productos.
+
+## ADR-012 — Conectar Fase 4 de LibraCommerce: códigos, listas de precio y variantes
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: las tres piezas de Fase 4 (`item_codes`/`price_lists`+
+  `item_prices`/`item_variants`) se construyeron enteramente del lado de
+  LibraCommerce, sin ningún consumidor todavía — el usuario pidió
+  conectarlas a VentaLibra para que dejen de ser código muerto.
+- Pin de `libracommerce` actualizado a `v0.1.3` (tag cortado sobre
+  `develop`@`81ab280`, incluye las tres features). Necesitó
+  `pip install --force-reinstall` porque el número de versión propio de
+  LibraCommerce (`0.1.0` en su `pyproject.toml`) nunca cambia entre tags
+  — pip ve la misma versión "ya satisfecha" y no vuelve a clonar el repo
+  aunque el tag apuntado en la URL haya cambiado. Mismo cuidado a tener
+  en cuenta la próxima vez que se bump-ee este pin.
+- **Códigos de barra**: `CatalogService.add_code`/`list_codes`/
+  `find_by_code`. Router: `POST`/`GET /catalog/items/{id}/codes` +
+  `GET /catalog/items/scan?code=...` (resuelve el item completo, pensado
+  para el caso de uso real de escanear en el POS). La ruta `scan` se
+  registró **antes** que `/items/{item_id}` en el archivo a propósito:
+  ambas tienen la misma forma de dos segmentos, y FastAPI/Starlette
+  matchea por orden de registro — si `{item_id}` fuera primero, "scan"
+  caería ahí y fallaría al intentar convertirlo a `int` en vez de llegar
+  al endpoint real.
+- **Listas de precio**: nuevo servicio/router `pricing` —
+  `POST /pricing/lists`, `POST /pricing/items/{id}/prices`,
+  `GET /pricing/items/{id}/resolve` (expone `resolve_price` de
+  LibraCommerce tal cual). `SaleService.add_item` ahora resuelve el
+  precio en este orden: `unit_price` explícito (si el caller lo manda) →
+  `resolve_price()` (si hay un precio configurado, en la lista pedida o
+  la default) → `default_sale_price` del catálogo como último fallback
+  — nunca rompe el comportamiento anterior para catálogos sin listas de
+  precio configuradas.
+- **Variantes**: `CatalogService.add_variant`/`list_variants`/
+  `get_variant`. `SaleService.add_item` acepta `variant_id` opcional y
+  **valida que pertenezca al item** (`variant.item_id == item_id`,
+  `KeyError`→422 si no) antes de crear la línea — el mismatch nunca
+  llega a persistirse. `StockService.adjust`/`current_stock`/`movements`
+  ganaron `variant_id` opcional, delegando en el filtro exacto que ya
+  expone `SqliteCommerceRepository`.
+- **Verificado real de punta a punta contra `uvicorn`** (no solo
+  `TestClient`): alta de código → escaneo resuelve el item → alta de
+  variante con atributos → lista de precio default + precio por
+  item/lista → `resolve_price` devuelve el precio configurado (4500),
+  no el `default_sale_price` del catálogo (5000) → ajuste de stock por
+  variante → venta de esa variante usa el precio resuelto (verificado en
+  el JSON de la respuesta) y al confirmar descuenta el stock de **esa**
+  variante puntual (10 → 8), no el del item agregado.
+- 17 tests nuevos (**62 en total**): 6 de catálogo (códigos, scan,
+  duplicado, variantes, SKU duplicado), 6 de pricing (listas, segundo
+  default rechazado, precios por item, ventana de vigencia inválida,
+  resolución sin precio configurado, resolución vía lista default), 4
+  de ventas (venta de variante mueve el stock correcto, variante
+  desconocida rechazada, precio resuelto vs. default), 1 de stock (stock
+  independiente por variante).

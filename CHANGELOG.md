@@ -65,3 +65,13 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   hacía falta construir `ventalibra:latest` aparte del `-dev` (que
   `docker compose` nombra distinto) — mismo patrón ya presente sin
   documentar en Gestiolibra/MedLibra. Ver DECISIONS.md ADR-011.
+- Fase 4 — extensiones de catálogo completa: códigos de barra, listas de
+  precio y variantes de talle/color construidas en LibraCommerce (pin
+  actualizado a `v0.1.3`) y conectadas a VentaLibra. `GET /catalog/items/
+  scan` resuelve un item por código (POS), nuevo router `/pricing`
+  (listas de precio, precios por item, resolución efectiva), `variant_id`
+  opcional en ventas y stock (`SaleService.add_item` valida que la
+  variante pertenezca al item y resuelve precio antes de caer al
+  `default_sale_price`; stock trackeado independiente por variante). 17
+  tests nuevos (62 en total) + smoke end-to-end real contra `uvicorn`.
+  Ver DECISIONS.md ADR-012.

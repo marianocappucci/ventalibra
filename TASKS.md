@@ -38,11 +38,15 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   `prueba.ventalibra.com.ar` con SSL). Bug real encontrado y corregido en
   el camino (`build_image()` sin `--ssh`, latente también en
   Gestiolibra/MedLibra) — ver DECISIONS.md ADR-011 — responsable: LLM.
+- [x] Fase 4: códigos de barra/listas de precio/variantes construidas en
+  LibraCommerce (pin `v0.1.3`) y conectadas a VentaLibra (`/catalog/
+  items/scan`, `/pricing`, `variant_id` en ventas y stock) — 17 tests
+  nuevos (62 en total), verificado real contra `uvicorn` — ver
+  DECISIONS.md ADR-012 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Fase 4: extensiones de catálogo (códigos de barra, variantes,
-  listas de precio) — requieren tocar LibraCommerce primero.
+- [ ] Ninguna por ahora.
 
 ## Bloqueadas
 

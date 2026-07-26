@@ -79,14 +79,20 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   factura (tipo A, CAE mock de dev, split de IVA correcto) → venta sin
   factura (`factura: null`) → stock final correcto.
 
-### Fase 4 — Extensiones de catálogo (requieren tocar LibraCommerce primero)
+### Fase 4 — Extensiones de catálogo (completa, 2026-07-26)
 
-- Códigos de barra (`item_codes`), variantes de talle/color
-  (`item_variants`), listas de precio (`price_lists`/`item_prices`),
-  productos pesables. Ninguno de estos existe todavía en LibraCommerce —
-  son extensiones al motor compartido, no al vertical, según el propio
-  análisis de arquitectura de la familia. Se decide de forma explícita
-  cuando se llegue a esta fase, no de pasada.
+- Productos pesables: **ya funcionaba** antes de esta fase (`Unit.
+  allows_fraction`/`decimal_scale` + cantidades `Decimal`) — no era un
+  gap real, verificado antes de construir nada.
+- Códigos de barra (`item_codes`), listas de precio (`price_lists`/
+  `item_prices`), variantes de talle/color (`item_variants`):
+  construidas en LibraCommerce (pin actualizado a `v0.1.3`) y conectadas
+  a VentaLibra — escaneo (`GET /catalog/items/scan`), gestión de
+  variantes y precios (`/pricing`), venta de una variante puntual con
+  precio resuelto por lista, stock trackeado independiente por variante.
+  Verificado real de punta a punta contra `uvicorn`. 62 tests pasando.
+  Ver DECISIONS.md ADR-012 y `wiki/entities/libracommerce.md` (Fase 4)
+  para el detalle completo del lado de LibraCommerce.
 
 ### Fase 5 — Onboarding, planes, frontend, reportes (en curso, 2026-07-26)
 
