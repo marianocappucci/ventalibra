@@ -25,3 +25,12 @@ def test_create_customer_with_billing_data(admin_client):
 def test_get_unknown_customer_404(admin_client):
     response = admin_client.get("/customers/999")
     assert response.status_code == 404
+
+
+def test_customer_list_does_not_include_suppliers(admin_client):
+    admin_client.post("/suppliers", json={"display_name": "Distribuidora SA"})
+    customer = admin_client.post("/customers", json={"display_name": "Ana Cliente"}).json()
+
+    listed = admin_client.get("/customers").json()
+
+    assert [c["id"] for c in listed] == [customer["id"]]

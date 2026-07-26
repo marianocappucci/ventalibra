@@ -24,12 +24,15 @@ class CustomerService:
         party = self._repo.save_party(
             Party(id=None, party_type=party_type, display_name=display_name, email=email, phone=phone)
         )
+        self._conn.execute(
+            "INSERT OR IGNORE INTO party_roles (party_id, role) VALUES (?, 'customer')", (party.id,)
+        )
         if cuit or condicion_iva:
             self._conn.execute(
                 "INSERT INTO party_billing (party_id, cuit, condicion_iva) VALUES (?, ?, ?)",
                 (party.id, cuit, condicion_iva),
             )
-            self._conn.commit()
+        self._conn.commit()
         return self._to_out(party)
 
     def get(self, party_id: int) -> dict | None:
@@ -38,7 +41,12 @@ class CustomerService:
 
     def list_all(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id FROM parties WHERE active = 1 ORDER BY display_name"
+            """
+            SELECT p.id FROM parties p
+            JOIN party_roles pr ON pr.party_id = p.id AND pr.role = 'customer'
+            WHERE p.active = 1
+            ORDER BY p.display_name
+            """
         ).fetchall()
         return [self._to_out(self._repo.get_party(row[0])) for row in rows]
 

@@ -26,13 +26,23 @@ class SupplierService:
             id=None, party_type=party_type, display_name=display_name,
             legal_name=legal_name, tax_id=tax_id, email=email, phone=phone,
         )
-        return self._repo.save_party(party)
+        saved = self._repo.save_party(party)
+        self._conn.execute(
+            "INSERT OR IGNORE INTO party_roles (party_id, role) VALUES (?, 'supplier')", (saved.id,)
+        )
+        self._conn.commit()
+        return saved
 
     def get(self, party_id: int) -> Party | None:
         return self._repo.get_party(party_id)
 
     def list_all(self) -> list[Party]:
         rows = self._conn.execute(
-            "SELECT id FROM parties WHERE active = 1 ORDER BY display_name"
+            """
+            SELECT p.id FROM parties p
+            JOIN party_roles pr ON pr.party_id = p.id AND pr.role = 'supplier'
+            WHERE p.active = 1
+            ORDER BY p.display_name
+            """
         ).fetchall()
         return [self._repo.get_party(row[0]) for row in rows]

@@ -126,6 +126,11 @@ def create_order(data: PurchaseOrderCreate, request: Request):
     return _to_order_out(order)
 
 
+@router.get("/purchase-orders", response_model=list[PurchaseOrderOut])
+def list_orders(request: Request):
+    return [_to_order_out(order) for order in _service(request).list_orders()]
+
+
 @router.get("/purchase-orders/{order_id}", response_model=PurchaseOrderOut)
 def get_order(order_id: int, request: Request):
     try:
@@ -159,6 +164,11 @@ def create_receipt(data: PurchaseReceiptCreate, request: Request):
     except PurchaseOrderNotFound:
         raise HTTPException(404, "purchase order not found")
     return _to_receipt_out(receipt)
+
+
+@router.get("/purchase-receipts", response_model=list[PurchaseReceiptOut])
+def list_receipts(request: Request):
+    return [_to_receipt_out(receipt) for receipt in _service(request).list_receipts()]
 
 
 @router.get("/purchase-receipts/{receipt_id}", response_model=PurchaseReceiptOut)

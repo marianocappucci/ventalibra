@@ -172,3 +172,72 @@ export type CurrentStock = {
   variant_id: number | null
   quantity: string
 }
+
+export type Party = {
+  id: number
+  party_type: 'person' | 'organization'
+  display_name: string
+  email: string | null
+  phone: string | null
+  active: boolean
+}
+
+export type Supplier = Party & {
+  legal_name: string | null
+  tax_id: string | null
+}
+
+export type Customer = Party & {
+  cuit: string | null
+  condicion_iva: string | null
+}
+
+export type ArcaConfig = {
+  empresa: string
+  cuit: string
+  punto_venta: number
+  ambiente: string
+  certificado_path: string
+  clave_path: string
+}
+
+export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled'
+
+export type PurchaseOrderItem = {
+  item_id: number
+  quantity_ordered: string
+  quantity_received: string
+  pending_quantity: string
+  unit_cost: string
+  tax_rate: string
+  subtotal: string
+}
+
+export type PurchaseOrder = {
+  id: number
+  number: string
+  supplier_party_id: number
+  status: PurchaseOrderStatus
+  items: PurchaseOrderItem[]
+  is_fully_received: boolean
+}
+
+export type PurchaseReceiptStatus = 'draft' | 'confirmed'
+
+export type PurchaseReceiptItem = {
+  item_id: number
+  quantity: string
+  unit_cost: string
+  lot_code: string | null
+  expires_at: string | null
+}
+
+export type PurchaseReceipt = {
+  id: number
+  supplier_party_id: number
+  purchase_order_id: number | null
+  status: PurchaseReceiptStatus
+  items: PurchaseReceiptItem[]
+  received_at: string | null
+  document_reference: string | null
+}

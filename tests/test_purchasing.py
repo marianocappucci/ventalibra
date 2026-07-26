@@ -145,6 +145,26 @@ def test_create_receipt_with_unknown_order_404(admin_client):
     assert response.status_code == 404
 
 
+def test_list_purchase_orders_returns_newest_first(admin_client):
+    supplier_id = _make_supplier(admin_client)
+    first = admin_client.post("/purchase-orders", json={"supplier_party_id": supplier_id}).json()
+    second = admin_client.post("/purchase-orders", json={"supplier_party_id": supplier_id}).json()
+
+    response = admin_client.get("/purchase-orders")
+    assert response.status_code == 200
+    assert [o["id"] for o in response.json()] == [second["id"], first["id"]]
+
+
+def test_list_purchase_receipts_returns_newest_first(admin_client):
+    supplier_id = _make_supplier(admin_client)
+    first = admin_client.post("/purchase-receipts", json={"supplier_party_id": supplier_id}).json()
+    second = admin_client.post("/purchase-receipts", json={"supplier_party_id": supplier_id}).json()
+
+    response = admin_client.get("/purchase-receipts")
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == [second["id"], first["id"]]
+
+
 def test_staff_can_run_full_purchasing_flow(admin_client, staff_client):
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)

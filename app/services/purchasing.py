@@ -61,6 +61,9 @@ class PurchasingService:
             raise PurchaseOrderNotFound(order_id)
         return order
 
+    def list_orders(self) -> list[PurchaseOrder]:
+        return list(self._repo.list_purchase_orders())
+
     def add_order_item(
         self, order_id: int, *, item_id: int, quantity_ordered: Decimal,
         unit_cost: Decimal, tax_rate: Decimal = Decimal("0"),
@@ -96,6 +99,9 @@ class PurchasingService:
         if receipt is None:
             raise PurchaseReceiptNotFound(receipt_id)
         return receipt
+
+    def list_receipts(self) -> list[PurchaseReceipt]:
+        return list(self._repo.list_purchase_receipts())
 
     def add_receipt_item(
         self, receipt_id: int, *, item_id: int, quantity: Decimal, unit_cost: Decimal,

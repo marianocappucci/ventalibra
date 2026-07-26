@@ -21,3 +21,12 @@ def test_get_unknown_supplier_404(admin_client):
 def test_invalid_party_type_422(admin_client):
     response = admin_client.post("/suppliers", json={"display_name": "X", "party_type": "bogus"})
     assert response.status_code == 422
+
+
+def test_supplier_list_does_not_include_customers(admin_client):
+    admin_client.post("/customers", json={"display_name": "Ana Cliente"})
+    supplier = admin_client.post("/suppliers", json={"display_name": "Distribuidora SA"}).json()
+
+    listed = admin_client.get("/suppliers").json()
+
+    assert [s["id"] for s in listed] == [supplier["id"]]

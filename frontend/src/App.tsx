@@ -5,8 +5,14 @@ import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Pos } from './pages/Pos'
 import { Catalogo } from './pages/Catalogo'
+import { Sucursales } from './pages/Sucursales'
+import { Proveedores } from './pages/Proveedores'
+import { Compras } from './pages/Compras'
+import { Clientes } from './pages/Clientes'
+import { Usuarios } from './pages/Usuarios'
+import { ConfigArca } from './pages/ConfigArca'
 
-function ProtectedRoute({ children }: { children: ReactNode }) {
+function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
@@ -16,6 +22,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     )
   }
   if (!user) return <Navigate to="/login" replace />
+  if (adminOnly && user.role !== 'admin') return <Navigate to="/pos" replace />
   return <Layout>{children}</Layout>
 }
 
@@ -36,6 +43,54 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Catalogo />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/compras"
+        element={
+          <ProtectedRoute>
+            <Compras />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/proveedores"
+        element={
+          <ProtectedRoute>
+            <Proveedores />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/clientes"
+        element={
+          <ProtectedRoute>
+            <Clientes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sucursales"
+        element={
+          <ProtectedRoute>
+            <Sucursales />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/usuarios"
+        element={
+          <ProtectedRoute adminOnly>
+            <Usuarios />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/config-arca"
+        element={
+          <ProtectedRoute adminOnly>
+            <ConfigArca />
           </ProtectedRoute>
         }
       />

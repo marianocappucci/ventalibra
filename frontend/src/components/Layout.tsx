@@ -1,6 +1,8 @@
 import { type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LogOut, Package, ShoppingCart } from 'lucide-react'
+import {
+  Building2, LogOut, Package, Receipt, ShoppingBag, ShoppingCart, Truck, Users, Warehouse,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   Sidebar,
@@ -24,6 +26,12 @@ import { Button } from '@/components/ui/button'
 const NAV_ITEMS = [
   { to: '/pos', label: 'Venta', icon: ShoppingCart },
   { to: '/catalogo', label: 'Catálogo', icon: Package },
+  { to: '/compras', label: 'Compras', icon: ShoppingBag },
+  { to: '/proveedores', label: 'Proveedores', icon: Truck },
+  { to: '/clientes', label: 'Clientes', icon: Users },
+  { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
+  { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
+  { to: '/config-arca', label: 'Config. ARCA', icon: Receipt, adminOnly: true },
 ]
 
 function initials(name: string): string {
@@ -54,7 +62,7 @@ function AppSidebar() {
           <SidebarGroupLabel>Menú</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
+              {NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
                 <SidebarMenuItem key={item.to}>
                   <SidebarMenuButton asChild isActive={location.pathname === item.to}>
                     <NavLink to={item.to}>

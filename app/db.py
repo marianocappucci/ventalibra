@@ -17,6 +17,7 @@ def connect(db_path: str) -> sqlite3.Connection:
     init_users_schema(conn)
     init_sequences_schema(conn)
     init_party_billing_schema(conn)
+    init_party_roles_schema(conn)
     init_modules_schema(conn)
     return conn
 
@@ -69,6 +70,31 @@ def init_party_billing_schema(conn: sqlite3.Connection) -> None:
             party_id INTEGER PRIMARY KEY REFERENCES parties(id),
             cuit TEXT,
             condicion_iva TEXT
+        );
+        """
+    )
+    conn.commit()
+
+
+def init_party_roles_schema(conn: sqlite3.Connection) -> None:
+    """Rol con el que se dio de alta una Party (supplier/customer), mismo
+    patron que `party_billing`: tabla propia con FK a parties.id, sin
+    tocar el esquema generico de LibraCommerce (Party.party_type es
+    persona/organizacion, un eje totalmente distinto -- un proveedor
+    puede ser persona, un cliente puede ser organizacion).
+
+    Bug real encontrado al construir las pantallas de Proveedores/Clientes
+    del frontend: SupplierService.list_all()/CustomerService.list_all()
+    listaban *todas* las parties activas sin filtrar, así que un cliente
+    aparecía mezclado en la lista de proveedores y viceversa. PK compuesta
+    (party_id, role) para no cerrar la puerta a que una misma party tenga
+    los dos roles a la vez si hiciera falta más adelante."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS party_roles (
+            party_id INTEGER NOT NULL REFERENCES parties(id),
+            role TEXT NOT NULL,
+            PRIMARY KEY (party_id, role)
         );
         """
     )
