@@ -316,10 +316,19 @@ reemplazadas.
   set_enabled(modulo, bool)` — mismo que `gestiolibra/tests/
   test_module_gating.py`, no `aplicar_plan_en_db` contra un path de DB
   que el fixture de tests no expone), `compileall` limpio.
-- Pendiente: `scripts/nuevo_cliente.py` (ver ADR-010) no aplica un plan
-  todavía al crear un cliente — por ahora todo cliente nuevo arranca en
-  Premium (default de `init_modules_schema`) hasta que se decida cómo
-  se captura el plan elegido en el onboarding.
+- Corrección (2026-07-26, ver ADR-013): esta entrada decía que
+  `scripts/nuevo_cliente.py` no capturaba el plan al crear un cliente —
+  **era un error de esta documentación, no un gap real**. `crear_cliente()`
+  (`libracore.provisioning.nuevo_cliente`, compartido con Contalibra/
+  Restolibra/Gestiolibra/MedLibra) siempre aceptó un parámetro `plan`
+  (default `"basico"`, no Premium) y `main()` (el flujo interactivo)
+  siempre preguntó por él explícitamente (`ask(f"Plan (...)", "basico")`)
+  antes de llamar a `crear_cliente()`. `init_modules_schema` sí siembra
+  todo habilitado como estado transitorio al crear la tabla, pero
+  `aplicar_plan_en_db(plan)` corre inmediatamente después (dentro del
+  mismo `crear_cliente()`) y lo sobreescribe según el plan real elegido
+  — para cuando el onboarding termina, el plan correcto ya está aplicado.
+  Ver ADR-013 para el detalle de cómo se detectó el error.
 
 ## ADR-010 — Infraestructura de deploy: Dockerfile, docker-compose, scripts y deploy keys
 
@@ -507,3 +516,38 @@ reemplazadas.
   de ventas (venta de variante mueve el stock correcto, variante
   desconocida rechazada, precio resuelto vs. default), 1 de stock (stock
   independiente por variante).
+
+## ADR-013 — Corrección: la captura de plan en el onboarding ya existía (no era un pendiente real)
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: quedaba anotado en ROADMAP.md/TASKS.md/DECISIONS.md (ADR-009)
+  que `scripts/nuevo_cliente.py` "no captura el plan elegido al crear un
+  cliente — todo cliente nuevo arranca en Premium por default". El
+  usuario eligió atacar este pendiente; antes de tocar código se
+  releyó `libracore.provisioning.nuevo_cliente` para confirmarlo.
+- Hallazgo: **la nota era incorrecta**, no un gap real. `crear_cliente()`
+  siempre tuvo un parámetro `plan: str = "basico"` (default `"basico"`,
+  no Premium — otro dato erróneo de la nota original), y `main()` (el
+  modo interactivo) siempre preguntó explícitamente `Plan (basico/
+  estandar/premium)` antes de confirmar el alta. El cliente de prueba
+  `prueba` (ver ADR-011) ya se había dado de alta con `plan="premium"`
+  pasado explícitamente — la propia sesión anterior ya había usado esta
+  capacidad sin darse cuenta de que contradecía la nota escrita.
+- Origen probable del error: al onboardear `prueba` se llamó a
+  `crear_cliente()` directamente vía un script Python (no el flujo
+  interactivo `main()`), pasando `plan="premium"` a mano — se generalizó
+  incorrectamente esa elección manual como "el script no soporta elegir
+  plan", cuando en realidad ambos caminos (interactivo y programático)
+  ya lo soportaban.
+- Gap real distinto, encontrado de paso (no confundir con el anterior):
+  **no existe ningún comando para cambiar el plan de un cliente ya
+  onboardeado** — `libracore.provisioning.panel_admin` tiene comandos
+  para listar/iniciar/parar/backup/activar/pausar/suspender/eliminar,
+  pero ninguno de tipo `cambiar-plan`. Esto es transversal a toda la
+  familia (mismo módulo compartido con Contalibra/Restolibra/Gestiolibra/
+  MedLibra), no específico de VentaLibra — queda documentado como
+  pendiente real, sin atacar en esta ronda (fuera del pedido del
+  usuario, y tocaría `libracore` compartido, no solo este repo).
+- Sin cambios de código en este repo — corrección puramente documental.
+  Ver también el ADR-009 corregido arriba.

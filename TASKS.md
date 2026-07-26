@@ -5,8 +5,7 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 ## En curso
 
-- [ ] Fase 5: `scripts/nuevo_cliente.py` no captura el plan elegido al
-  crear un cliente — todo cliente nuevo arranca en Premium por default.
+- [ ] Ninguna por ahora.
 
 ## Completadas
 
@@ -43,10 +42,14 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   items/scan`, `/pricing`, `variant_id` en ventas y stock) — 17 tests
   nuevos (62 en total), verificado real contra `uvicorn` — ver
   DECISIONS.md ADR-012 — responsable: LLM.
+- [x] Corrección: "captura de plan en el onboarding" no era un pendiente
+  real — `crear_cliente()`/`main()` ya lo hacían. Ver DECISIONS.md
+  ADR-013 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Ninguna por ahora.
+- [ ] Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
+- [ ] Reportes de ventas, caja y stock.
 
 ## Bloqueadas
 

@@ -118,8 +118,13 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   Gestiolibra/MedLibra): `build_image()` no pasa `--ssh`, así que hacía
   falta que `ventalibra:latest` ya existiera construido aparte del
   `-dev` (que compose nombra distinto). Ver DECISIONS.md ADR-011.
-- [ ] `scripts/nuevo_cliente.py` no captura el plan elegido al crear un
-  cliente todavía — todo cliente nuevo arranca en Premium por default.
+- [x] ~~`scripts/nuevo_cliente.py` no captura el plan elegido~~ — **no
+  era un gap real** (2026-07-26): `crear_cliente()`/`main()` ya
+  preguntan y aplican el plan elegido, default `basico` (no Premium).
+  Corrección documental, ver DECISIONS.md ADR-013. Gap real distinto,
+  transversal a toda la familia: no hay comando para cambiar el plan de
+  un cliente ya onboardeado (`libracore.provisioning.panel_admin`), sin
+  atacar por ahora.
 - [ ] Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
 - [ ] Reportes de ventas, caja y stock.
 - Validar con un comercio real antes de sumar promociones avanzadas,
