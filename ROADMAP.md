@@ -105,11 +105,15 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   provisionado en NPM con SSL (`forward_host=ventalibra-dev:8000`, mismo
   patrón que contalibra-dev/gestiolibra-dev/restolibra-dev) y verificado
   real (`/health` → 200 por HTTPS). Ver DECISIONS.md ADR-010.
+- [x] Primer cliente de prueba real onboardeado vía
+  `scripts/nuevo_cliente.py`: `prueba` (plan Premium, puerto `8082`,
+  `prueba.ventalibra.com.ar` con SSL). En el camino se encontró y
+  corrigió un bug real (no específico de este repo, latente también en
+  Gestiolibra/MedLibra): `build_image()` no pasa `--ssh`, así que hacía
+  falta que `ventalibra:latest` ya existiera construido aparte del
+  `-dev` (que compose nombra distinto). Ver DECISIONS.md ADR-011.
 - [ ] `scripts/nuevo_cliente.py` no captura el plan elegido al crear un
   cliente todavía — todo cliente nuevo arranca en Premium por default.
-- [ ] Primer cliente de prueba real (`docker compose` vía
-  `scripts/nuevo_cliente.py`, no el contenedor `-dev` manual usado para
-  verificar la infraestructura).
 - [ ] Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
 - [ ] Reportes de ventas, caja y stock.
 - Validar con un comercio real antes de sumar promociones avanzadas,

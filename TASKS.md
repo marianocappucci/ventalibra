@@ -7,7 +7,6 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 - [ ] Fase 5: `scripts/nuevo_cliente.py` no captura el plan elegido al
   crear un cliente — todo cliente nuevo arranca en Premium por default.
-  Onboardear el primer cliente de prueba real una vez decidido.
 
 ## Completadas
 
@@ -34,6 +33,11 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   usuario; NPM+SSL provisionado para `dev.ventalibra.com.ar`
   (`forward_host=ventalibra-dev:8000`), verificado real por HTTPS —
   responsable: LLM (provisioning) + usuario (fix de DNS).
+- [x] Fase 5 (primer cliente real): `prueba` onboardeado vía
+  `scripts/nuevo_cliente.py` (plan Premium, puerto 8082,
+  `prueba.ventalibra.com.ar` con SSL). Bug real encontrado y corregido en
+  el camino (`build_image()` sin `--ssh`, latente también en
+  Gestiolibra/MedLibra) — ver DECISIONS.md ADR-011 — responsable: LLM.
 
 ## Próximas
 

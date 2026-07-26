@@ -57,3 +57,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   `dev.ventalibra.com.ar` provisionado en NPM con SSL, apuntando al
   contenedor `ventalibra-dev` — verificado real por HTTPS. Ver
   DECISIONS.md ADR-010.
+- Fase 5 — primer cliente real: `prueba` onboardeado vía
+  `scripts/nuevo_cliente.py` (plan Premium, puerto 8082,
+  `prueba.ventalibra.com.ar` con SSL, login real verificado). Bug real
+  encontrado y corregido en el camino, no específico de este repo:
+  `build_image()` de `libracore.provisioning` no pasa `--ssh`, así que
+  hacía falta construir `ventalibra:latest` aparte del `-dev` (que
+  `docker compose` nombra distinto) — mismo patrón ya presente sin
+  documentar en Gestiolibra/MedLibra. Ver DECISIONS.md ADR-011.

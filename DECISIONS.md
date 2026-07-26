@@ -395,3 +395,59 @@ reemplazadas.
   `pip install` fuera de contenedor).
 - Verificado real: `GET https://dev.ventalibra.com.ar/health` → 200 con
   certificado válido, desde fuera del VPS.
+
+## ADR-011 — Primer cliente real onboardeado vía `scripts/nuevo_cliente.py`
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: con DNS, deploy keys e infraestructura resueltos (ADR-010),
+  correspondía onboardear el primer cliente real (no el contenedor
+  `-dev` manual, que solo sirve para verificar la infraestructura) para
+  probar el flujo completo de `crear_cliente()` (`libracore.provisioning
+  .nuevo_cliente`, compartido con Contalibra/Restolibra/Gestiolibra/
+  MedLibra) de punta a punta por primera vez en este repo.
+- **Bug real encontrado y corregido, no específico de VentaLibra**:
+  `crear_cliente()` → `build_image()` corre `docker build -t
+  {image_name} .` **sin** `--ssh`, así que si la imagen todavía no
+  existe con el tag exacto que espera `configure(image_name=...)`
+  (`ventalibra:latest`), el build falla al clonar `libracommerce`/
+  `libracore` por SSH (`Load key .../id_libracommerce.pub: error in
+  libcrypto` — intenta usar la public key horneada como si fuera la
+  identidad real, sin ningún agente forwardeado). El `docker-compose.yml`
+  de dev (ADR-010) sí pasa `--ssh` correctamente, pero `docker compose
+  build` nombra la imagen `ventalibra-ventalibra-dev:latest`, **no**
+  `ventalibra:latest` — nunca coincide con lo que `image_exists()`
+  busca. Confirmado que Gestiolibra/MedLibra tienen exactamente el mismo
+  problema latente, solo que invisible: ambos ya tienen `gestiolibra:
+  latest`/`medlibra:latest` construidos aparte (`docker images` en el
+  VPS lo confirma), separado de sus imágenes `-dev`. Fix aplicado (mismo
+  patrón, no un cambio a `libracore`): `docker build -t ventalibra:latest
+  --ssh default=$SSH_AUTH_SOCK .` corrido una vez a mano en el VPS con
+  el agente compartido — deja `image_exists()` en `True` para siempre,
+  así `crear_cliente()` nunca vuelve a intentar `build_image()` sin
+  `--ssh`. No se tocó `libracore.provisioning` (afecta a toda la
+  familia, decisión fuera de alcance de esta ronda).
+- Cliente creado: `prueba` (`Cliente de Prueba`, plan **Premium** — mismo
+  criterio que `gestiolibra-prueba`/`medlibra-prueba`), puerto `8082`
+  (siguiente libre tras `8081` del `-dev`), dominio
+  `prueba.ventalibra.com.ar` (DNS wildcard de `ventalibra.com.ar` ya
+  cubre cualquier subdominio, confirmado antes de asumirlo). Proxy NPM
+  con SSL creado automáticamente por `crear_cliente()` (`forward_host
+  =172.18.0.1:8082` — patrón gateway+puerto-publicado-al-host, distinto
+  del `container-name:8000` usado para `dev.ventalibra.com.ar` en
+  ADR-010; ambos patrones coexisten en la familia según si el proxy lo
+  arma el script de onboarding automatizado o se arma a mano para un
+  `-dev`).
+- Verificado real: contenedor `ventalibra-prueba` healthy, `GET
+  https://prueba.ventalibra.com.ar/health` → 200, login real contra
+  `/auth/login` con las credenciales generadas por el script (contraseña
+  aleatoria de `secrets.token_urlsafe`, persistida en
+  `clientes/prueba/cliente.json` en el VPS — no se guarda en ningún otro
+  lado). Plan `premium` aplicado correctamente vía `aplicar_plan_en_db`.
+- No corregido a propósito (no es un bug de esta sesión, es un
+  comportamiento heredado y consistente con toda la familia): el nombre
+  de display del admin queda siempre "Administrador", ignorando
+  `ADMIN_NOMBRE`/`admin_nombre` — confirmado que
+  `gestiolibra/app/services/users.py::ensure_default_admin` tiene
+  exactamente el mismo hardcodeo. No se toca sin decisión explícita, ya
+  que cambiarlo solo acá rompería la consistencia entre productos.
