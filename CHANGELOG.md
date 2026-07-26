@@ -51,6 +51,9 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   scripts de onboarding (`nuevo_cliente.py`/`panel_admin.py`/`npm_api.py`/
   `npm_setup.py`), deploy keys SSH nuevas (`libracommerce` solo lectura,
   `ventalibra` propia). Primer contenedor real (`ventalibra-dev`, puerto
-  `8081`) construido y verificado en el VPS. Dominio/SSL pendiente —
-  `ventalibra.com.ar` tiene la delegación DNS mal configurada. Ver
+  `8081`) construido y verificado en el VPS. Ver DECISIONS.md ADR-010.
+- Fase 5 — dominio y SSL: corregida la delegación DNS de
+  `ventalibra.com.ar` (estaba mal configurada del lado del proveedor).
+  `dev.ventalibra.com.ar` provisionado en NPM con SSL, apuntando al
+  contenedor `ventalibra-dev` — verificado real por HTTPS. Ver
   DECISIONS.md ADR-010.

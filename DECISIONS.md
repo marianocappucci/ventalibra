@@ -369,11 +369,29 @@ reemplazadas.
   `GET /health` → 200, login real contra `/auth/login` con las
   credenciales default de dev (`admin`/`admin`, vía `ENV=development`
   en `ensure_default_admin`) → 200.
-- Bloqueado (no depende de este repo): `ventalibra.com.ar` está
-  registrado pero su delegación DNS está mal configurada — los
-  nameservers delegados (`200.58.112.193`/`.101`) devuelven `REFUSED`
-  ("lame delegation", confirmado vía DNS-over-HTTPS contra
-  `dns.google`) en vez de responder por la zona. No se puede provisionar
-  NPM+SSL para `dev.ventalibra.com.ar` hasta que se corrija esto en el
-  proveedor de DNS — el contenedor `ventalibra-dev` queda accesible solo
-  por IP:puerto (`8081`) hasta entonces.
+- Bloqueado, resuelto el mismo día: `ventalibra.com.ar` tenía la
+  delegación DNS mal configurada — los nameservers delegados
+  (`200.58.112.193`/`.101`) devolvían `REFUSED` ("lame delegation",
+  confirmado vía DNS-over-HTTPS contra `dns.google`) en vez de responder
+  por la zona. El usuario lo corrigió del lado del proveedor de DNS;
+  reverificado (`ventalibra.com.ar`/`dev.ventalibra.com.ar` →
+  `149.50.136.218`, IP real del VPS) antes de seguir.
+- **NPM + SSL provisionados para `dev.ventalibra.com.ar`**: proxy host
+  id `31`, `forward_host=ventalibra-dev` (nombre del contenedor en su
+  puerto interno `8000` — mismo patrón que `contalibra-dev`/
+  `gestiolibra-dev`/`restolibra-dev`, todos en la red compartida
+  `stack-net` donde NPM puede resolver por nombre de contenedor; **no**
+  el patrón `172.18.0.1:<puerto publicado>` que quedó en
+  `dev.medlibra.com.ar` como inconsistencia histórica sin corregir).
+  Config de NPM (`scripts/.npm_config.json`, mismas credenciales que
+  Gestiolibra/MedLibra/Restolibra — mismo NPM del VPS) copiada de
+  `gestiolibra/scripts/.npm_config.json` a nivel de archivo, sin leer ni
+  manejar el valor de `npm_password` en ningún momento. Venv dedicado
+  `.venv-scripts` (mismo patrón que los demás productos, usado por
+  `panel_admin.py`/`nuevo_cliente.py`) creado en el checkout del VPS
+  instalando `libracore`/`libracommerce` vía los alias SSH
+  `github-libracore`/`github-libracommerce` del **host** (no solo los
+  horneados en la imagen Docker — hacía falta un alias aparte para
+  `pip install` fuera de contenedor).
+- Verificado real: `GET https://dev.ventalibra.com.ar/health` → 200 con
+  certificado válido, desde fuera del VPS.

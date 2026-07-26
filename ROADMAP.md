@@ -10,8 +10,9 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   flujo de POS real, antes de construir el resto del alcance.
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
 - [x] Fase 3: caja y facturación ARCA vía LibraCore.
-- [~] Fase 5: onboarding multi-cliente (planes/gating de código completo;
-  infraestructura de deploy verificada en el VPS; falta el dominio/SSL).
+- [~] Fase 5: onboarding multi-cliente (planes/gating de código,
+  infraestructura de deploy y dominio/SSL completos; falta captura de
+  plan en onboarding, frontend y reportes).
 
 ## Fases
 
@@ -99,10 +100,11 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   deploy keys SSH (`libracommerce` solo lectura + `ventalibra` propia).
   Contenedor `ventalibra-dev` levantado y verificado en el VPS (puerto
   `8081`, `/health` → 200, login real). Ver DECISIONS.md ADR-010.
-- [ ] **Bloqueado**: `ventalibra.com.ar` tiene delegación DNS mal
-  configurada (nameservers devuelven REFUSED) — sin esto no se puede
-  provisionar NPM+SSL para `dev.ventalibra.com.ar`. Corregir en el
-  proveedor de DNS antes de seguir con esta parte.
+- [x] Dominio + SSL: `ventalibra.com.ar` tenía la delegación DNS mal
+  configurada, corregida por el usuario. `dev.ventalibra.com.ar`
+  provisionado en NPM con SSL (`forward_host=ventalibra-dev:8000`, mismo
+  patrón que contalibra-dev/gestiolibra-dev/restolibra-dev) y verificado
+  real (`/health` → 200 por HTTPS). Ver DECISIONS.md ADR-010.
 - [ ] `scripts/nuevo_cliente.py` no captura el plan elegido al crear un
   cliente todavía — todo cliente nuevo arranca en Premium por default.
 - [ ] Primer cliente de prueba real (`docker compose` vía

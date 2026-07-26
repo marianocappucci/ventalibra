@@ -30,6 +30,10 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   de onboarding, deploy keys SSH (`libracommerce`/`ventalibra`),
   contenedor `ventalibra-dev` verificado en el VPS (puerto 8081) —
   responsable: LLM.
+- [x] Fase 5 (dominio/SSL): DNS de `ventalibra.com.ar` corregido por el
+  usuario; NPM+SSL provisionado para `dev.ventalibra.com.ar`
+  (`forward_host=ventalibra-dev:8000`), verificado real por HTTPS —
+  responsable: LLM (provisioning) + usuario (fix de DNS).
 
 ## Próximas
 
@@ -38,8 +42,4 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 ## Bloqueadas
 
-- [ ] Provisionar NPM+SSL para `dev.ventalibra.com.ar` — el dominio
-  `ventalibra.com.ar` está registrado pero su delegación DNS está mal
-  configurada (nameservers `200.58.112.193`/`.101` devuelven REFUSED,
-  "lame delegation" — confirmado vía DNS-over-HTTPS contra `dns.google`
-  el 2026-07-26). Corregir en el proveedor de DNS antes de continuar.
+- [ ] Ninguna por ahora.
