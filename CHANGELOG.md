@@ -109,3 +109,16 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   generados, mismo patrón que el dashboard de Gestiolibra/MedLibra.
   Verificado real de punta a punta contra un build de producción. 74/74
   tests. Ver DECISIONS.md ADR-016. **Cierra Fase 5.**
+- Incidente: `dev.ventalibra.com.ar` quedó caído porque el contenedor
+  del VPS corría código viejo (sin la ruta catch-all del SPA); al
+  redeployar con el código actual, crasheó por un gap de fondo:
+  `init_schema()` (LibraCommerce) usa `CREATE TABLE IF NOT EXISTS`, que
+  es un no-op sobre tablas ya persistidas y nunca agrega columnas
+  nuevas (`variant_id` de Fase 4) a una base real ya existente. Fix:
+  mecanismo real de migraciones numeradas e idempotentes
+  (`libracommerce/db/migrations.py`, trackeadas en `schema_migrations`),
+  8 tests nuevos, LibraCommerce `v0.1.5`. Verificado no solo
+  sintéticamente sino contra la base real y persistida del cliente
+  `prueba` (backup previo, rebuild de `ventalibra:latest`, reinicio del
+  contenedor): migración aplicada sin errores ni pérdida de datos. Ver
+  DECISIONS.md ADR-017.

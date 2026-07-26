@@ -57,6 +57,11 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 - [x] Reportes de ventas, caja y stock (admin-only, sin tabla propia).
   Verificado real de punta a punta, 74/74 tests. Ver DECISIONS.md
   ADR-016 — responsable: LLM. **Cierra Fase 5.**
+- [x] Incidente: `dev.ventalibra.com.ar` caído (código viejo deployado) +
+  gap de fondo (`init_schema()` no migra bases persistidas). Mecanismo
+  real de migraciones en LibraCommerce (`v0.1.5`, 8 tests nuevos),
+  verificado contra la base real del cliente `prueba` sin pérdida de
+  datos. Ver DECISIONS.md ADR-017 — responsable: LLM.
 
 ## Próximas
 

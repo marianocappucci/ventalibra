@@ -145,6 +145,15 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   por rango con top items, resumen de caja vía `libracore.db.caja`, stock
   actual con flag de stock bajo. Verificado real de punta a punta contra
   un build de producción. Ver DECISIONS.md ADR-016. **Cierra Fase 5.**
+- [x] Incidente: `dev.ventalibra.com.ar` caído (2026-07-26) — contenedor
+  con código viejo (sin el catch-all del SPA); al redeployar con el
+  código actual, crasheó por un gap real de fondo: `init_schema()` no
+  migra bases ya persistidas (`CREATE TABLE IF NOT EXISTS` es un no-op
+  sobre tablas existentes). Se construyó un mecanismo real de
+  migraciones en LibraCommerce (`v0.1.5`), verificado con 8 tests
+  nuevos y contra la base real del cliente `prueba` (rebuild +
+  reinicio, sin pérdida de datos, migración registrada en
+  `schema_migrations`). Ver DECISIONS.md ADR-017.
 - Validar con un comercio real antes de sumar promociones avanzadas,
   multi-sucursal o modo offline (ver `wiki/analyses/arquitectura-familia-libra-alcance.md`,
   "Orden de implementación").

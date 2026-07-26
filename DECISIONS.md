@@ -763,3 +763,121 @@ reemplazadas.
   a definir cuando el usuario lo priorice (ej. onboardear el primer
   cliente pagante real, Fase 4 residual como `item_prices.variant_id`,
   u otro producto de la familia).
+
+## ADR-017 — Incidente `dev.ventalibra.com.ar` caído + mecanismo real de migraciones de esquema en LibraCommerce
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: reportado por el usuario ("si entro a dev.ventalibra.com.ar
+  no me deja entrar") inmediatamente después de cerrar Fase 5 (ADR-016).
+
+### Causa inmediata
+
+`dev.ventalibra.com.ar/health` respondía 200 (API viva) pero `/`
+devolvía 404 — el contenedor `-dev` del VPS corría código viejo
+(`git log -1` mostraba el commit de la mañana, `42a4695`, sin ninguno de
+los cambios de Fase 4/frontend/back office/reportes del día), es decir
+sin la ruta catch-all del SPA que agregó ADR-014. `git pull` en el VPS
+(`42a4695` → `89fe287`, 77 archivos) y rebuild del contenedor
+solucionaba el síntoma visible — pero el rebuild expuso un problema más
+profundo.
+
+### Causa raíz
+
+Al recrear el contenedor con el código nuevo, crasheó en el arranque:
+`sqlite3.OperationalError: no such column: variant_id`. Motivo:
+`libracommerce/db/schema.py::init_schema()` usa `CREATE TABLE IF NOT
+EXISTS` para todo el esquema — que es un **no-op silencioso** si la
+tabla ya existe en el archivo. Cuando Fase 4 agregó `variant_id` a
+`stock_movements` y `sale_items` (columnas que no existían antes), esa
+sentencia nunca las agrega a una base **ya persistida** creada con el
+esquema anterior — solo a una base nueva. Invisible en todos los tests
+(siempre arrancan de `:memory:`/temporal fresca) pero rompe cualquier
+despliegue real apenas se suma una columna a una tabla existente.
+Bug latente desde que se mergeó Fase 4 (item_variants), recién
+manifestado ahora al reiniciar `-dev` con datos persistidos de antes de
+esa fase.
+
+Se preguntó al usuario si documentar el riesgo nomás o resolverlo de
+una — **decisión explícita: "Atacarlo ahora"**.
+
+### Fix inmediato (solo `-dev`, datos descartables de verificación)
+
+`docker compose down && rm -f dev-data/*.db && SECRET_KEY=... docker
+compose up -d` — recrea `-dev` desde cero, sin problema porque esos
+datos son solo de prueba, nunca de un cliente real. Verificado
+funcionando (`/` → 200, login admin/admin → 200).
+
+### Fix de fondo: mecanismo real de migraciones en LibraCommerce
+
+Nuevo módulo `libracommerce/db/migrations.py`: lista numerada de
+migraciones idempotentes (`_MIGRATIONS`), cada una verificando
+`PRAGMA table_info()` antes de tocar nada, además trackeadas en tabla
+`schema_migrations` (`version`/`name`/`applied_at`). `run_migrations(conn)`
+se invoca al final de `init_schema()` — no-op tanto en una base fresca
+(ya trae las columnas nuevas desde el `CREATE TABLE`) como en una base
+ya migrada (idempotente), y aplica el fix real en una base vieja
+genuina.
+
+- `stock_movements.variant_id`: `ALTER TABLE ADD COLUMN` simple (sin
+  CHECK multi-columna).
+- `sale_items.variant_id`: requirió el rebuild de 12 pasos recomendado
+  por la documentación de SQLite (rename → create con el esquema
+  completo deseado → `INSERT INTO ... SELECT` copiando datos con
+  `variant_id=NULL` → drop) porque el CHECK
+  `(variant_id IS NULL OR item_id IS NOT NULL)` referencia dos columnas
+  y SQLite no permite agregar un CHECK así vía `ADD COLUMN`.
+- **Bug secundario encontrado en el camino**: el `executescript()` del
+  esquema tenía `CREATE INDEX ... ON stock_movements(item_id,
+  variant_id, location_id)` como sentencia standalone (no parte del
+  `CREATE TABLE`) — eso también fallaba contra una base vieja sin
+  `variant_id`, y además **antes** de que las migraciones tuvieran
+  oportunidad de correr (crasheaba el `executescript()` entero). Se
+  movió la creación de ese índice a la migración misma.
+- 8 tests nuevos (`tests/test_migrations.py`), construyendo a mano un
+  esquema real pre-Fase-4 con datos insertados, verificando: no
+  crashea, datos preservados exactamente, columna usable, ambos CHECK
+  siguen validando, idempotencia en doble llamada, y que una base
+  fresca también registra la migración como aplicada. Suite completa:
+  89/89. LibraCommerce `v0.1.5`, VentaLibra pin bumpeado a esa versión.
+
+### Verificación contra datos reales (no solo sintética)
+
+Además de los 8 tests nuevos y de redeployar `-dev` (con datos ya
+reseteados, no probaba el camino real de migración), se decidió
+explícitamente extender la verificación al cliente `prueba` — único
+contenedor con una base persistida genuinamente anterior a Fase 4.
+**Decisión explícita del usuario: "Sí, actualizalo".**
+
+1. Backup previo de ambas bases de `prueba`
+   (`/root/backups_incidente_2026-07-26/prueba_ventalibra{,_libracore}.db.bak`)
+   antes de tocar nada — precaución, no hizo falta restaurarlo.
+2. Rebuild de la imagen base `ventalibra:latest` (`docker build --ssh
+   default=$SSH_AUTH_SOCK`, no `docker compose build` — esa imagen la
+   usan los contenedores de clientes, no `-dev`).
+3. `docker compose up -d` en `clientes/prueba/` — contenedor arrancó
+   **healthy** sin crash.
+4. Verificado desde dentro del contenedor: `schema_migrations` con la
+   fila `(1, 'add_variant_id_to_stock_movements_and_sale_items',
+   '2026-07-26 16:54:39')`, columna `variant_id` presente en
+   `sale_items` y `stock_movements`. `/health` 200, `/` sirve el SPA,
+   login admin funcionando (200).
+5. `prueba` no tenía filas en `sale_items`/`stock_movements` (cliente de
+   prueba sin transacciones reales cargadas) — la migración no tuvo
+   datos que preservar en este caso puntual, pero corrió sobre el
+   esquema real sin fallar, que era el objetivo de la verificación.
+6. `ventalibra-prueba` estuvo `Up (healthy)` corriendo la imagen vieja
+   sin interrupción durante todo el incidente — ningún impacto al
+   cliente mientras se diagnosticaba y arreglaba.
+
+### Lecciones
+
+- **Riesgo transversal**: el mismo patrón (`CREATE TABLE IF NOT
+  EXISTS` sin migraciones) puede repetirse en cualquier otro producto
+  de la familia que use LibraCommerce como motor compartido — el fix
+  vive en LibraCommerce, así que cualquier producto pineado a `>=
+  v0.1.5` ya lo tiene.
+- LibraCommerce todavía no tiene `DECISIONS.md`/`ROADMAP.md` propios
+  (solo `README.md`) — este incidente quedó documentado del lado
+  LibraCommerce solo en mensajes de commit, no en un ADR propio de ese
+  repo. Pendiente si se decide adoptar el estándar híbrido ahí también.
