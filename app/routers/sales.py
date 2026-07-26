@@ -3,6 +3,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ..modules_gate import get_module_repository
 from ..services import billing
 from ..services.customers import CustomerService
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
@@ -111,6 +112,15 @@ def add_item(sale_id: int, data: SaleItemCreate, request: Request):
 
 @router.post("/{sale_id}/confirm", response_model=SaleOut)
 async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
+    # El gating por plan corre aca adentro, no gateando todo el router:
+    # confirmar una venta (y su movimiento de caja, siempre) nunca depende
+    # del plan -- solo pedir factura sobre esa venta puntual lo hace.
+    # Mismo criterio que gestiolibra/medlibra (ver DECISIONS.md ADR-0XX de
+    # este repo): el bloqueo tiene que fallar antes de tocar nada, no a
+    # mitad de camino.
+    if data.invoice and not get_module_repository(request).is_enabled("facturacion"):
+        raise HTTPException(403, "modulo 'facturacion' no incluido en el plan actual")
+
     try:
         sale = _service(request).confirm(sale_id, location_id=data.location_id)
     except SaleNotFound:

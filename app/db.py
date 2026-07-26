@@ -17,6 +17,7 @@ def connect(db_path: str) -> sqlite3.Connection:
     init_users_schema(conn)
     init_sequences_schema(conn)
     init_party_billing_schema(conn)
+    init_modules_schema(conn)
     return conn
 
 
@@ -71,6 +72,32 @@ def init_party_billing_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    conn.commit()
+
+
+def init_modules_schema(conn: sqlite3.Connection) -> None:
+    """Tabla de modulos gateables por plan -- variante sqlite3 crudo del
+    mismo patron que Contalibra (Gestiolibra/MedLibra usan SQLAlchemy+
+    Alembic, pero VentaLibra ya es 100% sqlite3 crudo desde Fase 1).
+    Sembrada con todo habilitado -- no bloquea nada hasta que
+    plans.aplicar_plan_en_db() achica el acceso (provisioning de un
+    cliente real), mismo criterio documentado en gestiolibra/medlibra."""
+    from plans import TODOS_LOS_MODULOS
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS modulos (
+            modulo TEXT PRIMARY KEY,
+            habilitado INTEGER NOT NULL DEFAULT 1,
+            plan TEXT NOT NULL DEFAULT 'premium'
+        );
+        """
+    )
+    for modulo in sorted(TODOS_LOS_MODULOS):
+        conn.execute(
+            "INSERT OR IGNORE INTO modulos (modulo, habilitado, plan) VALUES (?, 1, 'premium')",
+            (modulo,),
+        )
     conn.commit()
 
 

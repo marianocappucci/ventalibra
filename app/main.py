@@ -7,11 +7,13 @@ from fastapi import Depends, FastAPI
 
 from . import db
 from .auth import build_session_auth, require_admin, require_staff
+from .modules_gate import require_module
 from .routers import auth as auth_router
 from .routers import billing as billing_router
 from .routers import catalog, customers, health, locations, purchasing, sales, stock, suppliers
 from .routers import users as users_router
 from .services import billing
+from .services.modules import ModuleRepository
 from .services.users import UserRepository, ensure_default_admin
 
 
@@ -25,6 +27,7 @@ def create_app(db_path: str) -> FastAPI:
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
+    app.state.modules = ModuleRepository(conn)
 
     app.include_router(health.router)
     app.include_router(auth_router.router)
@@ -33,7 +36,9 @@ def create_app(db_path: str) -> FastAPI:
     staff_or_admin = [Depends(require_staff)]
 
     app.include_router(users_router.router, dependencies=admin_only)
-    app.include_router(billing_router.router, dependencies=admin_only)
+    app.include_router(
+        billing_router.router, dependencies=admin_only + [Depends(require_module("facturacion"))],
+    )
     app.include_router(catalog.router, dependencies=staff_or_admin)
     app.include_router(locations.router, dependencies=staff_or_admin)
     app.include_router(stock.router, dependencies=staff_or_admin)
