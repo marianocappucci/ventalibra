@@ -27,6 +27,7 @@ services:
       - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
       - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
       - ENV=development
+      - DOCS_AUTH_SECRET=${DOCS_AUTH_SECRET:-}
     networks:
       - stack-net
 
