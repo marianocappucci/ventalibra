@@ -11,8 +11,8 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 - [x] Fase 2: compras (orden/recepción con orquestación de stock).
 - [x] Fase 3: caja y facturación ARCA vía LibraCore.
 - [~] Fase 5: onboarding multi-cliente (planes/gating de código,
-  infraestructura de deploy y dominio/SSL completos; falta captura de
-  plan en onboarding, frontend y reportes).
+  infraestructura de deploy, dominio/SSL y frontend MVP completos; falta
+  el resto del back office en el frontend y reportes).
 
 ## Fases
 
@@ -125,7 +125,14 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   transversal a toda la familia: no hay comando para cambiar el plan de
   un cliente ya onboardeado (`libracore.provisioning.panel_admin`), sin
   atacar por ahora.
-- [ ] Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
+- [x] Frontend (MVP, 2026-07-26): React/Vite/Tailwind/shadcn-ui (estándar
+  de la familia, mismo stack final que Gestiolibra) — login, POS de
+  venta (buscar/escanear, variantes, confirmar), catálogo (unidades,
+  items, códigos de barra, variantes). Verificado real de punta a punta
+  contra un build de producción servido por `uvicorn`. Ver DECISIONS.md
+  ADR-014. Resto del back office (compras/proveedores/clientes/config
+  ARCA/usuarios/sucursales) sigue por API directa, se suma cuando se
+  priorice.
 - [ ] Reportes de ventas, caja y stock.
 - Validar con un comercio real antes de sumar promociones avanzadas,
   multi-sucursal o modo offline (ver `wiki/analyses/arquitectura-familia-libra-alcance.md`,

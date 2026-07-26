@@ -551,3 +551,84 @@ reemplazadas.
   usuario, y tocaría `libracore` compartido, no solo este repo).
 - Sin cambios de código en este repo — corrección puramente documental.
   Ver también el ADR-009 corregido arriba.
+
+## ADR-014 — Frontend: SPA en React+Vite+Tailwind+shadcn/ui, MVP de login + POS + catálogo
+
+- Estado: aceptada
+- Fecha: 2026-07-26
+- Contexto: quedaban dos pendientes de tamaño muy distinto; el usuario
+  eligió "captura de plan" primero (ver ADR-013), y a continuación pidió
+  arrancar el frontend. Se consultaron dos decisiones antes de codificar:
+  stack (Tailwind+shadcn/ui desde el día uno vs. MVP simple con CSS
+  propio como arrancó Gestiolibra) y alcance del primer corte (login+POS
+  vs. +catálogo vs. back office completo).
+- Decisión — stack: **Tailwind+shadcn/ui desde el día uno**, el estándar
+  actual de la familia (ver `CLAUDE.md`/`AGENTS.md` del wiki, referencia
+  Gestiolibra `DECISIONS.md` ADR-019/025/026) — evita el camino que hizo
+  Gestiolibra (MVP con CSS propio, rediseño completo después). React 19 +
+  TypeScript + Vite + Tailwind v4 (`@tailwindcss/vite`, sin
+  `tailwind.config.js` separado) + componentes shadcn/ui (código fuente
+  propio en `frontend/src/components/ui/`, copiados y adaptados de
+  Gestiolibra — son primitivos genéricos sin lógica de negocio, no una
+  dependencia de npm) + TanStack Table + React Hook Form + Zod (las
+  últimas dos instaladas y listas, `DataTable` ya wireado con sorting,
+  pero esta ronda no tuvo un formulario que necesitara Zod todavía).
+- Decisión — alcance del MVP: **login + POS de venta + catálogo**
+  (alta de items/códigos/variantes) — se dejó afuera el resto del back
+  office (compras, proveedores, clientes, config ARCA, usuarios), que se
+  sigue manejando por API directa. La razón de sumar catálogo al MVP
+  (no solo login+POS, que hubiera sido el mínimo estilo Gestiolibra
+  original) fue explícita: sin eso, cargar el catálogo inicial dependía
+  de curl/Postman.
+- Decisión — auth y same-origin: mismo patrón que Gestiolibra — cookie
+  de sesión `vl_session`, proxy de Vite en dev (`vite.config.ts`, lista
+  de prefijos de la API real de este repo: `/auth`, `/catalog`,
+  `/pricing`, `/locations`, `/stock`, `/sales`, `/suppliers`,
+  `/purchase-orders`, `/purchase-receipts`, `/customers`, `/users`,
+  `/config`, `/health`), build servido desde el mismo proceso FastAPI en
+  producción (`app/asgi.py`: mount `/assets` + catch-all `GET
+  /{full_path:path}` → `index.html`, registrado *después* de que
+  `create_app()` monta todos los routers de la API, para que estos
+  tengan prioridad).
+- **POS** (`src/pages/Pos.tsx`): buscar por nombre o escanear un código
+  de barras (`GET /catalog/items/scan`) — si el código no resuelve, cae
+  a buscar por nombre (`GET /catalog/items?search=`) y muestra una
+  lista para elegir. Si el item tiene variantes, exige elegir una antes
+  de agregar (`GET /catalog/items/{id}/variants`). Crea la venta
+  borrador recién al agregar la primera línea (`POST /sales` lazy, no al
+  entrar a la página). Confirmar pide sucursal/depósito + medio de pago
+  (lista fija: efectivo/débito/crédito/transferencia/Mercado Pago, sin
+  restricción del backend) + checkbox opcional de factura.
+- **Catálogo** (`src/pages/Catalogo.tsx`): alta rápida de unidades
+  (con toggle "se vende por fracción" para productos pesables — ya
+  soportado desde Fase 1, ver `wiki/entities/libracommerce.md`), alta de
+  items, tabla con `DataTable`/TanStack Table, y un `Dialog` por item
+  ("Gestionar") con dos secciones para dar de alta códigos de barra
+  (con selector de `code_type`) y variantes (SKU + nombre).
+- Docker: `Dockerfile` suma un stage `frontend-build` (`node:20-slim`,
+  mismo patrón que Gestiolibra) — el resultado se hornea en
+  `/opt/frontend-dist`, **fuera** de `/app`, porque el `docker-compose.yml`
+  de dev bind-montea `./:/app` entero para el `--reload` de Python, lo
+  que taparía cualquier build copiado dentro de `/app` con el checkout
+  del host (sin `frontend/dist`, gitignoreado). CI **no** se tocó — ni
+  siquiera Gestiolibra (la referencia) compila el frontend en su propio
+  CI todavía, así que no se introdujo esa inconsistencia de pasada.
+- **Verificado real de punta a punta**, no solo `npm run build`: el
+  proxy de Vite (`localhost:5173`) quedó bloqueado por el chequeo de
+  host del entorno de verificación de esta sesión (no un bug de la app:
+  `localhost:8000`, el backend plano sin ese chequeo, sí fue alcanzable
+  y sirvió el HTML correctamente) — se verificó entonces contra un
+  **build de producción real** servido por `uvicorn app.asgi:app`, que
+  es exactamente el mismo artefacto que corre en el VPS. Flujo probado
+  en el navegador real: login → crear unidad → crear item (Remera,
+  $5.000) → agregar código de barras → agregar variante (M/Azul) →
+  volver al POS → escanear ese código → elegir la variante → agregar a
+  la venta (línea muestra "Remera (M / Azul)") → confirmar (sin
+  factura) → verificado por API que el stock de esa variante puntual
+  bajó a -1 (sin stock previo cargado, comportamiento esperado).
+- `npm run build` (`tsc -b && vite build`) sin errores de tipos.
+  Suite de tests del backend sin cambios (62/62), `compileall` limpio.
+- Pendiente (fuera de esta ronda): resto del back office
+  (compras/proveedores/clientes/config ARCA/usuarios/sucursales) y
+  reportes — se suman cuando el usuario los priorice, un corte a la vez,
+  mismo criterio que el resto de Fase 5.

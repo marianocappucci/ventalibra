@@ -45,10 +45,15 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 - [x] Corrección: "captura de plan en el onboarding" no era un pendiente
   real — `crear_cliente()`/`main()` ya lo hacían. Ver DECISIONS.md
   ADR-013 — responsable: LLM.
+- [x] Frontend (MVP): React/Vite/Tailwind/shadcn-ui — login, POS de
+  venta (buscar/escanear/variantes/confirmar), catálogo (unidades,
+  items, códigos, variantes). Verificado real de punta a punta contra
+  un build de producción. Ver DECISIONS.md ADR-014 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Frontend React/Vite/Tailwind/shadcn-ui (estándar de la familia).
+- [ ] Frontend: resto del back office (compras, proveedores, clientes,
+  config ARCA, usuarios, sucursales).
 - [ ] Reportes de ventas, caja y stock.
 
 ## Bloqueadas

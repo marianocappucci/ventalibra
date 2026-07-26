@@ -75,3 +75,16 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   `default_sale_price`; stock trackeado independiente por variante). 17
   tests nuevos (62 en total) + smoke end-to-end real contra `uvicorn`.
   Ver DECISIONS.md ADR-012.
+- Corrección de documentación: "captura de plan en el onboarding" no era
+  un pendiente real — `scripts/nuevo_cliente.py` siempre lo preguntó y
+  aplicó (default `basico`). Sin cambios de código. Ver DECISIONS.md
+  ADR-013.
+- Frontend (MVP): SPA React 19+TypeScript+Vite+Tailwind v4+shadcn/ui
+  (mismo stack final que Gestiolibra). Login, POS de venta (buscar por
+  nombre o escanear código de barras, elegir variante, agregar/confirmar
+  con sucursal/medio de pago/factura opcional), catálogo (alta de
+  unidades/items/códigos de barra/variantes). `app/asgi.py` sirve el
+  build de producción (mismo patrón que Gestiolibra). Verificado real de
+  punta a punta contra un build de producción servido por `uvicorn`
+  (login → catálogo → escaneo → venta con variante → confirmación →
+  stock de esa variante actualizado). Ver DECISIONS.md ADR-014.
