@@ -19,9 +19,12 @@ from .services.users import UserRepository, ensure_default_admin
 
 def create_app(db_path: str) -> FastAPI:
     conn = db.connect(db_path)
-    user_repository = UserRepository(conn)
-    ensure_default_admin(user_repository)
+    # libracore.db.core debe configurarse antes de que UserRepository (que
+    # ahora delega en libracore.db.usuarios, ver services/users.py) haga su
+    # primera consulta -- orden invertido respecto de antes de la migracion.
     billing.configure(os.environ.get("VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"))
+    user_repository = UserRepository()
+    ensure_default_admin(user_repository)
 
     app = FastAPI(title="VentaLibra")
     app.state.conn = conn

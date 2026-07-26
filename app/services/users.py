@@ -1,106 +1,104 @@
-"""Usuarios propios de VentaLibra (no pertenecen al dominio de LibraCommerce).
+"""Users: delegates storage to libracore.db.usuarios (shared with
+Contalibra/Restolibra/Gestiolibra/MedLibra, ver wiki/entities/ventalibra.md
+sección "Unificación de login").
 
-Sobre sqlite3 crudo, misma conexion que el resto de la app (ver
-DECISIONS.md ADR-002/ADR-003).
+VentaLibra ya tenía una segunda base SQLite configurada para libracore.db
+(facturación/caja, ver app/services/billing.py) -- esa misma conexión ya
+corre `init_core_schema()`, que crea la tabla `usuarios` aunque nadie la
+usara todavía (guardaba sus propios usuarios en la base principal, tabla
+`users`, ver ADR-002/ADR-003 del repo). Esta clase es un adaptador fino
+que traduce el contrato externo ya establecido (id/username/name/role/
+active) al esquema real de libracore (id int autoincrement/username/
+nombre/email/role/activo) -- ninguna otra parte de la app (auth.py,
+routers/users.py) necesitó cambiar.
 """
 import os
-import sqlite3
-import uuid
 
-from .. import security
+from libracore.db import usuarios as db
 
 ROLES = ("admin", "staff")
 
 
-def _to_dict(row: sqlite3.Row) -> dict:
+def _to_dict(row: dict) -> dict:
     return {
-        "id": row["id"],
+        "id": str(row["id"]),
         "username": row["username"],
-        "name": row["name"],
+        "name": row["nombre"],
         "role": row["role"],
-        "active": bool(row["active"]),
+        "active": bool(row["activo"]),
     }
 
 
 class UserRepository:
-    def __init__(self, conn: sqlite3.Connection):
-        self._conn = conn
-        self._conn.row_factory = sqlite3.Row
+    """Adaptador sobre libracore.db.usuarios, con el mismo contrato público
+    que tenía la implementación sqlite3 propia anterior."""
 
     def create(self, username: str, name: str, password: str, role: str) -> dict:
         if role not in ROLES:
             raise ValueError(f"invalid role: {role!r} (expected one of {ROLES})")
-        user_id = str(uuid.uuid4())
-        self._conn.execute(
-            "INSERT INTO users (id, username, name, password_hash, role, active) "
-            "VALUES (?, ?, ?, ?, ?, 1)",
-            (user_id, username, name, security.hash_password(password), role),
-        )
-        self._conn.commit()
-        return self.get_by_id(user_id)
+        uid = db.create_usuario(username=username, nombre=name, email="", password=password, role=role)
+        return self.get_by_id(str(uid))
 
     def get_by_id(self, user_id: str) -> dict | None:
-        row = self._conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        try:
+            uid = int(user_id)
+        except ValueError:
+            return None
+        row = db.get_usuario_by_id(uid)
         return _to_dict(row) if row else None
 
     def get_by_username(self, username: str) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
+        row = db.get_usuario_by_username(username)
         return _to_dict(row) if row else None
 
     def list(self) -> list[dict]:
-        rows = self._conn.execute("SELECT * FROM users ORDER BY username").fetchall()
-        return [_to_dict(row) for row in rows]
+        return [_to_dict(row) for row in db.get_all_usuarios()]
 
     def update(self, user_id: str, name: str, role: str, active: bool) -> dict:
         if role not in ROLES:
             raise ValueError(f"invalid role: {role!r} (expected one of {ROLES})")
-        if self.get_by_id(user_id) is None:
-            raise KeyError(user_id)
-        self._conn.execute(
-            "UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?",
-            (name, role, int(active), user_id),
-        )
-        self._conn.commit()
+        uid = self._require_uid(user_id)
+        db.update_usuario(uid, nombre=name, email="", role=role, activo=int(active))
         return self.get_by_id(user_id)
 
     def update_password(self, user_id: str, new_password: str) -> None:
-        if self.get_by_id(user_id) is None:
-            raise KeyError(user_id)
-        self._conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (security.hash_password(new_password), user_id),
-        )
-        self._conn.commit()
+        uid = self._require_uid(user_id)
+        db.update_usuario_password(uid, new_password)
 
     def delete(self, user_id: str) -> None:
-        if self.get_by_id(user_id) is None:
+        uid = self._require_uid(user_id)
+        db.delete_usuario(uid)
+
+    def _require_uid(self, user_id: str) -> int:
+        """Convierte el id de la URL a int y confirma que exista -- un id no
+        numérico (ej. un UUID del esquema viejo que ya no puede existir) es
+        indistinguible de "no encontrado" para quien llama."""
+        try:
+            uid = int(user_id)
+        except ValueError:
             raise KeyError(user_id)
-        self._conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        self._conn.commit()
+        if db.get_usuario_by_id(uid) is None:
+            raise KeyError(user_id)
+        return uid
 
     def check_credentials(self, username: str, password: str) -> dict | None:
-        """Devuelve el usuario si las credenciales son validas y esta activo.
-
-        Siempre corre verify_password (contra DUMMY_PASSWORD_HASH si el
-        username no existe o esta inactivo) para no filtrar por tiempo de
-        respuesta si un username existe.
-        """
-        row = self._conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
-        active = row is not None and bool(row["active"])
-        stored_hash = row["password_hash"] if active else security.DUMMY_PASSWORD_HASH
-        password_ok = security.verify_password(stored_hash, password)
-        return _to_dict(row) if (active and password_ok) else None
+        """Devuelve el usuario si las credenciales son válidas y está activo
+        (libracore.db.usuarios.check_usuario_credentials ya filtra activo=1
+        y corre contra un hash señuelo si el username no existe, mismo
+        criterio anti-timing-attack que tenía esta clase antes)."""
+        row = db.check_usuario_credentials(username, password)
+        return _to_dict(row) if row else None
 
 
 def ensure_default_admin(repo: UserRepository) -> None:
-    """Crea el admin inicial si la tabla users todavia esta vacia.
+    """Crea el admin inicial si la tabla usuarios todavía está vacía.
 
-    Mismo criterio fail-closed que gestiolibra/medlibra: sin
-    VENTALIBRA_ADMIN_PASSWORD la app no arranca en produccion.
+    Mismo criterio fail-closed que tenía esta función antes de delegar en
+    libracore.db.usuarios: sin VENTALIBRA_ADMIN_PASSWORD la app no arranca
+    en producción -- a diferencia de libracore.db.usuarios.ensure_admin_user()
+    (usada tal cual por Contalibra/Restolibra), que en ese caso genera una
+    contraseña aleatoria y solo loguea un warning. Ese comportamiento no se
+    adopta acá para no relajar la postura de seguridad ya establecida.
     """
     if repo.list():
         return
