@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Tailwind v4 no escanea node_modules por defecto -- libra-ui (extraido
+   2026-07-26, ver wiki/analyses/auditoria-duplicacion-familia-libra.md)
+   usa clases de utilidad en su propio JSX, hace falta esto para que el
+   motor las genere. */
+@source "../node_modules/libra-ui";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

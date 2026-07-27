@@ -3,10 +3,28 @@
 # Stage separado para el frontend (React+Vite+Tailwind+shadcn, ver
 # DECISIONS.md ADR-014): node no hace falta en la imagen final, solo el
 # resultado del build (frontend/dist).
+#
+# frontend/package.json referencia libra-ui (paquete de frontend
+# compartido con Gestiolibra/MedLibra, extraido 2026-07-26 -- ver
+# wiki/analyses/auditoria-duplicacion-familia-libra.md) via git+https,
+# mismo motivo que libracore/libracommerce en el stage de Python de mas
+# abajo. Este stage node:20-slim es independiente, necesita su propia
+# copia de git+openssh-client + deploy key de solo lectura
+# (`id_ed25519_libra_ui` en el VPS, mismo agente multi-key
+# `agent-multi-libra.sock`).
 FROM node:20-slim AS frontend-build
 WORKDIR /frontend
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p -m 0700 /root/.ssh \
+    && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null \
+    && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMDQro/91Fvl+c2j1m57K+yN4ZkIGD4P+qp0q1UBPE4V deploy-key-libra-ui-readonly\n' > /root/.ssh/id_libra_ui.pub \
+    && printf 'Host github-libra-ui\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libra_ui.pub\n  IdentitiesOnly yes\n' > /root/.ssh/config \
+    && chmod 600 /root/.ssh/config /root/.ssh/id_libra_ui.pub
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN --mount=type=ssh \
+    git config --global url."ssh://git@github-libra-ui/marianocappucci/libra-ui.git".insteadOf "https://github.com/marianocappucci/libra-ui.git" \
+    && npm ci \
+    && git config --global --unset url."ssh://git@github-libra-ui/marianocappucci/libra-ui.git".insteadOf
 COPY frontend/ .
 RUN npm run build
 
