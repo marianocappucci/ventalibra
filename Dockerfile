@@ -10,21 +10,19 @@
 # mismo motivo que libracore/libracommerce en el stage de Python de mas
 # abajo. Este stage node:20-slim es independiente, necesita su propia
 # copia de git+openssh-client + deploy key de solo lectura
-# (`id_ed25519_libra_ui` en el VPS, mismo agente multi-key
-# `agent-multi-libra.sock`).
+# (`id_ed25519_libra_ui` en el VPS). Mount SSH con id propio (no el
+# "default" generico) -- mismo patron que Contalibra/Restolibra:
+# docker_build_ssh_args() (libracore >= v0.23.0) le pasa a este id su
+# propia key dedicada, sin ambiguedad de que identidad ofrece GitHub.
 FROM node:20-slim AS frontend-build
 WORKDIR /frontend
 RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p -m 0700 /root/.ssh \
-    && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null \
-    && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMDQro/91Fvl+c2j1m57K+yN4ZkIGD4P+qp0q1UBPE4V deploy-key-libra-ui-readonly\n' > /root/.ssh/id_libra_ui.pub \
-    && printf 'Host github-libra-ui\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libra_ui.pub\n  IdentitiesOnly yes\n' > /root/.ssh/config \
-    && chmod 600 /root/.ssh/config /root/.ssh/id_libra_ui.pub
+RUN mkdir -p -m 0700 /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null
 COPY frontend/package.json frontend/package-lock.json ./
-RUN --mount=type=ssh \
-    git config --global url."ssh://git@github-libra-ui/marianocappucci/libra-ui.git".insteadOf "https://github.com/marianocappucci/libra-ui.git" \
-    && npm ci \
-    && git config --global --unset url."ssh://git@github-libra-ui/marianocappucci/libra-ui.git".insteadOf
+RUN --mount=type=ssh,id=libra-ui,target=/tmp/ssh-libra-ui.sock \
+    SSH_AUTH_SOCK=/tmp/ssh-libra-ui.sock \
+    sh -c 'git config --global url."ssh://git@github.com/marianocappucci/libra-ui.git".insteadOf "https://github.com/marianocappucci/libra-ui.git" && \
+           npm ci'
 COPY frontend/ .
 RUN npm run build
 
