@@ -45,19 +45,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl git ope
 # `pip install .` necesita resolver AMBAS dependencias en un solo comando,
 # asi que no alcanza con un SSH_AUTH_SOCK global (esa variable solo puede
 # apuntar a un socket a la vez). Cada dependencia usa su propio alias de
-# Host, seleccionando la identidad via `IdentityAgent` (el socket del
-# mount con ese id, que ya trae una sola key) en vez de `IdentityFile` --
-# mismo fix que Gestiolibra/MedLibra (ver DECISIONS.md de gestiolibra
-# ADR-014 para el hallazgo original): el reenvio del agente multi-key
-# `default` no era compatible con `docker_build_ssh_args()`, que monta una
-# key de archivo unica por id -- y ademas `_requiere_libracommerce()`
-# nunca detectaba esta dependencia (declarada en pyproject.toml, no en
+# Host: `IdentityAgent` fija DE QUE socket sale la identidad (el mount
+# con ese id, que ya trae una sola key), pero `IdentitiesOnly yes` por si
+# solo NO alcanza para seleccionarla -- sin un `IdentityFile` explicito,
+# ssh ofrece los paths de identidad default (id_rsa/id_ecdsa/...), que no
+# existen en la imagen, y nunca llega a preguntarle nada al agente. Mismo
+# fix que Gestiolibra/MedLibra (ver DECISIONS.md de gestiolibra ADR-014
+# para el hallazgo original): el reenvio del agente multi-key `default`
+# no era compatible con `docker_build_ssh_args()`, que monta una key de
+# archivo unica por id -- y ademas `_requiere_libracommerce()` nunca
+# detectaba esta dependencia (declarada en pyproject.toml, no en
 # requirements.txt), asi que ni siquiera se pasaba el `--ssh
 # libracommerce=...` (fix en libracore v0.25.0).
 RUN mkdir -p -m 0700 /root/.ssh \
     && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null \
-    && printf 'Host github-libracore\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityAgent /tmp/ssh-libracore.sock\n  IdentitiesOnly yes\n\nHost github-libracommerce\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityAgent /tmp/ssh-libracommerce.sock\n  IdentitiesOnly yes\n' > /root/.ssh/config \
-    && chmod 600 /root/.ssh/config
+    && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7oB3H2Rd+xsO/qCUk5aCA14/5GaQFMSh1U0ErJjG55 vps-donweb-libracore-deploy-key\n' > /root/.ssh/id_libracore.pub \
+    && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO04BM5s9T3h96pW91Bu9rf64DDztmJgxT9cN1pjsLla deploy-key-libracommerce-readonly\n' > /root/.ssh/id_libracommerce.pub \
+    && printf 'Host github-libracore\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracore.pub\n  IdentityAgent /tmp/ssh-libracore.sock\n  IdentitiesOnly yes\n\nHost github-libracommerce\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracommerce.pub\n  IdentityAgent /tmp/ssh-libracommerce.sock\n  IdentitiesOnly yes\n' > /root/.ssh/config \
+    && chmod 600 /root/.ssh/config /root/.ssh/id_libracore.pub /root/.ssh/id_libracommerce.pub
 
 COPY . .
 # Horneado FUERA de /app a proposito (mismo motivo que gestiolibra, ver su
