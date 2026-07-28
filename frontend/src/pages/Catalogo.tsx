@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { DataTable, sortableHeader } from '@/components/data-table'
+import { Barcode } from 'lucide-react'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -330,17 +331,24 @@ export function Catalogo() {
     }
   }
 
+  // Anchos fijos al contenido real + Nombre elastica, mismo patron que el
+  // resto de la familia. La columna de acciones no declara ancho: la mide
+  // `libra-ui` sola (ver wiki/entities/libra-ui.md v0.4.0).
   const columns = useMemo<ColumnDef<CatalogItem>[]>(() => [
-    { accessorKey: 'name', header: sortableHeader('Nombre'), cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
-    { accessorKey: 'unit_code', header: 'Unidad' },
+    { accessorKey: 'name', header: sortableHeader('Nombre'), size: 240, minSize: 140, meta: { stretch: true }, cell: ({ row }) => <span className="block truncate font-medium" title={row.original.name}>{row.original.name}</span> },
+    { accessorKey: 'unit_code', header: 'Unidad', size: 100, minSize: 80 },
     {
       accessorKey: 'default_sale_price',
       header: 'Precio',
+      size: 120,
+      minSize: 100,
       cell: ({ row }) => `$${money(row.original.default_sale_price)}`,
     },
     {
       accessorKey: 'active',
       header: 'Estado',
+      size: 100,
+      minSize: 85,
       cell: ({ row }) => (
         <Badge variant={row.original.active ? 'default' : 'outline'}>
           {row.original.active ? 'Activo' : 'Inactivo'}
@@ -349,10 +357,13 @@ export function Catalogo() {
     },
     {
       id: 'actions',
-      header: () => <div className="text-right">Códigos / variantes</div>,
+      // El header decia "Códigos / variantes" (era el unico de la familia que
+      // no decia "Acciones"). Al unificarlo, lo que ese rotulo explicaba pasa
+      // al tooltip del boton para no perder el significado.
+      header: () => <div className="text-right">Acciones</div>,
       cell: ({ row }) => (
-        <div className="flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => setDetailItem(row.original)}>Gestionar</Button>
+        <div className="flex justify-end gap-1">
+          <Button size="icon" variant="outline" title="Gestionar códigos y variantes" aria-label="Gestionar códigos y variantes" onClick={() => setDetailItem(row.original)}><Barcode /></Button>
         </div>
       ),
     },
