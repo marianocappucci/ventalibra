@@ -2,8 +2,23 @@ services:
   ventalibra-dev:
     build:
       context: .
+      # Un id SSH por paquete privado, igual que los
+      # `--mount=type=ssh,id=...` del Dockerfile y que
+      # `libracore.provisioning.docker_build_ssh_args()` para el build de
+      # producción: GitHub autentica toda la conexión con la primera deploy
+      # key que le ofrecen, así que una sola key no alcanza.
+      #
+      # Declarar sólo `default` (como estaba hasta el 2026-07-28) hacía
+      # fallar `docker compose build` al clonar libracommerce/libra-ui, así
+      # que la imagen de dev no se podía reconstruir y quedó congelada
+      # mientras el bind mount `./:/app` seguía trayendo código nuevo —
+      # hasta que ese código importó un símbolo que la imagen vieja no
+      # tenía y uvicorn dejó de levantar el worker.
       ssh:
         - default=${LIBRACORE_SSH_KEY:-~/.ssh/id_ed25519_libracore}
+        - libracore=${LIBRACORE_SSH_KEY:-~/.ssh/id_ed25519_libracore}
+        - libracommerce=${LIBRACOMMERCE_SSH_KEY:-~/.ssh/id_ed25519_libracommerce}
+        - libra-ui=${LIBRA_UI_SSH_KEY:-~/.ssh/id_ed25519_libra_ui}
     container_name: ventalibra-dev
     restart: unless-stopped
     mem_limit: 768m
