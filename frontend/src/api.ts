@@ -109,11 +109,22 @@ export type Factura = {
   cae: string
 } | null
 
+export type SalePayment = {
+  medio: string
+  monto: string
+  // Solo en efectivo: cuanto entrego el cliente. En los demas medios va null.
+  recibido: string | null
+  vuelto: string
+  referencia: string
+}
+
 export type Sale = {
   id: number
   number: string
   status: SaleStatus
   items: SaleItem[]
+  pagos: SalePayment[]
+  vuelto_total: string
   subtotal: string
   discount_total: string
   tax_total: string
