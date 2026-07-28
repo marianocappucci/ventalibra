@@ -1,3 +1,11 @@
+def _abrir_turno(client, monto_inicial=0):
+    """Sin turno abierto no se puede cobrar (409): toda venta tiene que caer
+    dentro de un turno para que el arqueo cierre."""
+    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+    assert abierto.status_code == 200, abierto.text
+    return abierto.json()["turno"]["id"]
+
+
 def _make_item(client, name="Fideos 500g", price="1500.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     created = client.post(
@@ -22,6 +30,7 @@ def test_full_pos_flow_confirms_sale_and_decrements_stock(admin_client):
         json={"item_id": item_id, "location_id": location_id, "quantity_delta": "20"},
     )
 
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={"branch_id": 1, "register_id": 1})
     assert draft.status_code == 200, draft.text
     sale_id = draft.json()["id"]
@@ -52,6 +61,7 @@ def test_confirm_without_items_fails(admin_client):
 
 
 def test_cannot_add_item_after_confirm(admin_client):
+    _abrir_turno(admin_client)
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
     admin_client.post(
@@ -80,6 +90,7 @@ def test_get_unknown_sale_404(admin_client):
 
 
 def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
+    _abrir_turno(admin_client)
     admin_client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     item = admin_client.post(
         "/catalog/items", json={"name": "Remera", "unit_code": "u", "default_sale_price": "5000.00"},
@@ -165,6 +176,7 @@ def test_staff_can_run_full_pos_flow(admin_client, staff_client):
         json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
     )
 
+    _abrir_turno(staff_client)
     draft = staff_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     staff_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
@@ -220,6 +232,7 @@ def test_remove_last_item_leaves_empty_sale_that_cannot_be_confirmed(admin_clien
     assert vacia.json()["items"] == []
     assert float(vacia.json()["total"]) == 0.0
 
+    _abrir_turno(admin_client)
     rechazada = admin_client.post(
         f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
     )
@@ -280,6 +293,7 @@ def test_cannot_edit_a_confirmed_sale(admin_client):
         "/stock/adjustments",
         json={"item_id": item_id, "location_id": location_id, "quantity_delta": "10"},
     )
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
@@ -295,7 +309,9 @@ def test_cannot_edit_a_confirmed_sale(admin_client):
 
 
 def _venta_lista(client, total_esperado="3000.00"):
-    """Venta en borrador con stock suficiente, lista para cobrar."""
+    """Venta en borrador con stock suficiente y turno abierto, lista para
+    cobrar."""
+    _abrir_turno(client)
     item_id = _make_item(client)
     location_id = _make_location(client)
     client.post(
@@ -424,3 +440,116 @@ def test_mixed_payment_creates_one_caja_movement_per_method(admin_client):
     assert len(nuevos) == 2
     assert sorted(m["medio_pago"] for m in nuevos) == ["efectivo", "tarjeta_debito"]
     assert sorted(float(m["monto"]) for m in nuevos) == [1000.0, 2000.0]
+
+
+# --- turno de caja -------------------------------------------------------
+
+
+def test_cobrar_sin_turno_abierto_es_rechazado(admin_client):
+    """La regla que sostiene el arqueo: una venta fuera de turno seria plata
+    sin control de caja."""
+    item_id = _make_item(admin_client)
+    location_id = _make_location(admin_client)
+    admin_client.post(
+        "/stock/adjustments",
+        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
+    )
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
+
+    rechazada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "medio_pago": "efectivo"},
+    )
+
+    assert rechazada.status_code == 409
+    assert "turno" in rechazada.json()["detail"]
+
+
+def test_no_se_puede_abrir_un_turno_sobre_otro(admin_client):
+    _abrir_turno(admin_client)
+    segundo = admin_client.post("/shifts/open", json={"monto_inicial": 100})
+    assert segundo.status_code == 409
+
+
+def test_turno_actual_arranca_vacio_y_despues_reporta_el_abierto(admin_client):
+    assert admin_client.get("/shifts/current").json()["turno"] is None
+    tid = _abrir_turno(admin_client, monto_inicial=5000)
+    actual = admin_client.get("/shifts/current").json()
+    assert actual["turno"]["id"] == tid
+    assert actual["turno"]["estado"] == "abierto"
+    assert actual["resumen"]["total_ventas"] == 0
+
+
+def test_el_cobro_queda_dentro_del_turno_y_suma_al_arqueo(admin_client):
+    """El arqueo se cuenta sobre la caja: cada medio entra por separado."""
+    sale_id, location_id = _venta_lista(admin_client)
+    tid = admin_client.get("/shifts/current").json()["turno"]["id"]
+
+    admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={
+            "location_id": location_id,
+            "pagos": [
+                {"medio": "efectivo", "monto": "1000.00", "recibido": "2000.00"},
+                {"medio": "tarjeta_debito", "monto": "2000.00"},
+            ],
+        },
+    )
+
+    resumen = admin_client.get(f"/shifts/{tid}/summary").json()["resumen"]
+    assert resumen["pagos_por_medio"] == {"efectivo": 1000.0, "tarjeta_debito": 2000.0}
+    # el vuelto NO entra a la caja: entraron 1000 de efectivo, no 2000
+    assert resumen["efectivo_ventas"] == 1000.0
+    assert resumen["total_ventas"] == 3000.0
+
+
+def test_cierre_calcula_esperado_y_conserva_la_diferencia(admin_client):
+    sale_id, location_id = _venta_lista(admin_client)
+    tid = admin_client.get("/shifts/current").json()["turno"]["id"]
+    admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "pagos": [{"medio": "efectivo", "monto": "3000.00"}]},
+    )
+
+    cerrado = admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 2900.0})
+
+    assert cerrado.status_code == 200, cerrado.text
+    turno = cerrado.json()["turno"]
+    assert turno["estado"] == "cerrado"
+    assert turno["monto_esperado_cierre"] == 3000.0
+    assert turno["monto_declarado_cierre"] == 2900.0
+    # el resumen viene con la respuesta: despues de cerrar ya no se puede
+    # reconstruir en pantalla
+    assert cerrado.json()["resumen"]["efectivo_ventas"] == 3000.0
+
+
+def test_no_se_cierra_dos_veces(admin_client):
+    tid = _abrir_turno(admin_client)
+    assert admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0}).status_code == 200
+    repetido = admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0})
+    assert repetido.status_code == 409
+
+
+def test_despues_de_cerrar_no_se_puede_cobrar_hasta_abrir_otro(admin_client):
+    sale_id, location_id = _venta_lista(admin_client)
+    tid = admin_client.get("/shifts/current").json()["turno"]["id"]
+    admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0})
+
+    rechazada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "medio_pago": "efectivo"},
+    )
+    assert rechazada.status_code == 409
+
+    _abrir_turno(admin_client)
+    cobrada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "medio_pago": "efectivo"},
+    )
+    assert cobrada.status_code == 200, cobrada.text
+
+
+def test_cerrar_un_turno_inexistente_es_404(admin_client):
+    assert admin_client.post("/shifts/9999/close", json={"monto_declarado": 0}).status_code == 404

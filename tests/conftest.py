@@ -46,3 +46,4 @@ def staff_client(admin_client: TestClient):
         response = client.post("/auth/login", json={"username": "staff-1", "password": "staff-pass"})
         assert response.status_code == 200, response.text
         yield client
+

@@ -7,6 +7,7 @@ from ..modules_gate import get_module_repository
 from ..services import billing
 from ..services.customers import CustomerService
 from libracommerce.domain.sales import SalePayment
+from libracore.db import turnos as db_turnos
 
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
 
@@ -211,6 +212,14 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
     if not payments and not data.medio_pago:
         raise HTTPException(422, "hay que indicar `medio_pago` o `pagos`")
 
+    # Sin turno abierto no se cobra: una venta fuera de turno es plata que
+    # queda afuera del arqueo, y despues no hay forma de explicar la
+    # diferencia de caja. Se chequea ANTES de confirmar para no dejar la venta
+    # a medio camino (mismo criterio que el gating por plan de arriba).
+    turno = db_turnos.get_turno_activo_any()
+    if turno is None:
+        raise HTTPException(409, "no hay un turno de caja abierto")
+
     try:
         sale = _service(request).confirm(
             sale_id, location_id=data.location_id, payments=payments,
@@ -243,11 +252,11 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
         for pago in sale.payments:
             billing.record_sale_payment(
                 sale, pago.method, f"{referencia}-{pago.method}",
-                factura_id=factura_id, monto=pago.amount,
+                factura_id=factura_id, monto=pago.amount, turno_id=turno["id"],
             )
     else:
         billing.record_sale_payment(
-            sale, data.medio_pago, referencia, factura_id=factura_id,
+            sale, data.medio_pago, referencia, factura_id=factura_id, turno_id=turno["id"],
         )
 
     out = _to_sale_out(sale)

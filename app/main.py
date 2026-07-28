@@ -10,7 +10,10 @@ from .auth import build_session_auth, require_admin, require_staff
 from .modules_gate import require_module
 from .routers import auth as auth_router
 from .routers import billing as billing_router
-from .routers import catalog, customers, health, locations, pricing, purchasing, reports, sales, stock, suppliers
+from .routers import (
+    catalog, customers, health, locations, pricing, purchasing, reports, sales, shifts,
+    stock, suppliers,
+)
 from .routers import users as users_router
 from .services import billing
 from .services.modules import ModuleRepository
@@ -47,6 +50,7 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(locations.router, dependencies=staff_or_admin)
     app.include_router(stock.router, dependencies=staff_or_admin)
     app.include_router(sales.router, dependencies=staff_or_admin)
+    app.include_router(shifts.router, dependencies=staff_or_admin)
     app.include_router(suppliers.router, dependencies=staff_or_admin)
     app.include_router(purchasing.router, dependencies=staff_or_admin)
     app.include_router(customers.router, dependencies=staff_or_admin)

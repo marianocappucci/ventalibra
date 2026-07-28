@@ -131,7 +131,7 @@ async def invoice_sale(customer_billing: dict | None, sale, referencia: str) -> 
 
 def record_sale_payment(
     sale, medio_pago: str, referencia: str, factura_id: int | None = None,
-    monto: Decimal | None = None,
+    monto: Decimal | None = None, turno_id: int | None = None,
 ) -> None:
     """Movimiento de caja para una venta confirmada -- siempre, factures o
     no. `create_caja_movimiento` es idempotente por (referencia,
@@ -144,4 +144,5 @@ def record_sale_payment(
         date.today().isoformat(), "ingreso", f"Venta {sale.number}",
         Decimal(str(sale.total)) if monto is None else Decimal(str(monto)),
         referencia=referencia, factura_id=factura_id, medio_pago=medio_pago,
+        turno_id=turno_id,
     )

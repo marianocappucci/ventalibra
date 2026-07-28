@@ -1,3 +1,12 @@
+
+def _abrir_turno(client, monto_inicial=0):
+    """Sin turno abierto, confirmar una venta da 409: una venta fuera de
+    turno seria plata sin control de caja."""
+    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+    assert abierto.status_code == 200, abierto.text
+    return abierto.json()["turno"]["id"]
+
+
 def _make_item(client, name="Fideos 500g", price="1500.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     created = client.post(
@@ -31,6 +40,7 @@ def test_confirm_sale_without_invoice_ignores_disabled_module(admin_client):
     _disable(admin_client, "facturacion")
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
@@ -45,6 +55,7 @@ def test_confirm_sale_with_invoice_requires_facturacion_module(admin_client):
     _disable(admin_client, "facturacion")
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
@@ -58,6 +69,7 @@ def test_confirm_sale_with_invoice_requires_facturacion_module(admin_client):
 def test_confirm_sale_with_invoice_succeeds_when_module_enabled(admin_client):
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={})
     sale_id = draft.json()["id"]
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
@@ -77,5 +89,6 @@ def test_catalog_stock_and_sales_are_never_gated(admin_client):
         "/stock/adjustments",
         json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
     ).status_code == 200
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={})
     assert draft.status_code == 200

@@ -1,6 +1,14 @@
 from libracore.db import caja as db_caja
 
 
+def _abrir_turno(client, monto_inicial=0):
+    """Sin turno abierto, confirmar una venta da 409: una venta fuera de
+    turno seria plata sin control de caja."""
+    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+    assert abierto.status_code == 200, abierto.text
+    return abierto.json()["turno"]["id"]
+
+
 def _make_item(client, name="Fideos 500g", price="1500.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     created = client.post(
@@ -18,6 +26,7 @@ def _make_location(client, name="Sucursal 1"):
 
 
 def _confirmed_sale(client, item_id, location_id, quantity="1", **confirm_extra):
+    _abrir_turno(client)
     draft = client.post("/sales", json={})
     sale_id = draft.json()["id"]
     client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": quantity})
@@ -74,6 +83,7 @@ def test_confirm_with_invoice_and_responsable_inscripto_customer_bills_type_a(ad
 
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
+    _abrir_turno(admin_client)
     draft = admin_client.post("/sales", json={"customer_party_id": customer_id})
     sale_id = draft.json()["id"]
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
