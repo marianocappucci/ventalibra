@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from ..modules_gate import get_module_repository
 from ..services import billing
 from ..services.customers import CustomerService
+from libracommerce.domain.sales import SalePayment
+
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -30,9 +32,23 @@ class SaleItemQuantity(BaseModel):
     quantity: Decimal
 
 
+class PaymentIn(BaseModel):
+    medio: str
+    monto: Decimal
+    # Cuanto entrego el cliente, para calcular el vuelto. Solo tiene sentido
+    # en efectivo.
+    recibido: Decimal | None = None
+    referencia: str = ""
+
+
 class SaleConfirm(BaseModel):
     location_id: int
-    medio_pago: str
+    # `medio_pago` es el camino de siempre: un solo medio que cubre el total.
+    # `pagos` es el cobro mixto y, si viene, manda. Se conserva el campo
+    # viejo porque la mayoria de las ventas de mostrador son de un solo
+    # medio y no tiene sentido obligar al POS a armar una lista para eso.
+    medio_pago: str = ""
+    pagos: list[PaymentIn] = []
     invoice: bool = False
 
 
@@ -48,11 +64,21 @@ class SaleItemOut(BaseModel):
     line_total: Decimal
 
 
+class SalePaymentOut(BaseModel):
+    medio: str
+    monto: Decimal
+    recibido: Decimal | None
+    vuelto: Decimal
+    referencia: str
+
+
 class SaleOut(BaseModel):
     id: int
     number: str
     status: str
     items: list[SaleItemOut]
+    pagos: list[SalePaymentOut] = []
+    vuelto_total: Decimal = Decimal("0")
     subtotal: Decimal
     discount_total: Decimal
     tax_total: Decimal
@@ -74,6 +100,15 @@ def _to_sale_out(sale) -> SaleOut:
             )
             for item in sale.items
         ],
+        pagos=[
+            SalePaymentOut(
+                medio=payment.method, monto=payment.amount,
+                recibido=payment.received_amount, vuelto=payment.change,
+                referencia=payment.reference,
+            )
+            for payment in sale.payments
+        ],
+        vuelto_total=sale.change_due(),
         subtotal=sale.subtotal, discount_total=sale.discount_total,
         tax_total=sale.tax_total, total=sale.total,
         confirmed_at=sale.confirmed_at.isoformat() if sale.confirmed_at else None,
@@ -162,7 +197,24 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
         raise HTTPException(403, "modulo 'facturacion' no incluido en el plan actual")
 
     try:
-        sale = _service(request).confirm(sale_id, location_id=data.location_id)
+        payments = tuple(
+            SalePayment(
+                method=pago.medio, amount=pago.monto,
+                received_amount=pago.recibido, reference=pago.referencia,
+            )
+            for pago in data.pagos
+        )
+    except ValueError as exc:
+        # Reglas del dominio: monto > 0, recibido >= monto.
+        raise HTTPException(422, str(exc))
+
+    if not payments and not data.medio_pago:
+        raise HTTPException(422, "hay que indicar `medio_pago` o `pagos`")
+
+    try:
+        sale = _service(request).confirm(
+            sale_id, location_id=data.location_id, payments=payments,
+        )
     except SaleNotFound:
         raise HTTPException(404, "sale not found")
     except InvalidSaleState as exc:
@@ -179,9 +231,24 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
     # Caja siempre se registra al confirmar una venta cobrada, factures o
     # no -- decision explicita del usuario (ver DECISIONS.md ADR-007):
     # el control de caja es independiente del tema fiscal.
-    billing.record_sale_payment(
-        sale, data.medio_pago, referencia, factura_id=factura["id"] if factura else None,
-    )
+    #
+    # Un movimiento POR MEDIO, no uno por venta: en un cobro mixto la caja
+    # tiene que poder decir cuanto entro en efectivo y cuanto por tarjeta,
+    # que es justamente lo que se arquea. La referencia lleva el medio
+    # (`sale-12-efectivo`) porque create_caja_movimiento es idempotente por
+    # (referencia, factura_id) y con la misma referencia el segundo medio se
+    # perderia en silencio.
+    factura_id = factura["id"] if factura else None
+    if sale.payments:
+        for pago in sale.payments:
+            billing.record_sale_payment(
+                sale, pago.method, f"{referencia}-{pago.method}",
+                factura_id=factura_id, monto=pago.amount,
+            )
+    else:
+        billing.record_sale_payment(
+            sale, data.medio_pago, referencia, factura_id=factura_id,
+        )
 
     out = _to_sale_out(sale)
     out.factura = factura

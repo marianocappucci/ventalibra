@@ -129,11 +129,19 @@ async def invoice_sale(customer_billing: dict | None, sale, referencia: str) -> 
     return await arca_facturacion.solicitar_cae(factura_id, factura, ta, arca_used)
 
 
-def record_sale_payment(sale, medio_pago: str, referencia: str, factura_id: int | None = None) -> None:
+def record_sale_payment(
+    sale, medio_pago: str, referencia: str, factura_id: int | None = None,
+    monto: Decimal | None = None,
+) -> None:
     """Movimiento de caja para una venta confirmada -- siempre, factures o
     no. `create_caja_movimiento` es idempotente por (referencia,
-    factura_id), asi que reintentar con la misma referencia no duplica."""
+    factura_id), asi que reintentar con la misma referencia no duplica.
+
+    `monto` permite registrar un cobro parcial: en un pago mixto entra un
+    movimiento por medio y cada uno lleva lo suyo, no el total de la venta.
+    Sin `monto` (un solo medio) se registra el total, como siempre."""
     db_caja.create_caja_movimiento(
         date.today().isoformat(), "ingreso", f"Venta {sale.number}",
-        Decimal(str(sale.total)), referencia=referencia, factura_id=factura_id, medio_pago=medio_pago,
+        Decimal(str(sale.total)) if monto is None else Decimal(str(monto)),
+        referencia=referencia, factura_id=factura_id, medio_pago=medio_pago,
     )

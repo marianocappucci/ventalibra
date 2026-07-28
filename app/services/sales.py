@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from libracommerce.db.repository import SqliteCommerceRepository
-from libracommerce.domain.sales import Sale, SaleItem, SaleStatus
+from libracommerce.domain.sales import Sale, SaleItem, SalePayment, SaleStatus
 from libracommerce.usecases.sales import confirm_sale
 
 from ..db import next_sequence
@@ -122,10 +122,23 @@ class SaleService:
             raise IndexError(f"la venta no tiene una linea en la posicion {index}")
         return sale.items
 
-    def confirm(self, sale_id: int, *, location_id: int) -> Sale:
+    def confirm(
+        self, sale_id: int, *, location_id: int,
+        payments: tuple[SalePayment, ...] = (),
+    ) -> Sale:
         sale = self._require_draft(sale_id)
         if not sale.items:
             raise InvalidSaleState("no se puede confirmar una venta sin lineas")
+        if payments:
+            # Cobrar de menos deja una venta a medio pagar, que este POS no
+            # modela (no hay cuenta corriente en mostrador): se rechaza. De
+            # mas si se acepta -- es el vuelto.
+            cobrado = sum((pago.amount for pago in payments), Decimal("0"))
+            if cobrado < sale.total:
+                raise InvalidSaleState(
+                    f"los pagos no cubren el total de la venta: cobrado={cobrado}, total={sale.total}"
+                )
+            sale = replace(sale, payments=tuple(payments))
         return confirm_sale(self._repo, sale, location_id, datetime.now(timezone.utc))
 
     def _save_with_totals(self, sale: Sale) -> Sale:

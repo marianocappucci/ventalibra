@@ -289,3 +289,138 @@ def test_cannot_edit_a_confirmed_sale(admin_client):
 
     assert admin_client.delete(f"/sales/{sale_id}/items/0").status_code == 409
     assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "2"}).status_code == 409
+
+
+# --- cobro: pago mixto y vuelto -----------------------------------------
+
+
+def _venta_lista(client, total_esperado="3000.00"):
+    """Venta en borrador con stock suficiente, lista para cobrar."""
+    item_id = _make_item(client)
+    location_id = _make_location(client)
+    client.post(
+        "/stock/adjustments",
+        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "20"},
+    )
+    draft = client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
+    return sale_id, location_id
+
+
+def test_cash_payment_records_the_change(admin_client):
+    sale_id, location_id = _venta_lista(admin_client)
+
+    cobrada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={
+            "location_id": location_id,
+            "pagos": [{"medio": "efectivo", "monto": "3000.00", "recibido": "5000.00"}],
+        },
+    )
+
+    assert cobrada.status_code == 200, cobrada.text
+    assert cobrada.json()["status"] == "confirmed"
+    assert float(cobrada.json()["vuelto_total"]) == 2000.0
+    assert float(cobrada.json()["pagos"][0]["vuelto"]) == 2000.0
+    assert float(cobrada.json()["pagos"][0]["recibido"]) == 5000.0
+
+
+def test_mixed_payment_is_persisted_per_method(admin_client):
+    sale_id, location_id = _venta_lista(admin_client)
+
+    cobrada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={
+            "location_id": location_id,
+            "pagos": [
+                {"medio": "efectivo", "monto": "1000.00", "recibido": "1000.00"},
+                {"medio": "tarjeta_debito", "monto": "2000.00", "referencia": "lote 7"},
+            ],
+        },
+    )
+
+    assert cobrada.status_code == 200, cobrada.text
+    pagos = cobrada.json()["pagos"]
+    assert [p["medio"] for p in pagos] == ["efectivo", "tarjeta_debito"]
+    assert float(cobrada.json()["vuelto_total"]) == 0.0
+    assert pagos[1]["recibido"] is None
+    assert pagos[1]["referencia"] == "lote 7"
+
+    # sobrevive a releer la venta, no solo en la respuesta del confirm
+    releida = admin_client.get(f"/sales/{sale_id}")
+    assert len(releida.json()["pagos"]) == 2
+
+
+def test_payments_below_total_are_rejected(admin_client):
+    """Cobrar de menos dejaria una venta a medio pagar: este POS no lo
+    modela."""
+    sale_id, location_id = _venta_lista(admin_client)
+
+    rechazada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={
+            "location_id": location_id,
+            "pagos": [{"medio": "efectivo", "monto": "1000.00"}],
+        },
+    )
+
+    assert rechazada.status_code == 409
+    assert "no cubren el total" in rechazada.json()["detail"]
+
+
+def test_received_less_than_the_payment_is_rejected(admin_client):
+    sale_id, location_id = _venta_lista(admin_client)
+
+    rechazada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={
+            "location_id": location_id,
+            "pagos": [{"medio": "efectivo", "monto": "3000.00", "recibido": "2000.00"}],
+        },
+    )
+
+    assert rechazada.status_code == 422
+
+
+def test_confirm_without_any_payment_info_is_rejected(admin_client):
+    sale_id, location_id = _venta_lista(admin_client)
+    sin_datos = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id})
+    assert sin_datos.status_code == 422
+
+
+def test_single_medio_pago_still_works_and_records_no_payments(admin_client):
+    """El camino de siempre no cambia: un solo medio, sin lista de pagos."""
+    sale_id, location_id = _venta_lista(admin_client)
+
+    cobrada = admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={"location_id": location_id, "medio_pago": "efectivo"},
+    )
+
+    assert cobrada.status_code == 200, cobrada.text
+    assert cobrada.json()["pagos"] == []
+    assert float(cobrada.json()["vuelto_total"]) == 0.0
+
+
+def test_mixed_payment_creates_one_caja_movement_per_method(admin_client):
+    """La caja tiene que poder decir cuanto entro por cada medio: es lo que
+    se arquea. Un solo movimiento con el total no serviria."""
+    from libracore.db import caja as db_caja
+
+    sale_id, location_id = _venta_lista(admin_client)
+    admin_client.post(
+        f"/sales/{sale_id}/confirm",
+        json={
+            "location_id": location_id,
+            "pagos": [
+                {"medio": "efectivo", "monto": "1000.00"},
+                {"medio": "tarjeta_debito", "monto": "2000.00"},
+            ],
+        },
+    )
+
+    nuevos = [m for m in db_caja.get_caja_movimientos() if str(m["referencia"]).startswith(f"sale-{sale_id}")]
+    assert len(nuevos) == 2
+    assert sorted(m["medio_pago"] for m in nuevos) == ["efectivo", "tarjeta_debito"]
+    assert sorted(float(m["monto"]) for m in nuevos) == [1000.0, 2000.0]
