@@ -26,6 +26,10 @@ class SaleItemCreate(BaseModel):
     price_list_id: int | None = None
 
 
+class SaleItemQuantity(BaseModel):
+    quantity: Decimal
+
+
 class SaleConfirm(BaseModel):
     location_id: int
     medio_pago: str
@@ -111,6 +115,38 @@ def add_item(sale_id: int, data: SaleItemCreate, request: Request):
         raise HTTPException(409, str(exc))
     except KeyError as exc:
         raise HTTPException(422, str(exc))
+    return _to_sale_out(sale)
+
+
+@router.delete("/{sale_id}/items/{index}", response_model=SaleOut)
+def remove_item(sale_id: int, index: int, request: Request):
+    """Quita una linea del borrador. `index` es la POSICION en la venta (0
+    based), no un id: las lineas no tienen id estable -- ver
+    SaleService.remove_item."""
+    try:
+        sale = _service(request).remove_item(sale_id, index=index)
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+    except IndexError as exc:
+        raise HTTPException(404, str(exc))
+    except InvalidSaleState as exc:
+        raise HTTPException(409, str(exc))
+    return _to_sale_out(sale)
+
+
+@router.patch("/{sale_id}/items/{index}", response_model=SaleOut)
+def update_item_quantity(sale_id: int, index: int, data: SaleItemQuantity, request: Request):
+    """Corrige la cantidad de una linea ya cargada, sin borrarla y volver a
+    agregarla: el cajero se equivoca tipeando la cantidad mucho mas seguido
+    que escaneando el producto equivocado."""
+    try:
+        sale = _service(request).set_item_quantity(sale_id, index=index, quantity=data.quantity)
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+    except IndexError as exc:
+        raise HTTPException(404, str(exc))
+    except InvalidSaleState as exc:
+        raise HTTPException(409, str(exc))
     return _to_sale_out(sale)
 
 

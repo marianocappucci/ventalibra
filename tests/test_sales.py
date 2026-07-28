@@ -170,3 +170,122 @@ def test_staff_can_run_full_pos_flow(admin_client, staff_client):
     staff_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
     confirmed = staff_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
     assert confirmed.status_code == 200, confirmed.text
+
+
+# --- corregir el ticket antes de cobrar ---------------------------------
+#
+# El cajero se equivoca en el mostrador: escanea de mas, tipea mal la
+# cantidad, el cliente se arrepiente. Antes habia que rehacer la venta
+# entera porque solo existia POST /items.
+
+
+def _make_extra_item(client, name, price):
+    """Item adicional: la unidad ya la creo _make_item (crearla de nuevo
+    choca contra la unique de `code`)."""
+    created = client.post(
+        "/catalog/items",
+        json={"name": name, "unit_code": "u", "default_sale_price": price, "default_cost": "500.00"},
+    )
+    assert created.status_code == 200, created.text
+    return created.json()["id"]
+
+
+def test_remove_item_recalculates_total(admin_client):
+    item_id = _make_item(admin_client)
+    otro_id = _make_extra_item(admin_client, "Arroz 1kg", "2000.00")
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": otro_id, "quantity": "1"})
+
+    quitada = admin_client.delete(f"/sales/{sale_id}/items/0")
+
+    assert quitada.status_code == 200, quitada.text
+    assert len(quitada.json()["items"]) == 1
+    assert quitada.json()["items"][0]["description_snapshot"] == "Arroz 1kg"
+    assert float(quitada.json()["total"]) == 2000.0
+
+
+def test_remove_last_item_leaves_empty_sale_that_cannot_be_confirmed(admin_client):
+    """Quitar todo deja la venta vacia, no la cancela: el cajero puede seguir
+    escaneando. Pero vacia no se puede cobrar."""
+    item_id = _make_item(admin_client)
+    location_id = _make_location(admin_client)
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
+
+    vacia = admin_client.delete(f"/sales/{sale_id}/items/0")
+    assert vacia.status_code == 200, vacia.text
+    assert vacia.json()["items"] == []
+    assert float(vacia.json()["total"]) == 0.0
+
+    rechazada = admin_client.post(
+        f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
+    )
+    assert rechazada.status_code == 409
+
+
+def test_remove_item_out_of_range_is_404(admin_client):
+    draft = admin_client.post("/sales", json={})
+    assert admin_client.delete(f"/sales/{draft.json()['id']}/items/0").status_code == 404
+
+
+def test_update_item_quantity_recalculates_total(admin_client):
+    item_id = _make_item(admin_client)
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
+
+    corregida = admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "5"})
+
+    assert corregida.status_code == 200, corregida.text
+    assert float(corregida.json()["items"][0]["quantity"]) == 5.0
+    assert float(corregida.json()["total"]) == 7500.0
+
+
+def test_update_item_quantity_keeps_the_frozen_unit_price(admin_client):
+    """El precio quedo congelado al agregar la linea (puede venir de una lista
+    o haber sido puesto a mano): corregir la cantidad no lo revive."""
+    item_id = _make_item(admin_client)
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(
+        f"/sales/{sale_id}/items",
+        json={"item_id": item_id, "quantity": "1", "unit_price": "999.00"},
+    )
+
+    corregida = admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "3"})
+
+    assert float(corregida.json()["items"][0]["unit_price"]) == 999.0
+    assert float(corregida.json()["total"]) == 2997.0
+
+
+def test_update_item_quantity_rejects_zero_and_negative(admin_client):
+    item_id = _make_item(admin_client)
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
+
+    assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "0"}).status_code == 409
+    assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "-2"}).status_code == 409
+
+
+def test_cannot_edit_a_confirmed_sale(admin_client):
+    """Una venta cobrada es inmutable: corregirla es una devolucion, no una
+    edicion."""
+    item_id = _make_item(admin_client)
+    location_id = _make_location(admin_client)
+    admin_client.post(
+        "/stock/adjustments",
+        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "10"},
+    )
+    draft = admin_client.post("/sales", json={})
+    sale_id = draft.json()["id"]
+    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
+    admin_client.post(
+        f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
+    )
+
+    assert admin_client.delete(f"/sales/{sale_id}/items/0").status_code == 409
+    assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "2"}).status_code == 409

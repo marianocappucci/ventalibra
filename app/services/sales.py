@@ -59,9 +59,7 @@ class SaleService:
         variant_id: int | None = None, unit_price: Decimal | None = None,
         discount_amount: Decimal = Decimal("0"), price_list_id: int | None = None,
     ) -> Sale:
-        sale = self.get(sale_id)
-        if sale.status != SaleStatus.DRAFT:
-            raise InvalidSaleState(f"la venta {sale_id} no esta en borrador (status={sale.status})")
+        sale = self._require_draft(sale_id)
         catalog_item = self._repo.get_catalog_item(item_id)
         if catalog_item is None:
             raise KeyError(f"item de catalogo desconocido: {item_id}")
@@ -89,10 +87,43 @@ class SaleService:
         updated = replace(sale, items=sale.items + (line,))
         return self._save_with_totals(updated)
 
-    def confirm(self, sale_id: int, *, location_id: int) -> Sale:
+    def remove_item(self, sale_id: int, *, index: int) -> Sale:
+        """Quita una linea del borrador. Se identifica por POSICION y no por
+        id porque `SaleItem` no tiene id propio: `save_sale` borra y reinserta
+        todas las lineas en cada update, asi que el id de fila no es estable
+        entre guardados."""
+        sale = self._require_draft(sale_id)
+        items = self._require_index(sale, index)
+        return self._save_with_totals(
+            replace(sale, items=items[:index] + items[index + 1:]),
+        )
+
+    def set_item_quantity(self, sale_id: int, *, index: int, quantity: Decimal) -> Sale:
+        """Corrige la cantidad de una linea ya cargada. El precio unitario no
+        se recalcula: se respeta el que quedo congelado al agregarla (puede
+        venir de una lista de precios o haber sido puesto a mano)."""
+        if quantity <= 0:
+            raise InvalidSaleState("la cantidad debe ser mayor que cero")
+        sale = self._require_draft(sale_id)
+        items = self._require_index(sale, index)
+        updated_line = replace(items[index], quantity=quantity)
+        return self._save_with_totals(
+            replace(sale, items=items[:index] + (updated_line,) + items[index + 1:]),
+        )
+
+    def _require_draft(self, sale_id: int) -> Sale:
         sale = self.get(sale_id)
         if sale.status != SaleStatus.DRAFT:
             raise InvalidSaleState(f"la venta {sale_id} no esta en borrador (status={sale.status})")
+        return sale
+
+    def _require_index(self, sale: Sale, index: int) -> tuple[SaleItem, ...]:
+        if index < 0 or index >= len(sale.items):
+            raise IndexError(f"la venta no tiene una linea en la posicion {index}")
+        return sale.items
+
+    def confirm(self, sale_id: int, *, location_id: int) -> Sale:
+        sale = self._require_draft(sale_id)
         if not sale.items:
             raise InvalidSaleState("no se puede confirmar una venta sin lineas")
         return confirm_sale(self._repo, sale, location_id, datetime.now(timezone.utc))
