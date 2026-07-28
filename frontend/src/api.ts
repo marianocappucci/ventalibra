@@ -109,6 +109,40 @@ export type Factura = {
   cae: string
 } | null
 
+export type Shift = {
+  id: number
+  usuario_id: number
+  usuario_nombre: string
+  apertura: string
+  cierre: string | null
+  monto_inicial: number
+  monto_declarado_cierre: number | null
+  monto_esperado_cierre: number | null
+  estado: 'abierto' | 'cerrado'
+  notas: string
+}
+
+// Arqueo del turno: se calcula sobre los movimientos de caja, no sobre las
+// ventas (ver wiki/entities/ventalibra.md).
+export type ShiftSummary = {
+  movimientos: {
+    id: number
+    fecha: string
+    tipo: string
+    concepto: string
+    monto: number
+    medio_pago: string
+    referencia: string
+  }[]
+  pagos_por_medio: Record<string, number>
+  total_ventas: number
+  // Lo unico que se cuenta a mano al cerrar: lo demas queda en el resumen de
+  // la terminal o del banco.
+  efectivo_ventas: number
+}
+
+export type ShiftState = { turno: Shift | null; resumen?: ShiftSummary }
+
 export type SalePayment = {
   medio: string
   monto: string

@@ -9,7 +9,7 @@ import tailwindcss from '@tailwindcss/vite'
 // mismo truco que se usa en produccion, donde el build de este frontend
 // se sirve desde el mismo proceso FastAPI (ver app/asgi.py).
 const API_PATHS = [
-  '/auth', '/catalog', '/pricing', '/locations', '/stock', '/sales',
+  '/auth', '/catalog', '/pricing', '/locations', '/stock', '/sales', '/shifts',
   '/suppliers', '/purchase-orders', '/purchase-receipts', '/customers',
   '/users', '/config', '/health',
 ]

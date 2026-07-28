@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   api, ApiError, type CatalogItem, type ItemVariant, type Location, type Sale,
+  type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,7 +19,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, Plus, Scan, Trash2 } from 'lucide-react'
+import { Ban, LockKeyhole, Plus, Scan, Trash2 } from 'lucide-react'
 
 const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -82,7 +83,27 @@ export function Pos() {
   const [cantidadOpen, setCantidadOpen] = useState(false)
   const escaneoRef = useRef<HTMLInputElement>(null)
 
-  const hayDialogo = cobroOpen || cantidadOpen || candidatos.length > 0 || variantes.length > 0
+  // Sin turno abierto el backend rechaza el cobro (409), asi que la pantalla
+  // pide la apertura antes de dejar vender en vez de esperar al error.
+  const [turno, setTurno] = useState<Shift | null>(null)
+  const [turnoCargado, setTurnoCargado] = useState(false)
+  const [cierreOpen, setCierreOpen] = useState(false)
+
+  const cargarTurno = useCallback(async () => {
+    try {
+      const estado = await api.get<ShiftState>('/shifts/current')
+      setTurno(estado.turno)
+    } catch {
+      setTurno(null)
+    } finally {
+      setTurnoCargado(true)
+    }
+  }, [])
+
+  useEffect(() => { cargarTurno() }, [cargarTurno])
+
+  const hayDialogo = cobroOpen || cantidadOpen || cierreOpen || !turno
+    || candidatos.length > 0 || variantes.length > 0
 
   const enfocarEscaneo = useCallback(() => {
     if (hayDialogo) return
@@ -272,6 +293,13 @@ export function Pos() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // Nada de POS hasta que haya turno: es la misma regla que aplica el
+  // backend, mostrada antes de que el cajero cargue una venta que no va a
+  // poder cobrar.
+  if (turnoCargado && !turno) {
+    return <AbrirTurno onAbierto={(t) => setTurno(t)} />
+  }
+
   if (confirmada) {
     return (
       <VentaCobrada
@@ -289,6 +317,16 @@ export function Pos() {
           {sale ? `Venta ${sale.number}` : 'Nueva venta'}
         </span>
         <div className="flex items-center gap-2">
+          {turno && (
+            <>
+              <span className="rounded border px-2 py-0.5 text-xs">
+                Turno #{turno.id} · desde {turno.apertura.slice(11, 16)} · inicial ${money(turno.monto_inicial)}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
+                Cerrar turno
+              </Button>
+            </>
+          )}
           <span className="text-xs">Sucursal</span>
           <Select value={locationId} onValueChange={setLocationId}>
             <SelectTrigger className="h-8 w-48"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
@@ -379,6 +417,14 @@ export function Pos() {
           linea={sale.items[marcada]}
           onAceptar={(cant) => cambiarCantidad(marcada, cant)}
           onCerrar={() => { setCantidadOpen(false); enfocarEscaneo() }}
+        />
+      )}
+
+      {cierreOpen && turno && (
+        <CerrarTurno
+          turno={turno}
+          onCerrado={() => { setCierreOpen(false); setTurno(null); setSale(null) }}
+          onCancelar={() => { setCierreOpen(false); enfocarEscaneo() }}
         />
       )}
 
@@ -752,5 +798,175 @@ function VentaCobrada({ venta, onNueva }: { venta: Sale; onNueva: () => void }) 
         Nueva venta
       </Button>
     </div>
+  )
+}
+
+
+/** Apertura del turno. Bloquea el POS: sin turno el backend rechaza el cobro
+ *  (409), y descubrirlo recien al cobrar significa haber cargado la venta
+ *  entera al pedo. */
+function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
+  const [monto, setMonto] = useState('0')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function abrir(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const abierto = await api.post<{ turno: Shift }>('/shifts/open', {
+        monto_inicial: Number(monto) || 0,
+      })
+      onAbierto(abierto.turno)
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mx-auto grid max-w-md gap-4 pt-10">
+      <div className="rounded-md border p-6">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <LockKeyhole className="size-5" />
+          <span className="text-sm">No hay ningún turno de caja abierto</span>
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Para poder cobrar hace falta abrir el turno. Contá lo que hay en el
+          cajón ahora: es la base contra la que se arquea al cerrar.
+        </p>
+        <form onSubmit={abrir} className="mt-5 grid gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="monto-inicial">Efectivo inicial en caja</Label>
+            <Input
+              id="monto-inicial" value={monto} autoFocus className="h-12 text-lg tabular-nums"
+              onChange={(e) => setMonto(e.target.value)}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+          <Button type="submit" className="h-12 text-base" disabled={busy}>
+            {busy ? 'Abriendo...' : 'Abrir turno'}
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/** Cierre con arqueo. Lo que importa es la diferencia: se calcula en vivo
+ *  mientras el cajero tipea lo que conto, para que la vea antes de confirmar
+ *  y no despues. */
+function CerrarTurno({ turno, onCerrado, onCancelar }: {
+  turno: Shift
+  onCerrado: () => void
+  onCancelar: () => void
+}) {
+  const [resumen, setResumen] = useState<ShiftSummary | null>(null)
+  const [declarado, setDeclarado] = useState('')
+  const [notas, setNotas] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.get<ShiftState>(`/shifts/${turno.id}/summary`)
+      .then((r) => setResumen(r.resumen ?? null))
+      .catch(() => setResumen(null))
+  }, [turno.id])
+
+  const esperado = resumen ? turno.monto_inicial + resumen.efectivo_ventas : null
+  const contado = Number(declarado)
+  const diferencia = esperado !== null && declarado !== '' && !isNaN(contado)
+    ? contado - esperado
+    : null
+
+  async function cerrar(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      await api.post(`/shifts/${turno.id}/close`, {
+        monto_declarado: Number(declarado) || 0, notas,
+      })
+      onCerrado()
+    } catch (err) {
+      setError(describeError(err))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onCancelar()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Cerrar turno #{turno.id}</DialogTitle></DialogHeader>
+        <form onSubmit={cerrar} className="grid gap-3">
+          <div className="grid gap-1 rounded-md border p-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Efectivo inicial</span>
+              <span className="tabular-nums">${money(turno.monto_inicial)}</span>
+            </div>
+            {resumen && Object.entries(resumen.pagos_por_medio).map(([medio, total]) => (
+              <div key={medio} className="flex justify-between">
+                <span className="text-muted-foreground">{medio.replace(/_/g, ' ')}</span>
+                <span className="tabular-nums">${money(total)}</span>
+              </div>
+            ))}
+            <div className="mt-1 flex justify-between border-t pt-2 font-medium">
+              <span>Efectivo esperado en caja</span>
+              <span className="tabular-nums">
+                {esperado === null ? '—' : `$${money(esperado)}`}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="declarado">Efectivo contado</Label>
+            <Input
+              id="declarado" value={declarado} autoFocus className="h-12 text-lg tabular-nums"
+              placeholder="0,00"
+              onChange={(e) => setDeclarado(e.target.value)}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+
+          {diferencia !== null && (
+            <div className="flex items-baseline justify-between rounded-md border p-3">
+              <span className="text-sm text-muted-foreground">Diferencia</span>
+              <span
+                className={[
+                  'text-2xl font-medium tabular-nums',
+                  Math.abs(diferencia) < 0.005
+                    ? 'text-emerald-600 dark:text-emerald-500'
+                    : 'text-destructive',
+                ].join(' ')}
+              >
+                {/* el signo va antes del $: un faltante se lee -$500,00, no
+                    $-500,00, que es como sale al formatear el negativo */}
+                {diferencia < 0 ? '-' : diferencia > 0 ? '+' : ''}${money(Math.abs(diferencia))}
+              </span>
+            </div>
+          )}
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="notas-cierre">Notas</Label>
+            <Input
+              id="notas-cierre" value={notas} placeholder="opcional"
+              onChange={(e) => setNotas(e.target.value)}
+            />
+          </div>
+
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onCancelar}>Cancelar</Button>
+            <Button type="submit" disabled={busy || declarado === ''}>
+              {busy ? 'Cerrando...' : 'Cerrar turno'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
