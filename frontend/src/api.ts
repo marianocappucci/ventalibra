@@ -66,6 +66,22 @@ export const ITEM_CODE_TYPE_LABELS: Record<ItemCodeType, string> = {
   other: 'Otro',
 }
 
+/** Encabezado de venta para el listado: sin líneas ni pagos. */
+export type SaleListItem = {
+  id: number
+  number: string
+  status: SaleStatus
+  total: string
+  confirmed_at: string | null
+  cliente: string
+}
+
+export type DevolucionLinea = {
+  /** Posición de la línea en la venta, no un id. */
+  index: number
+  quantity: string
+}
+
 export type MovimientoCuenta = {
   fecha: string
   tipo: 'debito' | 'credito'

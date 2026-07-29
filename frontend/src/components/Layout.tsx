@@ -2,8 +2,8 @@
 // Gestiolibra/MedLibra/VentaLibra salvo NAV_ITEMS/branding -- ver
 // wiki/analyses/auditoria-duplicacion-familia-libra.md).
 import {
-  BarChart3, Building2, Package, Printer, Receipt, Scale, ShoppingBag, ShoppingCart,
-  Truck, Users, Wallet, Warehouse,
+  BarChart3, Building2, Package, Printer, Receipt, ReceiptText, Scale, ShoppingBag,
+  ShoppingCart, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 
@@ -12,6 +12,7 @@ export const Layout = createLayout({
   productInitial: 'V',
   navItems: [
     { to: '/pos', label: 'Venta', icon: ShoppingCart },
+    { to: '/ventas', label: 'Ventas', icon: ReceiptText },
     { to: '/catalogo', label: 'Catálogo', icon: Package },
     { to: '/compras', label: 'Compras', icon: ShoppingBag },
     { to: '/proveedores', label: 'Proveedores', icon: Truck },

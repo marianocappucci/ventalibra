@@ -1,8 +1,9 @@
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from ..auth import get_current_user
 from ..modules_gate import get_module_repository
 from ..services import billing
 from ..services.cuenta_corriente import (
@@ -11,6 +12,7 @@ from ..services.cuenta_corriente import (
     SinCliente,
 )
 from ..services.customers import CustomerService
+from ..services.devoluciones import DevolucionService
 from ..services.tickets import ticket_de_venta
 from libracommerce.domain.sales import SalePayment
 from libracore.db import turnos as db_turnos
@@ -135,12 +137,103 @@ def create_sale(data: SaleCreate, request: Request):
     return _to_sale_out(sale)
 
 
+class SaleListItem(BaseModel):
+    id: int
+    number: str
+    status: str
+    total: Decimal
+    confirmed_at: str | None
+    cliente: str
+
+
+@router.get("", response_model=list[SaleListItem])
+def list_sales(request: Request, limit: int = 50, search: str = ""):
+    """Ultimas ventas confirmadas. Es lo que permite encontrar la venta de
+    ayer para anularla o devolver algo -- antes no habia forma."""
+    return [SaleListItem(**venta) for venta in _service(request).list_recent(
+        limit=limit, search=search,
+    )]
+
+
 @router.get("/{sale_id}", response_model=SaleOut)
 def get_sale(sale_id: int, request: Request):
     try:
         return _to_sale_out(_service(request).get(sale_id))
     except SaleNotFound:
         raise HTTPException(404, "sale not found")
+
+
+class DevolucionLinea(BaseModel):
+    #: Posicion de la linea en la venta, no un id: SaleItem no tiene id
+    #: propio (ver SaleService.remove_item).
+    index: int
+    quantity: Decimal
+
+
+class DevolucionIn(BaseModel):
+    lineas: list[DevolucionLinea]
+    location_id: int
+    #: Por donde vuelve la plata, que no tiene por que ser por donde entro.
+    medio_pago: str = "efectivo"
+
+
+@router.post("/{sale_id}/cancel", response_model=SaleOut)
+def cancel_sale_endpoint(sale_id: int, request: Request,
+                         user: dict = Depends(get_current_user)):
+    """Anula una venta confirmada: repone el stock y saca de la caja lo
+    cobrado. Si estaba fiada, le baja la deuda al cliente."""
+    try:
+        sale = _service(request).get(sale_id)
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+
+    try:
+        anulada = DevolucionService(request.app.state.conn).anular(
+            sale,
+            usuario_id=int(user["id"]) if user else None,
+            # Si hay turno abierto, el egreso entra en su arqueo. Anular sin
+            # turno se permite -- la venta hay que poder deshacerla igual --
+            # y el movimiento queda sin turno, como cualquier otro de caja
+            # registrado fuera de uno.
+            turno_id=(db_turnos.get_turno_activo_any() or {}).get("id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return _to_sale_out(anulada)
+
+
+@router.post("/{sale_id}/returns", response_model=SaleOut)
+def return_items(sale_id: int, data: DevolucionIn, request: Request,
+                 user: dict = Depends(get_current_user)):
+    """Devuelve algunas lineas de una venta y reintegra su importe."""
+    if not data.lineas:
+        raise HTTPException(422, "hay que indicar que lineas se devuelven")
+
+    # Devolver plata es mover la caja: sin turno abierto el reintegro
+    # quedaria afuera del arqueo, igual que un cobro.
+    turno = db_turnos.get_turno_activo_any()
+    if turno is None and data.medio_pago != MEDIO_CUENTA_CORRIENTE:
+        raise HTTPException(409, "no hay un turno de caja abierto")
+
+    try:
+        sale = _service(request).get(sale_id)
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+
+    try:
+        devuelta, _importe = DevolucionService(request.app.state.conn).devolver(
+            sale,
+            {linea.index: linea.quantity for linea in data.lineas},
+            data.location_id,
+            medio_pago=data.medio_pago,
+            turno_id=turno["id"] if turno else None,
+            usuario_id=int(user["id"]) if user else None,
+        )
+    except ValueError as exc:
+        # Devolver mas de lo vendido, una linea que no existe, un servicio
+        # suelto: todos son pedidos invalidos, no fallas del servidor.
+        raise HTTPException(422, str(exc))
+    return _to_sale_out(devuelta)
 
 
 @router.get("/{sale_id}/ticket")

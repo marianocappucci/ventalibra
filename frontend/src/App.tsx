@@ -14,6 +14,7 @@ import { ConfigArca } from './pages/ConfigArca'
 import { ConfigBalanza } from './pages/ConfigBalanza'
 import { ConfigTicket } from './pages/ConfigTicket'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
+import { Ventas } from './pages/Ventas'
 import { Reportes } from './pages/Reportes'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
@@ -71,6 +72,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Clientes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ventas"
+        element={
+          <ProtectedRoute>
+            <Ventas />
           </ProtectedRoute>
         }
       />

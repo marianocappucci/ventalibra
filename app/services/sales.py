@@ -48,6 +48,35 @@ class SaleService:
         )
         return self._repo.save_sale(sale)
 
+    def list_recent(self, *, limit: int = 50, search: str = "") -> list[dict]:
+        """Las últimas ventas, para encontrar una y poder deshacerla.
+
+        Devuelve el encabezado nada más (sin líneas ni pagos): es una lista
+        para buscar, y traer todo de cada venta la haría lenta sin que nadie
+        lo mire. El detalle se pide con `get()` al abrir una.
+        """
+        sql = """
+            SELECT id, number, status, status_detail, total, confirmed_at, occurred_on,
+                   customer_name_snapshot
+            FROM sales
+            WHERE status != 'draft'
+        """
+        params: list = []
+        if search:
+            sql += " AND (number LIKE ? OR customer_name_snapshot LIKE ?)"
+            params += [f"%{search}%", f"%{search}%"]
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        return [
+            {
+                "id": row[0], "number": row[1], "status": row[2],
+                "status_detail": row[3], "total": Decimal(str(row[4] or 0)),
+                "confirmed_at": row[5], "occurred_on": row[6],
+                "cliente": row[7] or "",
+            }
+            for row in self._conn.execute(sql, params).fetchall()
+        ]
+
     def get(self, sale_id: int) -> Sale:
         sale = self._repo.get_sale(sale_id)
         if sale is None:

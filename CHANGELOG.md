@@ -5,6 +5,14 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Anulación y devolución** (ver ADR-022): anular una venta repone el
+  stock y saca de la caja lo cobrado (y si estaba fiada, le baja la deuda al
+  cliente); devolver reintegra sólo algunos productos, por el medio que se
+  elija — no tiene por qué ser el mismo por el que entró. Pantalla nueva de
+  **Ventas** con el historial: antes no había forma de ver una venta ya
+  cobrada, así que deshacer la de ayer era imposible. 15 tests nuevos, más
+  14 en `libracommerce` v0.4.0 y 12 en `libracore` v0.30.1.
+
 - **Ticket impreso** (ver ADR-021): después de cobrar, F8 (o el botón)
   abre el PDF del ticket térmico y dispara la impresión. El generador es de
   `libracore` v0.29.0 — extraído de Contalibra, donde ya existía y estaba

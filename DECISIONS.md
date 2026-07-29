@@ -1047,3 +1047,54 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   parchea en `conftest.py`.
 - Consecuencias: 15 tests nuevos (150 en total). Pantalla nueva de
   configuración del ticket con vista previa del ancho elegido.
+
+## ADR-022 — Anulación y devolución: el stock en LibraCommerce, el dinero en LibraCore
+
+- Estado: aceptada
+- Fecha: 2026-07-28
+- Contexto: último bloqueante del relevamiento del rubro. Contalibra y
+  Restolibra ya tenían `anular_venta()` **con el cuerpo idéntico** (~47
+  líneas, difería sólo el docstring) — cuarta duplicación de esta clase
+  encontrada el mismo día.
+- Decisión: partirla por contexto, que es como ya estaba `confirm_sale`.
+  `libracommerce.usecases.sales` se lleva `cancel_sale` y
+  `return_sale_items` (stock y estado de la venta);
+  `libracore.db.reversiones` se lleva `revertir_cobro_venta` y
+  `reintegrar_devolucion` (caja y cuenta corriente). Contalibra y Restolibra
+  componen la segunda con su reposición de stock propia — que se queda ahí
+  porque pasa por `add_movimiento_stock`, el que sabe de recetas.
+- **La reposición invierte los movimientos del ledger, no las líneas de la
+  venta.** Lo que salió del depósito puede no ser el producto vendido (los
+  insumos de una receta), y el ledger ya lo sabe: revertirlo así sale
+  simétrico sin volver a resolver nada. Para eso aparece
+  `list_stock_movements_by_source()`.
+- VentaLibra orquesta las dos piezas **entre sus dos bases**, así que no hay
+  transacción única. Por eso ambas partes son idempotentes por separado: un
+  reintento tras una falla a mitad de camino completa lo que faltaba en vez
+  de duplicar. Anular dos veces no repone dos veces; los movimientos de caja
+  no se duplican por referencia.
+- Dos casos se rechazan en vez de dejar pasar: devolver más de lo que queda
+  sin devolver (inventaría stock y reintegraría plata que nunca entró) y
+  devolver una línea de servicio suelta — cuánto se devolvió se lleva en el
+  ledger de stock y un servicio no deja rastro ahí, así que se podría
+  devolver infinitas veces sin control. Para eso está anular la venta entera.
+- **Dos hallazgos que cambiaron el diseño, ninguno visible en los tests del
+  módulo:**
+  1. La primera versión omitía el movimiento de caja del pago a cuenta
+     corriente por considerarlo redundante. Comparando contra el
+     comportamiento anterior sobre dos bases idénticas, resultó que esa fila
+     **sí existía** y desaparecía del listado de movimientos — del historial
+     que ve el usuario. Los totales daban igual porque `get_caja_resumen()`
+     ya filtra ese medio. Se volvió al comportamiento exacto.
+  2. El egreso de la anulación no quedaba atado a ningún turno, así que **no
+     descontaba del arqueo**: el cajero cerraba contando plata que ya había
+     devuelto. Apareció recién al anular una venta de punta a punta
+     (`libracore` v0.30.1).
+- Pantalla nueva de **Ventas**: no existía ninguna forma de ver una venta ya
+  cobrada — el POS la cerraba y desaparecía — así que deshacer la de ayer,
+  que es cuando el cliente vuelve con el producto, era imposible. Trae
+  `GET /sales` (encabezados nada más; el detalle se pide al abrir una).
+- Consecuencias: 15 tests nuevos (165 en total), más 14 en LibraCommerce y
+  12 en LibraCore. La devolución se puede reintegrar por un medio distinto
+  del cobrado: se pagó con tarjeta y se devuelve en efectivo, que es lo que
+  pasa en el mostrador.
