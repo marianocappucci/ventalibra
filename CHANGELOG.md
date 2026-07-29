@@ -5,6 +5,16 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Cuenta corriente / fiado** (ver ADR-020): se puede vender a cuenta
+  corriente desde el POS eligiendo el cliente (F7). Lo fiado **no entra al
+  arqueo del turno** — no es plata que entró; el movimiento de caja aparece
+  recién cuando el cliente viene a pagar. Pantalla nueva de Cuentas
+  corrientes con quién debe, el detalle de cada cuenta y el registro de
+  cobranzas. Endpoint nuevo `PATCH /sales/{id}` para asignar el cliente a
+  una venta ya empezada, porque en el mostrador eso se sabe al cobrar. 17
+  tests nuevos; el cálculo del saldo es de `libracore` v0.28.0, ahora
+  compartido con Contalibra y Restolibra.
+
 - **Balanza de mostrador** (ver ADR-019): el POS lee las etiquetas que
   imprime la balanza y toma de ahí el peso, en vez de agregar una unidad.
   Soporta los dos modos de configuración del equipo (peso embebido o

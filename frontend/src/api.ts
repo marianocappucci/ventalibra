@@ -66,6 +66,28 @@ export const ITEM_CODE_TYPE_LABELS: Record<ItemCodeType, string> = {
   other: 'Otro',
 }
 
+export type MovimientoCuenta = {
+  fecha: string
+  tipo: 'debito' | 'credito'
+  concepto: string
+  monto: string
+  medio: string
+  referencia: string
+}
+
+export type CuentaCorriente = {
+  party_id: number
+  /** Positivo: el cliente debe. Negativo: pagó de más y tiene a favor. */
+  saldo: string
+  movimientos: MovimientoCuenta[]
+}
+
+export type Deudor = {
+  party_id: number
+  nombre: string
+  saldo: string
+}
+
 export type ScaleValueKind = 'weight' | 'amount'
 
 /** Cómo leer las etiquetas de la balanza de este comercio. `null` = sin balanza. */

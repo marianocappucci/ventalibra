@@ -7,8 +7,8 @@
 // resaltada un segundo en el ticket.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
-  api, ApiError, type CatalogItem, type ItemVariant, type Location, type Sale,
-  type ScanResult, type Shift, type ShiftState, type ShiftSummary,
+  api, ApiError, type CatalogItem, type Customer, type ItemVariant, type Location,
+  type Sale, type ScanResult, type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +19,11 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, LockKeyhole, Plus, Scan, Trash2 } from 'lucide-react'
+import { Ban, LockKeyhole, Plus, Scan, Trash2, User } from 'lucide-react'
+
+/** El medio que representa el fiado. No es plata: no entra al arqueo del
+ *  turno y genera deuda en la cuenta del cliente. */
+const CUENTA_CORRIENTE = 'cuenta_corriente'
 
 const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -27,11 +31,12 @@ const MEDIOS_PAGO = [
   { value: 'tarjeta_credito', label: 'Tarjeta de crédito' },
   { value: 'transferencia', label: 'Transferencia' },
   { value: 'mercado_pago', label: 'Mercado Pago' },
+  { value: CUENTA_CORRIENTE, label: 'Cuenta corriente (fiado)' },
 ]
 
 const ATAJOS = [
   ['F2', 'cobrar'], ['F3', 'dividir pago'], ['F4', 'quitar línea'],
-  ['F6', 'cantidad'], ['F9', 'factura'], ['Esc', 'cancelar venta'],
+  ['F6', 'cantidad'], ['F7', 'cliente'], ['F9', 'factura'], ['Esc', 'cancelar venta'],
 ]
 
 // La sucursal se elige una vez y queda: en el mostrador no cambia entre
@@ -93,6 +98,11 @@ export function Pos() {
   const [cantidadOpen, setCantidadOpen] = useState(false)
   const escaneoRef = useRef<HTMLInputElement>(null)
 
+  // Cliente de la venta. La mayoría son a consumidor final y no lo necesitan;
+  // fiar sí, porque una deuda tiene que ser de alguien.
+  const [cliente, setCliente] = useState<Customer | null>(null)
+  const [clienteOpen, setClienteOpen] = useState(false)
+
   // Sin turno abierto el backend rechaza el cobro (409), asi que la pantalla
   // pide la apertura antes de dejar vender en vez de esperar al error.
   const [turno, setTurno] = useState<Shift | null>(null)
@@ -112,7 +122,7 @@ export function Pos() {
 
   useEffect(() => { cargarTurno() }, [cargarTurno])
 
-  const hayDialogo = cobroOpen || cantidadOpen || cierreOpen || !turno
+  const hayDialogo = cobroOpen || cantidadOpen || cierreOpen || clienteOpen || !turno
     || candidatos.length > 0 || variantes.length > 0
 
   const enfocarEscaneo = useCallback(() => {
@@ -148,9 +158,29 @@ export function Pos() {
 
   async function conVenta(): Promise<Sale> {
     if (sale) return sale
-    const creada = await api.post<Sale>('/sales', {})
+    const creada = await api.post<Sale>('/sales', {
+      customer_party_id: cliente?.id ?? null,
+    })
     setSale(creada)
     return creada
+  }
+
+  /** El cliente se elige en cualquier momento de la venta, incluso con líneas
+   *  ya cargadas (que es lo habitual: el cajero se entera de que va fiado
+   *  recién al cobrar). Si la venta ya existe, se le asigna. */
+  async function elegirCliente(elegido: Customer | null) {
+    setCliente(elegido)
+    setClienteOpen(false)
+    if (!sale) return
+    try {
+      setSale(await api.patch<Sale>(`/sales/${sale.id}`, {
+        customer_party_id: elegido?.id ?? null,
+      }))
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      enfocarEscaneo()
+    }
   }
 
   async function agregar(
@@ -302,6 +332,9 @@ export function Pos() {
       } else if (e.key === 'F6') {
         e.preventDefault()
         if (marcada !== null && sale?.items.length) setCantidadOpen(true)
+      } else if (e.key === 'F7') {
+        e.preventDefault()
+        setClienteOpen(true)
       } else if (e.key === 'Escape' && !hayDialogo) {
         e.preventDefault()
         if (sale) cancelarVenta()
@@ -397,6 +430,16 @@ export function Pos() {
             </p>
           </div>
           <Button
+            variant="outline"
+            className="justify-start font-normal"
+            onClick={() => setClienteOpen(true)}
+            disabled={busy}
+          >
+            <User />
+            <span className="truncate">{cliente ? cliente.display_name : 'Consumidor final'}</span>
+            <span className="ml-auto text-xs opacity-70">F7</span>
+          </Button>
+          <Button
             className="h-14 text-base"
             disabled={!puedeCobrar || busy}
             onClick={() => setCobroOpen(true)}
@@ -452,9 +495,19 @@ export function Pos() {
         />
       )}
 
+      {clienteOpen && (
+        <ElegirCliente
+          actual={cliente}
+          onElegir={elegirCliente}
+          onCerrar={() => { setClienteOpen(false); enfocarEscaneo() }}
+        />
+      )}
+
       {cobroOpen && sale && (
         <Cobro
           total={sale.total}
+          cliente={cliente}
+          onPedirCliente={() => setClienteOpen(true)}
           busy={busy}
           onCerrar={() => { setCobroOpen(false); enfocarEscaneo() }}
           onCobrar={async (pagos, factura) => {
@@ -637,11 +690,75 @@ type PagoForm = { medio: string; monto: string; recibido: string }
  *  mientras cuenta el cambio, asi que se calcula en vivo y se muestra
  *  grande. Si lo entregado no alcanza, lo dice en vez de mostrar un vuelto
  *  negativo. */
-function Cobro({ total, busy, onCobrar, onCerrar }: {
+/** Elegir a quién se le vende. Sólo hace falta para fiar y para facturar; el
+ *  resto de las ventas son a consumidor final y no pasan por acá. */
+function ElegirCliente({ actual, onElegir, onCerrar }: {
+  actual: Customer | null
+  onElegir: (cliente: Customer | null) => void
+  onCerrar: () => void
+}) {
+  const [clientes, setClientes] = useState<Customer[]>([])
+  const [filtro, setFiltro] = useState('')
+
+  useEffect(() => {
+    api.get<Customer[]>('/customers').then(setClientes).catch(() => setClientes([]))
+  }, [])
+
+  const visibles = filtro
+    ? clientes.filter((c) => c.display_name.toLowerCase().includes(filtro.toLowerCase()))
+    : clientes
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onCerrar()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Cliente de la venta</DialogTitle></DialogHeader>
+        <Input
+          autoFocus
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+          placeholder="Buscar por nombre"
+        />
+        <div className="max-h-72 overflow-y-auto">
+          {visibles.length === 0 && (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              {clientes.length === 0 ? 'No hay clientes cargados.' : 'Sin resultados.'}
+            </p>
+          )}
+          {visibles.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onElegir(c)}
+              className={[
+                'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-accent',
+                actual?.id === c.id ? 'bg-accent' : '',
+              ].join(' ')}
+            >
+              <span>{c.display_name}</span>
+              {c.cuit && <span className="text-xs text-muted-foreground">{c.cuit}</span>}
+            </button>
+          ))}
+        </div>
+        <DialogFooter>
+          {actual && (
+            <Button variant="ghost" onClick={() => onElegir(null)}>
+              Quitar cliente
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onCerrar}>Cancelar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
   total: string
+  cliente: Customer | null
   busy: boolean
   onCobrar: (pagos: { medio: string; monto: string; recibido?: string }[], factura: boolean) => void
   onCerrar: () => void
+  onPedirCliente: () => void
 }) {
   const totalNum = Number(total)
   const [pagos, setPagos] = useState<PagoForm[]>([
@@ -661,7 +778,12 @@ function Cobro({ total, busy, onCobrar, onCerrar }: {
   const faltaEfectivo = pagos.some(
     (p) => p.recibido !== '' && Number(p.recibido) < (Number(p.monto) || 0),
   )
-  const puedeCobrar = falta <= 0.009 && !faltaEfectivo && !busy
+  // Fiar sin cliente lo rechaza el backend (422). Se frena antes para que el
+  // cajero no descubra el problema recien al apretar Cobrar, con la fila
+  // esperando.
+  const fia = pagos.some((p) => p.medio === CUENTA_CORRIENTE && Number(p.monto) > 0)
+  const fiaSinCliente = fia && !cliente
+  const puedeCobrar = falta <= 0.009 && !faltaEfectivo && !fiaSinCliente && !busy
 
   function actualizar(i: number, campo: keyof PagoForm, valor: string) {
     setPagos((prev) => prev.map((p, idx) => (idx === i ? { ...p, [campo]: valor } : p)))
@@ -742,6 +864,26 @@ function Cobro({ total, busy, onCobrar, onCerrar }: {
           <Button type="button" variant="outline" size="sm" onClick={agregarMedio}>
             <Plus />Dividir en otro medio
           </Button>
+
+          {fia && (
+            <div className="rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+              {cliente ? (
+                <p>
+                  Queda como deuda de <strong>{cliente.display_name}</strong>. No
+                  entra a la caja: el movimiento aparece cuando venga a pagar.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  <p className="text-destructive">
+                    Para fiar hace falta saber a quién: elegí el cliente.
+                  </p>
+                  <Button type="button" size="sm" variant="secondary" onClick={onPedirCliente}>
+                    Elegir cliente (F7)
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="rounded-md border p-3">
             {falta > 0.009 ? (

@@ -111,6 +111,16 @@ class SaleService:
             replace(sale, items=items[:index] + (updated_line,) + items[index + 1:]),
         )
 
+    def set_customer(self, sale_id: int, *, customer_party_id: int | None) -> Sale:
+        """Asigna (o quita) el cliente de una venta en borrador.
+
+        Hace falta poder hacerlo con líneas ya cargadas: en el mostrador el
+        cajero se entera de que la venta va fiada recién al cobrar, y para
+        entonces la venta ya existe.
+        """
+        sale = self._require_draft(sale_id)
+        return self._save_with_totals(replace(sale, customer_party_id=customer_party_id))
+
     def _require_draft(self, sale_id: int) -> Sale:
         sale = self.get(sale_id)
         if sale.status != SaleStatus.DRAFT:

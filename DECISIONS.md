@@ -949,10 +949,60 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   son números cortos que elige el comercio (7, 12, 103) y chocan con los
   códigos internos. El `UNIQUE` de `item_codes` es por (tipo, código), así
   que la colisión es legítima y hay que desambiguarla al buscar.
-- Consecuencias: 16 tests nuevos en VentaLibra y 12 en LibraCommerce.
+- Consecuencias en VentaLibra: 16 tests nuevos, y 12 en LibraCommerce.
   Pantalla nueva Configuración → Balanza, con un probador que escanea una
   etiqueta real contra la configuración guardada y muestra qué entendió el
   sistema sin registrar ninguna venta — la única forma honesta de validar
   el formato sin arriesgar un cobro equivocado. En el POS, el
   multiplicador (`3 * código`) se ignora sobre una etiqueta de balanza:
   cada etiqueta es de un paquete concreto, no de N iguales.
+
+## ADR-020 — Cuenta corriente: el cálculo se comparte con LibraCore, la deuda entra como débito explícito
+
+- Estado: aceptada
+- Fecha: 2026-07-28
+- Contexto: el fiado de barrio no es opcional en una despensa (ver
+  `wiki/analyses/ventalibra-gaps-despensa.md`). LibraCore **ya tenía**
+  cuenta corriente completa — saldo, movimientos, resúmenes — usada en
+  producción por Contalibra y Restolibra. Pero estaba cableada a las tablas
+  de esos productos: calcula el saldo con un `JOIN` contra sus ventas, y
+  las de VentaLibra viven en otro archivo SQLite (el de LibraCommerce),
+  donde ningún `JOIN` las alcanza.
+- Alternativas evaluadas: construir una cuenta corriente propia en
+  LibraCommerce (deja el concepto implementado dos veces) o espejar
+  clientes y ventas en la base de LibraCore para poder usar la existente
+  (mismos datos en dos bases, que divergen y vuelven el saldo poco
+  confiable). Se eligió **generalizar la de LibraCore**, decisión del
+  usuario: es la única que deja una sola implementación.
+- Decisión, del lado de LibraCore (v0.28.0):
+  1. El origen de las ventas es un parámetro (`OrigenVentas`). Eso además
+     borró una duplicación que ya existía: Contalibra y Restolibra tenían
+     cada uno una copia byte-a-byte del módulo para cambiar un `JOIN`.
+  2. `cc_debitos`, tabla nueva, para la deuda que no nace de una venta de
+     esa base. VentaLibra registra ahí el débito al confirmar la venta
+     fiada. Queda vacía en los otros productos, así que su saldo no cambia.
+  3. `clients.external_ref` identifica al cliente en el producto que lo dio
+     de alta (`party-7`), que es lo que permite reencontrar al mismo deudor
+     en su segunda compra. No espeja la cartera: **sólo entra quien fía**.
+- Decisión, del lado de VentaLibra: **fiar no es cobrar**. Una venta a
+  cuenta corriente no genera movimiento de caja y no entra al arqueo del
+  turno; el movimiento aparece cuando el cliente paga. Si entrara, el
+  cajero cerraría cuadrando contra un total que no está en el cajón. Hay un
+  test dedicado a esto y su contraprueba en efectivo.
+- Dos reglas que se validan antes de confirmar, no después: no se le puede
+  fiar a consumidor final (una deuda tiene que ser de alguien), y la
+  cobranza exige turno abierto (esa sí es plata que entra). Si fallaran
+  después de confirmar, la venta quedaría cobrada sin deuda registrada en
+  ningún lado.
+- `PATCH /sales/{id}` aparece por una razón de mostrador: el cajero se
+  entera de que la venta va fiada **al cobrar**, con las líneas ya
+  cargadas. Exigir el cliente antes de la primera línea volvería el fiado
+  inusable. Sólo aplica a ventas en borrador: cambiarle el cliente a una
+  venta cerrada sería reescribir quién debe, sin rastro.
+- Cobrar de más se acepta y queda como saldo a favor — pasa en el
+  mostrador cuando el cliente redondea para arriba.
+- Consecuencias: 17 tests nuevos (135 en total). Verificación de que la
+  refactorización no movió plata: se comparó el saldo viejo contra el nuevo
+  para los 31 clientes de la producción de Contalibra, sin diferencias.
+  Pantalla nueva de Cuentas corrientes; en el POS, selector de cliente
+  (F7) y el medio "Cuenta corriente (fiado)".

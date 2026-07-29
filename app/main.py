@@ -11,8 +11,8 @@ from .modules_gate import require_module
 from .routers import auth as auth_router
 from .routers import billing as billing_router
 from .routers import (
-    catalog, customers, health, locations, pricing, purchasing, reports, sales,
-    settings as settings_router, shifts, stock, suppliers,
+    accounts, catalog, customers, health, locations, pricing, purchasing, reports,
+    sales, settings as settings_router, shifts, stock, suppliers,
 )
 from .routers import users as users_router
 from .services import billing
@@ -54,6 +54,8 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(suppliers.router, dependencies=staff_or_admin)
     app.include_router(purchasing.router, dependencies=staff_or_admin)
     app.include_router(customers.router, dependencies=staff_or_admin)
+    # El cajero cobra fiado en el mostrador, asi que no es admin-only.
+    app.include_router(accounts.router, dependencies=staff_or_admin)
     app.include_router(reports.router, dependencies=admin_only)
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.

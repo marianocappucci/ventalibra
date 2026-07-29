@@ -5,6 +5,11 @@ from pydantic import BaseModel
 
 from ..modules_gate import get_module_repository
 from ..services import billing
+from ..services.cuenta_corriente import (
+    MEDIO_CUENTA_CORRIENTE,
+    CuentaCorrienteService,
+    SinCliente,
+)
 from ..services.customers import CustomerService
 from libracommerce.domain.sales import SalePayment
 from libracore.db import turnos as db_turnos
@@ -137,6 +142,26 @@ def get_sale(sale_id: int, request: Request):
         raise HTTPException(404, "sale not found")
 
 
+class SaleCustomerUpdate(BaseModel):
+    customer_party_id: int | None = None
+
+
+@router.patch("/{sale_id}", response_model=SaleOut)
+def set_customer(sale_id: int, data: SaleCustomerUpdate, request: Request):
+    """Asigna o quita el cliente de una venta en borrador. El cajero suele
+    enterarse de que la venta va fiada recien al cobrar, con las lineas ya
+    cargadas."""
+    try:
+        sale = _service(request).set_customer(
+            sale_id, customer_party_id=data.customer_party_id,
+        )
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+    except InvalidSaleState as exc:
+        raise HTTPException(409, str(exc))
+    return _to_sale_out(sale)
+
+
 @router.post("/{sale_id}/items", response_model=SaleOut)
 def add_item(sale_id: int, data: SaleItemCreate, request: Request):
     try:
@@ -220,6 +245,24 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
     if turno is None:
         raise HTTPException(409, "no hay un turno de caja abierto")
 
+    # Fiar necesita saber a quien: no se le puede fiar a consumidor final.
+    # Se chequea ACA y no al registrar la deuda, por el mismo motivo que el
+    # turno -- si fallara despues de confirmar, la venta quedaria cobrada sin
+    # que la deuda exista en ningun lado.
+    fia = any(p.method == MEDIO_CUENTA_CORRIENTE for p in payments) \
+        or data.medio_pago == MEDIO_CUENTA_CORRIENTE
+    if fia:
+        try:
+            borrador = _service(request).get(sale_id)
+        except SaleNotFound:
+            raise HTTPException(404, "sale not found")
+        if borrador.customer_party_id is None:
+            raise HTTPException(
+                422,
+                "una venta a cuenta corriente necesita un cliente: no se le "
+                "puede fiar a consumidor final",
+            )
+
     try:
         sale = _service(request).confirm(
             sale_id, location_id=data.location_id, payments=payments,
@@ -247,13 +290,25 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
     # (`sale-12-efectivo`) porque create_caja_movimiento es idempotente por
     # (referencia, factura_id) y con la misma referencia el segundo medio se
     # perderia en silencio.
+    # Lo fiado es la excepcion: no entra a la caja porque no entro plata. Va
+    # como deuda del cliente y el movimiento aparece recien cuando la paga
+    # (ver services/cuenta_corriente.py). Sumarlo al arqueo dejaria al cajero
+    # cuadrando contra un total que no esta en el cajon.
+    cc = CuentaCorrienteService(request.app.state.conn)
     factura_id = factura["id"] if factura else None
     if sale.payments:
         for pago in sale.payments:
+            if pago.method == MEDIO_CUENTA_CORRIENTE:
+                cc.registrar_venta_fiada(
+                    sale, pago.amount, f"{referencia}-{pago.method}",
+                )
+                continue
             billing.record_sale_payment(
                 sale, pago.method, f"{referencia}-{pago.method}",
                 factura_id=factura_id, monto=pago.amount, turno_id=turno["id"],
             )
+    elif data.medio_pago == MEDIO_CUENTA_CORRIENTE:
+        cc.registrar_venta_fiada(sale, sale.total, referencia)
     else:
         billing.record_sale_payment(
             sale, data.medio_pago, referencia, factura_id=factura_id, turno_id=turno["id"],
