@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+
 def _make_unit(client, code="u"):
     response = client.post("/catalog/units", json={"code": code, "name": "Unidad"})
     assert response.status_code == 200, response.text
@@ -99,7 +102,13 @@ def test_scan_resolves_item_by_code(admin_client):
 
     scanned = admin_client.get("/catalog/items/scan", params={"code": "7791234567890"})
     assert scanned.status_code == 200, scanned.text
-    assert scanned.json()["id"] == item_id
+    cuerpo = scanned.json()
+    assert cuerpo["item"]["id"] == item_id
+    # Un codigo comun no dice cuanto se lleva: siempre una unidad, y el
+    # precio lo pone la lista de precios como siempre.
+    assert Decimal(cuerpo["quantity"]) == 1
+    assert cuerpo["unit_price"] is None
+    assert cuerpo["from_scale"] is False
 
 
 def test_scan_unknown_code_404(admin_client):

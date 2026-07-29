@@ -5,6 +5,15 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Balanza de mostrador** (ver ADR-019): el POS lee las etiquetas que
+  imprime la balanza y toma de ahí el peso, en vez de agregar una unidad.
+  Soporta los dos modos de configuración del equipo (peso embebido o
+  importe ya calculado), con el formato declarado por el comercio en
+  Configuración → Balanza, que incluye un probador para escanear una
+  etiqueta real y ver qué entendió el sistema antes de vender con eso.
+  Tipo de código nuevo `scale` en el catálogo. 16 tests nuevos, más los
+  del parser en `libracommerce` v0.3.0.
+
 - **`DOCS_AUTH_SECRET` expuesto en `docker-compose.yml`**: conecta el
   endpoint `POST /auth/verify` (ver abajo) con el valor real cargado en
   `.env`, necesario para que `/docs/` de `ventalibra_web` autentique

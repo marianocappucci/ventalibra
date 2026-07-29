@@ -45,13 +45,37 @@ export type CatalogItem = {
   default_cost: string
 }
 
-export type ItemCodeType = 'internal' | 'barcode' | 'sku' | 'other'
+/** Un escaneo ya resuelto. Es más que el producto porque la etiqueta de una
+ *  balanza trae adentro cuánto se pesó. */
+export type ScanResult = {
+  item: CatalogItem
+  /** 1 para un código común; el peso, si la etiqueta lo traía. */
+  quantity: string
+  /** Solo si la balanza imprimió el importe ya calculado. */
+  unit_price: string | null
+  from_scale: boolean
+}
+
+export type ItemCodeType = 'internal' | 'barcode' | 'sku' | 'scale' | 'other'
 
 export const ITEM_CODE_TYPE_LABELS: Record<ItemCodeType, string> = {
   internal: 'Interno',
   barcode: 'Código de barras',
   sku: 'SKU',
+  scale: 'Balanza',
   other: 'Otro',
+}
+
+export type ScaleValueKind = 'weight' | 'amount'
+
+/** Cómo leer las etiquetas de la balanza de este comercio. `null` = sin balanza. */
+export type ScaleFormat = {
+  prefix: string
+  code_digits: number
+  value_digits: number
+  value_kind: ScaleValueKind
+  divisor: number
+  total_digits: number
 }
 
 export type ItemCode = {

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
 
 from ..services.catalog import CatalogService
+from ..services.scale import ScaleLabelError, ScaleService
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -68,6 +69,19 @@ def _to_item_out(item) -> ItemOut:
         sellable=item.sellable, purchasable=item.purchasable,
         default_sale_price=item.default_sale_price, default_cost=item.default_cost,
     )
+
+
+class ScanOut(BaseModel):
+    """Un escaneo resuelto. Es mas que el producto porque una etiqueta de
+    balanza trae adentro cuanto se peso, y el POS necesita las dos cosas."""
+
+    item: ItemOut
+    #: 1 para un codigo de barras comun; el peso, si la etiqueta lo traia.
+    quantity: Decimal
+    #: Solo cuando la balanza vino con el importe ya calculado: en ese caso
+    #: se cobra este y no el de la lista de precios.
+    unit_price: Decimal | None
+    from_scale: bool
 
 
 class ItemCodeCreate(BaseModel):
@@ -165,17 +179,28 @@ def list_items(request: Request, category_id: int | None = None, search: str | N
     return [_to_item_out(item) for item in items]
 
 
-@router.get("/items/scan", response_model=ItemOut)
+@router.get("/items/scan", response_model=ScanOut)
 def scan_item(code: str, request: Request):
     # Ruta literal "/items/scan" registrada ANTES de "/items/{item_id}" a
     # proposito: FastAPI/Starlette matchea rutas en orden de registro, y
     # ambas tienen la misma forma (dos segmentos) -- si "/items/{item_id}"
     # fuera primero, "scan" caeria ahi y fallaria al intentar convertirlo
     # a int en vez de llegar a este endpoint.
-    item = _service(request).find_by_code(code)
-    if item is None:
+    try:
+        resultado = ScaleService(request.app.state.conn).scan(code)
+    except ScaleLabelError as exc:
+        # 422 y no 404: el codigo se leyo perfecto, lo que no se puede es
+        # vender lo que dice. Un 404 mandaria al cajero a buscar un codigo
+        # mal escaneado que en realidad esta bien.
+        raise HTTPException(422, str(exc))
+    if resultado is None:
         raise HTTPException(404, "no item matches that code")
-    return _to_item_out(item)
+    return ScanOut(
+        item=_to_item_out(resultado.item),
+        quantity=resultado.quantity,
+        unit_price=resultado.unit_price,
+        from_scale=resultado.from_scale,
+    )
 
 
 @router.get("/items/{item_id}", response_model=ItemOut)

@@ -906,3 +906,53 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   de WSL2 (un test distinto en cada corrida, no relacionado con este
   cambio). Sin cambios de frontend ni de ningún otro endpoint. Detalle
   del lado de la landing en `ventalibra_web` (`auth/app.py`).
+
+## ADR-019 — Balanza de mostrador: formato configurable, parser en LibraCommerce
+
+- Estado: aceptada
+- Fecha: 2026-07-28
+- Contexto: fiambrería y verdulería son el corazón de una despensa, y sin
+  balanza el producto queda afuera del rubro (ver
+  `wiki/analyses/ventalibra-gaps-despensa.md`). Una balanza de mostrador
+  imprime un EAN que **no identifica un producto**: identifica un producto
+  y cuánto se pesó de él, con la forma `prefijo | código | valor |
+  verificador`. Los largos, el prefijo y qué significa el valor varían por
+  marca y por cómo esté configurado cada equipo.
+- Decisión, en tres partes:
+  1. **El parser vive en LibraCommerce** (`domain/scale.py`, v0.3.0), no
+     en VentaLibra: leer una etiqueta de balanza es lógica comercial y
+     cualquier vertical de retail la necesita igual. Es una función pura
+     sobre un `ScaleFormat`; resolver el producto y el precio queda del
+     lado del consumidor.
+  2. **Se soportan los dos modos** (peso embebido e importe ya calculado)
+     porque cuál usa un local es configuración del equipo, no algo que se
+     pueda deducir. Con peso, el sistema aplica el precio por kilo
+     vigente; con importe, cobra lo que dice la etiqueta pegada al
+     producto aunque el precio del sistema haya cambiado desde que se
+     pesó. Traducir un importe a un peso dividiendo por el precio vigente
+     se descartó: reconstruye un dato que la etiqueta no trae.
+  3. **La configuración va en la base, no en variables de entorno**
+     (`commerce_settings`, clave/valor): la ajusta el dueño del local
+     desde una pantalla, y pedirle un redeploy para calibrar la balanza no
+     es viable.
+- Dos casos que se resuelven fallando y no adivinando: un `ScaleFormat`
+  incoherente se rechaza **al guardarlo** (si entrara, cada etiqueta se
+  leería mal hasta que alguien lo note), y una etiqueta de peso sobre un
+  producto que se vende por unidad devuelve 422 en vez de cobrar "0,750"
+  de algo que se cuenta — es un código de balanza cargado en el producto
+  equivocado.
+- Un detalle que sí importa en el mostrador: la etiqueta que se leyó bien
+  pero apunta a un producto no cargado devuelve **422, no 404**. Un 404
+  manda al cajero a re-escanear un código que en realidad está perfecto.
+- El tipo de código nuevo `ItemCodeType.SCALE` obligó a que
+  `find_item_by_code` pueda restringir por tipo: los códigos de balanza
+  son números cortos que elige el comercio (7, 12, 103) y chocan con los
+  códigos internos. El `UNIQUE` de `item_codes` es por (tipo, código), así
+  que la colisión es legítima y hay que desambiguarla al buscar.
+- Consecuencias: 16 tests nuevos en VentaLibra y 12 en LibraCommerce.
+  Pantalla nueva Configuración → Balanza, con un probador que escanea una
+  etiqueta real contra la configuración guardada y muestra qué entendió el
+  sistema sin registrar ninguna venta — la única forma honesta de validar
+  el formato sin arriesgar un cobro equivocado. En el POS, el
+  multiplicador (`3 * código`) se ignora sobre una etiqueta de balanza:
+  cada etiqueta es de un paquete concreto, no de N iguales.

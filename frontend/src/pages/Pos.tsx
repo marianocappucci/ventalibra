@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   api, ApiError, type CatalogItem, type ItemVariant, type Location, type Sale,
-  type Shift, type ShiftState, type ShiftSummary,
+  type ScanResult, type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,6 +42,16 @@ function money(value: string | number): string {
   return Number(value).toLocaleString('es-AR', {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   })
+}
+
+/** Las cantidades enteras se ven como enteros ("3"); las pesadas, con los
+ *  tres decimales del kilo ("0,750") -- que es como el cajero lee la
+ *  etiqueta de la balanza y puede compararla contra la pantalla. */
+function cantidadLegible(value: string): string {
+  const n = Number(value)
+  return Number.isInteger(n)
+    ? String(n)
+    : n.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 }
 
 function describeError(err: unknown): string {
@@ -143,13 +153,19 @@ export function Pos() {
     return creada
   }
 
-  async function agregar(item: CatalogItem, cantidad: string, variantId?: number) {
+  async function agregar(
+    item: CatalogItem, cantidad: string, variantId?: number, precioUnitario?: string | null,
+  ) {
     setBusy(true)
     setError(null)
     try {
       const actual = await conVenta()
       const actualizada = await api.post<Sale>(`/sales/${actual.id}/items`, {
         item_id: item.id, variant_id: variantId ?? null, quantity: cantidad,
+        // Solo lo manda la balanza configurada para imprimir el importe ya
+        // calculado: ahi se cobra lo que dice la etiqueta pegada al producto
+        // y no el precio de la lista, que pudo cambiar despues de pesar.
+        ...(precioUnitario ? { unit_price: precioUnitario } : {}),
       })
       setSale(actualizada)
       setReciente(actualizada.items.length - 1)
@@ -166,7 +182,9 @@ export function Pos() {
     }
   }
 
-  async function elegirItem(item: CatalogItem, cantidad: string) {
+  async function elegirItem(
+    item: CatalogItem, cantidad: string, precioUnitario?: string | null,
+  ) {
     // Un item con variantes no se puede vender sin elegir cual: se pregunta
     // solo en ese caso, no en cada producto.
     try {
@@ -180,7 +198,7 @@ export function Pos() {
     } catch {
       // sin variantes accesibles: se vende el item pelado
     }
-    await agregar(item, cantidad)
+    await agregar(item, cantidad, undefined, precioUnitario)
   }
 
   async function buscar(event: FormEvent) {
@@ -195,10 +213,16 @@ export function Pos() {
     try {
       // Primero por codigo exacto: es lo que manda el lector, y tiene que
       // entrar sin intervencion.
-      const escaneado = await api.get<CatalogItem>(
+      const escaneado = await api.get<ScanResult>(
         `/catalog/items/scan?code=${encodeURIComponent(resto)}`,
       )
-      await elegirItem(escaneado, cantidad)
+      // Una etiqueta de balanza ya trae cuanto se peso, y el multiplicador
+      // no aplica: cada etiqueta es de un paquete concreto, no de N iguales.
+      await elegirItem(
+        escaneado.item,
+        escaneado.from_scale ? escaneado.quantity : cantidad,
+        escaneado.unit_price,
+      )
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         try {
@@ -498,7 +522,7 @@ function Ticket({ sale, marcada, reciente, onMarcar, onQuitar }: {
             >
               <td className="p-2 text-muted-foreground">{i + 1}</td>
               <td className="p-2">{linea.description_snapshot}</td>
-              <td className="p-2 text-center tabular-nums">{Number(linea.quantity)}</td>
+              <td className="p-2 text-center tabular-nums">{cantidadLegible(linea.quantity)}</td>
               <td className="p-2 text-right tabular-nums">${money(linea.unit_price)}</td>
               <td className="p-2 text-right tabular-nums">${money(linea.line_total)}</td>
               <td className="p-2 text-right">

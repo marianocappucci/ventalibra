@@ -11,7 +11,7 @@ import tailwindcss from '@tailwindcss/vite'
 const API_PATHS = [
   '/auth', '/catalog', '/pricing', '/locations', '/stock', '/sales', '/shifts',
   '/suppliers', '/purchase-orders', '/purchase-receipts', '/customers',
-  '/users', '/config', '/health',
+  '/users', '/config', '/settings', '/health',
 ]
 
 // Las claves del proxy se emiten como regex (Vite trata como RegExp toda

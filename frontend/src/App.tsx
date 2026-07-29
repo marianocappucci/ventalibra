@@ -11,6 +11,7 @@ import { Compras } from './pages/Compras'
 import { Clientes } from './pages/Clientes'
 import { Usuarios } from './pages/Usuarios'
 import { ConfigArca } from './pages/ConfigArca'
+import { ConfigBalanza } from './pages/ConfigBalanza'
 import { Reportes } from './pages/Reportes'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
@@ -92,6 +93,14 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <ConfigArca />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/config-balanza"
+        element={
+          <ProtectedRoute adminOnly>
+            <ConfigBalanza />
           </ProtectedRoute>
         }
       />
