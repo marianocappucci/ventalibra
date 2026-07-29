@@ -28,6 +28,20 @@ def test_create_and_list_unit(admin_client):
     assert "kg" in codes
 
 
+def test_create_duplicate_unit_code_fails(admin_client):
+    _make_unit(admin_client, "kg")
+
+    response = admin_client.post("/catalog/units", json={"code": "kg", "name": "Kilogramo"})
+    assert response.status_code == 409, response.text
+    assert "kg" in response.json()["detail"]
+
+    # La unidad original quedo intacta y la conexion sigue escribible: el
+    # INSERT fallido no se lleva puesto lo que venga despues.
+    codes = [u["code"] for u in admin_client.get("/catalog/units").json()]
+    assert codes.count("kg") == 1
+    assert _make_unit(admin_client, "u")["code"] == "u"
+
+
 def test_create_item_with_unknown_unit_fails(admin_client):
     response = admin_client.post(
         "/catalog/items",

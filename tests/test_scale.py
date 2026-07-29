@@ -11,13 +11,13 @@ import pytest
 
 
 def _kilo(client):
-    """La unidad kg. Se da de alta una sola vez por test: repetirla hoy
-    levanta un IntegrityError crudo, no un 409."""
-    if not any(u["code"] == "kg" for u in client.get("/catalog/units").json()):
-        client.post(
-            "/catalog/units",
-            json={"code": "kg", "name": "Kilogramo", "allows_fraction": True, "decimal_scale": 3},
-        )
+    """La unidad kg. Idempotente: varios productos pesables en un mismo test
+    la piden de nuevo, y el alta repetida es un 409 y nada mas."""
+    respuesta = client.post(
+        "/catalog/units",
+        json={"code": "kg", "name": "Kilogramo", "allows_fraction": True, "decimal_scale": 3},
+    )
+    assert respuesta.status_code in (200, 409), respuesta.text
 
 
 def _producto_pesable(client, nombre="Queso cremoso", precio="8500"):

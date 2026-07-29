@@ -147,7 +147,13 @@ def list_categories(request: Request):
 
 @router.post("/units", response_model=UnitOut)
 def create_unit(data: UnitCreate, request: Request):
-    unit = _service(request).create_unit(data.code, data.name, data.allows_fraction, data.decimal_scale)
+    try:
+        unit = _service(request).create_unit(data.code, data.name, data.allows_fraction, data.decimal_scale)
+    except sqlite3.IntegrityError:
+        # UNIQUE(code). A diferencia de los otros 409 de este router el
+        # mensaje no es el de sqlite: "units.code" no le dice nada a quien
+        # esta cargando unidades desde la pantalla de catalogo.
+        raise HTTPException(409, f"ya existe una unidad con el codigo {data.code!r}")
     return UnitOut(**unit.__dict__)
 
 

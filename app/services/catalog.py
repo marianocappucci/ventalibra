@@ -50,10 +50,19 @@ class CatalogService:
 
     def create_unit(self, code: str, name: str, allows_fraction: bool = False, decimal_scale: int = 0) -> Unit:
         unit = Unit(code=code, name=name, allows_fraction=allows_fraction, decimal_scale=decimal_scale)
-        self._conn.execute(
-            "INSERT INTO units (code, name, allows_fraction, decimal_scale) VALUES (?, ?, ?, ?)",
-            (unit.code, unit.name, int(unit.allows_fraction), unit.decimal_scale),
-        )
+        try:
+            self._conn.execute(
+                "INSERT INTO units (code, name, allows_fraction, decimal_scale) VALUES (?, ?, ?, ?)",
+                (unit.code, unit.name, int(unit.allows_fraction), unit.decimal_scale),
+            )
+        except sqlite3.IntegrityError:
+            # El INSERT que falla por UNIQUE(code) deja abierta la transaccion
+            # implicita que sqlite3 abrio para ejecutarlo, con el lock de
+            # escritura tomado. La conexion es una sola para toda la app, asi
+            # que sin este rollback el 409 se lleva puesto al que escriba
+            # despues. El router la traduce a HTTP.
+            self._conn.rollback()
+            raise
         self._conn.commit()
         return unit
 
