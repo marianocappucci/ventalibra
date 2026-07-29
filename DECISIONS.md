@@ -1006,3 +1006,44 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   para los 31 clientes de la producción de Contalibra, sin diferencias.
   Pantalla nueva de Cuentas corrientes; en el POS, selector de cliente
   (F7) y el medio "Cuenta corriente (fiado)".
+
+## ADR-021 — Ticket impreso: el generador ya existía en Contalibra, se extrajo en vez de reescribirlo
+
+- Estado: aceptada
+- Fecha: 2026-07-28
+- Contexto: el ticket impreso era el tercer bloqueante del relevamiento del
+  rubro. El usuario avisó que **ya estaba resuelto en Contalibra**, y al
+  mirarlo apareció el mismo patrón que con la cuenta corriente:
+  `ticket_generator.py` (385 líneas, PDF térmico de 58/80 mm) estaba
+  **copiado byte a byte en Restolibra**, que además le sumaba su comanda de
+  cocina.
+- Decisión: extraerlo a `libracore.ticket_generator` (v0.29.0) y dejar a los
+  dos productos en un shim. La comanda de cocina sigue siendo de Restolibra
+  — no es un ticket de venta sino una orden de preparación, sin precios y
+  con la letra más grande porque se lee de lejos — pero se arma sobre las
+  piezas públicas del motor (`TicketPDF`, `cfg_ticket()`,
+  `recortar_a_contenido()`, `fmt_fecha()`) en vez de duplicarlo. VentaLibra
+  sólo aporta el puente de su `Sale` de LibraCommerce al dict que el
+  generador espera.
+- El módulo **no tenía tests en ninguno de los dos productos**. Se
+  agregaron 14 en LibraCore que fijan el comportamiento tal como estaba al
+  extraerlo, incluido que el ancho de página siga al configurado: 58 y 80
+  mm son rollos distintos y equivocarlo sólo se nota con el papel puesto.
+- La impresión va por el diálogo del sistema (`window.open` + `print()`),
+  no directo a la impresora: el navegador no puede hablarle a la
+  ticketeadora, y el diálogo del sistema es el que la conoce. El PDF ya
+  sale con el ancho configurado, así que entra a la medida del rollo.
+- Sólo se imprime el ticket de una venta **confirmada**: un comprobante
+  impreso de algo que todavía se puede modificar miente. Y se puede
+  reimprimir tantas veces como haga falta — se corta el papel, se traba la
+  impresora — sin alterar la venta.
+- Comportamiento conocido, dejado explícito en un test: confirmar con el
+  atajo `medio_pago` (en vez de `pagos`) registra el movimiento de caja
+  pero no guarda el pago en la venta, así que el ticket sale sin el
+  desglose de medios. El POS siempre manda `pagos`; el atajo es de la API.
+- Hallazgo del camino: `libracore.config_manager` resuelve su ruta **al
+  importarse**, desde `DATA_DIR` o el cwd. Sin aislarlo, los tests que
+  guardaban configuración escribían `config.json` en la raíz del repo. Se
+  parchea en `conftest.py`.
+- Consecuencias: 15 tests nuevos (150 en total). Pantalla nueva de
+  configuración del ticket con vista previa del ancho elegido.

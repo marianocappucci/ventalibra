@@ -14,6 +14,14 @@ def _dev_env(monkeypatch, tmp_path):
     # engine con pool) -- ":memory:" le daria a cada llamada una base vacia
     # distinta. Un archivo temporal real por test, igual que medlibra/gestiolibra.
     monkeypatch.setenv("VENTALIBRA_LIBRACORE_DB_PATH", str(tmp_path / "ventalibra_libracore.db"))
+    # `libracore.config_manager` resuelve su ruta AL IMPORTARSE, desde
+    # DATA_DIR o el cwd -- setear la variable acá ya llega tarde. Sin este
+    # parche, cualquier test que guarde configuración (ticket, empresa)
+    # escribe `config.json` en la raíz del repo y se lo lleva puesto entre
+    # corridas. Detectado el 2026-07-28 al agregar la config del ticket.
+    from libracore import config_manager
+    monkeypatch.setattr(config_manager, "CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.setattr(config_manager, "LOGO_DIR", str(tmp_path / "logos"))
 
 
 def https_client(app) -> TestClient:

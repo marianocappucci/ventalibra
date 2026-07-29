@@ -19,7 +19,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, LockKeyhole, Plus, Scan, Trash2, User } from 'lucide-react'
+import { Ban, LockKeyhole, Plus, Printer, Scan, Trash2, User } from 'lucide-react'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -36,7 +36,8 @@ const MEDIOS_PAGO = [
 
 const ATAJOS = [
   ['F2', 'cobrar'], ['F3', 'dividir pago'], ['F4', 'quitar línea'],
-  ['F6', 'cantidad'], ['F7', 'cliente'], ['F9', 'factura'], ['Esc', 'cancelar venta'],
+  ['F6', 'cantidad'], ['F7', 'cliente'], ['F8', 'imprimir'], ['F9', 'factura'],
+  ['Esc', 'cancelar venta'],
 ]
 
 // La sucursal se elige una vez y queda: en el mostrador no cambia entre
@@ -927,14 +928,17 @@ function VentaCobrada({ venta, onNueva }: { venta: Sale; onNueva: () => void }) 
   const vuelto = Number(venta.vuelto_total)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Enter' || e.key === 'F2' || e.key === 'Escape') {
+      if (e.key === 'F8') {
+        e.preventDefault()
+        imprimirTicket(venta.id)
+      } else if (e.key === 'Enter' || e.key === 'F2' || e.key === 'Escape') {
         e.preventDefault()
         onNueva()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onNueva])
+  }, [onNueva, venta.id])
 
   return (
     <div className="grid gap-4">
@@ -963,8 +967,23 @@ function VentaCobrada({ venta, onNueva }: { venta: Sale; onNueva: () => void }) 
       <Button className="h-14 text-base" onClick={onNueva} autoFocus>
         Nueva venta
       </Button>
+      <Button variant="outline" onClick={() => imprimirTicket(venta.id)}>
+        <Printer />Imprimir ticket <span className="ml-1 text-xs opacity-70">F8</span>
+      </Button>
     </div>
   )
+}
+
+/** Abre el PDF del ticket en una ventana aparte y dispara la impresión.
+ *
+ *  El navegador no puede hablarle a la ticketeadora directamente: imprime a
+ *  través del diálogo del sistema, que es el que conoce la impresora térmica.
+ *  El PDF ya viene con el ancho de papel configurado, así que sale a la
+ *  medida del rollo. */
+function imprimirTicket(saleId: number) {
+  const ventana = window.open(`/sales/${saleId}/ticket`, '_blank')
+  if (!ventana) return  // bloqueador de popups: el ticket se puede pedir de nuevo
+  ventana.addEventListener('load', () => ventana.print())
 }
 
 

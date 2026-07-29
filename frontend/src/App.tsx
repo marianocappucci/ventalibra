@@ -12,6 +12,7 @@ import { Clientes } from './pages/Clientes'
 import { Usuarios } from './pages/Usuarios'
 import { ConfigArca } from './pages/ConfigArca'
 import { ConfigBalanza } from './pages/ConfigBalanza'
+import { ConfigTicket } from './pages/ConfigTicket'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
 import { Reportes } from './pages/Reportes'
 
@@ -110,6 +111,14 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <ConfigBalanza />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/config-ticket"
+        element={
+          <ProtectedRoute adminOnly>
+            <ConfigTicket />
           </ProtectedRoute>
         }
       />

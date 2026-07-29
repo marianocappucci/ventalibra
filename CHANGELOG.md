@@ -5,6 +5,13 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Ticket impreso** (ver ADR-021): después de cobrar, F8 (o el botón)
+  abre el PDF del ticket térmico y dispara la impresión. El generador es de
+  `libracore` v0.29.0 — extraído de Contalibra, donde ya existía y estaba
+  duplicado en Restolibra. Pantalla nueva de configuración del ticket
+  (ancho de rollo 58/80 mm, cuerpo de letra, logo, pie, línea de corte) con
+  vista previa, para no gastar rollo probando. 15 tests nuevos.
+
 - **Cuenta corriente / fiado** (ver ADR-020): se puede vender a cuenta
   corriente desde el POS eligiendo el cliente (F7). Lo fiado **no entra al
   arqueo del turno** — no es plata que entró; el movimiento de caja aparece

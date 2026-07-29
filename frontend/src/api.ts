@@ -88,6 +88,16 @@ export type Deudor = {
   saldo: string
 }
 
+/** Cómo imprime el ticket este comercio. */
+export type TicketConfig = {
+  /** '58' u '80': los dos anchos de rollo del mercado. */
+  ancho_mm: string
+  fuente_size: number
+  mostrar_logo: boolean
+  linea_corte: boolean
+  pie: string
+}
+
 export type ScaleValueKind = 'weight' | 'amount'
 
 /** Cómo leer las etiquetas de la balanza de este comercio. `null` = sin balanza. */

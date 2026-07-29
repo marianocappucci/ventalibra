@@ -2,8 +2,8 @@
 // Gestiolibra/MedLibra/VentaLibra salvo NAV_ITEMS/branding -- ver
 // wiki/analyses/auditoria-duplicacion-familia-libra.md).
 import {
-  BarChart3, Building2, Package, Receipt, Scale, ShoppingBag, ShoppingCart, Truck, Users,
-  Wallet, Warehouse,
+  BarChart3, Building2, Package, Printer, Receipt, Scale, ShoppingBag, ShoppingCart,
+  Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 
@@ -22,5 +22,6 @@ export const Layout = createLayout({
     { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
     { to: '/config-arca', label: 'Config. ARCA', icon: Receipt, adminOnly: true },
     { to: '/config-balanza', label: 'Balanza', icon: Scale, adminOnly: true },
+    { to: '/config-ticket', label: 'Ticket', icon: Printer, adminOnly: true },
   ],
 })

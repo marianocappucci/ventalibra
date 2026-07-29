@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from ..modules_gate import get_module_repository
@@ -11,6 +11,7 @@ from ..services.cuenta_corriente import (
     SinCliente,
 )
 from ..services.customers import CustomerService
+from ..services.tickets import ticket_de_venta
 from libracommerce.domain.sales import SalePayment
 from libracore.db import turnos as db_turnos
 
@@ -140,6 +141,35 @@ def get_sale(sale_id: int, request: Request):
         return _to_sale_out(_service(request).get(sale_id))
     except SaleNotFound:
         raise HTTPException(404, "sale not found")
+
+
+@router.get("/{sale_id}/ticket")
+def ticket(sale_id: int, request: Request):
+    """PDF del ticket termico de una venta confirmada.
+
+    Solo confirmadas: un borrador no tiene numero de venta cerrado ni pagos,
+    y un ticket impreso de algo que todavia se puede modificar es un
+    comprobante que miente.
+    """
+    try:
+        sale = _service(request).get(sale_id)
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+    if sale.status != "confirmed":
+        raise HTTPException(409, "solo se imprime el ticket de una venta confirmada")
+
+    nombre = ""
+    if sale.customer_party_id is not None:
+        cliente = CustomerService(request.app.state.conn).get(sale.customer_party_id)
+        nombre = (cliente or {}).get("display_name", "")
+
+    pdf = ticket_de_venta(sale, nombre)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        # inline: el POS lo abre para imprimir, no lo baja como archivo.
+        headers={"Content-Disposition": f'inline; filename="ticket-{sale.number}.pdf"'},
+    )
 
 
 class SaleCustomerUpdate(BaseModel):
