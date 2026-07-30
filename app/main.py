@@ -4,6 +4,9 @@ dependencias en include_router, no por endpoint suelto)."""
 import os
 
 from fastapi import Depends, FastAPI
+from libraauth.models import Base as AuthBase
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from . import db
 from .auth import build_session_auth, require_admin, require_staff
@@ -22,11 +25,31 @@ from .services.users import UserRepository, ensure_default_admin
 
 def create_app(db_path: str) -> FastAPI:
     conn = db.connect(db_path)
-    # libracore.db.core debe configurarse antes de que UserRepository (que
-    # ahora delega en libracore.db.usuarios, ver services/users.py) haga su
-    # primera consulta -- orden invertido respecto de antes de la migracion.
-    billing.configure(os.environ.get("VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"))
-    user_repository = UserRepository()
+
+    # `usuarios` (libraauth) vive en la base de LIBRACORE, no en la del dominio.
+    #
+    # Es deliberado y se pago aprendiendolo: 11 tablas de libracore
+    # (facturas, ventas, caja_movimientos, turnos_caja, egresos, egresos_pagos,
+    # movimientos_stock, movimientos_tesoreria, cc_pagos, remitos, presupuestos)
+    # declaran `usuario_id REFERENCES usuarios(id)`, y esas FK resuelven contra
+    # la tabla que este en SU MISMO archivo. Moverla a la base del dominio
+    # rompia `create_turno` con FOREIGN KEY constraint failed -- se descubrio
+    # justamente con la suite de VentaLibra, que es el unico producto con turnos
+    # de caja. Ver wiki/entities/libraauth.md.
+    #
+    # Este engine es la unica pieza SQLAlchemy del producto (el resto es sqlite3
+    # crudo, app/db.py) y no mueve ni un dato: las filas ya estan ahi.
+    libracore_db_path = os.environ.get(
+        "VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"
+    )
+    billing.configure(libracore_db_path)
+    auth_engine = create_engine(
+        f"sqlite:///{libracore_db_path}", connect_args={"check_same_thread": False}
+    )
+    AuthBase.metadata.create_all(auth_engine)
+
+    # Sin `roles=`: el default ("admin","staff") es el vocabulario de VentaLibra.
+    user_repository = UserRepository(sessionmaker(bind=auth_engine))
     ensure_default_admin(user_repository)
 
     app = FastAPI(title="VentaLibra")

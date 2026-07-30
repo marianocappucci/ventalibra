@@ -1,12 +1,17 @@
-"""Session auth para la API JSON de VentaLibra -- shim sobre libracore.auth.
+"""Session auth para la API JSON de VentaLibra -- shim sobre libraauth.
 
-Extraído 2026-07-26: reusa libracore.auth.SessionAuth para la mecánica de
-cookie firmada, y las dependencias json_api_* de libracore.auth (401/403
-JSON sin redirect, pensadas para APIs JSON puras sin página de login
-server-rendered) -- eran byte-idénticas en Gestiolibra/MedLibra/VentaLibra,
-ver wiki/analyses/auditoria-duplicacion-familia-libra.md.
+Extraído 2026-07-26 a libracore.auth (era byte-idéntico en Gestiolibra/
+MedLibra/VentaLibra, ver wiki/analyses/auditoria-duplicacion-familia-libra.md)
+y **migrado el 2026-07-30 a `libraauth.session_auth`**: el auth salió de
+LibraCore y pasó a ser un motor transversal propio, ver
+wiki/entities/libraauth.md.
+
+**Los nombres importados no cambiaron**: libraauth re-exporta exactamente la
+misma API pública. La diferencia real está en main.py — su UserRepository
+trabaja sobre SQLAlchemy, así que VentaLibra (que es sqlite3 crudo) sumó un
+engine dedicado **sobre la base de libracore**, donde `usuarios` ya vivía.
 """
-from libracore.auth import (
+from libraauth.session_auth import (
     SessionAuth,
     json_api_get_current_user as get_current_user,
     json_api_get_session_auth as get_session_auth,
