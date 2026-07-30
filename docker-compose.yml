@@ -43,6 +43,16 @@ services:
       - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
       - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
       - ENV=development
+      # Recuperacion de contrasena (libraauth v0.5.0). Sin SMTP la app
+      # levanta igual y POST /auth/forgot-password devuelve 503: cargar
+      # estas variables es lo unico que falta para que mande mails.
+      - VENTALIBRA_RESET_URL_BASE=${VENTALIBRA_RESET_URL_BASE:-https://dev.ventalibra.com.ar/reset-password}
+      - LIBRAAUTH_SMTP_HOST=${LIBRAAUTH_SMTP_HOST:-}
+      - LIBRAAUTH_SMTP_PORT=${LIBRAAUTH_SMTP_PORT:-587}
+      - LIBRAAUTH_SMTP_USER=${LIBRAAUTH_SMTP_USER:-}
+      - LIBRAAUTH_SMTP_PASSWORD=${LIBRAAUTH_SMTP_PASSWORD:-}
+      - LIBRAAUTH_SMTP_FROM_EMAIL=${LIBRAAUTH_SMTP_FROM_EMAIL:-}
+      - LIBRAAUTH_SMTP_FROM_NAME=${LIBRAAUTH_SMTP_FROM_NAME:-VentaLibra}
       - DOCS_AUTH_SECRET=${DOCS_AUTH_SECRET:-}
     networks:
       - stack-net

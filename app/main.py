@@ -5,6 +5,7 @@ import os
 
 from fastapi import Depends, FastAPI
 from libraauth.models import Base as AuthBase
+from libraauth.password_reset import PasswordResetService
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -49,13 +50,25 @@ def create_app(db_path: str) -> FastAPI:
     AuthBase.metadata.create_all(auth_engine)
 
     # Sin `roles=`: el default ("admin","staff") es el vocabulario de VentaLibra.
-    user_repository = UserRepository(sessionmaker(bind=auth_engine))
+    auth_sessions = sessionmaker(bind=auth_engine)
+    user_repository = UserRepository(auth_sessions)
     ensure_default_admin(user_repository)
 
     app = FastAPI(title="VentaLibra")
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
+    # Recuperación de contraseña por correo (libraauth v0.5.0). Usa el mismo
+    # session_factory que el UserRepository: la tabla de tokens tiene FK a
+    # `usuarios`. Sin SMTP configurado la app levanta igual y el endpoint
+    # devuelve 503.
+    app.state.password_reset = PasswordResetService(
+        auth_sessions,
+        product_name="VentaLibra",
+        reset_url_base=os.environ.get(
+            "VENTALIBRA_RESET_URL_BASE", "https://dev.ventalibra.com.ar/reset-password"
+        ),
+    )
     app.state.modules = ModuleRepository(conn)
 
     app.include_router(health.router)

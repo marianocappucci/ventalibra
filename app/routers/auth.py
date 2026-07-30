@@ -14,4 +14,4 @@ endpoint es opt-in porque no todo consumidor tiene landing; **sin este flag el
 """
 from libraauth.session_auth import build_json_api_auth_router
 
-router = build_json_api_auth_router(incluir_verify=True)
+router = build_json_api_auth_router(incluir_verify=True, incluir_password_reset=True)
