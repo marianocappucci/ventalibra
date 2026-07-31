@@ -13,7 +13,7 @@ dependencies = [
     "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.4.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.1.0",
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.2.0",
     "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.5.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
