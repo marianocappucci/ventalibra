@@ -19,6 +19,26 @@ export default mergeConfig(
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
+      coverage: {
+        provider: 'v8',
+        // Trinquete, no meta. Los tests de los SPAs son de HUMO a proposito
+        // (la logica compartida se prueba a fondo en libra-ui, que tiene su
+        // propia suite y su propio CI), asi que este numero es bajo y esta
+        // bien que lo sea: sirve para que nadie borre tests, no para medir
+        // calidad. Medido el 2026-07-31: 17.10% de lineas; el piso queda 3
+        // puntos abajo.
+        thresholds: { lines: 15 },
+        reporter: ['text-summary', 'json-summary'],
+        // Solo el codigo propio del producto: `libra-ui` tiene su propia
+        // suite y su propio CI, medirlo aca contaria dos veces lo mismo.
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: [
+          'src/test/**',          // helpers de test, no codigo de la app
+          'src/**/*.d.ts',
+          'src/main.tsx',         // solo monta el arbol de React
+          'src/components/ui/**', // shadcn/ui: copiado tal cual del upstream
+        ],
+      },
       server: {
         deps: {
           // `libra-ui` se consume como CODIGO FUENTE (.tsx) desde
