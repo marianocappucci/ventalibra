@@ -78,3 +78,52 @@ jobs:
 
       - name: Run tests
         run: pytest -v
+
+  # Los tests del frontend corren en su propio job: no comparten nada con
+  # los de Python y asi el reporte dice cual de los dos fallo, en vez de un
+  # unico job rojo. Sumado el 2026-07-31, junto con la primera suite de
+  # frontend del producto.
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `libra-ui` es un repo PRIVADO que se instala por git+https: sin
+      # credenciales, `npm ci` falla al clonarlo. Se reusa la misma deploy
+      # key que ya usa el Dockerfile, con el alias por repo de siempre.
+      - name: Configurar acceso a libra-ui
+        env:
+          LIBRA_UI_DEPLOY_KEY: ${{ secrets.LIBRA_UI_DEPLOY_KEY }}
+        run: |
+          if [ -z "$LIBRA_UI_DEPLOY_KEY" ]; then
+            echo "::error::Falta el secret LIBRA_UI_DEPLOY_KEY en este repositorio."
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          printf '%s\n' "$LIBRA_UI_DEPLOY_KEY" > ~/.ssh/id_libra_ui
+          chmod 600 ~/.ssh/id_libra_ui
+          printf 'Host github-libra-ui\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_libra_ui\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+          git config --global url."git@github-libra-ui:marianocappucci/libra-ui".insteadOf "https://github.com/marianocappucci/libra-ui"
+          saludo=$(ssh -o StrictHostKeyChecking=yes -T git@github-libra-ui 2>&1 || true)
+          echo "libra-ui -> $saludo"
+          case "$saludo" in
+            *"marianocappucci/libra-ui"*) ;;
+            *) echo "::error::La deploy key no resuelve a marianocappucci/libra-ui."; exit 1 ;;
+          esac
+        working-directory: .
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Correr los tests
+        run: npm test
