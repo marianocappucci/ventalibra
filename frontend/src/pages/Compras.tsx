@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  api, ApiError,
+  api, ApiError, opcionesItem, opcionesOrdenCompra, opcionesProveedor,
   type CatalogItem, type Location, type PurchaseOrder, type PurchaseReceipt, type Supplier,
 } from '../api'
+import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -102,12 +103,13 @@ function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: Catal
           <div className="flex items-end gap-2">
             <div className="grid gap-1.5 flex-1">
               <Label>Proveedor</Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger><SelectValue placeholder="Elegí un proveedor…" /></SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.display_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SelectBuscable
+                value={supplierId}
+                onChange={setSupplierId}
+                opciones={opcionesProveedor(suppliers)}
+                placeholder="Elegí un proveedor…"
+                ariaLabel="Proveedor"
+              />
             </div>
             <Button onClick={createOrder} disabled={busy || !supplierId}>Nueva orden</Button>
           </div>
@@ -164,12 +166,14 @@ function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: Catal
               <div className="flex flex-wrap items-end gap-2 border-t pt-3">
                 <div className="grid gap-1.5">
                   <Label>Item</Label>
-                  <Select value={lineItemId} onValueChange={setLineItemId}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Item…" /></SelectTrigger>
-                    <SelectContent>
-                      {items.map((i) => <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SelectBuscable
+                    value={lineItemId}
+                    onChange={setLineItemId}
+                    opciones={opcionesItem(items)}
+                    placeholder="Item…"
+                    ariaLabel="Item"
+                    className="w-40"
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Cantidad</Label>
@@ -290,21 +294,24 @@ function ReceiptsPanel({
           <div className="flex flex-wrap items-end gap-2">
             <div className="grid gap-1.5 flex-1">
               <Label>Proveedor</Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger><SelectValue placeholder="Elegí un proveedor…" /></SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.display_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SelectBuscable
+                value={supplierId}
+                onChange={setSupplierId}
+                opciones={opcionesProveedor(suppliers)}
+                placeholder="Elegí un proveedor…"
+                ariaLabel="Proveedor"
+              />
             </div>
             <div className="grid gap-1.5">
               <Label>Orden vinculada (opcional)</Label>
-              <Select value={orderId} onValueChange={setOrderId}>
-                <SelectTrigger className="w-40"><SelectValue placeholder="Sin orden" /></SelectTrigger>
-                <SelectContent>
-                  {orders.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.number}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SelectBuscable
+                value={orderId}
+                onChange={setOrderId}
+                opciones={opcionesOrdenCompra(orders)}
+                placeholder="Sin orden"
+                ariaLabel="Orden vinculada"
+                className="w-40"
+              />
             </div>
             <Button onClick={createReceipt} disabled={busy || !supplierId}>Nueva recepción</Button>
           </div>
@@ -357,12 +364,14 @@ function ReceiptsPanel({
                 <div className="flex flex-wrap items-end gap-2 border-t pt-3">
                   <div className="grid gap-1.5">
                     <Label>Item</Label>
-                    <Select value={lineItemId} onValueChange={setLineItemId}>
-                      <SelectTrigger className="w-40"><SelectValue placeholder="Item…" /></SelectTrigger>
-                      <SelectContent>
-                        {items.map((i) => <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <SelectBuscable
+                      value={lineItemId}
+                      onChange={setLineItemId}
+                      opciones={opcionesItem(items)}
+                      placeholder="Item…"
+                      ariaLabel="Item"
+                      className="w-40"
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Cantidad</Label>

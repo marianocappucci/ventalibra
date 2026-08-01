@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import {
-  api, ApiError, ITEM_CODE_TYPE_LABELS,
+  api, ApiError, ITEM_CODE_TYPE_LABELS, opcionesCategoria,
   type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant, type Unit,
 } from '../api'
+import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -141,12 +142,14 @@ function ItemCreateForm({
           </div>
           <div className="grid gap-1.5">
             <Label>Categoría</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Sin categoría" /></SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SelectBuscable
+              value={categoryId}
+              onChange={setCategoryId}
+              opciones={opcionesCategoria(categories)}
+              placeholder="Sin categoría"
+              ariaLabel="Categoría"
+              className="w-40"
+            />
           </div>
           <div className="grid gap-1.5">
             <Label>Precio de venta</Label>

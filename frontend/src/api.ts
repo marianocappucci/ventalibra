@@ -17,6 +17,8 @@
 
 export { api, ApiError, type User } from 'libra-ui/api-client'
 
+import type { OpcionSelect } from 'libra-ui/SelectBuscable'
+
 export type Category = {
   id: number
   name: string
@@ -343,4 +345,57 @@ export type StockReportItem = {
 export type StockReport = {
   items: StockReportItem[]
   low_stock: StockReportItem[]
+}
+
+// --- opciones para los selects con busqueda (libra-ui/SelectBuscable) ------
+//
+// Viven aca, junto a los tipos, para que las pantallas que eligen un
+// proveedor o un producto lo muestren y lo busquen igual. El `hint` no es
+// decorativo: ademas de desambiguar dos nombres parecidos, **entra en la
+// busqueda**.
+//
+// Es el producto de la familia donde mas hace falta: una despensa real tiene
+// cientos de items en el catalogo, y elegirlos a ojo en una lista ordenada
+// era el caso que motivo el componente.
+
+export function opcionesProveedor(proveedores: Supplier[]): OpcionSelect[] {
+  return proveedores.map((s) => ({
+    value: String(s.id),
+    label: s.display_name,
+    // El CUIT es lo que figura en la factura del proveedor, que es el papel
+    // que se tiene a mano al cargar una compra.
+    hint: [s.tax_id, s.active ? null : 'inactivo'].filter(Boolean).join(' · ') || undefined,
+  }))
+}
+
+export function opcionesItem(items: CatalogItem[]): OpcionSelect[] {
+  return items.map((i) => ({
+    value: String(i.id),
+    label: i.name,
+    hint: [i.unit_code, i.active ? null : 'inactivo'].filter(Boolean).join(' · ') || undefined,
+  }))
+}
+
+export function opcionesOrdenCompra(ordenes: PurchaseOrder[]): OpcionSelect[] {
+  return ordenes.map((o) => ({
+    value: String(o.id),
+    label: o.number,
+    hint: PURCHASE_ORDER_STATUS_HINT[o.status],
+  }))
+}
+
+const PURCHASE_ORDER_STATUS_HINT: Record<PurchaseOrderStatus, string> = {
+  draft: 'borrador',
+  sent: 'enviada',
+  partial: 'recibida parcial',
+  received: 'recibida',
+  cancelled: 'cancelada',
+}
+
+export function opcionesCategoria(categorias: Category[]): OpcionSelect[] {
+  return categorias.map((c) => ({
+    value: String(c.id),
+    label: c.name,
+    hint: c.active ? undefined : 'inactiva',
+  }))
 }
