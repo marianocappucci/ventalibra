@@ -6,6 +6,8 @@ import os
 from fastapi import Depends, FastAPI
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
+from libraauth.session_auth import build_smtp_settings_router
+from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -62,17 +64,29 @@ def create_app(db_path: str) -> FastAPI:
     # session_factory que el UserRepository: la tabla de tokens tiene FK a
     # `usuarios`. Sin SMTP configurado la app levanta igual y el endpoint
     # devuelve 503.
+    # Config SMTP editable por backoffice (libraauth v0.6.0), con la contraseña
+    # cifrada en reposo. Mismo `auth_sessions` que el resto del motor.
+    app.state.smtp_settings = SmtpSettingsRepository(auth_sessions)
     app.state.password_reset = PasswordResetService(
         auth_sessions,
         product_name="VentaLibra",
         reset_url_base=os.environ.get(
             "VENTALIBRA_RESET_URL_BASE", "https://dev.ventalibra.com.ar/reset-password"
         ),
+        # CALLABLE, no un valor: se resuelve en cada envío. Con un valor fijo,
+        # guardar el SMTP por pantalla no tendría efecto hasta recrear el
+        # contenedor. Sin nada guardado cae a las variables de entorno, así que
+        # la instancia se comporta igual que antes hasta que se cargue algo.
+        smtp_config=lambda: resolver_smtp_config(auth_sessions),
     )
     app.state.modules = ModuleRepository(conn)
 
     app.include_router(health.router)
     app.include_router(auth_router.router)
+    # `GET`/`PUT`/`DELETE /admin/smtp`. El router exige rol admin por dentro:
+    # quien pueda escribir ahí puede redirigir a dónde salen los enlaces de
+    # recuperación de contraseña de todos los usuarios.
+    app.include_router(build_smtp_settings_router())
 
     admin_only = [Depends(require_admin)]
     staff_or_admin = [Depends(require_staff)]
