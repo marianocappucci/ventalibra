@@ -61,8 +61,9 @@ RUN mkdir -p -m 0700 /root/.ssh \
     && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null \
     && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7oB3H2Rd+xsO/qCUk5aCA14/5GaQFMSh1U0ErJjG55 vps-donweb-libracore-deploy-key\n' > /root/.ssh/id_libracore.pub \
     && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO04BM5s9T3h96pW91Bu9rf64DDztmJgxT9cN1pjsLla deploy-key-libracommerce-readonly\n' > /root/.ssh/id_libracommerce.pub \
-    && printf 'Host github-libracore\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracore.pub\n  IdentityAgent /tmp/ssh-libracore.sock\n  IdentitiesOnly yes\n\nHost github-libracommerce\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracommerce.pub\n  IdentityAgent /tmp/ssh-libracommerce.sock\n  IdentitiesOnly yes\n' > /root/.ssh/config \
-    && chmod 600 /root/.ssh/config /root/.ssh/id_libracore.pub /root/.ssh/id_libracommerce.pub
+    && printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID0FOGgyaywQLO6J583j9+MG71a13oNpXoxOAAcV9Cbp vps-donweb-libraauth-deploy-readonly\n' > /root/.ssh/id_libraauth.pub \
+    && printf 'Host github-libracore\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracore.pub\n  IdentityAgent /tmp/ssh-libracore.sock\n  IdentitiesOnly yes\n\nHost github-libracommerce\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracommerce.pub\n  IdentityAgent /tmp/ssh-libracommerce.sock\n  IdentitiesOnly yes\n\nHost github-libraauth\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libraauth.pub\n  IdentityAgent /tmp/ssh-libraauth.sock\n  IdentitiesOnly yes\n' > /root/.ssh/config \
+    && chmod 600 /root/.ssh/config /root/.ssh/id_libracore.pub /root/.ssh/id_libracommerce.pub /root/.ssh/id_libraauth.pub
 
 COPY . .
 # Horneado FUERA de /app a proposito (mismo motivo que gestiolibra, ver su
@@ -73,11 +74,14 @@ COPY . .
 COPY --from=frontend-build /frontend/dist /opt/frontend-dist
 RUN --mount=type=ssh,id=libracore,target=/tmp/ssh-libracore.sock \
     --mount=type=ssh,id=libracommerce,target=/tmp/ssh-libracommerce.sock \
+    --mount=type=ssh,id=libraauth,target=/tmp/ssh-libraauth.sock \
     git config --global url."ssh://git@github-libracore/marianocappucci/libracore.git".insteadOf "https://github.com/marianocappucci/libracore.git" \
     && git config --global url."ssh://git@github-libracommerce/marianocappucci/libracommerce.git".insteadOf "https://github.com/marianocappucci/libracommerce.git" \
+    && git config --global url."ssh://git@github-libraauth/marianocappucci/libraauth.git".insteadOf "https://github.com/marianocappucci/libraauth.git" \
     && pip install --no-cache-dir . \
     && git config --global --unset url."ssh://git@github-libracore/marianocappucci/libracore.git".insteadOf \
-    && git config --global --unset url."ssh://git@github-libracommerce/marianocappucci/libracommerce.git".insteadOf
+    && git config --global --unset url."ssh://git@github-libracommerce/marianocappucci/libracommerce.git".insteadOf \
+    && git config --global --unset url."ssh://git@github-libraauth/marianocappucci/libraauth.git".insteadOf
 
 EXPOSE 8000
 
