@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from . import db
-from .auth import build_session_auth, require_admin, require_staff
+from .auth import build_session_auth, require_admin, require_admin_o_servicio, require_staff
 from .modules_gate import require_module
 from .routers import auth as auth_router
 from .routers import billing as billing_router
@@ -91,7 +91,15 @@ def create_app(db_path: str) -> FastAPI:
     admin_only = [Depends(require_admin)]
     staff_or_admin = [Depends(require_staff)]
 
-    app.include_router(users_router.router, dependencies=admin_only)
+    # Usuarios acepta ADEMAS el token de servicio (libraauth v0.7.0): es lo
+    # unico que el backoffice de la suite necesita y que no puede salir del
+    # motor, porque el router de usuarios es propio de cada producto.
+    #
+    # Deliberadamente solo este: el resto de los routers admin-only siguen
+    # exigiendo sesion de un usuario del producto. El backoffice no tiene por
+    # que poder tocar el resto del dominio, y colgar la dependencia de
+    # `admin_only` seria ampliar el permiso sin necesidad.
+    app.include_router(users_router.router, dependencies=[Depends(require_admin_o_servicio)])
     app.include_router(
         billing_router.router, dependencies=admin_only + [Depends(require_module("facturacion"))],
     )
