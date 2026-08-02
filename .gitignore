@@ -30,5 +30,7 @@ frontend/coverage/
 # Nada de esto se versiona: son archivos que solo existen en el servidor y
 # varios llevan secretos. Un untracked con credenciales adentro esta a un
 # `git add -A` de entrar al repo.
-admin/                        # compose del backoffice, generado en el VPS
-.venv-scripts/                # venv de los scripts de provisioning
+# compose del backoffice, generado en el VPS
+admin/
+# venv de los scripts de provisioning
+.venv-scripts/
