@@ -13,7 +13,15 @@ dependencies = [
     "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.4.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.6.0",
+    #
+    # v1.6.0 -> v1.8.0 (2026-08-04). De las dos versiones, a este producto le
+    # importa la primera: usa `ticket_generator.generar_ticket_venta`, y
+    # v1.7.0 arreglo que un caracter fuera de latin-1 -un guion largo, unas
+    # comillas curvas- tumbara la generacion con un 500. La maqueta compacta de
+    # v1.8.0 aplica a los comprobantes A4, que este producto no emite por ahora
+    # (no usa `pdf_generator`, verificado). Cuando sume facturacion, la va a
+    # tener ya puesta.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.8.0",
     "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.7.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
