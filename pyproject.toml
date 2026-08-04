@@ -21,7 +21,7 @@ dependencies = [
     # v1.8.0 aplica a los comprobantes A4, que este producto no emite por ahora
     # (no usa `pdf_generator`, verificado). Cuando sume facturacion, la va a
     # tener ya puesta.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.8.0",
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.8.2",
     "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.7.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
