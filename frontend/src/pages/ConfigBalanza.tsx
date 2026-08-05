@@ -86,7 +86,6 @@ export function ConfigBalanza() {
 
   return (
     <div className="grid max-w-2xl gap-4">
-      <h2 className="text-lg font-semibold">Balanza</h2>
 
       <Card>
         <CardHeader>

@@ -2,7 +2,7 @@
 // Gestiolibra/MedLibra/VentaLibra salvo NAV_ITEMS/branding -- ver
 // wiki/analyses/auditoria-duplicacion-familia-libra.md).
 import {
-  BarChart3, Building2, Package, Printer, Receipt, ReceiptText, Scale, ScrollText,
+  BarChart3, Building2, Package, ReceiptText, ScrollText, Settings,
   ShoppingBag, ShoppingCart, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -23,8 +23,9 @@ export const Layout = createLayout({
     { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
     // Junto a Usuarios: se mira para responder "quién hizo esto".
     { to: '/logs', label: 'Logs', icon: ScrollText, adminOnly: true },
-    { to: '/config-arca', label: 'Config. ARCA', icon: Receipt, adminOnly: true },
-    { to: '/config-balanza', label: 'Balanza', icon: Scale, adminOnly: true },
-    { to: '/config-ticket', label: 'Ticket', icon: Printer, adminOnly: true },
+    // Las tres entradas de configuración que había acá —ARCA, Balanza y
+    // Ticket— pasaron a ser secciones de una sola pantalla, junto con datos de
+    // empresa, correo y backup, que antes no tenían dónde vivir.
+    { to: '/configuracion', label: 'Configuración', icon: Settings, adminOnly: true },
   ],
 })

@@ -11,6 +11,11 @@ from libraauth.password_reset import PasswordResetService
 from libraauth.session_auth import build_smtp_settings_router
 from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libracommerce.db.auditoria import ActividadRepository, entidades as entidades_auditadas
+from libracore import config_manager
+from libracore.config_router import (
+    build_backup_router, build_empresa_admin_router, build_empresa_router,
+)
+from libracore.respaldo import Instancia
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -135,6 +140,51 @@ def create_app(db_path: str) -> FastAPI:
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=admin_only)
+
+    # Datos de empresa, logo y Datos / Backup (LibraCore v1.11.0).
+    #
+    # A diferencia de LibraDesk, aca la lectura de empresa TAMBIEN es admin:
+    # este producto no genera comprobantes desde el frontend con esos datos —
+    # el ticket lo arma el backend—, asi que no hay motivo para abrirla.
+    app.include_router(build_empresa_router(), dependencies=admin_only)
+    app.include_router(build_empresa_admin_router(), dependencies=admin_only)
+
+    # 🔴 DOS bases, y las dos tienen que entrar al backup: `usuarios` vive en
+    # la de LibraCore, separada de la del dominio (ver el comentario largo
+    # arriba). Un backup de una sola no se puede restaurar — o volves el
+    # dominio y te quedan usuarios de otro momento, o al reves.
+    instancia = Instancia(
+        nombre="ventalibra",
+        bases=[db_path, libracore_db_path],
+        directorios=[config_manager.LOGO_DIR],
+    )
+
+    def _cerrar_conexion():
+        # El dominio es sqlite3 crudo con UNA conexion compartida por toda la
+        # app. Sin cerrarla, el restore reemplaza el archivo y el proceso sigue
+        # leyendo el inodo viejo — devuelve `ok` y no pasa nada.
+        app.state.conn.close()
+
+    def _reabrir_conexion():
+        nueva = db.connect(db_path)
+        app.state.conn = nueva
+        # ⚠️ Los servicios toman la conexion de `request.app.state.conn` en cada
+        # request, asi que con reemplazarla alcanza para ellos. Pero
+        # `app.state.auditoria` se construyo UNA vez, al arrancar, y se quedo
+        # con la conexion vieja: sin esta linea la pantalla de logs consulta
+        # una conexion cerrada despues de cada restore.
+        app.state.auditoria = ActividadRepository(nueva)
+        auth_engine.dispose()
+
+    app.include_router(
+        build_backup_router(
+            instancia, os.path.join(os.path.dirname(libracore_db_path), "backups"),
+            cerrar_conexiones=_cerrar_conexion,
+            reabrir_conexiones=_reabrir_conexion,
+        ),
+        dependencies=admin_only,
+    )
+
     # Logs: admin y nada mas. La fila dice quien vendio que y desde que IP
     # entro cada uno. **No** se gatea por plan: un log de auditoria no es una
     # feature vendible.
