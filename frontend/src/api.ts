@@ -91,6 +91,9 @@ export type MovimientoCuenta = {
   monto: string
   medio: string
   referencia: string
+  /** Sólo los abonos lo tienen: un cargo no es plata que entró, así que no
+   *  hay recibo que emitirle. */
+  cc_pago_id: number | null
 }
 
 export type CuentaCorriente = {
@@ -98,6 +101,10 @@ export type CuentaCorriente = {
   /** Positivo: el cliente debe. Negativo: pagó de más y tiene a favor. */
   saldo: string
   movimientos: MovimientoCuenta[]
+  /** Sólo viene en la respuesta de un cobro recién hecho, para abrir el
+   *  recibo sin que haya que pedirlo. `null` si la emisión falló: el cobro es
+   *  válido igual y el botón de la fila lo reintenta. */
+  recibo_id: number | null
 }
 
 export type Deudor = {
