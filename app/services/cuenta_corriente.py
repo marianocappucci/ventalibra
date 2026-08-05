@@ -13,13 +13,18 @@ corriente no mueve un peso de la caja, así que no genera movimiento y no
 entra al arqueo del turno. El movimiento aparece después, cuando el cliente
 paga.
 """
+import logging
 import sqlite3
 from datetime import date
 from decimal import Decimal
+from typing import NamedTuple
 
 from libracore.db import caja as db_caja
 from libracore.db import clients as db_clients
 from libracore.db import cuenta_corriente as db_cc
+from libracore.recibos import emitir_recibo_cobranza
+
+logger = logging.getLogger("ventalibra.cuenta_corriente")
 
 #: Medio de pago que representa el fiado. Coincide con el que usan
 #: Contalibra/Restolibra, que es lo que hace que el saldo se calcule igual.
@@ -28,6 +33,16 @@ MEDIO_CUENTA_CORRIENTE = "cuenta_corriente"
 
 class SinCliente(Exception):
     """No se puede fiar a nadie: hace falta saber a quién."""
+
+
+class Cobranza(NamedTuple):
+    """Lo que dejó un cobro: el pago y su comprobante.
+
+    `recibo_id` puede venir en `None` si la emisión falló — el cobro es
+    válido igual, ver `registrar_cobranza`."""
+
+    pago_id: int
+    recibo_id: int | None
 
 
 class CuentaCorrienteService:
@@ -85,9 +100,16 @@ class CuentaCorrienteService:
     def registrar_cobranza(self, party_id: int, monto: Decimal, medio_pago: str,
                            concepto: str = "", referencia: str = "",
                            turno_id: int | None = None,
-                           usuario_id: int | None = None) -> int:
+                           usuario_id: int | None = None) -> Cobranza:
         """Cobra deuda vieja. Esto SÍ es plata que entra: genera el
-        movimiento de caja y queda dentro del turno abierto."""
+        movimiento de caja y queda dentro del turno abierto.
+
+        Y emite el recibo, porque el cliente que vino a pagar está esperando
+        el papel. Si la emisión fallara, **el cobro no se revierte**: perder
+        el comprobante es molesto, perder el pago es un problema de plata.
+        `recibo_id` vuelve en `None` y el botón de la pantalla lo reintenta,
+        que es idempotente.
+        """
         if monto <= 0:
             raise ValueError("el monto a cobrar debe ser mayor que cero")
         cliente_id = self._cliente_cc(party_id)
@@ -103,7 +125,14 @@ class CuentaCorrienteService:
             referencia=referencia or f"cc-pago-{pago_id}",
             medio_pago=medio_pago, turno_id=turno_id,
         )
-        return pago_id
+
+        recibo_id = None
+        try:
+            recibo_id = emitir_recibo_cobranza(pago_id, usuario_id=usuario_id)["id"]
+        except Exception:
+            logger.exception("no se pudo emitir el recibo del cc_pago %s", pago_id)
+
+        return Cobranza(pago_id=pago_id, recibo_id=recibo_id)
 
     # ── consultar ────────────────────────────────────────────────────────
 

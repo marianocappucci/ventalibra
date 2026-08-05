@@ -17,7 +17,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Wallet } from 'lucide-react'
+import { ReceiptText, Wallet } from 'lucide-react'
 
 const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -166,17 +166,44 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
     if (!importe || importe <= 0) return
     setBusy(true)
     setError(null)
+    // La ventana se abre ANTES del await: abrirla con la respuesta ya en mano
+    // la vuelve un popup no pedido por el usuario y el navegador la bloquea.
+    const ventana = window.open('', '_blank')
     try {
-      setCuenta(await api.post<CuentaCorriente>(`/accounts/${deudor.party_id}/payments`, {
-        monto, medio_pago: medio, concepto,
-      }))
+      const actualizada = await api.post<CuentaCorriente>(
+        `/accounts/${deudor.party_id}/payments`, { monto, medio_pago: medio, concepto },
+      )
+      setCuenta(actualizada)
       setMonto('')
       setConcepto('')
       onCobrado()
+      // El cobro ya está registrado aunque el recibo no haya salido. Si no
+      // vino id se cierra la ventana en vez de dejarla en blanco: el botón de
+      // la fila lo reintenta.
+      if (actualizada.recibo_id) {
+        ventana!.location.href = `/accounts/receipts/${actualizada.recibo_id}/pdf`
+      } else {
+        ventana?.close()
+      }
     } catch (err) {
+      ventana?.close()
       setError(describeError(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function verRecibo(ccPagoId: number) {
+    const ventana = window.open('', '_blank')
+    setError(null)
+    try {
+      // Idempotente: emite si el pago todavía no tiene recibo, y devuelve el
+      // que ya existía si lo tiene. Por eso alcanza un solo botón.
+      const recibo = await api.post<{ id: number }>(`/accounts/receipts/${ccPagoId}`, {})
+      ventana!.location.href = `/accounts/receipts/${recibo.id}/pdf`
+    } catch (err) {
+      ventana?.close()
+      setError(describeError(err))
     }
   }
 
@@ -243,6 +270,7 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
                 <th className="p-2">Concepto</th>
                 <th className="w-28 p-2 text-right">Debe</th>
                 <th className="w-28 p-2 text-right">Haber</th>
+                <th className="w-12 p-2" />
               </tr>
             </thead>
             <tbody>
@@ -259,11 +287,23 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
                   <td className="p-2 text-right tabular-nums text-emerald-600 dark:text-emerald-500">
                     {m.tipo === 'credito' ? `$${money(m.monto)}` : ''}
                   </td>
+                  <td className="p-2 text-right">
+                    {/* Sólo los abonos: un cargo no es plata que entró, no hay
+                        recibo que emitirle. */}
+                    {m.cc_pago_id && (
+                      <Button
+                        size="icon" variant="ghost" title="Ver recibo" aria-label="Ver recibo"
+                        onClick={() => verRecibo(m.cc_pago_id!)}
+                      >
+                        <ReceiptText className="size-4" />
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {(cuenta?.movimientos ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-muted-foreground">
+                  <td colSpan={5} className="p-4 text-center text-muted-foreground">
                     Sin movimientos.
                   </td>
                 </tr>
