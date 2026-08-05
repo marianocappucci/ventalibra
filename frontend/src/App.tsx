@@ -17,6 +17,7 @@ import { ConfigTicket } from './pages/ConfigTicket'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
 import { Ventas } from './pages/Ventas'
 import { Reportes } from './pages/Reportes'
+import { Logs } from './pages/Logs'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
   const { user, loading } = useAuth()
@@ -140,6 +141,15 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <Reportes />
+          </ProtectedRoute>
+        }
+      />
+      {/* El gateo real es del backend (`admin_only` sobre `/logs`). */}
+      <Route
+        path="/logs"
+        element={
+          <ProtectedRoute adminOnly>
+            <Logs />
           </ProtectedRoute>
         }
       />

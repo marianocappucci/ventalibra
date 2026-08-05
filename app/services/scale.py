@@ -9,7 +9,7 @@ import sqlite3
 from dataclasses import dataclass, asdict
 from decimal import Decimal
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.catalog import CatalogItem, ItemCodeType
 from libracommerce.domain.scale import (
     ScaleFormat,
@@ -46,7 +46,7 @@ class ScanResult:
 class ScaleService:
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
 
     def get_format(self) -> ScaleFormat | None:
         crudo = self._repo.get_setting(SCALE_FORMAT_KEY)

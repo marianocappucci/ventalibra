@@ -16,7 +16,7 @@ import sqlite3
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.sales import Sale
 from libracommerce.usecases.sales import cancel_sale, return_sale_items
 from libracore.db import reversiones
@@ -27,7 +27,7 @@ from .cuenta_corriente import MEDIO_CUENTA_CORRIENTE, CuentaCorrienteService
 class DevolucionService:
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
         self._cc = CuentaCorrienteService(conn)
 
     def anular(self, sale: Sale, usuario_id: int | None = None,

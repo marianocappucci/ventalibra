@@ -14,7 +14,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.purchasing import (
     PurchaseOrder,
     PurchaseOrderItem,
@@ -43,7 +43,7 @@ class InvalidPurchaseState(Exception):
 class PurchasingService:
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
 
     # ordenes de compra
 

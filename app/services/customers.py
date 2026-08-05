@@ -7,14 +7,14 @@ con CUIT real.
 """
 import sqlite3
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.entities import Party, PartyType
 
 
 class CustomerService:
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
 
     def create(
         self, *, display_name: str, party_type: PartyType = PartyType.PERSON,
