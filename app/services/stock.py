@@ -8,13 +8,13 @@ import sqlite3
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.inventory import StockMovement, StockMovementType
 
 
 class StockService:
     def __init__(self, conn: sqlite3.Connection):
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
 
     def adjust(
         self, item_id: int, location_id: int, quantity_delta: Decimal, reason: str = "",

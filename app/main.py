@@ -4,10 +4,13 @@ dependencias en include_router, no por endpoint suelto)."""
 import os
 
 from fastapi import Depends, FastAPI
+from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
+from libraauth.auth_events import AuthEventRepository
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
 from libraauth.session_auth import build_smtp_settings_router
 from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
+from libracommerce.db.auditoria import ActividadRepository, entidades as entidades_auditadas
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -81,6 +84,20 @@ def create_app(db_path: str) -> FastAPI:
     )
     app.state.modules = ModuleRepository(conn)
 
+    # Los dos logs, cada uno contra la base donde ocurre lo que registra.
+    #
+    # Actividad: la base del DOMINIO, que es donde escriben los repositorios.
+    # No cuelga de un flush como en Gestiolibra o MedLibra —este producto no
+    # tiene SQLAlchemy en el dominio— sino del repositorio envuelto: ver
+    # `app/commerce.py`, que es por donde pasan los diez servicios.
+    app.state.auditoria = ActividadRepository(conn)
+    # Accesos: la base de LibraCore, la misma donde vive `usuarios` y donde
+    # `auth_log` ya existe. Esto no crea la tabla: empieza a escribirla.
+    app.state.auth_events = AuthEventRepository(auth_sessions)
+    # Sella el usuario de la cookie para que la auditoria sepa quien escribio.
+    # Sin esto todo queda a nombre de "Sistema", que no es un error visible.
+    agregar_middleware_de_usuario(app)
+
     app.include_router(health.router)
     app.include_router(auth_router.router)
     # `GET`/`PUT`/`DELETE /admin/smtp`. El router exige rol admin por dentro:
@@ -118,5 +135,15 @@ def create_app(db_path: str) -> FastAPI:
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=admin_only)
+    # Logs: admin y nada mas. La fila dice quien vendio que y desde que IP
+    # entro cada uno. **No** se gatea por plan: un log de auditoria no es una
+    # feature vendible.
+    #
+    # El router lo arma el motor de auth (libraauth v0.10.0) pero el gate lo
+    # pone el producto: el vocabulario de roles es de aca. Y la lista de
+    # entidades sale del motor comercial, que es de donde sale la actividad.
+    app.include_router(
+        build_logs_router(entidades_auditadas()), dependencies=admin_only,
+    )
 
     return app

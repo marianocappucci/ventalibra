@@ -10,7 +10,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
-    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.4.0",
+    # v0.4.0 -> v0.5.0 (2026-08-05): el log de actividad. Salio de construir el
+    # de ESTE producto — es el unico de la familia sin SQLAlchemy en el
+    # dominio, asi que no le servia el mecanismo de libraauth (cuelga del
+    # flush) ni el de libracore (consulta el schema en castellano). El enganche
+    # es el repositorio envuelto; ver app/commerce.py.
+    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.5.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -26,7 +31,12 @@ dependencies = [
     # `libracore.recibos` para el comprobante de la cobranza de cuenta
     # corriente, y con eso empieza a usar `pdf_generator` (el recibo es A4).
     "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.9.0",
-    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.7.0",
+    # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
+    # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
+    # middleware que sella el usuario de la request. La actividad en si NO sale
+    # de aca: el mecanismo de v0.9.0 cuelga del flush de SQLAlchemy y este
+    # producto no lo tiene -- la da libracommerce v0.5.0.
+    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.12.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.

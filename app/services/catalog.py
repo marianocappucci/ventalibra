@@ -10,7 +10,7 @@ import sqlite3
 from dataclasses import replace
 from decimal import Decimal
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.catalog import (
     CatalogItem,
     CatalogItemType,
@@ -25,7 +25,7 @@ from libracommerce.domain.catalog import (
 class CatalogService:
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
 
     # categories
 

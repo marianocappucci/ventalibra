@@ -8,13 +8,13 @@ import sqlite3
 from datetime import datetime
 from decimal import Decimal
 
-from libracommerce.db.repository import SqliteCommerceRepository
+from ..commerce import repositorio
 from libracommerce.domain.catalog import ItemPrice, PriceList
 
 
 class PricingService:
     def __init__(self, conn: sqlite3.Connection):
-        self._repo = SqliteCommerceRepository(conn)
+        self._repo = repositorio(conn)
 
     def create_price_list(self, name: str, description: str = "", is_default: bool = False) -> PriceList:
         return self._repo.save_price_list(PriceList(id=None, name=name, description=description, is_default=is_default))
