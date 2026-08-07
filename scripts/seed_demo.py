@@ -252,6 +252,10 @@ def sembrar(api: Api) -> None:
     print("Cuenta corriente…")
     _sembrar_cuenta_corriente(api, articulos, clientes, depositos["Salón"], contar)
 
+    # El logo del negocio, para que los comprobantes salgan como los de
+    # un cliente y no con un hueco arriba.
+    _cargar_logo(api, "Almacén Don Aldo", "A", (217, 119, 6), contar)
+
     print()
     for clave, (creados, existentes) in sorted(hechos.items()):
         print(f"  {clave:<12} {creados} creados, {existentes} ya estaban")
@@ -482,6 +486,64 @@ def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
         contar("cobranza", True)
     except RuntimeError as e:
         print(f"  -- cobranza: {e}")
+
+
+
+def _cargar_logo(api, nombre: str, inicial: str, color: tuple, contar) -> None:
+    """Dibuja el logo del negocio y lo sube a Configuración.
+
+    🔴 **Se genera, no se commitea.** PIL viene en la imagen del producto, así
+    que el seed lo dibuja en el momento: no hay binarios en el repo y cambiar
+    el color es cambiar una línea. Mismo criterio que el resto del seed — el
+    estado limpio es código, no un archivo guardado a mano.
+
+    Sin logo, los PDF de la demo salen con un hueco arriba: el interesado ve
+    dónde iría el suyo pero no cómo se ve.
+
+    ⚠️ El campo del multipart se llama **`logo`**, no `file`: con `file` la API
+    contesta 422. Está leído del openapi de la instancia.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        print("  (sin PIL: se saltea el logo)")
+        return
+
+    actual = api.get("/api/config/empresa") or {}
+    if isinstance(actual, dict) and any(
+        "logo" in str(clave) and valor for clave, valor in actual.items()
+    ):
+        contar("logo", False)
+        return
+
+    imagen = Image.new("RGBA", (520, 160), (255, 255, 255, 0))
+    dibujo = ImageDraw.Draw(imagen)
+    dibujo.rounded_rectangle((8, 20, 128, 140), radius=24, fill=color)
+    dibujo.text((52, 60), inicial, fill=(255, 255, 255))
+    dibujo.text((150, 55), nombre, fill=(30, 30, 30))
+    dibujo.line((150, 95, 150 + min(340, len(nombre) * 11), 95), fill=color, width=4)
+
+    import io
+    buffer = io.BytesIO()
+    imagen.save(buffer, format="PNG")
+
+    limite = "----seed" + "0" * 12
+    cuerpo = (
+        f"--{limite}\r\n"
+        'Content-Disposition: form-data; name="logo"; filename="logo.png"\r\n'
+        "Content-Type: image/png\r\n\r\n"
+    ).encode() + buffer.getvalue() + f"\r\n--{limite}--\r\n".encode()
+
+    import urllib.request
+    pedido = urllib.request.Request(
+        f"{api.base}/api/config/empresa/logo", data=cuerpo, method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={limite}"},
+    )
+    try:
+        api.opener.open(pedido, timeout=30)
+        contar("logo", True)
+    except Exception as e:
+        print(f"  -- logo: {e}")
 
 
 def main() -> int:
