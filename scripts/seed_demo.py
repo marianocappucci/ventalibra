@@ -82,6 +82,16 @@ class Api:
         return self._pedir("PUT", ruta, cuerpo)
 
 
+def _lista(datos):
+    """Los listados de este producto a veces vienen envueltos
+    (`{"items": [...]}`). Devuelve siempre la lista."""
+    if isinstance(datos, list):
+        return datos
+    if isinstance(datos, dict):
+        return next((v for v in datos.values() if isinstance(v, list)), [])
+    return []
+
+
 def obtener_o_crear(api: Api, ruta_lista: str, clave: str, valor, cuerpo: dict,
                     ruta_alta: str | None = None):
     """Crea el registro si no está. Devuelve `(registro, es_nuevo)`.
@@ -236,6 +246,12 @@ def sembrar(api: Api) -> None:
     print("Ventas…")
     _sembrar_ventas(api, articulos, clientes, depositos["Salón"], contar)
 
+    print("Compras (orden y recepción)…")
+    _sembrar_compras(api, articulos, contar)
+
+    print("Cuenta corriente…")
+    _sembrar_cuenta_corriente(api, clientes, contar)
+
     print()
     for clave, (creados, existentes) in sorted(hechos.items()):
         print(f"  {clave:<12} {creados} creados, {existentes} ya estaban")
@@ -362,6 +378,91 @@ def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
                 api.post(f"/sales/{venta['id']}/cancel", {})
         except RuntimeError as e:
             print(f"  -- venta de {cliente}: {e}")
+
+
+def _sembrar_compras(api: Api, articulos: dict, contar) -> None:
+    """Una orden de compra y su recepción, con el mismo recorrido que hace el
+    encargado: crear la orden, agregarle líneas, recibir contra esa orden y
+    confirmar.
+
+    Las dos pantallas estaban vacías. Y la recepción **confirmada** es lo que
+    de verdad interesa mostrar: es la que entra la mercadería al stock, así que
+    sin confirmar se vería una recepción que no movió nada.
+    """
+    if _lista(api.get("/purchase-orders")):
+        contar("compras", False)
+        print("  (ya hay órdenes de compra)")
+        return
+
+    proveedores = _lista(api.get("/suppliers"))
+    if not proveedores:
+        print("  -- sin proveedores, no se puede armar la compra")
+        return
+    proveedor = proveedores[0]
+    # El id de la orden es el del **party**, no el del proveedor: son dos
+    # entidades distintas en este producto.
+    party = proveedor.get("party_id") or proveedor.get("id")
+
+    LINEAS = [("Yerba mate 1 kg", 24, 3200), ("Arroz largo fino 1 kg", 40, 1150)]
+    try:
+        orden = api.post("/purchase-orders", {"supplier_party_id": party})
+        for nombre, cantidad, costo in LINEAS:
+            if nombre not in articulos:
+                continue
+            api.post(f"/purchase-orders/{orden['id']}/items", {
+                "item_id": articulos[nombre], "quantity_ordered": cantidad,
+                "unit_cost": costo, "tax_rate": 0.21,
+            })
+        contar("orden_compra", True)
+
+        recepcion = api.post("/purchase-receipts", {
+            "supplier_party_id": party, "purchase_order_id": orden["id"],
+            "document_reference": "Remito 0001-00004512",
+        })
+        for nombre, cantidad, costo in LINEAS:
+            if nombre not in articulos:
+                continue
+            api.post(f"/purchase-receipts/{recepcion['id']}/items", {
+                "item_id": articulos[nombre], "quantity": cantidad,
+                "unit_cost": costo,
+            })
+        api.post(f"/purchase-receipts/{recepcion['id']}/confirm", {})
+        contar("recepcion", True)
+    except RuntimeError as e:
+        print(f"  -- compras: {e}")
+
+
+def _sembrar_cuenta_corriente(api: Api, clientes: dict, contar) -> None:
+    """Un cliente con saldo y una cobranza parcial.
+
+    🔴 **Cobrar exige turno de caja abierto** —es plata que entra y tiene que
+    aparecer en el arqueo—, así que esto va después de `_abrir_turno`. Sin
+    turno el endpoint contesta 409, que es correcto y no un error a esquivar.
+
+    La cobranza además emite su **recibo**: es la otra pantalla que quedaba
+    vacía, y el papel que el cliente se lleva.
+    """
+    cuentas = _lista(api.get("/accounts"))
+    if any(float(c.get("saldo") or 0) for c in cuentas):
+        contar("cuenta_corriente", False)
+        print("  (ya hay cuentas con saldo)")
+        return
+
+    # El fiado nace de una venta a cuenta corriente; si no hay ninguna con
+    # saldo, se cobra sobre el primer cliente que tenga cuenta.
+    if not cuentas:
+        print("  -- sin cuentas todavía: la cobranza necesita una venta fiada")
+        return
+    cuenta = cuentas[0]
+    party = cuenta.get("party_id") or cuenta.get("id")
+    try:
+        api.post(f"/accounts/{party}/payments", {
+            "monto": 5000, "medio_pago": "efectivo",
+            "concepto": "Pago a cuenta", "referencia": "Recibo de la demo",
+        })
+        contar("cobranza", True)
+    except RuntimeError as e:
+        print(f"  -- cobranza: {e}")
 
 
 def main() -> int:
