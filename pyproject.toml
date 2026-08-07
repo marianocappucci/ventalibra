@@ -25,7 +25,7 @@ dependencies = [
     # v1.8.2 -> v1.9.0 (2026-08-05): los recibos. Este producto SI los usa —
     # `libracore.recibos` para el comprobante de la cobranza de cuenta
     # corriente, y con eso empieza a usar `pdf_generator` (el recibo es A4).
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.9.0",
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.9.2",
     "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.7.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
