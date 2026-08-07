@@ -247,10 +247,10 @@ def sembrar(api: Api) -> None:
     _sembrar_ventas(api, articulos, clientes, depositos["Salón"], contar)
 
     print("Compras (orden y recepción)…")
-    _sembrar_compras(api, articulos, contar)
+    _sembrar_compras(api, articulos, depositos["Salón"], contar)
 
     print("Cuenta corriente…")
-    _sembrar_cuenta_corriente(api, clientes, contar)
+    _sembrar_cuenta_corriente(api, articulos, clientes, depositos["Salón"], contar)
 
     print()
     for clave, (creados, existentes) in sorted(hechos.items()):
@@ -355,6 +355,13 @@ def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
         # columna se ve siempre igual.
         ("Consumidor final",
          [("Lavandina 1 L", 1)], "efectivo", True),
+        # 🔴 Fiada: es la ÚNICA forma de que exista una cuenta corriente. Sin
+        # esta venta, las pantallas de cuenta corriente y recibos quedan
+        # vacías — no hay endpoint para crear una deuda de la nada, y está
+        # bien que no lo haya: la deuda nace de una venta.
+        ("Kiosco La Esquina",
+         [("Yerba mate 1 kg", 4), ("Gaseosa cola 2,25 L", 6)],
+         "cuenta_corriente", False),
     ]
 
     for cliente, lineas, medio, cancelar in PLAN:
@@ -380,7 +387,7 @@ def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
             print(f"  -- venta de {cliente}: {e}")
 
 
-def _sembrar_compras(api: Api, articulos: dict, contar) -> None:
+def _sembrar_compras(api: Api, articulos: dict, deposito: int, contar) -> None:
     """Una orden de compra y su recepción, con el mismo recorrido que hace el
     encargado: crear la orden, agregarle líneas, recibir contra esa orden y
     confirmar.
@@ -426,13 +433,17 @@ def _sembrar_compras(api: Api, articulos: dict, contar) -> None:
                 "item_id": articulos[nombre], "quantity": cantidad,
                 "unit_cost": costo,
             })
-        api.post(f"/purchase-receipts/{recepcion['id']}/confirm", {})
+        # 🔴 Confirmar pide **a qué depósito entra** la mercadería, y con razón:
+        # es lo que decide dónde suma el stock. Sin `location_id` contesta 422.
+        api.post(f"/purchase-receipts/{recepcion['id']}/confirm",
+                 {"location_id": deposito})
         contar("recepcion", True)
     except RuntimeError as e:
         print(f"  -- compras: {e}")
 
 
-def _sembrar_cuenta_corriente(api: Api, clientes: dict, contar) -> None:
+def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
+                              deposito: int, contar) -> None:
     """Un cliente con saldo y una cobranza parcial.
 
     🔴 **Cobrar exige turno de caja abierto** —es plata que entra y tiene que
@@ -448,10 +459,10 @@ def _sembrar_cuenta_corriente(api: Api, clientes: dict, contar) -> None:
         print("  (ya hay cuentas con saldo)")
         return
 
-    # El fiado nace de una venta a cuenta corriente; si no hay ninguna con
-    # saldo, se cobra sobre el primer cliente que tenga cuenta.
+    # El fiado nace de la venta a cuenta corriente del plan de ventas. Si no
+    # hay ninguna cuenta, es que esa venta no llegó a confirmarse.
     if not cuentas:
-        print("  -- sin cuentas todavía: la cobranza necesita una venta fiada")
+        print("  -- sin cuentas: la venta fiada no se confirmó")
         return
     cuenta = cuentas[0]
     party = cuenta.get("party_id") or cuenta.get("id")
