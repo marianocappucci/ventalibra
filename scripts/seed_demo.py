@@ -454,9 +454,17 @@ def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
     vacía, y el papel que el cliente se lleva.
     """
     cuentas = _lista(api.get("/accounts"))
-    if any(float(c.get("saldo") or 0) for c in cuentas):
-        contar("cuenta_corriente", False)
-        print("  (ya hay cuentas con saldo)")
+    # La guarda va por "ya cobre?", no por "hay saldo?". Escrita al reves
+    # salteaba justamente el caso en el que hay que cobrar, y la pantalla de
+    # recibos quedaba vacia con la cuenta cargada.
+    if not cuentas:
+        print("  -- sin cuentas: la venta fiada no se confirmo")
+        return
+    _c = cuentas[0]
+    _party = _c.get("party_id") or _c.get("id")
+    if any(m.get("cc_pago_id") for m in _lista(api.get(f"/accounts/{_party}"))):
+        contar("cobranza", False)
+        print("  (ya hay una cobranza)")
         return
 
     # El fiado nace de la venta a cuenta corriente del plan de ventas. Si no
