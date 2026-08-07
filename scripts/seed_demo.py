@@ -534,6 +534,14 @@ def _cargar_logo(api, nombre: str, inicial: str, color: tuple, contar) -> None:
     dibujo.text((150, 55), nombre, fill=(30, 30, 30))
     dibujo.line((150, 95, 150 + min(340, len(nombre) * 11), 95), fill=color, width=4)
 
+    # 🔴 La subida es multipart a mano, así que necesita la URL y el opener del
+    # `Api` real. La suite corre el seed contra un doble que habla directo con
+    # la app y no tiene ninguno de los dos: sin esta guarda, `api.base`
+    # reventaba con AttributeError y se llevaba puestos **11 tests** del seed
+    # entero, no sólo el del logo.
+    if not getattr(api, "base", None) or not getattr(api, "opener", None):
+        return
+
     import io
     buffer = io.BytesIO()
     imagen.save(buffer, format="PNG")
