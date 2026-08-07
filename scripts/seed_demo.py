@@ -509,12 +509,23 @@ def _cargar_logo(api, nombre: str, inicial: str, color: tuple, contar) -> None:
         print("  (sin PIL: se saltea el logo)")
         return
 
-    actual = api.get("/api/config/empresa") or {}
-    if isinstance(actual, dict) and any(
-        "logo" in str(clave) and valor for clave, valor in actual.items()
-    ):
-        contar("logo", False)
-        return
+    # 🔴 La ruta de configuración no es la misma en todos los productos, y
+    # pedir la que no existe **no da 404**: el catch-all de la SPA contesta
+    # 200 con el index.html y el parseo revienta. Así que la guarda no puede
+    # depender de acertarla: ante cualquier duda se sube el logo, que es
+    # inocuo, en vez de arriesgar quedarse sin él.
+    for ruta in ("/api/config/empresa", "/api/config"):
+        try:
+            actual = api.get(ruta)
+        except Exception:
+            continue
+        if isinstance(actual, dict):
+            plano = str(actual)
+            if '"logo"' in plano or "'logo'" in plano:
+                if any("logo" in str(k) and v for k, v in actual.items()):
+                    contar("logo", False)
+                    return
+            break
 
     imagen = Image.new("RGBA", (520, 160), (255, 255, 255, 0))
     dibujo = ImageDraw.Draw(imagen)
