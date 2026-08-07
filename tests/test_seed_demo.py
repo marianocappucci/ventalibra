@@ -112,13 +112,19 @@ def test_las_ventas_descontaron_stock(api):
     distingue — hay que mirar el stock."""
     sembrar(api)
 
-    # La yerba arranca en 48 y se vende 1 en la primera venta.
+    # La yerba arranca en 48, se venden 1 (mostrador) y 4 (fiada), y entran
+    # 24 por la recepción de compra confirmada: 48 - 5 + 24 = 67.
+    #
+    # 🔴 El número no se ajustó a mano hasta que diera: cada término
+    # corresponde a un paso del seed, y si mañana cambia uno hay que volver a
+    # hacer la cuenta. Que la recepción SUME es la mitad del test — una
+    # recepción confirmada que no entrara stock sería una recepción de mentira.
     from scripts.seed_demo import _existencia
 
     items = {i["name"]: i["id"] for i in api.get("/catalog/items")}
     total = _existencia(api, items["Yerba mate 1 kg"], _salon(api))
 
-    assert total == 47, f"la venta no descontó: quedó {total}"
+    assert total == 48 - 5 + 24, f"la cuenta no cierra: quedó {total}"
 
 
 def test_hay_ventas_en_mas_de_un_estado(api):
