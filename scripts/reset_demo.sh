@@ -99,7 +99,7 @@ filas_del_dominio() {
     postgres://*|postgresql://*)
       docker exec "$SIDECAR" sh -c '
         psql -tA -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
-          SELECT COALESCE((SELECT COUNT(*) FROM products), 0)
+          SELECT COALESCE((SELECT COUNT(*) FROM catalog_items), 0)
                + COALESCE((SELECT COUNT(*) FROM sales), 0)
                + COALESCE((SELECT COUNT(*) FROM parties), 0)"
       ' 2>/dev/null || echo "?"
@@ -110,7 +110,7 @@ import sqlite3, sys
 try:
     c = sqlite3.connect('$URL_BASE')
     print(sum(c.execute('SELECT COUNT(*) FROM ' + t).fetchone()[0]
-              for t in ('products', 'sales', 'parties')))
+              for t in ('catalog_items', 'sales', 'parties')))
 except Exception:
     print('?')
 " 2>/dev/null || echo "?"
@@ -176,6 +176,11 @@ fi
 # borrado deja de aplicar, nadie lo nota, y el seed se apila todas las noches.
 DESPUES=$(filas_del_dominio)
 log "filas del dominio despues del reset: $DESPUES"
+if [ "$DESPUES" = "?" ]; then
+  log "ABORTA: no pude contar las filas -- puede que una tabla haya cambiado"
+  log "        de nombre. Sin poder medir, no se siembra."
+  exit 11
+fi
 if [ "$DESPUES" != "0" ]; then
   log "ABORTA: la base no quedo vacia (antes $ANTES, despues $DESPUES)."
   log "        No se siembra encima: quedaria la demo de ayer mas la de hoy."

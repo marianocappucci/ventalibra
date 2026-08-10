@@ -51,9 +51,19 @@ def configure(db_path: str) -> None:
     """Llamar una vez al arrancar la app: configura libracore.db contra su
     propio archivo SQLite (independiente de la base principal) y asegura
     que el schema compartido y una caja por defecto existan."""
-    directory = os.path.dirname(db_path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
+    # 🔴 `db_path` puede ser una URL de PostgreSQL, y entonces NO hay carpeta
+    # que crear. Sin esta guarda, `os.path.dirname()` de
+    # `postgresql://usuario:clave@host:5432/base` devuelve
+    # `postgresql://usuario:clave@host:5432` y `makedirs` lo crea como
+    # directorio: **la contraseña queda escrita en el nombre de una carpeta**.
+    # Y en `dev`, donde el repo está bind-mounteado en `/app`, esa carpeta cae
+    # dentro del checkout del VPS y el siguiente `docker build` la mete en la
+    # imagen. Encontrado el 2026-08-10 al cortar la demo: la imagen del demo
+    # traía las claves de los tres sidecars en nombres de carpeta.
+    if not libracore_core.es_url_postgres(db_path):
+        directory = os.path.dirname(db_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
     libracore_core.configure(db_path)
     conn = libracore_core.get_connection()
     try:
