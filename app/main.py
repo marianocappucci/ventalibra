@@ -55,9 +55,18 @@ def create_app(db_path: str) -> FastAPI:
         "VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
-    auth_engine = create_engine(
-        f"sqlite:///{libracore_db_path}", connect_args={"check_same_thread": False}
-    )
+    # La URL de SQLAlchemy salia siempre como `sqlite:///...`, aunque el destino
+    # fuera una URL PostgreSQL: la interpolacion la convertia en una ruta
+    # relativa sin sentido. `postgresql://` se pasa tal cual (con el driver
+    # psycopg, que es el de la familia), y `connect_args` es de SQLite.
+    if libracore_db_path.startswith(("postgresql://", "postgresql+psycopg://")):
+        auth_engine = create_engine(
+            libracore_db_path.replace("postgresql://", "postgresql+psycopg://", 1)
+        )
+    else:
+        auth_engine = create_engine(
+            f"sqlite:///{libracore_db_path}", connect_args={"check_same_thread": False}
+        )
     AuthBase.metadata.create_all(auth_engine)
 
     # Sin `roles=`: el default ("admin","staff") es el vocabulario de VentaLibra.

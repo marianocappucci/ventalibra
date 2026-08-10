@@ -8,10 +8,29 @@ libracommerce/libracore.db.
 import sqlite3
 
 from libracommerce.db.schema import init_schema
+from libracore.db import core
 
 
-def connect(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+def connect(db_path: str):
+    """La conexion del dominio, contra una RUTA SQLite o una URL PostgreSQL.
+
+    🔴 Antes esto era un `sqlite3.connect()` pelado, y por eso el producto no
+    podia **siquiera intentar** correr contra PostgreSQL: el motor quedaba
+    elegido en la linea mas baja de la pila, donde nada lo podia cambiar. Ahora
+    delega en `libracore.db.core.conectar()`, que existe desde `v1.18.0`
+    justamente para esto y decide por el destino sin tocar la configuracion
+    global del proceso.
+
+    Sigue siendo **una sola conexion viva** para todo el proceso, igual que
+    antes. Contra PostgreSQL eso anda, pero no es lo que se querria a futuro
+    (lo natural seria un pool). Cambiarlo es otro trabajo y no hace falta para
+    que el producto se pueda ejercitar contra el motor nuevo, que es lo que
+    esta fase necesita.
+    """
+    if core.es_url_postgres(db_path):
+        conn = core.conectar(db_path)
+    else:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
     init_schema(conn)
     init_users_schema(conn)

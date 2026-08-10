@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from motor_de_test import destino_dominio, destino_libracore
 
 
 @pytest.fixture(autouse=True)
@@ -13,7 +14,10 @@ def _dev_env(monkeypatch, tmp_path):
     # libracore.db es sqlite3 crudo (una conexion nueva por llamada, no un
     # engine con pool) -- ":memory:" le daria a cada llamada una base vacia
     # distinta. Un archivo temporal real por test, igual que medlibra/gestiolibra.
-    monkeypatch.setenv("VENTALIBRA_LIBRACORE_DB_PATH", str(tmp_path / "ventalibra_libracore.db"))
+    monkeypatch.setenv(
+        "VENTALIBRA_LIBRACORE_DB_PATH",
+        destino_libracore(tmp_path / "ventalibra_libracore.db"),
+    )
     # `libracore.config_manager` resuelve su ruta AL IMPORTARSE, desde
     # DATA_DIR o el cwd -- setear la variable acá ya llega tarde. Sin este
     # parche, cualquier test que guarde configuración (ticket, empresa)
@@ -36,7 +40,7 @@ def https_client(app) -> TestClient:
 def admin_client(tmp_path):
     """App nueva contra un archivo SQLite temporal real (no :memory:, no
     mocks) + sesion logueada como el admin de bootstrap (admin/admin)."""
-    db_path = str(tmp_path / "ventalibra.db")
+    db_path = destino_dominio(tmp_path / "ventalibra.db")
     with https_client(create_app(db_path)) as client:
         response = client.post("/auth/login", json={"username": "admin", "password": "admin"})
         assert response.status_code == 200, response.text
