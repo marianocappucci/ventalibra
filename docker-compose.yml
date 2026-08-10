@@ -1,4 +1,43 @@
 services:
+  # El backend de la instancia de dev desde el corte a PostgreSQL. Mismo patrón
+  # que `libradesk-postgres`, con dos diferencias deliberadas:
+  #
+  # 🔴 La clave del servicio es `ventalibra-postgres` y no `db` ni `postgres`
+  # A PROPÓSITO. `stack-net` es una red COMPARTIDA por todos los productos del
+  # VPS, y Compose convierte la clave del servicio en un alias de red: dos
+  # composes con la misma clave se turnan por round-robin del DNS interno. Ya
+  # pasó en esta familia — `sistema.contalibra.com.ar` alternó entre el sistema
+  # de un cliente y el auto-login de una demo.
+  #
+  # 🔴 Imagen Debian (`postgres:16`) y no la alpine, para que coincida con la
+  # del CI: el collation viene de la imagen, y la alpine ordena por bytes —
+  # como SQLite — mientras la Debian usa las reglas del locale. Un ORDER BY
+  # sobre texto no da lo mismo en las dos.
+  #
+  # Sin `ports:` a propósito: sólo se llega desde la red interna. Publicar 5432
+  # en un VPS es publicarla a Internet.
+  ventalibra-postgres:
+    image: postgres:16
+    container_name: ventalibra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ventalibra
+      POSTGRES_USER: ventalibra
+      # Sin default a propósito: `:?` aborta el `up` si falta, en vez de
+      # levantar la base con una clave escrita en git. Se define en el `.env`
+      # del VPS, que no se versiona.
+      POSTGRES_PASSWORD: ${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}
+    volumes:
+      - ventalibra-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ventalibra -d ventalibra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - stack-net
+
   ventalibra-dev:
     build:
       context: .
@@ -21,6 +60,9 @@ services:
         - libraauth=${LIBRAAUTH_SSH_KEY:-~/.ssh/id_ed25519_libraauth}
         - libra-ui=${LIBRA_UI_SSH_KEY:-~/.ssh/id_ed25519_libra_ui}
     container_name: ventalibra-dev
+    depends_on:
+      ventalibra-postgres:
+        condition: service_healthy
     restart: unless-stopped
     mem_limit: 768m
     mem_reservation: 256m
@@ -40,8 +82,16 @@ services:
       - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
       - VENTALIBRA_ADMIN_USERNAME=${VENTALIBRA_ADMIN_USERNAME:-admin}
       - VENTALIBRA_ADMIN_PASSWORD=${VENTALIBRA_ADMIN_PASSWORD:-}
-      - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
-      - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
+      # 🔴 El corte a PostgreSQL. Las dos variables apuntan al MISMO schema:
+      # las tablas del dominio y las de LibraCore conviven ahí, que es lo que
+      # ya hacían las dos bases SQLite de `dev-data/`.
+      #
+      # Volver estas dos líneas a las rutas `.db` y reiniciar es el rollback
+      # completo: los archivos de `dev-data/` siguen ahí y sin tocar —
+      #   - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
+      #   - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
+      - VENTALIBRA_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
+      - VENTALIBRA_LIBRACORE_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
       - ENV=development
       # Recuperacion de contrasena (libraauth v0.5.0). Sin SMTP la app
       # levanta igual y POST /auth/forgot-password devuelve 503: cargar
@@ -61,3 +111,6 @@ networks:
   stack-net:
     external: true
     name: stack_stack-net
+
+volumes:
+  ventalibra-postgres-data:
