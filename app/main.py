@@ -4,10 +4,18 @@ dependencias en include_router, no por endpoint suelto)."""
 import os
 
 from fastapi import Depends, FastAPI
+from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
+from libraauth.auth_events import AuthEventRepository
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
 from libraauth.session_auth import build_smtp_settings_router
 from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
+from libracommerce.db.auditoria import ActividadRepository, entidades as entidades_auditadas
+from libracore import config_manager
+from libracore.config_router import (
+    build_backup_router, build_empresa_admin_router, build_empresa_router,
+)
+from libracore.respaldo import Instancia
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -23,6 +31,7 @@ from .routers import (
 from .routers import users as users_router
 from .services import billing
 from .services.modules import ModuleRepository
+from libraauth.bootstrap import ensure_demo_user
 from .services.users import UserRepository, ensure_default_admin
 
 
@@ -46,15 +55,34 @@ def create_app(db_path: str) -> FastAPI:
         "VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
-    auth_engine = create_engine(
-        f"sqlite:///{libracore_db_path}", connect_args={"check_same_thread": False}
-    )
+    # La URL de SQLAlchemy salia siempre como `sqlite:///...`, aunque el destino
+    # fuera una URL PostgreSQL: la interpolacion la convertia en una ruta
+    # relativa sin sentido. `postgresql://` se pasa tal cual (con el driver
+    # psycopg, que es el de la familia), y `connect_args` es de SQLite.
+    if libracore_db_path.startswith(("postgresql://", "postgresql+psycopg://")):
+        auth_engine = create_engine(
+            libracore_db_path.replace("postgresql://", "postgresql+psycopg://", 1)
+        )
+    else:
+        auth_engine = create_engine(
+            f"sqlite:///{libracore_db_path}", connect_args={"check_same_thread": False}
+        )
     AuthBase.metadata.create_all(auth_engine)
 
     # Sin `roles=`: el default ("admin","staff") es el vocabulario de VentaLibra.
     auth_sessions = sessionmaker(bind=auth_engine)
     user_repository = UserRepository(auth_sessions)
     ensure_default_admin(user_repository)
+    # Crea al visitante de la demo, **solo si esta instancia es una demo**: se
+    # guia por `DEMO_MODE` + `DEMO_USERNAME`, las mismas dos variables que
+    # registran `POST /auth/demo`. En la instancia de un cliente devuelve None
+    # y no toca la base.
+    #
+    # 🔴 Sin esta llamada la ruta existe y no tiene a quien loguear: contesta
+    # `503 demo user not provisioned`. Cablear `incluir_demo=True` en el router
+    # no alcanza — la ruta y la siembra las conecta el producto, cada una por
+    # su lado.
+    ensure_demo_user(user_repository)
 
     app = FastAPI(title="VentaLibra")
     app.state.conn = conn
@@ -80,6 +108,20 @@ def create_app(db_path: str) -> FastAPI:
         smtp_config=lambda: resolver_smtp_config(auth_sessions),
     )
     app.state.modules = ModuleRepository(conn)
+
+    # Los dos logs, cada uno contra la base donde ocurre lo que registra.
+    #
+    # Actividad: la base del DOMINIO, que es donde escriben los repositorios.
+    # No cuelga de un flush como en Gestiolibra o MedLibra —este producto no
+    # tiene SQLAlchemy en el dominio— sino del repositorio envuelto: ver
+    # `app/commerce.py`, que es por donde pasan los diez servicios.
+    app.state.auditoria = ActividadRepository(conn)
+    # Accesos: la base de LibraCore, la misma donde vive `usuarios` y donde
+    # `auth_log` ya existe. Esto no crea la tabla: empieza a escribirla.
+    app.state.auth_events = AuthEventRepository(auth_sessions)
+    # Sella el usuario de la cookie para que la auditoria sepa quien escribio.
+    # Sin esto todo queda a nombre de "Sistema", que no es un error visible.
+    agregar_middleware_de_usuario(app)
 
     app.include_router(health.router)
     app.include_router(auth_router.router)
@@ -118,5 +160,60 @@ def create_app(db_path: str) -> FastAPI:
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=admin_only)
+
+    # Datos de empresa, logo y Datos / Backup (LibraCore v1.11.0).
+    #
+    # A diferencia de LibraDesk, aca la lectura de empresa TAMBIEN es admin:
+    # este producto no genera comprobantes desde el frontend con esos datos —
+    # el ticket lo arma el backend—, asi que no hay motivo para abrirla.
+    app.include_router(build_empresa_router(), dependencies=admin_only)
+    app.include_router(build_empresa_admin_router(), dependencies=admin_only)
+
+    # 🔴 DOS bases, y las dos tienen que entrar al backup: `usuarios` vive en
+    # la de LibraCore, separada de la del dominio (ver el comentario largo
+    # arriba). Un backup de una sola no se puede restaurar — o volves el
+    # dominio y te quedan usuarios de otro momento, o al reves.
+    instancia = Instancia(
+        nombre="ventalibra",
+        bases=[db_path, libracore_db_path],
+        directorios=[config_manager.LOGO_DIR],
+    )
+
+    def _cerrar_conexion():
+        # El dominio es sqlite3 crudo con UNA conexion compartida por toda la
+        # app. Sin cerrarla, el restore reemplaza el archivo y el proceso sigue
+        # leyendo el inodo viejo — devuelve `ok` y no pasa nada.
+        app.state.conn.close()
+
+    def _reabrir_conexion():
+        nueva = db.connect(db_path)
+        app.state.conn = nueva
+        # ⚠️ Los servicios toman la conexion de `request.app.state.conn` en cada
+        # request, asi que con reemplazarla alcanza para ellos. Pero
+        # `app.state.auditoria` se construyo UNA vez, al arrancar, y se quedo
+        # con la conexion vieja: sin esta linea la pantalla de logs consulta
+        # una conexion cerrada despues de cada restore.
+        app.state.auditoria = ActividadRepository(nueva)
+        auth_engine.dispose()
+
+    app.include_router(
+        build_backup_router(
+            instancia, os.path.join(os.path.dirname(libracore_db_path), "backups"),
+            cerrar_conexiones=_cerrar_conexion,
+            reabrir_conexiones=_reabrir_conexion,
+        ),
+        dependencies=admin_only,
+    )
+
+    # Logs: admin y nada mas. La fila dice quien vendio que y desde que IP
+    # entro cada uno. **No** se gatea por plan: un log de auditoria no es una
+    # feature vendible.
+    #
+    # El router lo arma el motor de auth (libraauth v0.10.0) pero el gate lo
+    # pone el producto: el vocabulario de roles es de aca. Y la lista de
+    # entidades sale del motor comercial, que es de donde sale la actividad.
+    app.include_router(
+        build_logs_router(entidades_auditadas()), dependencies=admin_only,
+    )
 
     return app

@@ -17,6 +17,7 @@ import pytest
 from libraauth.session_auth import SERVICE_TOKEN_ENV, SERVICE_TOKEN_HEADER
 
 from app.main import create_app
+from motor_de_test import destino_dominio
 from conftest import https_client
 
 TOKEN = "un-token-de-servicio-de-prueba"
@@ -29,7 +30,7 @@ ACEPTAN_TOKEN = {RUTA_USERS, "/admin/smtp"}
 @pytest.fixture
 def sin_sesion(tmp_path):
     """Cliente sin loguear: es como llega el backoffice, que no es usuario."""
-    with https_client(create_app(str(tmp_path / "ventalibra.db"))) as client:
+    with https_client(create_app(destino_dominio(tmp_path / "ventalibra.db"))) as client:
         yield client
 
 

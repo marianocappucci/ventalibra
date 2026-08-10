@@ -11,12 +11,11 @@ import { Proveedores } from './pages/Proveedores'
 import { Compras } from './pages/Compras'
 import { Clientes } from './pages/Clientes'
 import { Usuarios } from './pages/Usuarios'
-import { ConfigArca } from './pages/ConfigArca'
-import { ConfigBalanza } from './pages/ConfigBalanza'
-import { ConfigTicket } from './pages/ConfigTicket'
+import { Configuracion } from './pages/Configuracion'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
 import { Ventas } from './pages/Ventas'
 import { Reportes } from './pages/Reportes'
+import { Logs } from './pages/Logs'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
   const { user, loading } = useAuth()
@@ -111,35 +110,36 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* Una sola ruta para las seis secciones: la activa va en `?seccion=`,
+          así se puede linkear una en particular sin multiplicar rutas. */}
       <Route
-        path="/config-arca"
+        path="/configuracion"
         element={
           <ProtectedRoute adminOnly>
-            <ConfigArca />
+            <Configuracion />
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/config-balanza"
-        element={
-          <ProtectedRoute adminOnly>
-            <ConfigBalanza />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/config-ticket"
-        element={
-          <ProtectedRoute adminOnly>
-            <ConfigTicket />
-          </ProtectedRoute>
-        }
-      />
+      {/* Las tres pantallas sueltas pasaron a ser secciones. Se redirigen en
+          vez de borrarse: son links que pueden estar en un favorito o en un
+          mensaje, y un 404 en Configuración parece que se rompió el sistema. */}
+      <Route path="/config-arca" element={<Navigate to="/configuracion?seccion=arca" replace />} />
+      <Route path="/config-balanza" element={<Navigate to="/configuracion?seccion=balanza" replace />} />
+      <Route path="/config-ticket" element={<Navigate to="/configuracion?seccion=ticket" replace />} />
       <Route
         path="/reportes"
         element={
           <ProtectedRoute adminOnly>
             <Reportes />
+          </ProtectedRoute>
+        }
+      />
+      {/* El gateo real es del backend (`admin_only` sobre `/logs`). */}
+      <Route
+        path="/logs"
+        element={
+          <ProtectedRoute adminOnly>
+            <Logs />
           </ProtectedRoute>
         }
       />
