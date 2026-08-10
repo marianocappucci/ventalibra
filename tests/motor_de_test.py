@@ -37,6 +37,16 @@ def _vaciar_schema() -> None:
     toda la corrida. Se borra el SCHEMA y no la base: `DROP DATABASE` exige que
     no quede ninguna conexion abierta, y la app del test anterior puede tener
     la suya viva.
+
+    🔴 **Y antes hay que echar a las conexiones del test anterior.** Este
+    producto abre **una conexion viva por app** (`db.connect()`, sin pool) y no
+    la cierra nunca: es su diseno, heredado de SQLite. Contra PostgreSQL esa
+    conexion queda *idle in transaction* sosteniendo locks sobre `public`, y el
+    `DROP SCHEMA` de este helper **se cuelga esperandola** -- medido: 20 minutos
+    sin avanzar, con la corrida entera detras. No falla, no da error: se queda.
+
+    Por eso se las termina primero. Es brutal y es correcto para un arnes de
+    test: son conexiones de apps que ese test ya no usa.
     """
     import psycopg
 
@@ -44,15 +54,37 @@ def _vaciar_schema() -> None:
         TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1),
         autocommit=True,
     ) as conexion:
-        conexion.execute("DROP SCHEMA public CASCADE")
+        conexion.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+        )
+        # `IF EXISTS`: una corrida interrumpida a mitad de este bloque deja la
+        # base SIN schema `public`, y entonces todas las corridas siguientes
+        # mueren en la primera linea. Un arnes no puede quedar envenenado
+        # porque alguien apreto Ctrl-C.
+        conexion.execute("DROP SCHEMA IF EXISTS public CASCADE")
         conexion.execute("CREATE SCHEMA public")
 
 
+def limpiar_entre_tests() -> None:
+    """Deja la base vacia UNA VEZ POR TEST. La llama la fixture autouse.
+
+    🔴 No puede ir dentro de `destino_dominio()`, que fue el primer intento:
+    varios tests arman **dos apps** y ahi la segunda le vaciaba el schema por
+    debajo a la primera -- 229 errores de *schema "public" does not exist*. Con
+    SQLite el problema no existe porque cada app se lleva su propio archivo.
+    """
+    if corre_contra_postgres():
+        _vaciar_schema()
+
+
 def destino_dominio(ruta_sqlite) -> str:
-    """El destino de la base del DOMINIO (las tablas de LibraCommerce)."""
+    """El destino de la base del DOMINIO (las tablas de LibraCommerce).
+
+    No limpia nada: de eso se encarga `limpiar_entre_tests()`, una vez por test.
+    """
     if not corre_contra_postgres():
         return str(ruta_sqlite)
-    _vaciar_schema()
     return TEST_DATABASE_URL
 
 

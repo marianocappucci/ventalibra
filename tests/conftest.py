@@ -2,11 +2,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from motor_de_test import destino_dominio, destino_libracore
+from motor_de_test import destino_dominio, destino_libracore, limpiar_entre_tests
 
 
 @pytest.fixture(autouse=True)
 def _dev_env(monkeypatch, tmp_path):
+    # Una base vacia por TEST, no por app: varios tests arman dos apps y la
+    # segunda le vaciaba el schema por debajo a la primera.
+    limpiar_entre_tests()
     # SessionAuth's SECRET_KEY resolution and ensure_default_admin both
     # fail closed unless ENV=development -- see app/auth.py y
     # app/services/users.py::ensure_default_admin.
