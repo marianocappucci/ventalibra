@@ -36,7 +36,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - stack-net
+      - datos
 
   ventalibra-dev:
     build:
@@ -106,8 +106,11 @@ services:
       - DOCS_AUTH_SECRET=${DOCS_AUTH_SECRET:-}
     networks:
       - stack-net
+      - datos
 
 networks:
+  datos:
+    name: ventalibra-dev-datos
   stack-net:
     external: true
     name: stack_stack-net
