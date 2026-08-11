@@ -3,6 +3,8 @@ los routers con gating por rol (mismo patron que gestiolibra/medlibra:
 dependencias en include_router, no por endpoint suelto)."""
 import os
 
+from libracore.db.url_de_instancia import url_de_instancia
+
 from fastapi import Depends, FastAPI
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
 from libraauth.auth_events import AuthEventRepository
@@ -70,8 +72,8 @@ def create_app(db_path: str) -> FastAPI:
     #
     # Este engine es la unica pieza SQLAlchemy del producto (el resto es sqlite3
     # crudo, app/db.py) y no mueve ni un dato: las filas ya estan ahi.
-    libracore_db_path = os.environ.get(
-        "VENTALIBRA_LIBRACORE_DB_PATH", "./data/ventalibra_libracore.db"
+    libracore_db_path = url_de_instancia(
+        "ventalibra", core=True, default="./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
     # La URL de SQLAlchemy salia siempre como `sqlite:///...`, aunque el destino
