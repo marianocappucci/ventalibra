@@ -35,6 +35,25 @@ from libraauth.bootstrap import ensure_demo_user
 from .services.users import UserRepository, ensure_default_admin
 
 
+def _carpeta_de_backups(libracore_db_path: str) -> str:
+    """Donde se guardan los ZIP de backup.
+
+    🔴 **Salia de `os.path.dirname(libracore_db_path)`, y con la base en
+    PostgreSQL eso no es una carpeta.** `dirname()` de
+    `postgresql://usuario:clave@host:5432/base` devuelve
+    `postgresql://usuario:clave@host:5432`, y ahi se creaba `backups/`: una
+    carpeta **con la contrasena en el nombre**, colgando del directorio de
+    trabajo. Es el mismo defecto que ya tenia `billing.configure()`, en otro
+    lugar del mismo arranque; se encontro en [[contalibra]] el 2026-08-10, donde
+    ademas afectaba a la carpeta de los certificados de ARCA.
+
+    Con la base en PostgreSQL no hay "al lado de la base": se usa `DATA_DIR`.
+    """
+    if str(libracore_db_path).startswith(("postgresql://", "postgresql+psycopg://")):
+        return os.path.join(os.environ.get("DATA_DIR", "./data"), "backups")
+    return os.path.join(os.path.dirname(libracore_db_path), "backups")
+
+
 def create_app(db_path: str) -> FastAPI:
     conn = db.connect(db_path)
 
@@ -198,7 +217,7 @@ def create_app(db_path: str) -> FastAPI:
 
     app.include_router(
         build_backup_router(
-            instancia, os.path.join(os.path.dirname(libracore_db_path), "backups"),
+            instancia, _carpeta_de_backups(libracore_db_path),
             cerrar_conexiones=_cerrar_conexion,
             reabrir_conexiones=_reabrir_conexion,
         ),
