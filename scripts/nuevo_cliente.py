@@ -19,6 +19,7 @@ from libracore.provisioning.nuevo_cliente import (
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 configure(
+    postgres=True,
     product_name="VENTALIBRA",
     image_name="ventalibra:latest",
     container_prefix="ventalibra",
