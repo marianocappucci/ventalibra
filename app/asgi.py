@@ -19,6 +19,8 @@ Corriendo `uvicorn app.asgi:app` sin haber buildeado el frontend sigue
 funcionando como API pura -- el mount se salta en silencio si no existe.
 """
 import os
+
+from libracore.db.url_de_instancia import url_de_instancia
 from pathlib import Path
 
 from fastapi.responses import FileResponse
@@ -29,7 +31,9 @@ from .main import create_app
 DATA_DIR = os.environ.get("DATA_DIR")
 if DATA_DIR:
     os.makedirs(DATA_DIR, exist_ok=True)
-    db_path = os.environ.get("VENTALIBRA_DB_PATH", f"{DATA_DIR}/ventalibra.db")
+    db_path = url_de_instancia(
+        "ventalibra", default=f"{DATA_DIR}/ventalibra.db"
+    )
     os.environ.setdefault(
         "VENTALIBRA_LIBRACORE_DB_PATH", f"{DATA_DIR}/ventalibra_libracore.db"
     )
@@ -38,7 +42,7 @@ if DATA_DIR:
     if os.environ.get("ADMIN_PASSWORD"):
         os.environ.setdefault("VENTALIBRA_ADMIN_PASSWORD", os.environ["ADMIN_PASSWORD"])
 else:
-    db_path = os.environ["VENTALIBRA_DB_PATH"]
+    db_path = url_de_instancia("ventalibra", requerida=True)
 
 app = create_app(db_path)
 
