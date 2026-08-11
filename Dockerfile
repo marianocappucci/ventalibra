@@ -16,20 +16,7 @@
 # propia key dedicada, sin ambiguedad de que identidad ofrece GitHub.
 FROM node:20-slim AS frontend-build
 WORKDIR /frontend
-# `postgresql-client` trae `pg_dump` y `pg_restore`, que es lo que usa
-# `libracore.respaldo` cuando la instancia corre sobre PostgreSQL. Sin ellos la
-# pantalla de Backup deja de andar -- con un error explicito, no en silencio,
-# pero deja de andar. En una instancia SQLite no se usan.
-#
-# 🔴 La version del cliente tiene que ser >= la del servidor, o `pg_dump` se
-# niega a dumpear. python:3.12-slim es Debian 13 (trixie) y su
-# `postgresql-client` es **17**, contra sidecar **postgres:16**. Alcanza. Si
-# algun dia el servidor sube por encima del cliente de Debian, hay que agregar
-# el repo de PGDG -- no subir el pin del servidor y esperar.
-#
-# Lo tenia solo LibraDesk, desde su corte del 2026-08-09. El resto de la familia
-# corto a PostgreSQL sin esto y con la pantalla de Backups rota.
-RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client postgresql-client && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p -m 0700 /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null
 COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=ssh,id=libra-ui,target=/tmp/ssh-libra-ui.sock \
@@ -43,7 +30,20 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl git openssh-client && rm -rf /var/lib/apt/lists/*
+# `postgresql-client` trae `pg_dump` y `pg_restore`, que es lo que usa
+# `libracore.respaldo` cuando la instancia corre sobre PostgreSQL. Sin ellos la
+# pantalla de Backup deja de andar -- con un error explicito, no en silencio,
+# pero deja de andar. En una instancia SQLite no se usan.
+#
+# 🔴 Va en la etapa FINAL, no en la del build del frontend: un paquete
+# instalado en un stage que se descarta se ve igual de bien en el Dockerfile y
+# no esta en la imagen. Paso el 2026-08-10 y lo agarro `command -v pg_dump`
+# adentro del contenedor, no el diff.
+#
+# 🔴 La version del cliente tiene que ser >= la del servidor. python:3.12-slim
+# es Debian 13 (trixie) y su `postgresql-client` es 17, contra sidecar 16.
+# Alcanza. Si el servidor sube por encima, hay que agregar el repo de PGDG.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl git openssh-client postgresql-client && rm -rf /var/lib/apt/lists/*
 
 # pyproject.toml referencia LibraCommerce/LibraCore via git+https (asi
 # funciona el dev local en WSL, que no tiene identidad SSH contra GitHub
