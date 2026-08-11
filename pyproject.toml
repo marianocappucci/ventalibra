@@ -30,7 +30,7 @@ dependencies = [
     # v1.8.2 -> v1.9.0 (2026-08-05): los recibos. Este producto SI los usa —
     # `libracore.recibos` para el comprobante de la cobranza de cuenta
     # corriente, y con eso empieza a usar `pdf_generator` (el recibo es A4).
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.28.1",
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.28.4",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
