@@ -40,10 +40,38 @@ WORKDIR /app
 # no esta en la imagen. Paso el 2026-08-10 y lo agarro `command -v pg_dump`
 # adentro del contenedor, no el diff.
 #
-# 🔴 La version del cliente tiene que ser >= la del servidor. python:3.12-slim
-# es Debian 13 (trixie) y su `postgresql-client` es 17, contra sidecar 16.
-# Alcanza. Si el servidor sube por encima, hay que agregar el repo de PGDG.
-RUN apt-get update && apt-get install -y --no-install-recommends openssl git openssh-client postgresql-client && rm -rf /var/lib/apt/lists/*
+# 🔴 El cliente va CLAVADO en la version del servidor, no ">= la del servidor".
+#
+# Esa era la regla que decia aca y **es falsa para el restore**. Vale para
+# `pg_dump`, que puede dumpear de un servidor mas viejo; `pg_restore` al reves
+# no: el 17 abre la sesion con `SET transaction_timeout = 0;`, un parametro que
+# PostgreSQL 16 no conoce, el servidor contesta `unrecognized configuration
+# parameter` y como el restore corre con `--single-transaction`, **aborta
+# entero**.
+#
+# Medido el 2026-08-12 restaurando de verdad en la demo de Gestiolibra: las
+# siete instancias sobre PostgreSQL tenian `pg_restore` 17.10 contra servidor
+# 16.14, o sea que **el boton de restaurar estaba roto en los seis productos**
+# desde el corte a PostgreSQL. No se habia notado porque nadie lo habia
+# apretado nunca.
+#
+# Si algun dia sube el sidecar (`ProductConfig.postgres_image`), **sube este
+# numero en el mismo movimiento**. Son un par, no dos decisiones.
+# El repo de PGDG, porque trixie no tiene el 16: trae exactamente el mismo build
+# que corre el sidecar (16.14-1.pgdg13+1), que es lo mas parejo que se puede
+# pedir entre cliente y servidor.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      openssl git openssh-client postgresql-client-16 \
+ && rm -rf /var/lib/apt/lists/*
 
 # pyproject.toml referencia LibraCommerce/LibraCore via git+https (asi
 # funciona el dev local en WSL, que no tiene identidad SSH contra GitHub
