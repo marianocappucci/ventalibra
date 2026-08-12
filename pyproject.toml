@@ -15,7 +15,7 @@ dependencies = [
     # dominio, asi que no le servia el mecanismo de libraauth (cuelga del
     # flush) ni el de libracore (consulta el schema en castellano). El enganche
     # es el repositorio envuelto; ver app/commerce.py.
-    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.6.0",
+    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.7.2",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
