@@ -41,7 +41,7 @@ dependencies = [
     # v1.29.0 -> v1.30.0 (2026-08-12): el PDF de un comprobante se fecha con el
     # comprobante y no con el reloj, asi que reimprimirlo da el mismo archivo.
     # Aplica al ticket (`/sales/{id}/ticket`) y al recibo de la cobranza.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.30.0",
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.32.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
