@@ -15,7 +15,14 @@ dependencies = [
     # dominio, asi que no le servia el mecanismo de libraauth (cuelga del
     # flush) ni el de libracore (consulta el schema en castellano). El enganche
     # es el repositorio envuelto; ver app/commerce.py.
-    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.6.0",
+    # v0.7.0-v0.7.2 suben al motor las transferencias entre depositos, la guarda
+    # de disponibilidad y los presets de variante por rubro. **Este producto no
+    # tenia transferencias y sigue sin tenerlas**: no hay nada que reemplazar
+    # aca --a diferencia de Contalibra y Restolibra, que tenian su propia
+    # implementacion-- asi que esto es alinear la version, no adoptar una
+    # funcion. `transfer_stock` queda disponible el dia que se le construya el
+    # endpoint y la pantalla.
+    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.7.2",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
