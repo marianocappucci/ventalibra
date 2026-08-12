@@ -26,6 +26,14 @@ from libracore.provisioning.panel_admin import (
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 configure(
+    # El backup del cron arma el MISMO ZIP que la pantalla de Backups, en
+    # `data/backups/`, en vez de un `tar.gz` aparte que la pantalla no lista
+    # y el cliente no puede restaurar. Requiere libracore >= v1.29.0.
+    #
+    # Este producto puede prenderlo porque su pantalla sale de
+    # `libracore.respaldo` (`build_backup_router` en app/main.py). Contalibra
+    # y Restolibra tienen implementacion propia y todavia no.
+    backup_zip=True,
     postgres=True,
     product_name="VENTALIBRA",
     image_name="ventalibra:latest",
