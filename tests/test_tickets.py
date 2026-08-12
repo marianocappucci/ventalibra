@@ -4,7 +4,9 @@ El PDF lo arma LibraCore (cubierto en su propia suite); acá se prueba el
 puente: que la venta de LibraCommerce llegue completa al papel y que no se
 imprima lo que no corresponde.
 """
+import re
 import zlib
+from datetime import datetime, timezone
 
 
 def _abrir_turno(client):
@@ -196,10 +198,27 @@ def test_el_cajero_no_configura_el_ticket(staff_client):
 
 def test_el_ticket_se_puede_reimprimir(admin_client):
     """Se corta el papel, se traba la impresora: pedirlo de nuevo tiene que
-    dar exactamente lo mismo y no alterar la venta."""
+    dar exactamente lo mismo y no alterar la venta.
+
+    Comparar los dos PDF **no alcanza**: hasta LibraCore v1.30.0 el ticket se
+    sellaba con el momento de la impresión (`/CreationDate`, con resolución de
+    segundo), así que este test pasaba sólo cuando las dos requests entraban
+    en el mismo segundo — y falló el 2026-08-12 en la pata de PostgreSQL del
+    CI, que es más lenta. O sea que nunca había probado la reimpresión.
+
+    Lo que lo vuelve una prueba es el sello: tiene que ser la fecha de la
+    venta, que no depende del reloj del que corre el test.
+    """
     sale_id = _venta_confirmada(admin_client)
 
     primero = admin_client.get(f"/sales/{sale_id}/ticket").content
     segundo = admin_client.get(f"/sales/{sale_id}/ticket").content
+    venta = admin_client.get(f"/sales/{sale_id}").json()
+
+    confirmada = datetime.fromisoformat(venta["confirmed_at"]).astimezone(timezone.utc)
+    sello = re.search(rb"/CreationDate\s*\(([^)]*)\)", primero)
+    # Los segundos van en cero: el puente le pasa la fecha al minuto.
+    assert sello and sello.group(1) == confirmada.strftime("D:%Y%m%d%H%M00Z").encode()
+
     assert primero == segundo
-    assert admin_client.get(f"/sales/{sale_id}").json()["status"] == "confirmed"
+    assert venta["status"] == "confirmed"
