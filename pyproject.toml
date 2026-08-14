@@ -60,7 +60,16 @@ dependencies = [
     #
     # Los cinco comprobantes salen byte por byte identicos a como salian
     # (sha256 comparado con datos reales).
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.37.0",
+    #
+    # v1.37.0 -> v1.38.0 (2026-08-14): las filas meta del membrete tambien se
+    # recortan. La caja del valor mide ~31 mm --unos 25 caracteres a 7 pt-- y
+    # `cell` no recorta: lo que se pasa se dibujaba afuera del papel. El unico
+    # documento que mete texto libre ahi es el RECIBO, que pone el concepto en
+    # ("Comprobante:", ref_line). Medido en la demo de VentaLibra: "Pago a
+    # cuenta en cuenta corriente" terminaba en 202,2 mm en una hoja de 210.
+    #
+    # Es anterior a v1.37.0 y aquel arreglo no lo cubria.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.38.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
