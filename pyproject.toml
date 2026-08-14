@@ -41,7 +41,26 @@ dependencies = [
     # v1.29.0 -> v1.30.0 (2026-08-12): el PDF de un comprobante se fecha con el
     # comprobante y no con el reloj, asi que reimprimirlo da el mismo archivo.
     # Aplica al ticket (`/sales/{id}/ticket`) y al recibo de la cobranza.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.33.0",
+    #
+    # v1.33.0 -> v1.37.0 (2026-08-14): los PDF no se salen del marco del papel.
+    # Este producto SI consume `pdf_generator` (ademas de `recibos` y
+    # `ticket_generator`), asi que el arreglo le llega de verdad:
+    #
+    # - `_wrap_text` parte por caracter la palabra que no entra en el renglon.
+    #   Un texto sin espacios --un codigo de orden de compra, una URL, un
+    #   serial pegado-- volvia entero y `cell` lo dibujaba: medido, 435 mm de
+    #   borde derecho en una hoja de 210, en remito, presupuesto, factura y
+    #   resumen de cuenta corriente.
+    # - La condicion de venta y las filas del detalle de cobros del recibo se
+    #   recortan con elipsis dentro de su celda: esos dos desbordaban **con
+    #   datos normales**, sin caso extremo.
+    #
+    # El ticket termico (`ticket_generator`) NO entra: son 80 mm de papel con
+    # margenes propios de 2 mm, otra geometria.
+    #
+    # Los cinco comprobantes salen byte por byte identicos a como salian
+    # (sha256 comparado con datos reales).
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.37.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
