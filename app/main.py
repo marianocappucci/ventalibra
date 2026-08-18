@@ -8,9 +8,12 @@ from libracore.db.url_de_instancia import url_de_instancia
 from fastapi import Depends, FastAPI
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
 from libraauth.auth_events import AuthEventRepository
+from libraauth.demo_codigos import DemoCodigoRepository
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
-from libraauth.session_auth import build_smtp_settings_router
+from libraauth.session_auth import (
+    build_demo_codigos_router, build_smtp_settings_router, demo_username,
+)
 from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libracommerce.db.auditoria import ActividadRepository, entidades as entidades_auditadas
 from libracore import config_manager
@@ -150,6 +153,22 @@ def create_app(db_path: str) -> FastAPI:
     # quien pueda escribir ahí puede redirigir a dónde salen los enlaces de
     # recuperación de contraseña de todos los usuarios.
     app.include_router(build_smtp_settings_router())
+    # `GET`/`POST`/`DELETE /admin/demo-codigos`, **solo en la demo**: es por
+    # donde el backoffice emite los codigos que se le pasan a un interesado.
+    # Exige rol admin o token de servicio por dentro, igual que el de SMTP.
+    #
+    # 🔴 El repositorio va contra `auth_sessions`, NO contra `sessions`: la
+    # tabla de codigos vive en el mismo engine que `usuarios`, que en este
+    # producto no es la base del dominio. Con el factory del dominio, la tabla
+    # se crearia en el lugar equivocado y `POST /auth/demo` no encontraria
+    # ningun codigo valido.
+    #
+    # 🔴 Y una instancia demo que llegue aca SIN el repositorio deja de dejar
+    # entrar: el endpoint falla cerrado a proposito. Si un dia la demo devuelve
+    # `503 demo access codes not configured`, lo que falta es esta linea.
+    if demo_username():
+        app.state.demo_codigos = DemoCodigoRepository(auth_sessions)
+        app.include_router(build_demo_codigos_router())
 
     admin_only = [Depends(require_admin)]
     staff_or_admin = [Depends(require_staff)]
