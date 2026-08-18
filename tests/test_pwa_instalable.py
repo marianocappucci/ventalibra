@@ -201,3 +201,35 @@ def test_el_service_worker_no_cachea():
     assert "addEventListener('fetch'" in codigo, "sin manejador de fetch no es instalable"
     for prohibido in ("caches.open", "cache.put", "cache.addAll", "respondWith"):
         assert prohibido not in codigo, f"el service worker no tiene que cachear: apareció {prohibido}"
+
+
+def test_el_icono_de_ios_no_tiene_transparencia():
+    """🔴 El defecto no es que falte el archivo: es que tenga canal alfa.
+
+    iOS no compone «Agregar a inicio» sobre ningún fondo — pinta la
+    transparencia de **negro**. Con el icono de 192 px, que tiene fondo
+    transparente, las esquinas redondeadas del recuadro salían oscuras. Un test
+    que sólo mirara que el archivo existe pasaba en verde con el defecto entero.
+
+    Se lee el tipo de color del IHDR, que es el byte 26 del PNG: 2 es color sin
+    alfa, 6 es color con alfa. Y se descarta `tRNS`, que es la otra forma de
+    declarar transparencia.
+    """
+    icono = PUBLICO / "icons" / "icon-apple-180.png"
+    assert icono.is_file(), "falta el icono de iOS"
+
+    crudo = icono.read_bytes()
+    assert crudo[:8] == b"\x89PNG\r\n\x1a\n"
+    assert crudo[25] == 2, f"tipo de color {crudo[25]}: el PNG lleva canal alfa"
+    assert b"tRNS" not in crudo, "el PNG declara transparencia por tRNS"
+    assert _medidas_png(icono) == (180, 180)
+
+
+def test_el_index_apunta_al_icono_opaco():
+    """El archivo opaco no sirve de nada si el `<link>` sigue en el otro."""
+    html = (RAIZ / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert 'rel="apple-touch-icon"' in html
+    assert 'href="/icons/icon-apple-180.png"' in html, (
+        "el apple-touch-icon sigue apuntando a un icono con transparencia"
+    )
