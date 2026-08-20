@@ -5,10 +5,8 @@
 compose. Sin esa cabecera el navegador aplica caché heurística y puede servir la
 copia guardada sin preguntar. Como Vite le pone un hash en el nombre a cada
 bundle, el bundle viejo **sigue existiendo**: el `index.html` viejo lo pide y lo
-recibe, con 200. No hay error en ninguna capa — ni un 404 que delate nada.
-
-Le pasó a LibraCargo el 2026-08-19 con la pantalla de Backup: desplegada y sin
-verse, con todo bien del lado del servidor.
+recibe, con 200. No hay error en ninguna capa — ni un 404 que delate nada. Le
+pasó a LibraCargo el 2026-08-19 con la pantalla de Backup.
 
 Los dos tests principales son las dos mitades del mismo arreglo, y ninguna sirve
 sola:
@@ -16,80 +14,44 @@ sola:
 - el archivo cuyo nombre NO cambia (`index.html`) revalida siempre;
 - los que llevan el hash en el nombre se cachean para siempre, que es seguro
   **porque** el index revalida.
+
+🔴 **Se prueba `montar_spa`, no se importa la app.** La primera versión de este
+archivo reimportaba `app.asgi` con un `dist` presente, que era la única
+forma de tener las rutas reales mientras el cableado vivía ahí. Eso reconstruye
+la app entera en medio de la suite: vuelve a sembrar el usuario admin y deja en
+`sys.modules` una instancia distinta de la que usan los demás tests. **106
+errores ajenos en un producto y 176 en otro**, todos `invalid credentials`, con
+este archivo pasando en verde aislado. Por eso el cableado se movió a
+`app/spa.py` como función: la que llama producción es la que llama el test.
 """
 
 from __future__ import annotations
 
-import importlib
-import os
-import shutil
-import sys
-from pathlib import Path
-
-import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
-REPO = Path(__file__).resolve().parent.parent
+from app.spa import montar_spa
+
 ASSET = "index-DELTEST123.js"
 
 
-@pytest.fixture(scope="module")
-def cliente(tmp_path_factory):
-    """La app de verdad, con un `dist` presente.
+@pytest.fixture
+def cliente(tmp_path):
+    """Una `FastAPI` limpia con el cableado real y un `dist` de mentira.
 
-    🔴 El `dist` no es decorado: el mount de `/assets` y el catch-all **se arman
-    en el import** y sólo si el directorio existe. Sin él, este archivo probaría
-    una app sin frontend, o sea nada — y en verde. Se fabrica uno mínimo si el
-    checkout no lo tiene (el job de tests del CI no construye el frontend) y se
-    borra sólo lo que se haya creado.
+    Sin efectos sobre el resto de la suite: no importa la app del producto, no
+    toca la base y no siembra usuarios.
     """
-    dist = REPO / "frontend" / "dist"
-    creado = not dist.is_dir()
-    (dist / "assets").mkdir(parents=True, exist_ok=True)
-    if creado:
-        (dist / "index.html").write_text(
-            "<!doctype html><title>VentaLibra</title>", encoding="utf-8"
-        )
-    asset = dist / "assets" / ASSET
-    asset.write_text("console.log(1)", encoding="utf-8")
-    suelto = dist / "prueba-de-cache.txt"
-    suelto.write_text("hola", encoding="utf-8")
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>ventalibra</title>", encoding="utf-8")
+    (dist / "assets" / ASSET).write_text("console.log(1)", encoding="utf-8")
+    (dist / "prueba-de-cache.txt").write_text("hola", encoding="utf-8")
 
-    # 🔴 El test trae su propio entorno, no hereda el del shell de quien lo
-    # corre. El bootstrap de `libraauth` es fail-closed: sin la contraseña de
-    # admin inicial la app **no levanta**. Estos cinco tests pasaban localmente
-    # sólo porque el arnés exportaba `ENV=development` antes de pytest, y en el
-    # CI —donde no está— daban error de setup, no de aserción.
-    previo = {v: os.environ.get(v) for v in
-              ("ENV", "VENTALIBRA_ADMIN_USERNAME", "VENTALIBRA_ADMIN_PASSWORD",
-               "SECRET_KEY", "DATA_DIR")}
-    os.environ["ENV"] = "development"
-    os.environ["VENTALIBRA_ADMIN_USERNAME"] = "admin"
-    os.environ["VENTALIBRA_ADMIN_PASSWORD"] = "clave-de-prueba"
-    os.environ.setdefault("SECRET_KEY", "cache-del-spa-no-es-un-secreto-real")
-    # `DATA_DIR` se resuelve al importar y su default puede ser `/app`, que en
-    # el runner del CI no existe y no se puede crear (`PermissionError`). Misma
-    # clase de dependencia del entorno que la contraseña: la trae el test.
-    os.environ["DATA_DIR"] = str(tmp_path_factory.mktemp("datos"))
-
-    # Reimportar: el módulo lee el entorno y arma las rutas EN EL IMPORT, así
-    # que si ya está en `sys.modules` de otro test tendría el `dist` de antes.
-    sys.modules.pop("app.asgi", None)
-    modulo = importlib.import_module("app.asgi")
-    assert (dist / "index.html").is_file(), "sin index.html esto no prueba nada"
-
-    yield TestClient(modulo.app, base_url="https://testserver")
-
-    sys.modules.pop("app.asgi", None)
-    for var, valor in previo.items():
-        if valor is None:
-            os.environ.pop(var, None)
-        else:
-            os.environ[var] = valor
-    asset.unlink(missing_ok=True)
-    suelto.unlink(missing_ok=True)
-    if creado:
-        shutil.rmtree(dist, ignore_errors=True)
+    app = FastAPI()
+    montar_spa(app, dist)
+    return TestClient(app)
 
 
 def test_el_index_revalida_siempre(cliente):
@@ -121,7 +83,8 @@ def test_los_assets_se_cachean_para_siempre(cliente):
 
 
 def test_los_archivos_sueltos_del_dist_no_se_cachean(cliente):
-    """Un favicon o un manifest no llevan hash: mismo criterio que el index."""
+    """Un favicon, un manifest o el `sw.js` no llevan hash: mismo criterio que
+    el index."""
     r = cliente.get("/prueba-de-cache.txt")
     assert r.status_code == 200
     assert "no-cache" in r.headers.get("cache-control", ""), dict(r.headers)
@@ -136,3 +99,24 @@ def test_las_dos_politicas_son_distintas(cliente):
     index = cliente.get("/").headers.get("cache-control", "")
     asset = cliente.get(f"/assets/{ASSET}").headers.get("cache-control", "")
     assert index and asset and index != asset, f"index={index!r} asset={asset!r}"
+
+
+def test_la_app_de_verdad_llama_a_montar_spa():
+    """🔴 El guard que hace que todo lo de arriba signifique algo.
+
+    Los cinco tests prueban `montar_spa`. Si el módulo que construye la app
+    dejara de llamarla, seguirían los cinco en verde y la aplicación se
+    quedaría sin frontend: una función correcta con cero call sites.
+
+    Se lee el fuente y no se importa el módulo, a propósito — importarlo es
+    justamente lo que este archivo dejó de hacer.
+    """
+    from pathlib import Path
+
+    fuente = Path(__file__).resolve().parent.parent / "app/asgi.py"
+    texto = fuente.read_text(encoding="utf-8")
+
+    assert "montar_spa" in texto, f"{fuente.name} ya no llama a montar_spa"
+    assert "montar_spa(app, FRONTEND_DIST)" in texto, (
+        f"{fuente.name} nombra montar_spa pero no la invoca sobre FRONTEND_DIST"
+    )
