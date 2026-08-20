@@ -5,6 +5,9 @@ aplicación**: es una función y una tabla, sin nada que ocurra al importar.
 """
 from pathlib import Path
 
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 # `mimetypes` no conoce `.webmanifest`, y sin un tipo que el navegador acepte no
 # hay aplicación instalable.
 TIPOS_PROPIOS = {".webmanifest": "application/manifest+json"}
@@ -32,3 +35,76 @@ def archivo_publico(dist, ruta: str):
     if candidato.name == "index.html" or not candidato.is_file():
         return None
     return candidato
+
+
+# ── El cableado de la SPA, y sus cabeceras de caché ────────────────────────
+
+#: 🔴 **`index.html` no se cachea, y esto no es una optimización: es lo que
+#: hace que un deploy se vea.**
+#:
+#: Vite le pone un hash en el nombre a cada bundle, así que el archivo nuevo
+#: nunca pisa al viejo — pero `index.html` **conserva el nombre** y es el único
+#: que dice cuál es el bundle de ahora. Sin `Cache-Control`, el navegador aplica
+#: caché heurística (una fracción de la antigüedad del `Last-Modified`) y puede
+#: servir el `index.html` guardado sin preguntar. El usuario recarga, no ve el
+#: cambio, y del lado del servidor está todo bien: el contenedor tiene el código
+#: nuevo, el bundle nuevo está publicado, y el navegador sigue pidiendo el viejo
+#: — que además existe, porque el nombre lleva hash.
+#:
+#: Le pasó a LibraCargo el 2026-08-19 con la pantalla de Backup, y las seis
+#: instancias de la familia servían el `index.html` sin la cabecera hasta el
+#: 2026-08-20 — medido contra los dominios, no leído del compose.
+#:
+#: `no-cache` **no** es "no guardes": es "guardá, pero revalidá siempre".
+SIN_CACHE = "no-cache, must-revalidate"
+
+#: Los assets, al revés: el nombre lleva el hash del contenido, así que **el
+#: mismo nombre nunca cambia de contenido** y se pueden cachear para siempre. Un
+#: `index.html` que revalida siempre es lo que hace seguro esto: cuando el
+#: contenido cambia, el nombre cambia, y el `index.html` fresco pide el nuevo.
+PARA_SIEMPRE = "public, max-age=31536000, immutable"
+
+
+class AssetsInmutables(StaticFiles):
+    """`StaticFiles` con la cabecera de caché larga."""
+
+    def file_response(self, *args, **kwargs):
+        respuesta = super().file_response(*args, **kwargs)
+        respuesta.headers["Cache-Control"] = PARA_SIEMPRE
+        return respuesta
+
+
+def montar_spa(app, dist) -> None:
+    """Monta `/assets` y el catch-all del frontend, con sus cabeceras de caché.
+
+    🔴 Vive acá, y no en el módulo que construye la app, por la misma razón que
+    `archivo_publico`: **para poder probarlo sin construir la aplicación**.
+
+    No es una preferencia de estilo. Mientras esto vivía junto a la app, la
+    única forma de probar las cabeceras era importar ese módulo con un `dist`
+    presente — y eso, en medio de la suite, reconstruye la app entera: vuelve a
+    sembrar el usuario admin y deja en `sys.modules` una instancia distinta de
+    la que usan los demás tests. Medido el 2026-08-20: **106 errores ajenos en
+    un producto y 176 en otro**, todos `invalid credentials`, por un archivo de
+    test que aislado pasaba en verde.
+
+    Ahora la función que llama producción es la misma que llama el test, sobre
+    una `FastAPI` limpia y un `dist` de mentira.
+    """
+    raiz = Path(dist)
+    app.mount(
+        "/assets", AssetsInmutables(directory=raiz / "assets"), name="frontend-assets"
+    )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        archivo = archivo_publico(raiz, full_path)
+        if archivo is not None:
+            # Los archivos sueltos del dist (favicon, manifest, sw.js) tampoco
+            # llevan hash en el nombre: mismo criterio que el index.
+            return FileResponse(
+                archivo,
+                media_type=TIPOS_PROPIOS.get(archivo.suffix),
+                headers={"Cache-Control": SIN_CACHE},
+            )
+        return FileResponse(raiz / "index.html", headers={"Cache-Control": SIN_CACHE})

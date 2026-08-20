@@ -23,10 +23,8 @@ import os
 from libracore.db.url_de_instancia import url_de_instancia
 from pathlib import Path
 
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
-from app.spa import TIPOS_PROPIOS, archivo_publico
+from app.spa import montar_spa
 
 from .main import create_app
 
@@ -54,13 +52,4 @@ FRONTEND_DIST = (
     _DOCKER_FRONTEND_DIST if _DOCKER_FRONTEND_DIST.is_dir() else _LOCAL_FRONTEND_DIST
 )
 if FRONTEND_DIST.is_dir():
-    app.mount(
-        "/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets"
-    )
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_fallback(full_path: str):
-        archivo = archivo_publico(FRONTEND_DIST, full_path)
-        if archivo is not None:
-            return FileResponse(archivo, media_type=TIPOS_PROPIOS.get(archivo.suffix))
-        return FileResponse(FRONTEND_DIST / "index.html")
+    montar_spa(app, FRONTEND_DIST)
