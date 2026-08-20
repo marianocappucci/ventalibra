@@ -21,6 +21,7 @@ sola:
 from __future__ import annotations
 
 import importlib
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -33,7 +34,7 @@ ASSET = "index-DELTEST123.js"
 
 
 @pytest.fixture(scope="module")
-def cliente():
+def cliente(tmp_path_factory):
     """La app de verdad, con un `dist` presente.
 
     🔴 El `dist` no es decorado: el mount de `/assets` y el catch-all **se arman
@@ -54,6 +55,23 @@ def cliente():
     suelto = dist / "prueba-de-cache.txt"
     suelto.write_text("hola", encoding="utf-8")
 
+    # 🔴 El test trae su propio entorno, no hereda el del shell de quien lo
+    # corre. El bootstrap de `libraauth` es fail-closed: sin la contraseña de
+    # admin inicial la app **no levanta**. Estos cinco tests pasaban localmente
+    # sólo porque el arnés exportaba `ENV=development` antes de pytest, y en el
+    # CI —donde no está— daban error de setup, no de aserción.
+    previo = {v: os.environ.get(v) for v in
+              ("ENV", "VENTALIBRA_ADMIN_USERNAME", "VENTALIBRA_ADMIN_PASSWORD",
+               "SECRET_KEY", "DATA_DIR")}
+    os.environ["ENV"] = "development"
+    os.environ["VENTALIBRA_ADMIN_USERNAME"] = "admin"
+    os.environ["VENTALIBRA_ADMIN_PASSWORD"] = "clave-de-prueba"
+    os.environ.setdefault("SECRET_KEY", "cache-del-spa-no-es-un-secreto-real")
+    # `DATA_DIR` se resuelve al importar y su default puede ser `/app`, que en
+    # el runner del CI no existe y no se puede crear (`PermissionError`). Misma
+    # clase de dependencia del entorno que la contraseña: la trae el test.
+    os.environ["DATA_DIR"] = str(tmp_path_factory.mktemp("datos"))
+
     # Reimportar: el módulo lee el entorno y arma las rutas EN EL IMPORT, así
     # que si ya está en `sys.modules` de otro test tendría el `dist` de antes.
     sys.modules.pop("app.asgi", None)
@@ -63,6 +81,11 @@ def cliente():
     yield TestClient(modulo.app, base_url="https://testserver")
 
     sys.modules.pop("app.asgi", None)
+    for var, valor in previo.items():
+        if valor is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = valor
     asset.unlink(missing_ok=True)
     suelto.unlink(missing_ok=True)
     if creado:
