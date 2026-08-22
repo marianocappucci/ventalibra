@@ -1,3 +1,9 @@
+// ⚠️ **Los selectores dicen `role="tab"` desde libra-ui v0.35.0.** El
+// conmutador de `createConfiguracion` era un `<nav>` de botones con
+// `aria-current="page"`; ahora es el `Tabs` de shadcn, el mismo que usa la
+// Configuración de Contalibra, que anuncia `role="tab"` y `aria-selected`.
+// No es un detalle de implementación que se pueda ignorar acá: es lo que un
+// lector de pantalla anuncia, y estos tests son lo que lo fija.
 // Configuración de VentaLibra (ítem 5, 2026-08-05).
 //
 // El armado y las secciones comunes viven en `libra-ui/Configuracion` y tienen
@@ -57,7 +63,7 @@ describe('Las secciones de VentaLibra', () => {
     montar()
 
     for (const seccion of ['Empresa', 'Correo', 'Datos / Backup', 'ARCA', 'Balanza', 'Ticket']) {
-      expect(await screen.findByRole('button', { name: new RegExp(seccion) }))
+      expect(await screen.findByRole('tab', { name: new RegExp(seccion) }))
         .toBeInTheDocument()
     }
   })
@@ -65,8 +71,8 @@ describe('Las secciones de VentaLibra', () => {
   it('arranca en Empresa, que es lo que se carga una vez y no se toca más', async () => {
     montar()
 
-    expect(await screen.findByRole('button', { name: /Empresa/ }))
-      .toHaveAttribute('aria-current', 'page')
+    expect(await screen.findByRole('tab', { name: /Empresa/ }))
+      .toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText(/Datos de la empresa/)).toBeInTheDocument()
   })
 })
@@ -77,8 +83,8 @@ describe('Las tres pantallas viejas', () => {
     montar('/config-arca')
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /ARCA/ }))
-        .toHaveAttribute('aria-current', 'page')
+      expect(screen.getByRole('tab', { name: /ARCA/ }))
+        .toHaveAttribute('aria-selected', 'true')
     })
   })
 
@@ -86,8 +92,8 @@ describe('Las tres pantallas viejas', () => {
     montar('/config-balanza')
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Balanza/ }))
-        .toHaveAttribute('aria-current', 'page')
+      expect(screen.getByRole('tab', { name: /Balanza/ }))
+        .toHaveAttribute('aria-selected', 'true')
     })
   })
 
@@ -95,8 +101,8 @@ describe('Las tres pantallas viejas', () => {
     montar('/config-ticket')
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Ticket/ }))
-        .toHaveAttribute('aria-current', 'page')
+      expect(screen.getByRole('tab', { name: /Ticket/ }))
+        .toHaveAttribute('aria-selected', 'true')
     })
   })
 })
