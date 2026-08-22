@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Reporte JUnit que emite el paso de tests del CI para su gate.
+vitest.xml
