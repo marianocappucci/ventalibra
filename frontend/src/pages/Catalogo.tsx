@@ -18,7 +18,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { DataTable, sortableHeader } from '@/components/data-table'
-import { Barcode } from 'lucide-react'
+import { Barcode, Package } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -375,7 +376,7 @@ export function Catalogo() {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Catálogo</h2>
+      <TituloPantalla icono={Package}>Catálogo</TituloPantalla>
 
       <UnitQuickCreate units={units} onCreated={loadAll} />
       <ItemCreateForm units={units} categories={categories} onCreated={loadAll} />

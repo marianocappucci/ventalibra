@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { BadgeEstado } from 'libra-ui/badge-estado'
 import { DataTable, sortableHeader } from '@/components/data-table'
+import { Warehouse } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -67,7 +69,7 @@ export function Sucursales() {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Sucursales / depósitos</h2>
+      <TituloPantalla icono={Warehouse}>Sucursales / depósitos</TituloPantalla>
 
       <Card>
         <CardHeader>

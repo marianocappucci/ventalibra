@@ -13,6 +13,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ShoppingBag } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -444,7 +446,7 @@ export function Compras() {
 
   return (
     <div className="grid gap-6">
-      <h2 className="text-lg font-semibold">Compras</h2>
+      <TituloPantalla icono={ShoppingBag}>Compras</TituloPantalla>
       <OrdersPanel suppliers={suppliers} items={items} />
       <ReceiptsPanel suppliers={suppliers} items={items} locations={locations} orders={orders} />
     </div>

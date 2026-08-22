@@ -18,7 +18,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, Printer, Undo2 } from 'lucide-react'
+import { Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
   draft: { label: 'Borrador', tono: 'neutro' },
@@ -77,7 +78,7 @@ export function Ventas() {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Ventas</h2>
+      <TituloPantalla icono={ReceiptText}>Ventas</TituloPantalla>
 
       <form
         className="flex gap-2"

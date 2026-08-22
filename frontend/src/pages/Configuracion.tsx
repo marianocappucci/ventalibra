@@ -12,12 +12,14 @@
 import {
   SECCIONES_BASE, SECCION_ARCA, createConfiguracion,
 } from 'libra-ui/Configuracion'
-import { Printer, Scale } from 'lucide-react'
+import { Printer, Scale, Settings } from 'lucide-react'
 
 import { ConfigBalanza } from './ConfigBalanza'
 import { ConfigTicket } from './ConfigTicket'
 
 export const Configuracion = createConfiguracion({
+  // El icono que el sidebar de este producto le da a /configuracion.
+  icono: Settings,
   secciones: [
     // empresa (+logo), correo (SMTP) y Datos / Backup
     ...SECCIONES_BASE,

@@ -18,6 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { ReceiptText, Wallet } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -71,7 +72,7 @@ export function CuentasCorrientes() {
   return (
     <div className="grid gap-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">Cuentas corrientes</h2>
+        <TituloPantalla icono={Wallet}>Cuentas corrientes</TituloPantalla>
         {deudores.length > 0 && (
           <p className="text-sm text-muted-foreground">
             Fiado total: <strong className="tabular-nums text-foreground">${money(totalFiado)}</strong>
