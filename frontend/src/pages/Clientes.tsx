@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { BadgeEstado } from 'libra-ui/badge-estado'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -82,9 +82,9 @@ export function Clientes() {
       accessorKey: 'active',
       header: 'Estado',
       cell: ({ row }) => (
-        <Badge variant={row.original.active ? 'default' : 'outline'}>
+        <BadgeEstado tono={row.original.active ? 'ok' : 'neutro'}>
           {row.original.active ? 'Activo' : 'Inactivo'}
-        </Badge>
+        </BadgeEstado>
       ),
     },
   ], [])

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { BadgeEstado } from 'libra-ui/badge-estado'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 function describeError(err: unknown): string {
@@ -179,7 +179,7 @@ export function Reportes() {
                         <TableCell>{item.name}</TableCell>
                         <TableCell>{item.unit_code}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant={isLow ? 'destructive' : 'outline'}>{item.stock}</Badge>
+                          <BadgeEstado tono={isLow ? 'negativo' : 'neutro'}>{item.stock}</BadgeEstado>
                         </TableCell>
                       </TableRow>
                     )

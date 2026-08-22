@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { BadgeEstado, type TonoEstado } from 'libra-ui/badge-estado'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -24,8 +24,17 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   received: 'Recibida', cancelled: 'Cancelada',
 }
 
+const ORDER_STATUS_TONO: Record<string, TonoEstado> = {
+  draft: 'neutro', sent: 'curso', partial: 'atencion',
+  received: 'ok', cancelled: 'negativo',
+}
+
 const RECEIPT_STATUS_LABELS: Record<string, string> = {
   draft: 'Borrador', confirmed: 'Confirmada',
+}
+
+const RECEIPT_STATUS_TONO: Record<string, TonoEstado> = {
+  draft: 'neutro', confirmed: 'ok',
 }
 
 function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: CatalogItem[] }) {
@@ -126,7 +135,7 @@ function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: Catal
                 <TableRow key={order.id} className="cursor-pointer hover:bg-accent" onClick={() => setSelected(order)}>
                   <TableCell>{order.number}</TableCell>
                   <TableCell>{supplierName(order.supplier_party_id)}</TableCell>
-                  <TableCell><Badge variant="outline">{ORDER_STATUS_LABELS[order.status] ?? order.status}</Badge></TableCell>
+                  <TableCell><BadgeEstado tono={ORDER_STATUS_TONO[order.status] ?? 'neutro'}>{ORDER_STATUS_LABELS[order.status] ?? order.status}</BadgeEstado></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -328,7 +337,7 @@ function ReceiptsPanel({
                 <TableRow key={receipt.id} className="cursor-pointer hover:bg-accent" onClick={() => setSelected(receipt)}>
                   <TableCell>#{receipt.id}</TableCell>
                   <TableCell>{supplierName(receipt.supplier_party_id)}</TableCell>
-                  <TableCell><Badge variant="outline">{RECEIPT_STATUS_LABELS[receipt.status] ?? receipt.status}</Badge></TableCell>
+                  <TableCell><BadgeEstado tono={RECEIPT_STATUS_TONO[receipt.status] ?? 'neutro'}>{RECEIPT_STATUS_LABELS[receipt.status] ?? receipt.status}</BadgeEstado></TableCell>
                 </TableRow>
               ))}
             </TableBody>

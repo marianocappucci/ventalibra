@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { BadgeEstado } from 'libra-ui/badge-estado'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -242,9 +243,9 @@ function ItemDetailDialog({ item, onClose }: { item: CatalogItem; onClose: () =>
           <div className="flex flex-wrap gap-2">
             {codes.length === 0 && <p className="text-sm text-muted-foreground">Sin códigos todavía.</p>}
             {codes.map((c) => (
-              <Badge key={c.id} variant={c.is_primary ? 'default' : 'outline'}>
+              <BadgeEstado key={c.id} tono={c.is_primary ? 'ok' : 'neutro'}>
                 {ITEM_CODE_TYPE_LABELS[c.code_type]}: {c.code}
-              </Badge>
+              </BadgeEstado>
             ))}
           </div>
           <div className="flex items-end gap-2">
@@ -353,9 +354,9 @@ export function Catalogo() {
       size: 100,
       minSize: 85,
       cell: ({ row }) => (
-        <Badge variant={row.original.active ? 'default' : 'outline'}>
+        <BadgeEstado tono={row.original.active ? 'ok' : 'neutro'}>
           {row.original.active ? 'Activo' : 'Inactivo'}
-        </Badge>
+        </BadgeEstado>
       ),
     },
     {
