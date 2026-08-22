@@ -11,21 +11,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { BadgeEstado, type TonoEstado } from 'libra-ui/badge-estado'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, Printer, Undo2 } from 'lucide-react'
+import { Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
-const ESTADOS: Record<SaleStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  draft: { label: 'Borrador', variant: 'outline' },
-  confirmed: { label: 'Cobrada', variant: 'default' },
-  cancelled: { label: 'Anulada', variant: 'destructive' },
-  partially_returned: { label: 'Devuelta en parte', variant: 'secondary' },
-  returned: { label: 'Devuelta', variant: 'secondary' },
+const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
+  draft: { label: 'Borrador', tono: 'neutro' },
+  confirmed: { label: 'Cobrada', tono: 'ok' },
+  cancelled: { label: 'Anulada', tono: 'negativo' },
+  partially_returned: { label: 'Devuelta en parte', tono: 'atencion' },
+  returned: { label: 'Devuelta', tono: 'atencion' },
 }
 
 const MEDIOS_DEVOLUCION = [
@@ -77,7 +78,7 @@ export function Ventas() {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Ventas</h2>
+      <TituloPantalla icono={ReceiptText}>Ventas</TituloPantalla>
 
       <form
         className="flex gap-2"
@@ -126,9 +127,9 @@ export function Ventas() {
                       <td className="p-2">{v.cliente || 'Consumidor final'}</td>
                       <td className="p-2 text-right tabular-nums">${money(v.total)}</td>
                       <td className="p-2">
-                        <Badge variant={ESTADOS[v.status].variant}>
+                        <BadgeEstado tono={ESTADOS[v.status].tono}>
                           {ESTADOS[v.status].label}
-                        </Badge>
+                        </BadgeEstado>
                       </td>
                       <td className="p-2 text-right">
                         <Button size="sm" variant="secondary" onClick={() => setAbierta(v.id)}>
@@ -220,9 +221,9 @@ function DetalleVenta({ saleId, onCerrar, onCambio }: {
           <DialogTitle>
             Venta {venta?.number ?? ''}
             {venta && (
-              <Badge variant={ESTADOS[venta.status].variant} className="ml-2">
+              <BadgeEstado tono={ESTADOS[venta.status].tono} className="ml-2">
                 {ESTADOS[venta.status].label}
-              </Badge>
+              </BadgeEstado>
             )}
           </DialogTitle>
         </DialogHeader>

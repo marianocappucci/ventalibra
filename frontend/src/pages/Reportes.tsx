@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { BadgeEstado } from 'libra-ui/badge-estado'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { BarChart3 } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -69,7 +71,7 @@ export function Reportes() {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Reportes</h2>
+      <TituloPantalla icono={BarChart3}>Reportes</TituloPantalla>
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-2 pt-6">
@@ -179,7 +181,7 @@ export function Reportes() {
                         <TableCell>{item.name}</TableCell>
                         <TableCell>{item.unit_code}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant={isLow ? 'destructive' : 'outline'}>{item.stock}</Badge>
+                          <BadgeEstado tono={isLow ? 'negativo' : 'neutro'}>{item.stock}</BadgeEstado>
                         </TableCell>
                       </TableRow>
                     )

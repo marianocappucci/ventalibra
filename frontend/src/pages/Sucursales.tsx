@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { BadgeEstado } from 'libra-ui/badge-estado'
 import { DataTable, sortableHeader } from '@/components/data-table'
+import { Warehouse } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -58,16 +60,16 @@ export function Sucursales() {
       accessorKey: 'active',
       header: 'Estado',
       cell: ({ row }) => (
-        <Badge variant={row.original.active ? 'default' : 'outline'}>
+        <BadgeEstado tono={row.original.active ? 'ok' : 'neutro'}>
           {row.original.active ? 'Activa' : 'Inactiva'}
-        </Badge>
+        </BadgeEstado>
       ),
     },
   ], [])
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Sucursales / depósitos</h2>
+      <TituloPantalla icono={Warehouse}>Sucursales / depósitos</TituloPantalla>
 
       <Card>
         <CardHeader>
