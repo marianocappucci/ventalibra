@@ -10,6 +10,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { DataTable, sortableHeader } from '@/components/data-table'
+import { Users } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 const CONDICIONES_IVA = [
   'Responsable Inscripto',
@@ -91,7 +93,7 @@ export function Clientes() {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Clientes</h2>
+      <TituloPantalla icono={Users}>Clientes</TituloPantalla>
 
       <Card>
         <CardHeader>
