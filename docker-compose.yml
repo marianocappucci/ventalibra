@@ -18,6 +18,7 @@ services:
   # en un VPS es publicarla a Internet.
   ventalibra-postgres:
     image: postgres:16
+    command: postgres -c timezone=America/Argentina/Buenos_Aires
     container_name: ventalibra-postgres
     restart: unless-stopped
     environment:
