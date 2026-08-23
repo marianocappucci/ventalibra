@@ -191,6 +191,15 @@ jobs:
       - name: Build de produccion
         run: npm run build
 
+      # 🔴 No es redundante con el paso de arriba. `npm run build` devuelve 0
+      # aunque `tsc -b` haya fallado con errores y no haya escrito `dist/`: sin
+      # este chequeo el job queda verde habiendo producido nada, que es
+      # exactamente lo que el paso de build tiene que impedir. Y `dist/` es lo
+      # que el Dockerfile copia (`COPY --from=frontend-build /frontend/dist`),
+      # asi que un build vacio se manifiesta recien en el deploy.
+      - name: El build dejo algo de verdad
+        run: test -f dist/index.html
+
       # `--reporter=default` mantiene la salida legible en el log; el `junit`
       # agregado deja además el XML que lee el gate del paso siguiente. Los dos
       # reporters conviven: el `--outputFile.junit` le da destino sólo al
