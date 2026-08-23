@@ -16,6 +16,11 @@ export default mergeConfig(
     esbuild: { jsx: 'automatic' },
     test: {
       environment: 'jsdom',
+      // Zona fija. Sin esto, todo test que compare una fecha depende de
+      // la zona de la maquina: el CI y WSL vienen en UTC, y a las 21:00
+      // de Argentina eso ya es manana. Se pone la zona real de los
+      // usuarios, que es la del contenedor de produccion.
+      env: { TZ: 'America/Argentina/Buenos_Aires' },
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
