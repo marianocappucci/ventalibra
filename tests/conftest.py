@@ -1,3 +1,15 @@
+# --- Zona horaria de la suite ---------------------------------------------
+# Argentina, UTC-3 fijo, sin horario de verano. Se fija ACA y no se hereda de
+# la maquina: el CI y WSL corren en UTC, asi que un test que compare una
+# fecha da distinto segun donde se corra, y a las 21:00 de Argentina el
+# `date.today()` del proceso ya devuelve manana. Antes de cualquier import
+# del producto, porque `tzset()` no alcanza a lo ya importado.
+import os as _os
+import time as _time
+
+_os.environ["TZ"] = "America/Argentina/Buenos_Aires"
+_time.tzset()
+
 import pytest
 from fastapi.testclient import TestClient
 

@@ -28,6 +28,15 @@ RUN npm run build
 
 FROM python:3.12-slim
 
+# Huso horario del ecosistema: Argentina, UTC-3 fijo, sin horario de verano
+# (el pais no aplica DST desde 2009). Sin esto el contenedor corre en UTC y
+# todo lo que le pregunte la hora al proceso --- `date.today()`,
+# `datetime.now()`, los logs, el cron --- sale 3 h adelantado, y entre las
+# 21:00 y la medianoche devuelve directamente la fecha de manana.
+#
+# La imagen base ya trae `tzdata`, asi que alcanza con la variable.
+ENV TZ=America/Argentina/Buenos_Aires
+
 WORKDIR /app
 
 # `postgresql-client` trae `pg_dump` y `pg_restore`, que es lo que usa
