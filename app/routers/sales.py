@@ -13,6 +13,7 @@ from ..services.cuenta_corriente import (
 )
 from ..services.customers import CustomerService
 from ..services.devoluciones import DevolucionService
+from ..services import mp_qr
 from ..services.tickets import ticket_de_venta
 from libracommerce.domain.sales import SalePayment
 from libracore.db import turnos as db_turnos
@@ -128,6 +129,37 @@ def _service(request: Request) -> SaleService:
     return SaleService(request.app.state.conn)
 
 
+#: Los medios que se cobran escaneando el QR de la caja.
+#:
+#: 🔴 **Las dos grafias, y no es prolijidad.** El POS de este producto escribe
+#: `mercado_pago` con guion bajo (`MEDIOS_PAGO` en `frontend/src/pages/Pos.tsx`)
+#: y el resto de la familia usa `mercadopago` pegado, que es la clave de
+#: `libracore.db.caja.MEDIOS_PAGO_LABELS`. La divergencia es anterior a esto y
+#: ya hay movimientos de caja escritos con la forma de aca, asi que
+#: normalizarla es una migracion de datos aparte -- no algo para arrastrar
+#: dentro del cobro con QR. Mientras tanto se aceptan las dos: reconocer una
+#: sola dejaria el boton sin aparecer, o el pago sin sellar, segun cual.
+MEDIOS_QR = frozenset({"mercado_pago", "mercadopago"})
+
+
+def _referencia_del_pago(pago: "PaymentIn", orden_qr: dict | None) -> str:
+    """La referencia que se guarda en la linea de pago de la venta.
+
+    Sella el `payment_id` de MercadoPago sobre la linea que se cobro por QR:
+    sin eso el pago queda acreditado del lado de MercadoPago y no hay forma de
+    saber, mirando la venta, cual de los pagos del dia fue.
+
+    Respeta lo que mande el POS si ya viene con algo: la referencia es un campo
+    libre --el numero de lote de la tarjeta, el comprobante de la
+    transferencia-- y pisarlo perderia ese dato.
+    """
+    if pago.referencia:
+        return pago.referencia
+    if orden_qr is not None and pago.medio in MEDIOS_QR and orden_qr["payment_id"]:
+        return f"mp-{orden_qr['payment_id']}"
+    return ""
+
+
 @router.post("", response_model=SaleOut)
 def create_sale(data: SaleCreate, request: Request):
     sale = _service(request).create_draft(
@@ -153,6 +185,92 @@ def list_sales(request: Request, limit: int = 50, search: str = ""):
     return [SaleListItem(**venta) for venta in _service(request).list_recent(
         limit=limit, search=search,
     )]
+
+
+class MpDisponible(BaseModel):
+    #: Si la instancia tiene cargadas las tres credenciales del QR.
+    disponible: bool
+    #: Si al acreditarse el pago se emite la factura sola.
+    auto_facturar: bool
+
+
+@router.get("/mp/estado", response_model=MpDisponible)
+def mp_disponible(request: Request):
+    """Si este mostrador puede cobrar por QR, y si eso factura solo.
+
+    Lo lee el POS para no ofrecer un boton que unicamente puede fallar. **No
+    devuelve ninguna credencial**: son tres booleanos colapsados en uno, y este
+    router lo puede leer el cajero -- la pantalla que las carga es admin.
+
+    La ruta va antes que `/{sale_id}` en el archivo por prolijidad, pero no
+    dependen del orden: `mp/estado` son dos segmentos y `/{sale_id}` uno solo.
+    """
+    return MpDisponible(
+        disponible=mp_qr.esta_configurado(),
+        auto_facturar=mp_qr.auto_facturar_prendida()
+        and get_module_repository(request).is_enabled("facturacion"),
+    )
+
+
+class MpOrdenOut(BaseModel):
+    external_reference: str
+    amount: float
+
+
+@router.post("/{sale_id}/mp-qr", response_model=MpOrdenOut)
+async def poner_en_el_qr(sale_id: int, request: Request):
+    """Pone el total de este borrador a cobrar en el QR de la caja.
+
+    No devuelve ninguna imagen: el QR es el cartel impreso del mostrador y no
+    cambia nunca; lo que cambia es cuanto cobra. Ver `services/mp_qr.py`.
+    """
+    try:
+        sale = _service(request).get(sale_id)
+    except SaleNotFound:
+        raise HTTPException(404, "sale not found")
+    try:
+        orden = await mp_qr.poner_en_el_qr(request.app.state.conn, sale)
+    except mp_qr.MpNoConfigurado as exc:
+        raise HTTPException(400, str(exc))
+    except mp_qr.VentaYaCobrada as exc:
+        raise HTTPException(409, str(exc))
+    except mp_qr.MpError as exc:
+        # 502 y no 500: el que fallo es MercadoPago, y el mensaje lleva su
+        # status y su cuerpo adentro -- que es lo unico que le dice al operador
+        # si se equivoco de POS ID o si el problema es de ellos.
+        raise HTTPException(502, str(exc))
+    return MpOrdenOut(**orden)
+
+
+@router.delete("/{sale_id}/mp-qr", status_code=204)
+async def bajar_del_qr(sale_id: int, request: Request):
+    """Saca del QR la orden de esta venta: el cartel queda sin nada que cobrar.
+
+    🔴 **Sin esto el proximo cliente que escanee paga la venta anterior.** Es
+    lo que hay que llamar cuando el cajero cancela el cobro, y el POS lo hace
+    tambien al cerrar el dialogo. Idempotente: sin orden pendiente no hace
+    nada.
+    """
+    await mp_qr.bajar_del_qr(request.app.state.conn, sale_id)
+
+
+class MpEstadoOut(BaseModel):
+    #: `approved`, `pending`, `sin_orden`, o el estado crudo de MercadoPago
+    #: (`rejected`, `cancelled`, `in_process`).
+    status: str
+    payment_id: str | None = None
+
+
+@router.get("/{sale_id}/mp-status", response_model=MpEstadoOut)
+async def estado_del_qr(sale_id: int, request: Request):
+    """Si el QR de esta venta ya se pago. Lo pollea el POS cada 3 segundos."""
+    try:
+        estado = await mp_qr.estado_del_cobro(request.app.state.conn, sale_id)
+    except mp_qr.MpNoConfigurado as exc:
+        raise HTTPException(400, str(exc))
+    except mp_qr.MpError as exc:
+        raise HTTPException(502, str(exc))
+    return MpEstadoOut(**estado)
 
 
 @router.get("/{sale_id}", response_model=SaleOut)
@@ -342,14 +460,34 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
     # Mismo criterio que gestiolibra/medlibra (ver DECISIONS.md ADR-0XX de
     # este repo): el bloqueo tiene que fallar antes de tocar nada, no a
     # mitad de camino.
-    if data.invoice and not get_module_repository(request).is_enabled("facturacion"):
+    puede_facturar = get_module_repository(request).is_enabled("facturacion")
+    if data.invoice and not puede_facturar:
         raise HTTPException(403, "modulo 'facturacion' no incluido en el plan actual")
+
+    # El cobro por QR que ya se acredito, si esta venta se cobro asi. De aca
+    # salen las dos cosas que el QR le agrega a un confirm normal: la
+    # referencia del pago y la factura automatica.
+    orden_qr = mp_qr.orden_acreditada(request.app.state.conn, sale_id)
+
+    # 🔑 **La automatica se decide en el backend, no en el checkbox.** Si la
+    # resolviera el POS, una instancia con la automatica prendida dependeria de
+    # que la pantalla se acuerde de mandar `invoice: true` -- y cualquier otro
+    # cliente de la API (el backoffice, un script) cobraria por QR sin
+    # facturar, sin que nada avise.
+    #
+    # Se exige `puede_facturar`: sin el modulo en el plan, la automatica no
+    # convierte el cobro en un 403. La venta se confirma igual y queda sin
+    # comprobante, que es lo que el plan dice.
+    facturar = data.invoice
+    if orden_qr is not None and puede_facturar and mp_qr.auto_facturar_prendida():
+        facturar = True
 
     try:
         payments = tuple(
             SalePayment(
                 method=pago.medio, amount=pago.monto,
-                received_amount=pago.recibido, reference=pago.referencia,
+                received_amount=pago.recibido,
+                reference=_referencia_del_pago(pago, orden_qr),
             )
             for pago in data.pagos
         )
@@ -397,7 +535,7 @@ async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
 
     referencia = f"sale-{sale.id}"
     factura = None
-    if data.invoice:
+    if facturar:
         customer_billing = None
         if sale.customer_party_id is not None:
             customer_billing = CustomerService(request.app.state.conn).get_billing(sale.customer_party_id)

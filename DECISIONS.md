@@ -1098,3 +1098,63 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   12 en LibraCore. La devolución se puede reintegrar por un medio distinto
   del cobrado: se pagó con tarjeta y se devuelve en efectivo, que es lo que
   pasa en el mostrador.
+
+## ADR-023 — Cobro con QR de MercadoPago: primero la plata, después la venta
+
+- Estado: aceptada
+- Fecha: 2026-08-23
+- Contexto: pedido de tener en VentaLibra (y en LibraClub) la misma función
+  de facturación automática con QR de MercadoPago que Contalibra tiene en
+  producción desde el 2026-08-19. VentaLibra no tenía **nada** de
+  MercadoPago: el medio `mercado_pago` del POS sólo etiquetaba el cobro.
+- Decisión: portar el mecanismo, no reescribirlo. El cliente REST sale de
+  `libracore.mp_api` (`crear_orden_qr`, `buscar_pago_por_referencia`,
+  `eliminar_orden_qr`), que ya lo comparten los productos de la familia. Acá
+  se agrega la orquestación: `app/services/mp_qr.py`, tres endpoints en
+  `routers/sales.py` y el panel del diálogo de cobro.
+- **Se invierte el orden respecto de Contalibra, y ésa es la decisión de
+  fondo.** Contalibra confirma la venta y después cobra el QR, así que deja
+  una ventana en la que hay una venta registrada como cobrada que en
+  realidad nadie pagó. Acá el QR se pone sobre el **borrador**: se espera la
+  acreditación y recién ahí se confirma, que es lo que registra caja y emite
+  la factura. El agujero se invierte —si el navegador se muere entre la
+  acreditación y el confirm, la plata entró y la venta no quedó registrada—
+  y por eso la orden aprobada queda guardada en `sale_mp_orders` con su
+  `payment_id`: el borrador sigue existiendo y volver a abrirlo lo muestra
+  acreditado.
+- **Sin webhook, y no es una simplificación.** En el momento en que
+  MercadoPago avisaría todavía no hay ninguna venta confirmada contra la
+  cual acreditar nada: el webhook no tendría qué hacer. Y el camino que en
+  Contalibra **funciona** es el poll — en la instancia real del cliente no
+  llegó nunca un POST al webhook, contra 5 a `mp-qr`.
+- **La factura automática la decide el backend, no el checkbox del POS.** Si
+  la resolviera la pantalla, cualquier otro cliente de la API cobraría por
+  QR sin facturar y nada avisaría. `confirm_sale` la fuerza cuando hay una
+  orden de QR acreditada y `mp_auto_facturar_ventas` está prendido — y
+  **sólo si el módulo `facturacion` está en el plan**: la automática no
+  puede convertir un cobro en un 403.
+- Tabla propia `sale_mp_orders` (`app/db.py`), mismo patrón que
+  `party_billing` y `party_roles`: FK contra `sales` sin agregarle columnas
+  al esquema de LibraCommerce, que comparten cinco productos. Una fila por
+  **intento**, con `external_reference` aleatoria por intento: reusarla haría
+  que un pago rechazado que MercadoPago acredita tarde vuelva como aprobado
+  para el intento siguiente, que puede ser por otra plata.
+- `DELETE /sales/{id}/mp-qr` baja la orden del cartel. **Contalibra no llama
+  nunca a `eliminar_orden_qr`** — no tiene un solo call site en todo el
+  repo — así que depende de que el cliente siguiente no escanee antes de que
+  el cajero cargue la venta nueva. Acá lo llaman el botón de cancelar, el
+  cierre del diálogo y el vencimiento de la espera.
+- **Obligó a subir `libracore` de v1.39.2 a v1.41.0.** Hasta la v1.40.0
+  `crear_orden_qr` pegaba a una URL que no existe (404 contra una cuenta
+  real) y hacía `r.json()` sobre una respuesta 204 sin cuerpo. Sin el bump
+  el cobro nacía roto. El diff entre los dos tags son `mp_api.py`, dos
+  archivos nuevos que este producto no importa (`db/resumen.py`,
+  `resumen_router.py`) y los tests de los tres.
+- **Deuda que queda anotada, no arreglada:** este POS escribe el medio como
+  `mercado_pago` con guion bajo y el resto de la familia usa `mercadopago`
+  pegado, que es la clave de `MEDIOS_PAGO_LABELS` de LibraCore. Ya hay
+  movimientos de caja guardados con la forma de acá, así que normalizarla es
+  una migración de datos aparte. Mientras tanto `MEDIOS_QR` acepta las dos.
+- Consecuencias: 21 tests nuevos de backend (295 en total) y 6 de frontend
+  (20 en total). Sección nueva **Mercado Pago** en Configuración, con las
+  tres credenciales y el toggle de la automática.

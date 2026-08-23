@@ -34,6 +34,15 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn()
 }
 
+// La captura de puntero, que jsdom tampoco implementa. El `Select` de Radix la
+// llama al abrirse: sin esto el menú **nunca se despliega** y el test falla con
+// "unable to find role=option", que parece un selector mal escrito y no lo es.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = vi.fn()
+  Element.prototype.releasePointerCapture = vi.fn()
+}
+
 // jsdom NO tiene motor de layout: implementa `document.createRange()` pero
 // el Range que devuelve no trae `getBoundingClientRect`. El `data-table`
 // de libra-ui mide ahi el ancho de la columna de acciones y revienta con
