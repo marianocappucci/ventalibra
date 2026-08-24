@@ -1,3 +1,15 @@
+# --- Zona horaria de la suite ---------------------------------------------
+# Argentina, UTC-3 fijo, sin horario de verano. Se fija ACA y no se hereda de
+# la maquina: el CI y WSL corren en UTC, asi que un test que compare una
+# fecha da distinto segun donde se corra, y a las 21:00 de Argentina el
+# `date.today()` del proceso ya devuelve manana. Antes de cualquier import
+# del producto, porque `tzset()` no alcanza a lo ya importado.
+import os as _os
+import time as _time
+
+_os.environ["TZ"] = "America/Argentina/Buenos_Aires"
+_time.tzset()
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -62,3 +74,41 @@ def staff_client(admin_client: TestClient):
         assert response.status_code == 200, response.text
         yield client
 
+
+
+# ── Términos y Condiciones: aceptados para el resto de la suite ─────────────
+#
+# Desde libraauth v0.31.0 el motor corta con 403 **cualquier** llamada gateada
+# por rol mientras la instancia no haya aceptado la versión vigente del
+# contrato. Sin esta excepción, la suite entera se pone roja de golpe: cada
+# test que loguea y pide datos recibe el 403 del gate en vez de lo que iba a
+# medir, y el rojo no dice nada sobre el dominio.
+#
+# 🔴 **Esto NO apaga el gate donde importa.** Lo que la suite no puede es medir
+# el dominio a través de un corte que no está probando; el corte tiene su propio
+# archivo, `test_terminos_gate.py`, que se marca con `sin_aceptar_terminos` y
+# queda afuera de esta excepción. Si alguien borrara el cableado de
+# `app.state.terminos`, esa marca es lo único que se pondría rojo — el resto de
+# la suite seguiría verde, porque no lo mira.
+
+
+@pytest.fixture(autouse=True)
+def _terminos_ya_aceptados(request):
+    if request.node.get_closest_marker("sin_aceptar_terminos"):
+        yield
+        return
+
+    from libraauth.terminos import TerminosRepository
+
+    # 🔴 **`MonkeyPatch()` propio y no el fixture `monkeypatch`.** El fixture es
+    # uno solo por test y lo comparten todas las fixtures que lo pidan, asi que
+    # un `monkeypatch.undo()` en el cuerpo de un test —que existe, y es
+    # legitimo— deshace TAMBIEN este parche y le prende el gate a la mitad del
+    # test. El sintoma no se parece a la causa: la llamada siguiente devuelve
+    # 403 y el test explota con un `KeyError` sobre la clave que esperaba en el
+    # JSON. Lo encontro `test_despues_de_un_fallo_el_boton_puede_emitirlo` de
+    # VentaLibra, que era el unico de las seis suites que llama `undo()`.
+    mp = pytest.MonkeyPatch()
+    mp.setattr(TerminosRepository, "esta_aceptada", lambda self: True)
+    yield
+    mp.undo()

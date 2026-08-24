@@ -59,10 +59,17 @@ const montar = (ruta = '/configuracion') =>
 
 
 describe('Las secciones de VentaLibra', () => {
-  it('están las seis que le corresponden', async () => {
+  it('están las siete que le corresponden', async () => {
     montar()
 
-    for (const seccion of ['Empresa', 'Correo', 'Datos / Backup', 'ARCA', 'Balanza', 'Ticket']) {
+    // ⚠️ **La lista crece con las secciones.** Decía "las seis" hasta el
+    // 2026-08-23, cuando entró Mercado Pago. Un guard que cubre "las N de
+    // entonces" deja a la siguiente naciendo sin cobertura, y una sección que
+    // falta no rompe nada: simplemente no aparece, y nadie lo nota.
+    for (const seccion of [
+      'Empresa', 'Correo', 'Datos / Backup', 'ARCA', 'Balanza', 'Ticket',
+      'Mercado Pago',
+    ]) {
       expect(await screen.findByRole('tab', { name: new RegExp(seccion) }))
         .toBeInTheDocument()
     }

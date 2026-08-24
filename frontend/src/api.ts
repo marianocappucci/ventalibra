@@ -123,6 +123,33 @@ export type TicketConfig = {
   pie: string
 }
 
+/** Las credenciales del QR de la caja. Sólo las lee la pantalla de
+ *  configuración, que es admin-only. */
+export type MercadoPagoConfig = {
+  access_token: string
+  /** El collector id de la cuenta — el `id` de `GET /users/me` de MercadoPago. */
+  user_id: string
+  /** El **external_id** de la caja creada en MercadoPago, no su nombre. */
+  pos_id: string
+  /** Si al acreditarse el pago se emite la factura sola. */
+  auto_facturar: boolean
+  /** Lo calcula el backend con el mismo criterio que usa el POS. Sólo lectura. */
+  configurado?: boolean
+}
+
+/** Lo que el POS necesita saber del QR sin ver ninguna credencial. */
+export type MpDisponible = {
+  disponible: boolean
+  auto_facturar: boolean
+}
+
+/** `approved`, `pending`, `sin_orden`, o el estado crudo de MercadoPago
+ *  (`rejected`, `cancelled`, `in_process`). */
+export type MpEstado = {
+  status: string
+  payment_id: string | null
+}
+
 export type ScaleValueKind = 'weight' | 'amount'
 
 /** Cómo leer las etiquetas de la balanza de este comercio. `null` = sin balanza. */

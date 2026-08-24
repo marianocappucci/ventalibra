@@ -5,6 +5,22 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Cobro con QR de MercadoPago y factura automática** (ver ADR-023): en el
+  diálogo de cobro, con Mercado Pago cubriendo el total, aparece «Cobrar con
+  QR»: pone el monto en el QR impreso del mostrador, espera a que
+  MercadoPago avise que se acreditó y cierra la venta sola — con la factura
+  emitida, si la instancia tiene la automática prendida. El QR es el cartel
+  fijo de la caja y no cambia nunca; lo que cambia es cuánto cobra.
+
+  **A diferencia de Contalibra, primero se cobra y después se confirma la
+  venta**, así que no queda ninguna venta registrada como cobrada que nadie
+  pagó. Cancelar el cobro baja el monto del cartel, para que el próximo que
+  escanee no pague la venta anterior. Sección nueva **Mercado Pago** en
+  Configuración (Access Token, User ID, POS ID y el toggle de la
+  automática). Pide `libracore` **v1.40.0 o más**, que es donde se arregló la
+  URL del QR: con la anterior el cobro daba 404 contra una cuenta real. 21
+  tests nuevos de backend y 6 de frontend.
+
 - **Anulación y devolución** (ver ADR-022): anular una venta repone el
   stock y saca de la caja lo cobrado (y si estaba fiada, le baja la deuda al
   cliente); devolver reintegra sólo algunos productos, por el medio que se

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   api, ApiError, type CatalogItem, type Customer, type ItemVariant, type Location,
+  type MpDisponible, type MpEstado,
   type Sale, type ScanResult, type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
 import { Button } from '@/components/ui/button'
@@ -19,11 +20,62 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, LockKeyhole, Plus, Printer, Scan, Trash2, User } from 'lucide-react'
+import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'lucide-react'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
 const CUENTA_CORRIENTE = 'cuenta_corriente'
+
+/** El medio que se cobra escaneando el QR impreso de la caja.
+ *
+ *  🔴 Va con guion bajo porque es lo que este POS escribe desde siempre y ya
+ *  hay movimientos de caja guardados asi. El resto de la familia usa
+ *  `mercadopago` pegado, que es la clave de `MEDIOS_PAGO_LABELS` de LibraCore
+ *  — el backend acepta las dos (`MEDIOS_QR` en `routers/sales.py`) mientras la
+ *  divergencia siga. Normalizarla es una migracion de datos, no algo para
+ *  arrastrar dentro de esto. */
+const MERCADO_PAGO = 'mercado_pago'
+
+const QR_POLL_MS = 3000
+/** Cinco minutos: pasado eso el cliente ya se fue del mostrador. Cortar el
+ *  poll no cancela nada del lado de MercadoPago — el boton baja la orden del
+ *  QR aparte. */
+const QR_ESPERA_MAXIMA_MS = 5 * 60 * 1000
+
+/** Dos notas cortas, sintetizadas. Sin archivo de audio a proposito: no hay
+ *  nada que descargar ni que sirva el backend, y suena igual sin internet.
+ *
+ *  El `AudioContext` se crea con el click de "Cobrar con QR" y no al
+ *  acreditar: los navegadores bloquean el audio que no nace de un gesto del
+ *  usuario, y la acreditacion llega desde un `setInterval`, que no cuenta como
+ *  gesto. Mismo mecanismo que Contalibra. */
+function crearAudio(): AudioContext | null {
+  try {
+    const Ctor = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    return Ctor ? new Ctor() : null
+  } catch {
+    return null
+  }
+}
+
+function sonarCampanita(ctx: AudioContext | null) {
+  if (!ctx) return
+  if (ctx.state === 'suspended') void ctx.resume()
+  for (const { hz, en } of [{ hz: 1318.5, en: 0 }, { hz: 1760.0, en: 0.13 }]) {
+    const osc = ctx.createOscillator()
+    const vol = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = hz
+    const t = ctx.currentTime + en
+    vol.gain.setValueAtTime(0.0001, t)
+    vol.gain.exponentialRampToValueAtTime(0.28, t + 0.01)
+    vol.gain.exponentialRampToValueAtTime(0.0001, t + 0.42)
+    osc.connect(vol).connect(ctx.destination)
+    osc.start(t)
+    osc.stop(t + 0.45)
+  }
+}
 
 const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -109,6 +161,23 @@ export function Pos() {
   const [turno, setTurno] = useState<Shift | null>(null)
   const [turnoCargado, setTurnoCargado] = useState(false)
   const [cierreOpen, setCierreOpen] = useState(false)
+
+  // Si este mostrador puede cobrar por QR, y si eso factura solo. Se pregunta
+  // una vez al abrir la pantalla: son dos booleanos de configuración, no algo
+  // que cambie entre una venta y la siguiente. `null` mientras carga — con eso
+  // el diálogo de cobro no parpadea mostrando el botón y sacándolo.
+  //
+  // 🔑 No trae ninguna credencial: la pantalla que las carga es admin y esto
+  // lo lee el cajero.
+  const [mp, setMp] = useState<MpDisponible | null>(null)
+
+  useEffect(() => {
+    api.get<MpDisponible>('/sales/mp/estado')
+      .then(setMp)
+      // Sin respuesta, el POS sigue cobrando por los medios de siempre: el QR
+      // es una forma más de cobrar, no un requisito para vender.
+      .catch(() => setMp({ disponible: false, auto_facturar: false }))
+  }, [])
 
   const cargarTurno = useCallback(async () => {
     try {
@@ -506,7 +575,9 @@ export function Pos() {
 
       {cobroOpen && sale && (
         <Cobro
+          saleId={sale.id}
           total={sale.total}
+          mp={mp}
           cliente={cliente}
           onPedirCliente={() => setClienteOpen(true)}
           busy={busy}
@@ -753,8 +824,12 @@ function ElegirCliente({ actual, onElegir, onCerrar }: {
   )
 }
 
-function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
+type QrEstado = 'idle' | 'creando' | 'esperando' | 'acreditado'
+
+function Cobro({ saleId, total, mp, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
+  saleId: number
   total: string
+  mp: MpDisponible | null
   cliente: Customer | null
   busy: boolean
   onCobrar: (pagos: { medio: string; monto: string; recibido?: string }[], factura: boolean) => void
@@ -767,6 +842,11 @@ function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
   ])
   const [factura, setFactura] = useState(false)
   const mixto = pagos.length > 1
+
+  const [qrEstado, setQrEstado] = useState<QrEstado>('idle')
+  const [qrError, setQrError] = useState<string | null>(null)
+  const pollRef = useRef<number | null>(null)
+  const audioRef = useRef<AudioContext | null>(null)
 
   const cubierto = pagos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
   const falta = totalNum - cubierto
@@ -797,6 +877,10 @@ function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
 
   function enviar() {
     if (!puedeCobrar) return
+    confirmar()
+  }
+
+  function confirmar() {
     onCobrar(
       pagos
         .filter((p) => Number(p.monto) > 0)
@@ -809,8 +893,104 @@ function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
     )
   }
 
+  // ── El cobro con QR ────────────────────────────────────────────────────
+  //
+  // 🔑 **Primero la plata, después la venta.** Se pone el total en el QR de la
+  // caja, se espera a que MercadoPago diga que se acreditó, y recién ahí se
+  // confirma. Contalibra lo hace al revés —confirma y después cobra— y eso
+  // deja una ventana en la que hay una venta registrada como cobrada que en
+  // realidad nadie pagó.
+  //
+  // Sólo cuando Mercado Pago cubre el total con una única línea: la orden que
+  // se pone en el QR es por `sale.total`, así que en un cobro mixto le estaría
+  // pidiendo al cliente la venta entera y no su parte.
+  const soloMercadoPago = pagos.length === 1
+    && pagos[0].medio === MERCADO_PAGO
+    && Math.abs((Number(pagos[0].monto) || 0) - totalNum) <= 0.009
+  const aplicaQr = !!mp?.disponible && soloMercadoPago && totalNum > 0
+
+  function frenarPoll() {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  // Sin esto el poll sigue corriendo contra una venta que ya no está en
+  // pantalla: cada 3 segundos sale un request contra un borrador cerrado.
+  useEffect(() => frenarPoll, [])
+
+  async function bajarDelQr() {
+    // 🔴 Una orden que queda puesta le cobra ese monto al próximo que escanee.
+    // Se llama al cerrar el diálogo y al cancelar la espera.
+    try {
+      await api.del(`/sales/${saleId}/mp-qr`)
+    } catch {
+      // Si falla, la orden queda en la caja y el cajero puede volver a
+      // ponerla: hacer fallar una cancelación por esto sería peor.
+    }
+  }
+
+  function cerrar() {
+    frenarPoll()
+    if (qrEstado === 'esperando' || qrEstado === 'creando') void bajarDelQr()
+    onCerrar()
+  }
+
+  async function cobrarConQr() {
+    // Acá, con el click todavía en curso, es el único momento en que el
+    // navegador deja abrir el audio.
+    audioRef.current = audioRef.current ?? crearAudio()
+    setQrError(null)
+    setQrEstado('creando')
+    try {
+      await api.post(`/sales/${saleId}/mp-qr`, {})
+    } catch (err) {
+      setQrError(describeError(err))
+      setQrEstado('idle')
+      return
+    }
+    setQrEstado('esperando')
+    const hasta = Date.now() + QR_ESPERA_MAXIMA_MS
+    pollRef.current = window.setInterval(async () => {
+      let estado: string
+      try {
+        estado = (await api.get<MpEstado>(`/sales/${saleId}/mp-status`)).status
+      } catch (err) {
+        frenarPoll()
+        setQrEstado('idle')
+        setQrError(describeError(err))
+        return
+      }
+      if (estado === 'approved') {
+        frenarPoll()
+        sonarCampanita(audioRef.current)
+        setQrEstado('acreditado')
+        // La venta se confirma sola: el cajero ya no tiene nada que decidir y
+        // un botón más acá es un paso que se olvida con la fila esperando.
+        confirmar()
+        return
+      }
+      if (estado === 'rejected' || estado === 'cancelled') {
+        frenarPoll()
+        setQrEstado('idle')
+        setQrError('El pago fue rechazado o cancelado en MercadoPago.')
+        return
+      }
+      if (Date.now() > hasta) {
+        frenarPoll()
+        void bajarDelQr()
+        setQrEstado('idle')
+        setQrError(
+          'Se agotó la espera y se bajó el monto del QR. Si el cliente pagó '
+          + 'igual, fijate en MercadoPago antes de volver a cobrar.',
+        )
+      }
+    }, QR_POLL_MS)
+  }
+
   return (
-    <Dialog open onOpenChange={(o) => !o && onCerrar()}>
+    <Dialog open onOpenChange={(o) => !o && cerrar()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Cobrar ${money(total)}</DialogTitle></DialogHeader>
 
@@ -866,6 +1046,55 @@ function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
             <Plus />Dividir en otro medio
           </Button>
 
+          {aplicaQr && (
+            <div className="grid gap-2 rounded-md border p-3">
+              {qrEstado === 'esperando' || qrEstado === 'acreditado' ? (
+                <>
+                  <p className="text-sm">
+                    {qrEstado === 'acreditado' ? (
+                      <span className="font-medium text-emerald-600 dark:text-emerald-500">
+                        Pago acreditado. Cerrando la venta…
+                      </span>
+                    ) : (
+                      <>
+                        El QR de la caja ya está cobrando{' '}
+                        <strong className="tabular-nums">${money(total)}</strong>.
+                        Pedile al cliente que lo escanee.
+                      </>
+                    )}
+                  </p>
+                  {qrEstado === 'esperando' && (
+                    <Button
+                      type="button" size="sm" variant="ghost"
+                      className="justify-self-start text-destructive hover:text-destructive"
+                      onClick={() => { frenarPoll(); void bajarDelQr(); setQrEstado('idle') }}
+                    >
+                      Cancelar el cobro por QR
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button" size="sm" variant="secondary"
+                    disabled={qrEstado === 'creando' || busy}
+                    onClick={cobrarConQr}
+                  >
+                    <QrCode />
+                    {qrEstado === 'creando' ? 'Preparando el QR…' : 'Cobrar con QR'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Pone el total en el QR impreso del mostrador y espera a que
+                    MercadoPago avise. La venta se cierra sola cuando se
+                    acredita
+                    {mp?.auto_facturar ? ', con la factura emitida' : ''}.
+                  </p>
+                </>
+              )}
+              {qrError && <p className="text-sm text-destructive">{qrError}</p>}
+            </div>
+          )}
+
           {fia && (
             <div className="rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
               {cliente ? (
@@ -911,8 +1140,16 @@ function Cobro({ total, cliente, busy, onCobrar, onCerrar, onPedirCliente }: {
           </label>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onCerrar}>Cancelar</Button>
-            <Button type="submit" disabled={!puedeCobrar} className="min-w-32">
+            <Button type="button" variant="outline" onClick={cerrar}>Cancelar</Button>
+            {/* Mientras el QR está esperando, cerrar la venta a mano dejaría
+                el monto puesto en el cartel de la caja cobrándole al próximo
+                que escanee. El camino de salida es "Cancelar el cobro por
+                QR", que además lo baja. */}
+            <Button
+              type="submit"
+              disabled={!puedeCobrar || qrEstado === 'esperando' || qrEstado === 'creando'}
+              className="min-w-32"
+            >
               {busy ? 'Cobrando...' : 'Cobrar'}
             </Button>
           </DialogFooter>
