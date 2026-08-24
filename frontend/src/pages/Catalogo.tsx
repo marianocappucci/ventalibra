@@ -5,7 +5,7 @@ import {
   type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant, type Unit,
 } from '../api'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,15 +33,40 @@ function money(value: string): string {
   return Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function UnitCreateForm({ onCreated }: { onCreated: () => void }) {
+/** El botón "+ Nueva unidad" y su modal, misma forma que el de producto de acá
+ *  abajo — ver el comentario de aquél para por qué el botón y el `Dialog` van
+ *  en el mismo componente.
+ *
+ *  Las dos altas del catálogo empezaron distintas: la de producto pasó a modal
+ *  el 2026-08-23 y ésta se quedó en tarjeta, con el argumento de que son tres
+ *  campos que se cargan de a varios seguidos al arrancar. El humano lo decidió
+ *  al revés el 2026-08-24, y la pantalla gana en que las dos pestañas se usan
+ *  igual: el botón está en el mismo lugar y hace lo mismo. */
+function UnitCreateDialog({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [allowsFraction, setAllowsFraction] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /** Abrir SIEMPRE limpia, igual que el alta de producto. */
+  function abrir() {
+    setCode('')
+    setName('')
+    setAllowsFraction(false)
+    setError(null)
+    setOpen(true)
+  }
+
   async function handleCreate() {
-    if (!code.trim() || !name.trim()) return
+    if (!code.trim() || !name.trim()) {
+      // 🔴 Antes esto era un `return` mudo. En una tarjeta a la vista se
+      // perdonaba —los dos campos vacíos están ahí, delante—; detrás de un
+      // modal es apretar "Crear" y que no pase nada, sin nada que mirar.
+      setError('Código y nombre son obligatorios.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -49,9 +74,7 @@ function UnitCreateForm({ onCreated }: { onCreated: () => void }) {
         code: code.trim(), name: name.trim(), allows_fraction: allowsFraction,
         decimal_scale: allowsFraction ? 3 : 0,
       })
-      setCode('')
-      setName('')
-      setAllowsFraction(false)
+      setOpen(false)
       onCreated()
     } catch (err) {
       setError(describeError(err))
@@ -61,29 +84,40 @@ function UnitCreateForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Nueva unidad</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="unit-code">Código</Label>
-            <Input id="unit-code" value={code} onChange={(e) => setCode(e.target.value)} className="w-24" placeholder="u, kg…" />
+    <>
+      <Button onClick={abrir}>+ Nueva unidad</Button>
+
+      <Dialog open={open} onOpenChange={(o) => { if (!o) setOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nueva unidad</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="grid gap-2">
+              <Label htmlFor="unit-code">Código</Label>
+              <Input id="unit-code" value={code} autoFocus onChange={(e) => setCode(e.target.value)} placeholder="u, kg…" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="unit-name">Nombre</Label>
+              <Input id="unit-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Unidad, Kilogramo…" />
+            </div>
+            {/* El `<label>` envuelve a su casilla, así que no necesita
+                `htmlFor`: la asociación la da el anidado. */}
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={allowsFraction} onChange={(e) => setAllowsFraction(e.target.checked)} />
+              Se vende por fracción (peso/volumen)
+            </label>
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="unit-name">Nombre</Label>
-            <Input id="unit-name" value={name} onChange={(e) => setName(e.target.value)} className="w-40" placeholder="Unidad, Kilogramo…" />
-          </div>
-          <label className="flex items-center gap-2 pb-2 text-sm">
-            <input type="checkbox" checked={allowsFraction} onChange={(e) => setAllowsFraction(e.target.checked)} />
-            Se vende por fracción (peso/volumen)
-          </label>
-          <Button onClick={handleCreate} disabled={saving}>{saving ? 'Creando…' : 'Crear unidad'}</Button>
-        </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-      </CardContent>
-    </Card>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={saving}>{saving ? 'Creando…' : 'Crear'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -446,12 +480,11 @@ export function Catalogo() {
           pero la que abre es Productos: es lo que se mira todos los días, y es
           lo que esta pantalla mostraba antes de las pestañas.
 
-          Las dos altas NO son iguales a propósito. La de producto es un modal
-          detrás de un botón (pedido del humano, 2026-08-23) porque son cinco
-          campos que se usan de vez en cuando y la tarjeta empujaba la grilla
-          hacia abajo. La de unidad se queda en la tarjeta: son tres campos, se
-          cargan de a varios seguidos al arrancar y después casi nunca, y esa
-          pestaña no tiene nada más que mostrar arriba.
+          Las dos altas son un botón `+ Nueva …` en el encabezado de su tarjeta
+          y un modal detrás: la de producto desde el 2026-08-23, la de unidad
+          desde el 2026-08-24, las dos por pedido del humano. **Que sean iguales
+          es la gracia**: el botón está en el mismo lugar en las dos pestañas y
+          hace lo mismo, así que cambiar de pestaña no cambia cómo se opera.
 
           El nombre de la pestaña NO se repite en un `CardHeader` adentro —
           mismo criterio que la pantalla de Logs, que usa este mismo `Tabs`. */}
@@ -466,9 +499,17 @@ export function Catalogo() {
         </TabsList>
 
         <TabsContent value="unidades" className="grid gap-4">
-          <UnitCreateForm onCreated={loadAll} />
-
           <Card>
+            {/* El botón va a la derecha, en la misma posición que el de
+                Productos —que la tiene porque a su izquierda está el buscador—.
+                Acá no hay buscador y el encabezado queda con el botón solo:
+                eso es preferible a moverlo, porque el ojo lo busca donde
+                estaba al cambiar de pestaña. */}
+            <CardHeader>
+              <div className="flex items-center justify-end">
+                <UnitCreateDialog onCreated={loadAll} />
+              </div>
+            </CardHeader>
             <CardContent>
               {loading ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>

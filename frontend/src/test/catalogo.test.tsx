@@ -86,7 +86,7 @@ describe('Las dos pestañas del catálogo', () => {
     // El control: `Kilogramo` sólo existe en la tabla de la otra pestaña (en
     // ésta la unidad aparece por su código, `kg`).
     expect(screen.queryByText('Kilogramo')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Crear unidad' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ Nueva unidad' })).not.toBeInTheDocument()
   })
 
   it('el alta de producto está detrás del botón, no puesta en la pantalla', async () => {
@@ -129,9 +129,48 @@ describe('Las dos pestañas del catálogo', () => {
 
     expect(await screen.findByText('Kilogramo')).toBeInTheDocument()
     expect(screen.getByText('Unidad')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Crear unidad' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Nueva unidad' })).toBeInTheDocument()
     expect(screen.queryByText('Yerba Playadito')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ Nuevo producto' })).not.toBeInTheDocument()
+  })
+
+  it('el alta de unidad también está detrás del botón', async () => {
+    const usuario = await montar()
+    await usuario.click(screen.getByRole('tab', { name: /Unidades/ }))
+    await screen.findByText('Kilogramo')
+
+    // Cerrado no hay ni un campo del alta. `Código` y `Nombre` son además los
+    // encabezados de la tabla, así que se busca por rótulo y no por texto:
+    // `getByLabelText` no matchea un `<th>`, que es lo que distingue "el campo
+    // no está" de "la tabla no está".
+    expect(screen.queryByLabelText('Código')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await usuario.click(screen.getByRole('button', { name: '+ Nueva unidad' }))
+
+    const modal = await screen.findByRole('dialog')
+    expect(modal).toHaveTextContent('Nueva unidad')
+    expect(screen.getByLabelText('Código')).toBeInTheDocument()
+    expect(screen.getByLabelText('Nombre')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Se vende por fracción/)).toBeInTheDocument()
+  })
+
+  it('las dos pestañas se operan igual: mismo botón, mismo modal', async () => {
+    // El punto del cambio del 2026-08-24 no es cada modal por separado sino que
+    // las dos mitades se usen igual. Sin esta afirmación, volver una de las dos
+    // a una tarjeta fija no rompería ningún test.
+    const usuario = await montar()
+
+    expect(screen.getByRole('button', { name: '+ Nuevo producto' })).toBeInTheDocument()
+    await usuario.click(screen.getByRole('tab', { name: /Unidades/ }))
+    expect(await screen.findByRole('button', { name: '+ Nueva unidad' })).toBeInTheDocument()
+
+    // Y ninguna de las dos deja campos sueltos en la pantalla.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Código')).not.toBeInTheDocument()
+    await usuario.click(screen.getByRole('tab', { name: /Productos/ }))
+    await screen.findByText('Yerba Playadito')
+    expect(screen.queryByLabelText('Nombre')).not.toBeInTheDocument()
   })
 
   it('la tabla de unidades dice si la unidad se vende por fracción', async () => {
@@ -152,20 +191,56 @@ describe('Las dos pestañas del catálogo', () => {
 })
 
 describe('Las altas, cada una en su pestaña', () => {
-  it('desde Unidades se crea una unidad', async () => {
+  it('desde Unidades se crea una unidad, y el modal se cierra', async () => {
     const usuario = await montar()
     await usuario.click(screen.getByRole('tab', { name: /Unidades/ }))
     await screen.findByText('Kilogramo')
 
-    await usuario.type(screen.getByLabelText('Código'), 'lt')
+    await usuario.click(screen.getByRole('button', { name: '+ Nueva unidad' }))
+    await usuario.type(await screen.findByLabelText('Código'), 'lt')
     await usuario.type(screen.getByLabelText('Nombre'), 'Litro')
     await usuario.click(screen.getByLabelText(/Se vende por fracción/))
-    await usuario.click(screen.getByRole('button', { name: 'Crear unidad' }))
+    await usuario.click(screen.getByRole('button', { name: 'Crear' }))
 
     await waitFor(() => expect(posts('/catalog/units')).toHaveLength(1))
     expect(posts('/catalog/units')[0].cuerpo).toEqual({
       code: 'lt', name: 'Litro', allows_fraction: true, decimal_scale: 3,
     })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('el alta de unidad incompleta avisa en vez de no hacer nada', async () => {
+    // 🔴 Antes de pasar a modal esto era un `return` mudo: apretar "Crear
+    // unidad" con un campo vacío no hacía absolutamente nada. En una tarjeta a
+    // la vista se perdonaba; detrás de un modal no hay nada que mirar.
+    const usuario = await montar()
+    await usuario.click(screen.getByRole('tab', { name: /Unidades/ }))
+    await screen.findByText('Kilogramo')
+
+    await usuario.click(screen.getByRole('button', { name: '+ Nueva unidad' }))
+    await usuario.type(await screen.findByLabelText('Código'), 'lt')
+    // Sin nombre.
+    await usuario.click(screen.getByRole('button', { name: 'Crear' }))
+
+    expect(await screen.findByText(/Código y nombre son obligatorios/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(posts('/catalog/units')).toHaveLength(0)
+  })
+
+  it('cancelar el alta de unidad a medio cargar no arrastra el borrador', async () => {
+    const usuario = await montar()
+    await usuario.click(screen.getByRole('tab', { name: /Unidades/ }))
+    await screen.findByText('Kilogramo')
+
+    await usuario.click(screen.getByRole('button', { name: '+ Nueva unidad' }))
+    await usuario.type(await screen.findByLabelText('Código'), 'xx')
+    await usuario.click(screen.getByRole('button', { name: 'Cancelar' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await usuario.click(screen.getByRole('button', { name: '+ Nueva unidad' }))
+
+    expect(await screen.findByLabelText('Código')).toHaveValue('')
+    expect(posts('/catalog/units')).toHaveLength(0)
   })
 
   it('desde Productos se crea un producto, y el modal se cierra', async () => {
@@ -208,9 +283,10 @@ describe('Las altas, cada una en su pestaña', () => {
     await screen.findByText('Kilogramo')
     const antes = llamadas.filter((l) => l.metodo === 'GET' && l.url.startsWith('/catalog/items')).length
 
-    await usuario.type(screen.getByLabelText('Código'), 'lt')
+    await usuario.click(screen.getByRole('button', { name: '+ Nueva unidad' }))
+    await usuario.type(await screen.findByLabelText('Código'), 'lt')
     await usuario.type(screen.getByLabelText('Nombre'), 'Litro')
-    await usuario.click(screen.getByRole('button', { name: 'Crear unidad' }))
+    await usuario.click(screen.getByRole('button', { name: 'Crear' }))
 
     await waitFor(() => {
       const despues = llamadas.filter((l) => l.metodo === 'GET' && l.url.startsWith('/catalog/items')).length
