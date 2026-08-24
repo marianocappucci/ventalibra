@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import { ReceiptText, Wallet } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
+import { fecha } from '@/lib/fechas'
 
 const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -277,7 +278,7 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
             <tbody>
               {(cuenta?.movimientos ?? []).map((m, i) => (
                 <tr key={i} className="border-b last:border-0">
-                  <td className="p-2 tabular-nums text-muted-foreground">{m.fecha}</td>
+                  <td className="p-2 tabular-nums text-muted-foreground">{fecha(m.fecha)}</td>
                   <td className="p-2">
                     {m.concepto}
                     {m.medio && <span className="ml-1 text-xs text-muted-foreground">({m.medio})</span>}
