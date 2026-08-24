@@ -38,6 +38,7 @@ def connect(db_path: str):
     init_party_billing_schema(conn)
     init_party_roles_schema(conn)
     init_modules_schema(conn)
+    init_mp_qr_schema(conn)
     return conn
 
 
@@ -143,6 +144,47 @@ def init_modules_schema(conn: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO modulos (modulo, habilitado, plan) VALUES (?, 1, 'premium')",
             (modulo,),
         )
+    conn.commit()
+
+
+def init_mp_qr_schema(conn: sqlite3.Connection) -> None:
+    """Las ordenes puestas a cobrar en el QR de MercadoPago de la caja.
+
+    Mismo patron que `party_billing` y `party_roles`: tabla propia de este
+    producto con FK contra el esquema de LibraCommerce, sin agregarle columnas
+    al motor generico. Contalibra guarda esto en columnas de su tabla `ventas`
+    (`mp_order_id`, `mp_payment_id`), pero esa tabla es de LibraCore y aca la
+    venta es `sales`, de LibraCommerce -- que es de otro repo y la comparten
+    cinco productos.
+
+    🔑 **Una fila por INTENTO, no una por venta.** El `external_reference`
+    lleva un sufijo aleatorio y se renueva cada vez que el cajero vuelve a
+    poner el monto en el QR: si se reusara, un pago rechazado que MercadoPago
+    acredita tarde volveria como aprobado para el intento siguiente, que puede
+    ser por otra plata. Es la misma razon por la que LibraClub lo hace asi en
+    `servicios/pagos.py::nueva_referencia`.
+
+    `payment_id` y `status` los sella el poll de `GET /sales/{id}/mp-status`.
+    Mientras `status` sea `pending` no hay plata: la fila sola no acredita
+    nada.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS sale_mp_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_id INTEGER NOT NULL REFERENCES sales(id),
+            external_reference TEXT NOT NULL UNIQUE,
+            amount NUMERIC NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            payment_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sale_mp_orders_sale
+            ON sale_mp_orders(sale_id);
+        """
+    )
     conn.commit()
 
 

@@ -69,6 +69,21 @@ dependencies = [
     # cuenta en cuenta corriente" terminaba en 202,2 mm en una hoja de 210.
     #
     # Es anterior a v1.37.0 y aquel arreglo no lo cubria.
+    #
+    # 🔴 **El cobro con QR necesita v1.40.0 o mas.** Hasta la v1.39.2
+    # `crear_orden_qr` pegaba a
+    # `/instore/qrs/merchant/stores/default/pos/{pos_id}/orders`, que NO existe
+    # --- contra una cuenta real da 404 --- y la linea siguiente hacia
+    # `r.json()` sobre una respuesta 204 sin cuerpo, asi que arreglar solo la
+    # URL habria cambiado un error por otro. Las dos cosas se arreglaron en la
+    # v1.40.0, verificadas contra la cuenta real de Contalibra.
+    #
+    # El pin ya estaba en v1.45.0 cuando entro el cobro con QR (lo subio el
+    # arreglo de la zona horaria de la plantilla de provisioning), asi que esta
+    # nota no pide subir nada: **fija el piso**. Si alguna vez alguien baja este
+    # pin por debajo de v1.40.0, el cobro con QR se rompe sin que nada avise ---
+    # `services/mp_qr.py` no puede detectarlo, porque la URL mal armada la
+    # responde MercadoPago con un 404 igual que un POS ID inexistente.
     "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.45.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
