@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
+import { fecha } from '@/lib/fechas'
 
 const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
   draft: { label: 'Borrador', tono: 'neutro' },
@@ -122,7 +123,7 @@ export function Ventas() {
                     <tr key={v.id} className="border-b last:border-0">
                       <td className="p-2 font-medium tabular-nums">{v.number}</td>
                       <td className="p-2 tabular-nums text-muted-foreground">
-                        {(v.confirmed_at ?? '').slice(0, 10)}
+                        {fecha(v.confirmed_at)}
                       </td>
                       <td className="p-2">{v.cliente || 'Consumidor final'}</td>
                       <td className="p-2 text-right tabular-nums">${money(v.total)}</td>

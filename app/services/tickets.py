@@ -22,6 +22,18 @@ def ticket_de_venta(sale, cliente_nombre: str = "") -> bytes:
     """PDF del ticket de una venta confirmada, listo para la ticketeadora."""
     return generar_ticket_venta({
         "id": sale.number,
+        # 🔴 ISO a proposito, y NO es una fuga del formato visible: este string
+        # es la ENTRADA que espera `libracore.ticket_generator`, que le aplica
+        # `fmt_fecha` y termina imprimiendo `11-03-2026 14:30`. Verificado sobre
+        # el texto del PDF generado, no leyendo el codigo -- leyendo solo este
+        # archivo el strftime parece una fuga y no lo es.
+        #
+        # Cuidado al tocarlo: `fmt_fecha` da vuelta el ISO, pero con cualquier
+        # otra forma es un pass-through. Con `%d-%m-%Y` el papel sale igual (por
+        # casualidad, no porque este bien encaminado) y con un formato de barras
+        # sale CON barras, que es lo que la convencion prohibe. El test
+        # `tests/test_ticket_fecha_visible.py` afirma sobre el papel justamente
+        # para agarrar ese caso.
         "fecha": sale.confirmed_at.strftime("%Y-%m-%d %H:%M") if sale.confirmed_at else "",
         "cliente_nombre": cliente_nombre or "Consumidor final",
         "items": [
