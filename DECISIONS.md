@@ -1144,12 +1144,16 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   repo — así que depende de que el cliente siguiente no escanee antes de que
   el cajero cargue la venta nueva. Acá lo llaman el botón de cancelar, el
   cierre del diálogo y el vencimiento de la espera.
-- **Obligó a subir `libracore` de v1.39.2 a v1.41.0.** Hasta la v1.40.0
-  `crear_orden_qr` pegaba a una URL que no existe (404 contra una cuenta
-  real) y hacía `r.json()` sobre una respuesta 204 sin cuerpo. Sin el bump
-  el cobro nacía roto. El diff entre los dos tags son `mp_api.py`, dos
-  archivos nuevos que este producto no importa (`db/resumen.py`,
-  `resumen_router.py`) y los tests de los tres.
+- **Pide `libracore` v1.40.0 o más, y casi nace roto por eso.** Cuando esto se
+  empezó, el producto pineaba **v1.39.2**, donde `crear_orden_qr` pegaba a una
+  URL que no existe (404 contra una cuenta real) y hacía `r.json()` sobre una
+  respuesta 204 sin cuerpo. El arreglo llegó en la v1.40.0, verificado contra
+  la cuenta real de Contalibra. Para cuando esto se integró, el pin ya estaba
+  en **v1.45.0** por otro motivo —la zona horaria de la plantilla de
+  provisioning—, así que no hizo falta subirlo: lo que quedó en
+  `pyproject.toml` es **el piso**, anotado. Bajar el pin por debajo de v1.40.0
+  rompe el cobro sin que nada avise — la URL mal armada la contesta MercadoPago
+  con el mismo 404 que un POS ID inexistente.
 - **Deuda que queda anotada, no arreglada:** este POS escribe el medio como
   `mercado_pago` con guion bajo y el resto de la familia usa `mercadopago`
   pegado, que es la clave de `MEDIOS_PAGO_LABELS` de LibraCore. Ya hay

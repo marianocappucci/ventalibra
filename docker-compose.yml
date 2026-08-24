@@ -18,6 +18,7 @@ services:
   # en un VPS es publicarla a Internet.
   ventalibra-postgres:
     image: postgres:16
+    command: postgres -c timezone=America/Argentina/Buenos_Aires
     container_name: ventalibra-postgres
     restart: unless-stopped
     environment:
@@ -27,6 +28,7 @@ services:
       # levantar la base con una clave escrita en git. Se define en el `.env`
       # del VPS, que no se versiona.
       POSTGRES_PASSWORD: ${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}
+      TZ: America/Argentina/Buenos_Aires
     volumes:
       - ventalibra-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -80,6 +82,7 @@ services:
     command: uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
+      - TZ=America/Argentina/Buenos_Aires
       - VENTALIBRA_ADMIN_USERNAME=${VENTALIBRA_ADMIN_USERNAME:-admin}
       - VENTALIBRA_ADMIN_PASSWORD=${VENTALIBRA_ADMIN_PASSWORD:-}
       # 🔴 El corte a PostgreSQL. Las dos variables apuntan al MISMO schema:

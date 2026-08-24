@@ -70,21 +70,21 @@ dependencies = [
     #
     # Es anterior a v1.37.0 y aquel arreglo no lo cubria.
     #
-    # v1.39.2 -> v1.41.0 (2026-08-23): **la URL del QR de caja**. Es la razon
-    # del bump, no un alineamiento de version. Hasta la v1.40.0
+    # 🔴 **El cobro con QR necesita v1.40.0 o mas.** Hasta la v1.39.2
     # `crear_orden_qr` pegaba a
-    # `/instore/qrs/merchant/stores/default/pos/{pos_id}/orders`, que NO
-    # existe -- contra una cuenta real da 404 --, y la linea siguiente hacia
+    # `/instore/qrs/merchant/stores/default/pos/{pos_id}/orders`, que NO existe
+    # --- contra una cuenta real da 404 --- y la linea siguiente hacia
     # `r.json()` sobre una respuesta 204 sin cuerpo, asi que arreglar solo la
-    # URL habria cambiado un error por otro. Las dos cosas estan arregladas en
-    # la v1.40.0 y verificadas contra la cuenta real de Contalibra. Sin este
-    # bump el cobro con QR de este producto naceria roto.
+    # URL habria cambiado un error por otro. Las dos cosas se arreglaron en la
+    # v1.40.0, verificadas contra la cuenta real de Contalibra.
     #
-    # Lo unico mas que entra (v1.41.0) es `db/resumen.py` + `resumen_router.py`,
-    # DOS ARCHIVOS NUEVOS que este producto no importa: el diff completo entre
-    # los dos tags son esos dos archivos, `mp_api.py` y los tests de los tres.
-    # No hay nada que pueda cambiar de comportamiento por debajo.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.41.0",
+    # El pin ya estaba en v1.45.0 cuando entro el cobro con QR (lo subio el
+    # arreglo de la zona horaria de la plantilla de provisioning), asi que esta
+    # nota no pide subir nada: **fija el piso**. Si alguna vez alguien baja este
+    # pin por debajo de v1.40.0, el cobro con QR se rompe sin que nada avise ---
+    # `services/mp_qr.py` no puede detectarlo, porque la URL mal armada la
+    # responde MercadoPago con un 404 igual que un POS ID inexistente.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.45.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

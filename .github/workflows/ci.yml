@@ -23,6 +23,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      TZ: America/Argentina/Buenos_Aires
 
     # La suite corre AHORA TAMBIEN contra PostgreSQL, en un segundo paso.
     # Hasta el 2026-08-10 este producto no podia ni intentarlo: el motor
@@ -38,6 +40,7 @@ jobs:
           POSTGRES_DB: ventalibra
           POSTGRES_USER: ventalibra
           POSTGRES_PASSWORD: ventalibra-ci
+          TZ: America/Argentina/Buenos_Aires
         ports:
           - 5432:5432
         options: >-
@@ -141,6 +144,8 @@ jobs:
   # frontend del producto.
   frontend:
     runs-on: ubuntu-latest
+    env:
+      TZ: America/Argentina/Buenos_Aires
     defaults:
       run:
         working-directory: frontend

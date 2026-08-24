@@ -17,9 +17,9 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   pagó. Cancelar el cobro baja el monto del cartel, para que el próximo que
   escanee no pague la venta anterior. Sección nueva **Mercado Pago** en
   Configuración (Access Token, User ID, POS ID y el toggle de la
-  automática). Sube `libracore` a v1.41.0, que trae la URL del QR arreglada:
-  con la anterior el cobro daba 404. 21 tests nuevos de backend y 6 de
-  frontend.
+  automática). Pide `libracore` **v1.40.0 o más**, que es donde se arregló la
+  URL del QR: con la anterior el cobro daba 404 contra una cuenta real. 21
+  tests nuevos de backend y 6 de frontend.
 
 - **Anulación y devolución** (ver ADR-022): anular una venta repone el
   stock y saca de la caja lo cobrado (y si estaba fiada, le baja la deuda al
