@@ -10,6 +10,7 @@ import { BadgeEstado } from 'libra-ui/badge-estado'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { BarChart3 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
+import { hoyISO, primerDiaDelMesISO } from 'libra-ui/fechas'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -20,18 +21,9 @@ function money(value: string): string {
   return Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function firstOfMonthIso(): string {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-}
-
 export function Reportes() {
-  const [dateFrom, setDateFrom] = useState(firstOfMonthIso())
-  const [dateTo, setDateTo] = useState(todayIso())
+  const [dateFrom, setDateFrom] = useState(primerDiaDelMesISO())
+  const [dateTo, setDateTo] = useState(hoyISO())
   const [sales, setSales] = useState<SalesReport | null>(null)
   const [caja, setCaja] = useState<CajaReport | null>(null)
   const [stock, setStock] = useState<StockReport | null>(null)
