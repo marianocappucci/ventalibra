@@ -89,10 +89,22 @@ services:
       # las tablas del dominio y las de LibraCore conviven ahí, que es lo que
       # ya hacían las dos bases SQLite de `dev-data/`.
       #
-      # Volver estas dos líneas a las rutas `.db` y reiniciar es el rollback
-      # completo: los archivos de `dev-data/` siguen ahí y sin tocar —
-      #   - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
-      #   - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
+      # ⚠️ **Acá había una receta de rollback y ya no funciona.** Decía que
+      # volver estas dos líneas a las rutas `.db` de `dev-data/` y reiniciar era
+      # el rollback completo. Desde el 2026-08-25 `app/services/billing.py`
+      # rechaza cualquier destino que no sea una URL de PostgreSQL, así que
+      # seguir esa receta hoy **no arranca**: muere con un mensaje que dice qué
+      # variable definir.
+      #
+      # No es un descuido, es la decisión: el rollback a SQLite dejó de aplicar
+      # ese mismo día —el corte tiene meses y hay backups verificados de las dos
+      # bases—. Se saca la receta en vez de dejarla porque una instrucción que
+      # ya no anda cuesta más que ninguna: el que la siga va a creer que rompió
+      # algo.
+      #
+      # Si alguna vez hiciera falta mirar aquellos datos, el camino es
+      # `python -m libracore.db.schema_dump` sobre el archivo, que lo abre en
+      # modo lectura sin tocarlo.
       - VENTALIBRA_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
       - VENTALIBRA_LIBRACORE_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
       - ENV=development
