@@ -23,6 +23,10 @@
 set -euo pipefail
 
 CONTENEDOR="ventalibra-demo"
+#: La raiz del checkout en el VPS. El script ya la usaba literal en los
+#: `git -C` de mas abajo; ahora tambien la necesitan el compose de la
+#: instancia y el venv del panel, asi que se nombra una sola vez.
+REPO="/root/ventalibra"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
@@ -145,6 +149,64 @@ case "$URL_BASE" in
         -c "GRANT ALL ON SCHEMA public TO \"$POSTGRES_USER\""
     ' >/dev/null || { log "ABORTA: no se pudo recrear el schema."; docker start "$CONTENEDOR" >/dev/null; exit 10; }
     log "schema recreado, vacio"
+
+    # --- Las cadenas de migracion, ANTES de que arranque la app --------------
+    #
+    # 🔴 **Hasta el 2026-08-25 esto no existia, y por eso la demo amanecia sin
+    # `alembic_version`.** El `DROP SCHEMA` de arriba se la lleva, y el arranque
+    # de la app reconstruye las tablas con `create_all()`, que no deja marca. La
+    # demo andaba igual, asi que no se veia: el sintoma aparecio del lado del
+    # DEPLOY. Desde que `panel_admin.py actualizar` corre las migraciones, el
+    # primer comando se encuentra un esquema ya creado y sin version.
+    #
+    # Con la cadena de LibraCore no se nota, porque su baseline es idempotente.
+    # La de LibraGenda hace `CREATE TABLE` crudo y aborta el deploy con
+    # `relation "resources" already exists` -- paso el 2026-08-25 en las demos de
+    # Gestiolibra y MedLibra, que quedaron sin poder actualizarse.
+    #
+    # 🔑 **Los comandos NO se escriben aca.** Salen de `migraciones` del propio
+    # `configure()` del producto, que es la misma fuente que lee el deploy. Una
+    # cuarta copia de la cadena es exactamente como se llega a que el reset y el
+    # deploy hagan cosas distintas.
+    #
+    # Corren con la app PARADA y en un contenedor efimero, igual que
+    # `cmd_actualizar`: si la app arrancara antes, su `create_all()` dejaria las
+    # tablas puestas y la cadena de LibraGenda volveria a chocar.
+    COMPOSE="$REPO/clientes/demo/docker-compose.yml"
+    [ -f "$COMPOSE" ] || { log "ABORTA: no encontre $COMPOSE."; docker start "$CONTENEDOR" >/dev/null; exit 11; }
+
+    CADENAS=$("$REPO/.venv-scripts/bin/python" - <<PY || true
+import sys
+sys.path.insert(0, "$REPO")
+import scripts.panel_admin  # su configure() deja la ProductConfig del producto
+from libracore.provisioning import get_config
+for comando in get_config().migraciones:
+    print(" ".join(comando))
+PY
+  )
+    if [ -z "${CADENAS:-}" ]; then
+      # Que no haya migraciones declaradas no es "no hay nada que hacer": es que
+      # el reset dejaria la base a merced del `create_all()` otra vez.
+      log "ABORTA: el producto no declara migraciones en su configure()."
+      docker start "$CONTENEDOR" >/dev/null
+      exit 11
+    fi
+
+    while IFS= read -r cmd; do
+      [ -z "$cmd" ] && continue
+      log "migraciones: $cmd"
+      # shellcheck disable=SC2086 -- $cmd va sin comillas a proposito: es la
+      # linea de comando completa y tiene que splitearse en argumentos.
+      # 🔴 `-T` y `</dev/null` no son adorno: sin ellos `docker compose run`
+      # abre una TTY y **se come el resto del heredoc** que alimenta este
+      # `while read`. Medido corriendo el script de verdad: de las tres cadenas
+      # corria SOLO la primera y el reset terminaba "bien" con dos migraciones
+      # sin aplicar. Es el mismo filo que `docker exec` sin `-i`.
+      docker compose -p "$CONTENEDOR" -f "$COMPOSE" run --rm -T "$CONTENEDOR" $cmd >/dev/null 2>&1 </dev/null \
+        || { log "ABORTA: fallo \`$cmd\`."; docker start "$CONTENEDOR" >/dev/null; exit 11; }
+    done <<CADENAS_EOF
+$CADENAS
+CADENAS_EOF
 
     docker start "$CONTENEDOR" >/dev/null
     ;;
