@@ -25,7 +25,7 @@ const MEDIOS_PAGO = [
   { value: 'efectivo', label: 'Efectivo' },
   { value: 'tarjeta_debito', label: 'Tarjeta de débito' },
   { value: 'transferencia', label: 'Transferencia' },
-  { value: 'mercado_pago', label: 'Mercado Pago' },
+  { value: 'mercadopago', label: 'Mercado Pago' },
 ]
 
 function money(value: string | number): string {

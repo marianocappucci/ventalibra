@@ -131,14 +131,18 @@ def _service(request: Request) -> SaleService:
 
 #: Los medios que se cobran escaneando el QR de la caja.
 #:
-#: 🔴 **Las dos grafias, y no es prolijidad.** El POS de este producto escribe
-#: `mercado_pago` con guion bajo (`MEDIOS_PAGO` en `frontend/src/pages/Pos.tsx`)
-#: y el resto de la familia usa `mercadopago` pegado, que es la clave de
-#: `libracore.db.caja.MEDIOS_PAGO_LABELS`. La divergencia es anterior a esto y
-#: ya hay movimientos de caja escritos con la forma de aca, asi que
-#: normalizarla es una migracion de datos aparte -- no algo para arrastrar
-#: dentro del cobro con QR. Mientras tanto se aceptan las dos: reconocer una
-#: sola dejaria el boton sin aparecer, o el pago sin sellar, segun cual.
+#: 🔴 **Sigue con las dos grafias, y ya no por la misma razon.** Este POS
+#: escribia `mercado_pago` con guion bajo; desde el 2026-08-24 escribe
+#: `mercadopago`, que es la clave de la familia, y `app/normalizacion_medios.py`
+#: pasa a la canonica cualquier fila vieja en cada arranque (ADR-024). O sea que
+#: la grafia vieja ya no entra ni queda en esta base.
+#:
+#: La de aca abajo se conserva igual porque este `frozenset` es un ESPEJO de
+#: `libracore.medios_pago.MEDIOS_ELECTRONICOS`, que todavia la lista para el
+#: resto de la familia; sacarla de un lado solo dejaria a los dos diciendo
+#: cosas distintas. Se va cuando se vaya de alla -- el ultimo paso del trabajo,
+#: con el pin de LibraCore subido y despues de verificar que no queden filas en
+#: ninguna instancia.
 MEDIOS_QR = frozenset({"mercado_pago", "mercadopago"})
 
 
