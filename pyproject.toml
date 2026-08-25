@@ -93,7 +93,11 @@ dependencies = [
     # eso hay un test que lo agarra --- `test_el_motor_pineado_ya_no_conoce_la_
     # grafia_vieja`, que pregunta por el COMPORTAMIENTO del modulo instalado y
     # no por este string.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.52.0",
+    # 🔴 El extra `[migrations]` **hace falta desde el 2026-08-25**: trae alembic,
+    # que este producto NO tenía en su contenedor (medido) y que
+    # `libracore-migrar` necesita para aplicar la cadena del motor. Sin él, el
+    # paso del deploy muere con un `ModuleNotFoundError` en vez de correr.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.53.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
