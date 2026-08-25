@@ -24,9 +24,24 @@ import os
 #: mitad de la suite iria a un motor y la mitad al otro.
 TEST_DATABASE_URL = os.environ.get("VENTALIBRA_TEST_DATABASE_URL", "").strip()
 
-
-def corre_contra_postgres() -> bool:
-    return TEST_DATABASE_URL.startswith("postgresql")
+# 🔴 **PostgreSQL y nada mas.** Hasta el 2026-08-25 la suite caia a SQLite en
+# archivos temporales cuando la variable no estaba, y el CI corria las dos
+# pasadas. El modo SQLite se retiro el 2026-08-12 para toda la familia: no
+# chequea las FK, tipa dinamicamente y acepta cadenas donde la base pide
+# enteros, asi que una corrida verde sobre el no dice nada del motor real.
+#
+# El guard va ACA y no en el conftest porque este es el unico lugar donde se
+# elegia el motor. Con el puesto, `corre_contra_postgres()` seria siempre True,
+# asi que se saco junto con los tres `if` que colgaban de ella.
+if not TEST_DATABASE_URL.startswith("postgresql"):
+    raise RuntimeError(
+        "La suite de VentaLibra necesita PostgreSQL: defini "
+        "VENTALIBRA_TEST_DATABASE_URL (ej. "
+        "postgresql://ventalibra:ventalibra-ci@localhost:5432/ventalibra). "
+        "Sin esa variable la suite correria sobre SQLite, que es lo que se "
+        "retiro el 2026-08-12: una suite verde sobre SQLite no dice nada "
+        "sobre el motor real."
+    )
 
 
 def _vaciar_schema() -> None:
@@ -74,27 +89,22 @@ def limpiar_entre_tests() -> None:
     debajo a la primera -- 229 errores de *schema "public" does not exist*. Con
     SQLite el problema no existe porque cada app se lleva su propio archivo.
     """
-    if corre_contra_postgres():
-        _vaciar_schema()
+    _vaciar_schema()
 
 
-def destino_dominio(ruta_sqlite) -> str:
+def destino_dominio(ruta_sqlite) -> str:  # noqa: ARG001
     """El destino de la base del DOMINIO (las tablas de LibraCommerce).
 
     No limpia nada: de eso se encarga `limpiar_entre_tests()`, una vez por test.
     """
-    if not corre_contra_postgres():
-        return str(ruta_sqlite)
     return TEST_DATABASE_URL
 
 
-def destino_libracore(ruta_sqlite) -> str:
+def destino_libracore(ruta_sqlite) -> str:  # noqa: ARG001
     """El destino de la base de LIBRACORE/libraauth.
 
     Contra PostgreSQL es **el mismo** que el del dominio: las dos bases
     conviven en un schema. No se vacia de nuevo — lo hizo `destino_dominio()`
     un momento antes, y vaciar dos veces borraria lo que la app acaba de crear.
     """
-    if not corre_contra_postgres():
-        return str(ruta_sqlite)
     return TEST_DATABASE_URL
