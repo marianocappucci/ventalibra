@@ -97,7 +97,7 @@ services:
     # hay un test que ata las dos puntas.
     #
     # `exec` para que uvicorn quede como PID 1 y `docker stop` le llegue.
-    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && alembic upgrade head && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
       - TZ=America/Argentina/Buenos_Aires
