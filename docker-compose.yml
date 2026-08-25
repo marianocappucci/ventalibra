@@ -79,7 +79,14 @@ services:
       - "8081:8000"
     volumes:
       - ./:/app
-    command: uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload
+    # 🔴 Las migraciones también acá, no sólo en el deploy.
+    # `cmd_actualizar` las corre para las instancias de cliente y la demo,
+    # pero ESTA la levanta el compose del repo y el motor no la toca. Tiene
+    # que decir LO MISMO que `migraciones` en los dos scripts de `scripts/`;
+    # hay un test que ata las dos puntas.
+    #
+    # `exec` para que uvicorn quede como PID 1 y `docker stop` le llegue.
+    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
       - TZ=America/Argentina/Buenos_Aires

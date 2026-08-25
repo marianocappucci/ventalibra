@@ -6,6 +6,10 @@ Los dos que no divergían eran justamente los dos que ya tenían este archivo.
 """
 
 import importlib
+import pathlib
+import re
+
+import pytest
 
 
 def test_los_dos_scripts_configuran_LO_MISMO():
@@ -37,3 +41,78 @@ def test_los_dos_scripts_configuran_LO_MISMO():
 
     distintos = {k: (uno[k], otro[k]) for k in uno if uno[k] != otro[k]}
     assert not distintos, f"los dos scripts configuran distinto: {distintos}"
+
+
+def _bloque_del_servicio_de_dev() -> str:
+    """El bloque del servicio `*-dev` del compose del repo, como texto.
+
+    Sin `yaml`: el corte es por indentación —un servicio arranca con dos
+    espacios y su cuerpo tiene más—, que es lo que el archivo garantiza.
+    """
+    raiz = pathlib.Path(__file__).parent.parent
+    lineas = (raiz / "docker-compose.yml").read_text(encoding="utf-8").splitlines()
+    servicios = [i for i, linea in enumerate(lineas)
+                 if re.match(r"^  [A-Za-z0-9_.-]+:\s*$", linea)]
+    inicio = next((i for i in servicios
+                   if lineas[i].strip().rstrip(":").endswith("-dev")), None)
+    assert inicio is not None, (
+        "el compose del repo no declara ningún servicio `*-dev`: este test "
+        "está mirando un archivo que ya no tiene la forma que supone.")
+    fin = next((i for i in servicios if i > inicio), len(lineas))
+    return "\n".join(lineas[inicio:fin])
+
+
+def _comando_de_arranque_de_dev() -> str:
+    """El **valor** del `command:` del servicio de dev, y nada más.
+
+    🔴 Buscar en el bloque entero no sirve: el 2026-08-25 se midió que un guard
+    así **pasa en verde con el paso de migraciones sacado del `command:` y
+    dejado en un comentario**. Un comentario que menciona el comando no lo
+    corre. Un comentario tampoco matchea `^\s+command:`, porque el `#` va antes
+    de la clave.
+
+    Ojo: el sidecar de PostgreSQL de este compose declara **su propio**
+    `command:` unas líneas antes, así que hace falta recortar el bloque del
+    servicio de dev primero y no tomar el primero del archivo.
+    """
+    m = re.search(r"^\s+command:\s*(\S.*)$", _bloque_del_servicio_de_dev(), re.MULTILINE)
+    assert m, (
+        "el servicio de dev del compose no declara `command:`. Si el arranque "
+        "pasó a otra forma, este test hay que reescribirlo — no borrarlo.")
+    return m.group(1).strip()
+
+
+@pytest.mark.parametrize("script", ["nuevo_cliente", "panel_admin"])
+def test_la_instancia_de_dev_corre_las_mismas_migraciones_que_el_deploy(script):
+    """El otro camino, el que `cmd_actualizar` no toca.
+
+    🔴 **La declaración de `migraciones` no cubre `dev`.** El motor corre esos
+    comandos al actualizar las instancias de cliente y la demo, que son las que
+    el panel administra. La de `dev` la levanta el `docker-compose.yml` de este
+    repo, y ahí el paso hay que ponerlo a mano. Se descubrió el 2026-08-25 en
+    LibraCargo, cuya instancia de dev estaba una revisión atrás del código que
+    servía, con el chequeo de salud en 200.
+
+    Lo que se aserta es que las dos puntas digan **lo mismo y en el mismo
+    orden**. Se lee el compose como texto y no se compara contra un literal
+    escrito acá: un literal sería una tercera copia, con el mismo problema.
+    """
+    from libracore.provisioning import get_config
+
+    importlib.reload(importlib.import_module(f"scripts.{script}"))
+    declarados = get_config().migraciones
+    if not declarados:
+        return  # sin cadena declarada no hay nada que exigirle al compose
+
+    arranque = _comando_de_arranque_de_dev()
+    cursor = 0
+    for comando in declarados:
+        texto = " ".join(comando)
+        pos = arranque.find(texto, cursor)
+        assert pos != -1, (
+            f"scripts/{script}.py declara `{texto}` y el servicio de dev del "
+            "compose no lo corre" + (" en ese orden" if cursor else "") + ": "
+            "la instancia de dev va a quedar con el código nuevo sobre el "
+            "esquema viejo."
+        )
+        cursor = pos + len(texto)
