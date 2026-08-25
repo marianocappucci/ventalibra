@@ -16,6 +16,7 @@ from ..services.devoluciones import DevolucionService
 from ..services import mp_qr
 from ..services.tickets import ticket_de_venta
 from libracommerce.domain.sales import SalePayment
+from libracore import medios_pago
 from libracore.db import turnos as db_turnos
 
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
@@ -133,13 +134,21 @@ def _service(request: Request) -> SaleService:
 #:
 #: 🔴 **Las dos grafias, y no es prolijidad.** El POS de este producto escribe
 #: `mercado_pago` con guion bajo (`MEDIOS_PAGO` en `frontend/src/pages/Pos.tsx`)
-#: y el resto de la familia usa `mercadopago` pegado, que es la clave de
-#: `libracore.db.caja.MEDIOS_PAGO_LABELS`. La divergencia es anterior a esto y
-#: ya hay movimientos de caja escritos con la forma de aca, asi que
+#: y el resto de la familia usa `mercadopago` pegado. La divergencia es anterior
+#: a esto y ya hay movimientos de caja escritos con la forma de aca, asi que
 #: normalizarla es una migracion de datos aparte -- no algo para arrastrar
 #: dentro del cobro con QR. Mientras tanto se aceptan las dos: reconocer una
 #: sola dejaria el boton sin aparecer, o el pago sin sellar, segun cual.
-MEDIOS_QR = frozenset({"mercado_pago", "mercadopago"})
+#:
+#: 🔴 El conjunto **sale del motor** desde el 2026-08-24:
+#: `libracore.medios_pago.MEDIOS_ELECTRONICOS` incluye las dos grafias
+#: justamente por este caso, y ademas `billetera`, `cuenta_dni` y `qr` -- tres
+#: medios que este `frozenset` NO tenia y que tambien se cobran por QR. O sea
+#: que hasta hoy, una venta cobrada por Cuenta DNI no sellaba la referencia del
+#: pago: se acreditaba en MercadoPago sin quedar atada a la venta.
+#:
+#: Ver wiki/concepts/medios-de-pago-familia-libra.md.
+MEDIOS_QR = frozenset(medios_pago.MEDIOS_ELECTRONICOS)
 
 
 def _referencia_del_pago(pago: "PaymentIn", orden_qr: dict | None) -> str:

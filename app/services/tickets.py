@@ -6,17 +6,17 @@ extraído de Contalibra el 2026-07-28). Acá está sólo el puente: pasar de una
 """
 from decimal import Decimal
 
+from libracore import medios_pago
 from libracore.ticket_generator import generar_ticket_venta
 
-#: Cómo se lee cada medio en el papel. Los que LibraCore ya conoce
-#: (`efectivo`, `transferencia`) los traduce él; acá van los propios del POS.
-_MEDIOS = {
-    "tarjeta_debito": "Tarjeta de débito",
-    "tarjeta_credito": "Tarjeta de crédito",
-    "mercado_pago": "Mercado Pago",
-    "cuenta_corriente": "Cuenta corriente",
-}
-
+# 🔴 Aca habia un `_MEDIOS` propio con cuatro claves. Era una de las 28 copias
+# del vocabulario de la familia, y la unica razon por la que existia --que
+# LibraCore no conocia `tarjeta_debito` ni `tarjeta_credito`-- dejo de valer el
+# 2026-08-24: ahora estan en la lista canonica.
+#
+# `medios_pago.label()` las cubre a las cuatro **y a las historicas**: un ticket
+# reimpreso de una venta vieja con `mercado_pago` sale bien igual. Ver
+# wiki/concepts/medios-de-pago-familia-libra.md.
 
 def ticket_de_venta(sale, cliente_nombre: str = "") -> bytes:
     """PDF del ticket de una venta confirmada, listo para la ticketeadora."""
@@ -48,7 +48,7 @@ def ticket_de_venta(sale, cliente_nombre: str = "") -> bytes:
         "total": float(sale.total),
         "pagos": [
             {
-                "medio": _MEDIOS.get(pago.method, pago.method),
+                "medio": medios_pago.label(pago.method),
                 "monto": float(pago.amount),
             }
             for pago in sale.payments
