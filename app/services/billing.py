@@ -53,19 +53,29 @@ def configure(db_path: str) -> None:
     """Llamar una vez al arrancar la app: configura libracore.db contra su
     propio archivo SQLite (independiente de la base principal) y asegura
     que el schema compartido y una caja por defecto existan."""
-    # 🔴 `db_path` puede ser una URL de PostgreSQL, y entonces NO hay carpeta
-    # que crear. Sin esta guarda, `os.path.dirname()` de
-    # `postgresql://usuario:clave@host:5432/base` devuelve
-    # `postgresql://usuario:clave@host:5432` y `makedirs` lo crea como
-    # directorio: **la contraseña queda escrita en el nombre de una carpeta**.
-    # Y en `dev`, donde el repo está bind-mounteado en `/app`, esa carpeta cae
-    # dentro del checkout del VPS y el siguiente `docker build` la mete en la
-    # imagen. Encontrado el 2026-08-10 al cortar la demo: la imagen del demo
-    # traía las claves de los tres sidecars en nombres de carpeta.
-    if not libracore_core.es_url_postgres(db_path):
-        directory = os.path.dirname(db_path)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
+    # 🔴 **Este producto corre sobre PostgreSQL y nada mas.** La guarda va aca,
+    # en el arranque del producto, y no dentro de `libracore.db.core`: el motor
+    # tiene que poder abrir un SQLite igual, porque de eso vive la herramienta
+    # de diagnostico `python -m libracore.db.schema_dump`, que vuelca el schema
+    # de un archivo viejo o de la base de LibraEdge. La regla "este producto no
+    # habla con otro motor" es del producto, no del motor.
+    #
+    # Aca habia un `if not es_url_postgres(...)` que salteaba el `makedirs`
+    # cuando el destino era una URL. Existia para evitar un defecto medido: con
+    # una URL, `os.path.dirname()` devuelve `postgresql://usuario:clave@host` y
+    # `makedirs` lo creaba como carpeta --- **la contrasena escrita en el nombre
+    # de un directorio**, que ademas caia dentro del checkout bind-mounteado y
+    # se colaba en la imagen del siguiente build. Encontrado el 2026-08-10.
+    #
+    # Con la guarda ese camino no existe: si no hay ruta de archivo posible, no
+    # hay carpeta que crear ni defecto que evitar. El bloque entero se va.
+    if not libracore_core.es_url_postgres(str(db_path)):
+        raise RuntimeError(
+            "VentaLibra corre solo sobre PostgreSQL y recibio {!r}, que es una "
+            "ruta de archivo. El modo SQLite se retiro el 2026-08-12: no chequea "
+            "las FK, tipa dinamicamente y acepta cadenas donde la base pide "
+            "enteros.".format(db_path)
+        )
     libracore_core.configure(db_path)
     conn = libracore_core.get_connection()
     try:
