@@ -5,14 +5,14 @@ porque en retail la mayoria de las ventas son a "Consumidor Final" sin
 cliente registrado -- solo hace falta un Customer si se va a facturar A/B
 con CUIT real.
 """
-import sqlite3
 
 from ..commerce import repositorio
 from libracommerce.domain.entities import Party, PartyType
+from libracore.db.core import Conexion
 
 
 class CustomerService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 

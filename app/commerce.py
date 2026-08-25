@@ -17,14 +17,14 @@ El usuario sale del `ContextVar` de `libraauth`, que llena
 como valor porque cambia por request; y va de este lado, no adentro de
 LibraCommerce, para que el motor comercial no dependa del de auth.
 """
-import sqlite3
 
 from libraauth.auditoria import usuario_actual
 from libracommerce.db.auditoria import RepositorioAuditado
 from libracommerce.db.repository import SqliteCommerceRepository
+from libracore.db.core import Conexion
 
 
-def repositorio(conn: sqlite3.Connection) -> RepositorioAuditado:
+def repositorio(conn: Conexion) -> RepositorioAuditado:
     return RepositorioAuditado(
         SqliteCommerceRepository(conn), conn, usuario=usuario_actual.get,
     )

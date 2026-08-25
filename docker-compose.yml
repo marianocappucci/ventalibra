@@ -70,7 +70,18 @@ services:
     mem_reservation: 256m
     cpus: 1.0
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      # 🔴 El chequeo mira el CUERPO, no el codigo HTTP. Este backend sirve la SPA
+      # con un catch-all, asi que **cualquier** ruta devuelve 200 mientras uvicorn
+      # sirva estaticos: un `urlopen()` a secas da healthy con la API muerta, y da
+      # healthy tambien apuntado a una ruta inventada. Medido el 2026-08-12 por
+      # `docker exec` en los 21 contenedores del VPS: los 21 daban exit 0 contra una
+      # ruta que no existe. Un chequeo que no puede fallar no es un chequeo.
+      #
+      # `json.load` sobre el index.html revienta, que es exactamente lo que se busca.
+      # `isinstance(..., dict)` y no una clave concreta porque el cuerpo difiere
+      # entre productos; es ademas lo que emite el generador de instancias de
+      # LibraCore (PR #82), asi que dev y las instancias no divergen.
+      test: ["CMD", "python3", "-c", "import json,urllib.request; assert isinstance(json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=3)), dict)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -79,7 +90,14 @@ services:
       - "8081:8000"
     volumes:
       - ./:/app
-    command: uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload
+    # 🔴 Las migraciones también acá, no sólo en el deploy.
+    # `cmd_actualizar` las corre para las instancias de cliente y la demo,
+    # pero ESTA la levanta el compose del repo y el motor no la toca. Tiene
+    # que decir LO MISMO que `migraciones` en los dos scripts de `scripts/`;
+    # hay un test que ata las dos puntas.
+    #
+    # `exec` para que uvicorn quede como PID 1 y `docker stop` le llegue.
+    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
       - TZ=America/Argentina/Buenos_Aires
@@ -89,10 +107,22 @@ services:
       # las tablas del dominio y las de LibraCore conviven ahí, que es lo que
       # ya hacían las dos bases SQLite de `dev-data/`.
       #
-      # Volver estas dos líneas a las rutas `.db` y reiniciar es el rollback
-      # completo: los archivos de `dev-data/` siguen ahí y sin tocar —
-      #   - VENTALIBRA_DB_PATH=/app/dev-data/ventalibra.db
-      #   - VENTALIBRA_LIBRACORE_DB_PATH=/app/dev-data/ventalibra_libracore.db
+      # ⚠️ **Acá había una receta de rollback y ya no funciona.** Decía que
+      # volver estas dos líneas a las rutas `.db` de `dev-data/` y reiniciar era
+      # el rollback completo. Desde el 2026-08-25 `app/services/billing.py`
+      # rechaza cualquier destino que no sea una URL de PostgreSQL, así que
+      # seguir esa receta hoy **no arranca**: muere con un mensaje que dice qué
+      # variable definir.
+      #
+      # No es un descuido, es la decisión: el rollback a SQLite dejó de aplicar
+      # ese mismo día —el corte tiene meses y hay backups verificados de las dos
+      # bases—. Se saca la receta en vez de dejarla porque una instrucción que
+      # ya no anda cuesta más que ninguna: el que la siga va a creer que rompió
+      # algo.
+      #
+      # Si alguna vez hiciera falta mirar aquellos datos, el camino es
+      # `python -m libracore.db.schema_dump` sobre el archivo, que lo abre en
+      # modo lectura sin tocarlo.
       - VENTALIBRA_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
       - VENTALIBRA_LIBRACORE_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
       - ENV=development

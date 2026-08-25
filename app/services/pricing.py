@@ -4,20 +4,28 @@ resolve_price() delega enteramente en libracommerce -- ver
 wiki/entities/libracommerce.md, seccion "Fase 4 de VentaLibra: Listas de
 precio". Este servicio solo traduce entre la API HTTP y el repositorio.
 """
-import sqlite3
 from datetime import datetime
 from decimal import Decimal
 
+from ..conexion import conexion_utilizable
 from ..commerce import repositorio
 from libracommerce.domain.catalog import ItemPrice, PriceList
+from libracore.db.core import Conexion
 
 
 class PricingService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._repo = repositorio(conn)
+        # La conexion, para poder dejarla utilizable si una escritura falla.
+        self._conn = conn
 
     def create_price_list(self, name: str, description: str = "", is_default: bool = False) -> PriceList:
-        return self._repo.save_price_list(PriceList(id=None, name=name, description=description, is_default=is_default))
+        # Indice parcial unico: como mucho una lista default. Ver
+        # `app/conexion.py`: sin el rollback el 409 deja la app sin escribir.
+        with conexion_utilizable(self._conn):
+            return self._repo.save_price_list(
+                PriceList(id=None, name=name, description=description, is_default=is_default)
+            )
 
     def get_price_list(self, price_list_id: int) -> PriceList | None:
         return self._repo.get_price_list(price_list_id)
@@ -32,7 +40,8 @@ class PricingService:
             valid_from=valid_from, valid_until=valid_until,
             min_quantity=min_quantity, branch_id=branch_id,
         )
-        return self._repo.save_item_price(item_price)
+        with conexion_utilizable(self._conn):
+            return self._repo.save_item_price(item_price)
 
     def list_item_prices(self, item_id: int) -> list[ItemPrice]:
         return list(self._repo.list_item_prices(item_id))

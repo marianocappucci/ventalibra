@@ -6,14 +6,14 @@ lo mismo que ya vale para customer_party_id en Sale y supplier_party_id en
 PurchaseOrder/PurchaseReceipt. Este servicio es un wrapper fino sobre
 save_party/get_party mas un listado propio, igual que CatalogService.
 """
-import sqlite3
 
 from ..commerce import repositorio
 from libracommerce.domain.entities import Party, PartyType
+from libracore.db.core import Conexion
 
 
 class SupplierService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 

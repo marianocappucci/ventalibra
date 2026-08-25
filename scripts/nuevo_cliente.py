@@ -42,6 +42,24 @@ configure(
     image_name="ventalibra:latest",
     container_prefix="ventalibra",
     db_filename="ventalibra.db",
+    # 🔴 **Este producto no tiene cadena propia de Alembic, pero SÍ corre la
+    # del motor.** Su esquema lo crean `init_core_schema()` y
+    # `init_commerce_schema()` al conectar, que **crean tablas que no existen y
+    # no alteran las que sí**. Lo que Alembic gobierna acá es el schema de
+    # LibraCore, que hasta el 2026-08-25 **no lo corría nadie**: sus migraciones
+    # no viajaban en el wheel.
+    #
+    # Medido ese día: de las tres instancias de este producto, la de dev estaba
+    # en `0002`, y las otras en `0001_baseline` o **sin `alembic_version`
+    # ninguna** — o sea producción atrás de dev, y sin las cuatro columnas que
+    # la revisión `0002` le agrega a `clients`.
+    #
+    # `libracore-migrar` resuelve la base por `VENTALIBRA_LIBRACORE_DB_PATH`,
+    # que este producto SÍ declara — aunque medido apunta a la **misma** base
+    # que `VENTALIBRA_DB_PATH`, porque acá el schema del core y el del dominio
+    # conviven. O sea que la variable existe y no hace falta la caída al
+    # dominio; ver `libracore.migrar.url_de_core`.
+    migraciones=(("libracore-migrar", "upgrade", "--prefijo", "ventalibra"),),
     repo_root=REPO_ROOT,
     base_port=8082,
 )
