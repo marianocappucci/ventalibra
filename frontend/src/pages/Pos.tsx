@@ -28,13 +28,13 @@ const CUENTA_CORRIENTE = 'cuenta_corriente'
 
 /** El medio que se cobra escaneando el QR impreso de la caja.
  *
- *  🔴 Va con guion bajo porque es lo que este POS escribe desde siempre y ya
- *  hay movimientos de caja guardados asi. El resto de la familia usa
- *  `mercadopago` pegado, que es la clave de `MEDIOS_PAGO_LABELS` de LibraCore
- *  — el backend acepta las dos (`MEDIOS_QR` en `routers/sales.py`) mientras la
- *  divergencia siga. Normalizarla es una migracion de datos, no algo para
- *  arrastrar dentro de esto. */
-const MERCADO_PAGO = 'mercado_pago'
+ *  Es la clave canonica de la familia (`libracore.medios_pago.ELEGIBLES`).
+ *  Hasta esta version este POS escribia `mercado_pago`, con guion bajo, y era
+ *  la ultima divergencia de grafia del vocabulario: cambiarla exigio migrar
+ *  antes las filas ya escritas, porque un selector nuevo sobre datos viejos
+ *  parte cada reporte en dos lineas para la misma cosa. La normalizacion vive
+ *  en `app/normalizacion_medios.py` y corre en cada arranque. */
+const MERCADO_PAGO = 'mercadopago'
 
 const QR_POLL_MS = 3000
 /** Cinco minutos: pasado eso el cliente ya se fue del mostrador. Cortar el
@@ -82,7 +82,7 @@ const MEDIOS_PAGO = [
   { value: 'tarjeta_debito', label: 'Tarjeta de débito' },
   { value: 'tarjeta_credito', label: 'Tarjeta de crédito' },
   { value: 'transferencia', label: 'Transferencia' },
-  { value: 'mercado_pago', label: 'Mercado Pago' },
+  { value: MERCADO_PAGO, label: 'Mercado Pago' },
   { value: CUENTA_CORRIENTE, label: 'Cuenta corriente (fiado)' },
 ]
 

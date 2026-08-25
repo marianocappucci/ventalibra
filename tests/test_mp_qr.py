@@ -301,7 +301,7 @@ def test_con_el_pago_acreditado_no_se_puede_rotar_la_referencia(admin_client, mp
 def _confirmar_por_qr(client, sale_id, location_id, total="3000.00", **extra):
     return client.post(f"/sales/{sale_id}/confirm", json={
         "location_id": location_id,
-        "pagos": [{"medio": "mercado_pago", "monto": total}],
+        "pagos": [{"medio": "mercadopago", "monto": total}],
         **extra,
     })
 
@@ -334,7 +334,7 @@ def test_una_referencia_que_manda_el_pos_no_se_pisa(admin_client, mp):
 
     confirmada = admin_client.post(f"/sales/{sale_id}/confirm", json={
         "location_id": location_id,
-        "pagos": [{"medio": "mercado_pago", "monto": "3000.00", "referencia": "lote-77"}],
+        "pagos": [{"medio": "mercadopago", "monto": "3000.00", "referencia": "lote-77"}],
     })
     assert confirmada.json()["pagos"][0]["referencia"] == "lote-77"
 

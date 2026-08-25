@@ -5,6 +5,17 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **La grafía de MercadoPago, normalizada** (ver ADR-024): este POS escribía
+  el medio como `mercado_pago` y el resto de la familia usa `mercadopago`. Era
+  la última divergencia del vocabulario, y no se podía cambiar el selector sin
+  migrar antes las filas ya escritas: cada reporte habría partido ese medio en
+  dos líneas para la misma cosa. Las tres listas del frontend pasan a la grafía
+  canónica y la base se normaliza sola en cada arranque, incluida una restaurada
+  desde un backup viejo. **El recibo ya emitido de una cobranza por MercadoPago
+  deja de imprimir el slug crudo** —`mercado_pago`, con guion bajo, en la
+  columna «Medio»— y pasa a imprimir la etiqueta. 5 tests nuevos de backend y 5
+  de guarda en el frontend.
+
 - **Cobro con QR de MercadoPago y factura automática** (ver ADR-023): en el
   diálogo de cobro, con Mercado Pago cubriendo el total, aparece «Cobrar con
   QR»: pone el monto en el QR impreso del mostrador, espera a que
