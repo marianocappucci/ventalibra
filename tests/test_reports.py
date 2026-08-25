@@ -55,6 +55,70 @@ def test_sales_report_totals_confirmed_sale(admin_client):
     assert body["por_dia"][0]["cantidad"] == 1
 
 
+def _mover_confirmacion(client, sale_id, instante_iso):
+    """Le fija a la venta un `confirmed_at` conocido, en UTC.
+
+    Es la única forma de probar el borde sin depender de a qué hora corra el
+    CI: el reloj de la corrida no se puede elegir, el instante guardado sí.
+    """
+    conn = client.app.state.conn
+    conn.execute("UPDATE sales SET confirmed_at = ? WHERE id = ?", (instante_iso, sale_id))
+    conn.commit()
+
+
+def test_una_venta_del_cierre_cuenta_en_el_dia_que_se_vendio(admin_client):
+    """22:00 en Argentina ya es el día siguiente en UTC.
+
+    🔴 Este es el defecto que el reporte tuvo hasta el 2026-08-24: filtraba por
+    `substr(confirmed_at, 1, 10)`, o sea la fecha **UTC**, contra un rango de
+    fechas **locales**. Una venta confirmada a las 22:00 del 14 se guarda como
+    `2026-03-15T01:00:00+00:00` y quedaba contada en el 15 — así que en la franja
+    de cierre no aparecía en el reporte del día, que es justo cuando se mira.
+
+    Se lo destapó el CI por casualidad, corriendo a las 22:21 ART. Este test
+    **no depende de la hora**: fija el instante guardado, así falla siempre que
+    el defecto vuelva y nunca por el reloj de la corrida.
+    """
+    item_id = _make_item(admin_client, price="1000.00")
+    location_id = _make_location(admin_client)
+    confirmed = _confirmed_sale(admin_client, item_id, location_id)
+    assert confirmed.status_code == 200, confirmed.text
+
+    # 22:00 del 14-03 en Argentina — un instante dentro de la franja.
+    _mover_confirmacion(admin_client, confirmed.json()["id"], "2026-03-15T01:00:00+00:00")
+
+    en_el_dia = admin_client.get(
+        "/reports/sales", params={"date_from": "2026-03-14", "date_to": "2026-03-14"})
+    assert en_el_dia.json()["total_ventas"] == 1, (
+        "la venta de las 22:00 no aparece en el reporte del día en que se vendió")
+
+    # 🔑 El control negativo. Sin esto, un reporte que contara la venta en LOS
+    # DOS días pasaría la aserción de arriba igual.
+    en_el_dia_utc = admin_client.get(
+        "/reports/sales", params={"date_from": "2026-03-15", "date_to": "2026-03-15"})
+    assert en_el_dia_utc.json()["total_ventas"] == 0, (
+        "la venta quedó contada en el día UTC, que es el defecto original")
+
+
+def test_una_venta_del_mediodia_no_se_mueve_de_dia(admin_client):
+    """El control positivo del test de arriba.
+
+    La conversión tiene que mover **sólo** lo que cae en la franja. Si moviera
+    todo un día para atrás, el test del borde pasaría igual y este fallaría.
+    """
+    item_id = _make_item(admin_client, price="1000.00")
+    location_id = _make_location(admin_client)
+    confirmed = _confirmed_sale(admin_client, item_id, location_id)
+    assert confirmed.status_code == 200, confirmed.text
+
+    _mover_confirmacion(admin_client, confirmed.json()["id"], "2026-03-15T12:00:00+00:00")
+
+    mismo_dia = admin_client.get(
+        "/reports/sales", params={"date_from": "2026-03-15", "date_to": "2026-03-15"})
+    assert mismo_dia.json()["total_ventas"] == 1, (
+        "un instante del mediodía se movió de día: la conversión corre de más")
+
+
 def test_sales_report_ignores_draft_sales(admin_client):
     item_id = _make_item(admin_client)
     _abrir_turno(admin_client)
