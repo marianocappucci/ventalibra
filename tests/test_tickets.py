@@ -116,7 +116,7 @@ def test_el_ticket_muestra_el_medio_de_pago(admin_client):
 def test_el_cobro_mixto_sale_desglosado(admin_client):
     sale_id = _venta_confirmada(admin_client, pagos=[
         {"medio": "efectivo", "monto": "1000"},
-        {"medio": "mercado_pago", "monto": "2000"},
+        {"medio": "mercadopago", "monto": "2000"},
     ])
 
     texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)

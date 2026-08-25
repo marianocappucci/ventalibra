@@ -8,10 +8,53 @@ agregacion sobre datos que ya se generan al confirmar ventas y
 movimientos de stock.
 """
 import sqlite3
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from libracore.db import caja as db_caja
+
+#: Zona del negocio, en un solo lugar. Argentina es UTC-3 fijo, sin horario de
+#: verano, así que el desfasaje es una constante y no hace falta una tabla de
+#: husos para resolverlo.
+_ZONA = timezone(timedelta(hours=-3))
+
+
+def _ventana_utc(date_from: date, date_to: date) -> tuple[str, str]:
+    """El rango de días **locales** traducido a una ventana de instantes UTC.
+
+    🔴 **El defecto que esto arregla.** Acá se comparaba
+    `substr(confirmed_at, 1, 10)` —la fecha **UTC**— contra un rango de fechas
+    **locales**. Entre las 21:00 y las 24:00 de Argentina esos son dos días
+    distintos: una venta confirmada a las 22:00 del 14 se guarda como
+    `2026-03-15T01:00:00+00:00` y quedaba contada en el 15. O sea que **en la
+    franja de cierre la venta no aparecía en el reporte del día**, que es justo
+    cuando alguien lo mira.
+
+    🔑 **Se convierte el rango, no la columna, y eso importa por dos razones.**
+    La primera es que conserva la idea que `DECISIONS.md` eligió a propósito:
+    `confirmed_at` es TEXT ISO y un ISO bien formado **compara y ordena
+    lexicográficamente**, así que no hace falta que el motor parsee nada. Lo que
+    había caducado no era esa idea sino el recorte a diez caracteres, que se
+    queda con la fecha del meridiano de Greenwich.
+
+    La segunda es que la suite corre contra **los dos motores** —SQLite en el
+    primer paso del CI y PostgreSQL en el segundo—, y una conversión del lado
+    del motor obligaría a escribirla dos veces. Del lado de Python se escribe
+    una sola.
+
+    Devuelve una ventana **semiabierta**: `[desde, hasta)`. El instante
+    `03:00:00+00:00` es la medianoche local del día siguiente y pertenece al día
+    siguiente, no a éste.
+    """
+    desde = datetime.combine(date_from, time.min, tzinfo=_ZONA)
+    hasta = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=_ZONA)
+    return (desde.astimezone(timezone.utc).isoformat(),
+            hasta.astimezone(timezone.utc).isoformat())
+
+
+def _dia_local(confirmado_en: str) -> str:
+    """El día comercial de un `confirmed_at` guardado en UTC."""
+    return datetime.fromisoformat(confirmado_en).astimezone(_ZONA).date().isoformat()
 
 
 def _to_decimal(value) -> Decimal:
@@ -23,29 +66,36 @@ class ReportsService:
         self._conn = conn
 
     def sales_summary(self, date_from: date, date_to: date) -> dict:
-        desde, hasta = date_from.isoformat(), date_to.isoformat()
-        # confirmed_at es TEXT ISO con offset (ej. "...+00:00") -- comparar
-        # el prefijo YYYY-MM-DD como string evita cualquier ambiguedad con
-        # el parseo de fechas/timezone de las funciones date() de SQLite.
+        desde, hasta = _ventana_utc(date_from, date_to)
+        # `confirmed_at` es TEXT ISO con offset, y un ISO bien formado compara y
+        # ordena lexicograficamente -- por eso alcanza con acotarlo entre dos
+        # instantes, sin pedirle al motor que parsee ninguna fecha. La ventana
+        # es semiabierta: ver `_ventana_utc`.
         totals = self._conn.execute(
             """
             SELECT COUNT(*), COALESCE(SUM(total), 0)
             FROM sales
-            WHERE status = 'confirmed' AND substr(confirmed_at, 1, 10) BETWEEN ? AND ?
+            WHERE status = 'confirmed' AND confirmed_at >= ? AND confirmed_at < ?
             """,
             (desde, hasta),
         ).fetchone()
 
-        by_day_rows = self._conn.execute(
+        # El agrupado por dia se arma en Python: el dia es el LOCAL, y pedirselo
+        # al motor obligaria a escribir la conversion dos veces, una por motor.
+        crudas = self._conn.execute(
             """
-            SELECT substr(confirmed_at, 1, 10) AS day, COUNT(*), COALESCE(SUM(total), 0)
+            SELECT confirmed_at, total
             FROM sales
-            WHERE status = 'confirmed' AND substr(confirmed_at, 1, 10) BETWEEN ? AND ?
-            GROUP BY day
-            ORDER BY day
+            WHERE status = 'confirmed' AND confirmed_at >= ? AND confirmed_at < ?
             """,
             (desde, hasta),
         ).fetchall()
+        por_dia: dict[str, list] = {}
+        for confirmado_en, total in crudas:
+            acumulado = por_dia.setdefault(_dia_local(confirmado_en), [0, Decimal("0")])
+            acumulado[0] += 1
+            acumulado[1] += _to_decimal(total)
+        by_day_rows = [(dia, c, s) for dia, (c, s) in sorted(por_dia.items())]
 
         top_items_rows = self._conn.execute(
             """
@@ -55,7 +105,7 @@ class ReportsService:
             FROM sale_items si
             JOIN sales s ON s.id = si.sale_id
             WHERE s.status = 'confirmed' AND si.kind = 'product'
-              AND substr(s.confirmed_at, 1, 10) BETWEEN ? AND ?
+              AND s.confirmed_at >= ? AND s.confirmed_at < ?
             GROUP BY si.item_id
             ORDER BY 4 DESC
             LIMIT 10

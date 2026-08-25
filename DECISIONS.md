@@ -722,15 +722,37 @@ reemplazadas.
   agregación sobre datos que ya se generan, sin tabla ni estado propio.
 - **`/reports/sales`**: cuenta y suma `sales` con `status='confirmed'`
   en un rango de fechas, agrupa por día, y arma un top-10 de items más
-  vendidos (`sale_items` con `kind='product'`). Decisión técnica: filtrar
-  por el **prefijo `YYYY-MM-DD` de `confirmed_at` como string**
-  (`substr(confirmed_at, 1, 10) BETWEEN ? AND ?`) en vez de las funciones
-  `date()`/`datetime()` de SQLite — `confirmed_at` se guarda con offset
-  de timezone (`...+00:00`, vía `datetime.now(timezone.utc).isoformat()`
-  en `libracommerce.usecases.sales.confirm_sale`), y comparar el prefijo
-  ISO como string evita cualquier ambigüedad de cómo SQLite parsea ese
-  formato — un string ISO bien formado siempre compara/ordena
-  correctamente de forma lexicográfica.
+  vendidos (`sale_items` con `kind='product'`).
+
+  > 🔴 **Corregido el 2026-08-24.** Acá decía: filtrar por el prefijo
+  > `YYYY-MM-DD` de `confirmed_at` como string
+  > (`substr(confirmed_at, 1, 10) BETWEEN ? AND ?`), porque `confirmed_at` se
+  > guarda con offset (`...+00:00`, vía `datetime.now(timezone.utc)`) y comparar
+  > el prefijo ISO como string evita la ambigüedad de cómo SQLite parsea ese
+  > formato.
+  >
+  > **La mitad de ese razonamiento seguía siendo cierta y la otra mitad era el
+  > defecto.** Es verdad que un ISO bien formado compara y ordena
+  > lexicográficamente. Pero el prefijo de un timestamp guardado en UTC es la
+  > fecha **UTC**, y el rango que llega por querystring son fechas **locales**:
+  > entre las 21:00 y las 24:00 de Argentina son dos días distintos, así que una
+  > venta confirmada a las 22:00 del 14 quedaba contada en el 15 — **no aparecía
+  > en el reporte del día en que se vendió**, justo en la franja de cierre.
+
+  Decisión vigente: **se convierte el rango, no la columna.** El día local
+  `[desde, hasta]` se traduce en Python a una ventana **semiabierta** de
+  instantes UTC —`[desde 03:00, hasta+1d 03:00)`— y el SQL sólo compara
+  `confirmed_at >= ? AND confirmed_at < ?`. Eso conserva la idea buena (el motor
+  no parsea ninguna fecha; alcanza la comparación lexicográfica) y arregla el
+  huso. El agrupado por día se arma en Python, porque el día es el **local**.
+
+  Se convierte del lado de Python y no del motor **a propósito**: la suite corre
+  contra los dos —SQLite en el primer paso del CI y PostgreSQL en el segundo—, y
+  una conversión en SQL habría que escribirla dos veces. Cubierto por
+  `test_una_venta_del_cierre_cuenta_en_el_dia_que_se_vendio`, que fija el
+  instante guardado en vez de depender de la hora de la corrida, con su control
+  positivo (`..._del_mediodia_no_se_mueve_de_dia`) y su control negativo (que la
+  venta **no** quede contada también en el día UTC).
 - **`/reports/caja`**: delega enteramente en
   `libracore.db.caja.get_caja_resumen(desde, hasta)` — la misma conexión
   global que ya configura `app/services/billing.py::configure()` al
@@ -1154,7 +1176,8 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
   `pyproject.toml` es **el piso**, anotado. Bajar el pin por debajo de v1.40.0
   rompe el cobro sin que nada avise — la URL mal armada la contesta MercadoPago
   con el mismo 404 que un POS ID inexistente.
-- **Deuda que queda anotada, no arreglada:** este POS escribe el medio como
+- **Deuda que queda anotada, no arreglada** *(cerrada el 2026-08-24 por
+  ADR-024)*: este POS escribe el medio como
   `mercado_pago` con guion bajo y el resto de la familia usa `mercadopago`
   pegado, que es la clave de `MEDIOS_PAGO_LABELS` de LibraCore. Ya hay
   movimientos de caja guardados con la forma de acá, así que normalizarla es
@@ -1162,3 +1185,75 @@ contenedor con una base persistida genuinamente anterior a Fase 4.
 - Consecuencias: 21 tests nuevos de backend (295 en total) y 6 de frontend
   (20 en total). Sección nueva **Mercado Pago** en Configuración, con las
   tres credenciales y el toggle de la automática.
+
+## ADR-024 — La grafía de MercadoPago: primero los datos, después el selector
+
+- Estado: aceptada
+- Fecha: 2026-08-24
+- Contexto: este POS escribía el medio como `mercado_pago`, con guion bajo, y
+  los otros diez repos de la familia usan `mercadopago` pegado, que es la
+  clave de `libracore.medios_pago.ELEGIBLES`. Era la **última divergencia de
+  grafía** del vocabulario de medios de pago, y estaba declarada en **tres**
+  listas del frontend —`Pos.tsx`, `CuentasCorrientes.tsx`, `Ventas.tsx`—, más
+  una constante `MERCADO_PAGO` en `Pos.tsx` que la lista de esa misma pantalla
+  duplicaba en vez de usar.
+- **No se podía arreglar con un `sed`, y ésa es la decisión de fondo.** Hay
+  filas escritas con la grafía vieja. Cambiar el selector sin tocarlas parte
+  cada reporte en dos líneas para la misma cosa: la plata bien contada y el
+  reparto mal, que es exactamente el defecto que el vocabulario unificado vino
+  a cerrar. El orden es **primero los datos y después la grafía**.
+- Decisión: una **normalización que corre en cada arranque**
+  (`app/normalizacion_medios.py`), enganchada en los dos puntos donde este
+  producto abre sus bases: `db.connect()` para el dominio y
+  `billing.configure()` para la de LibraCore.
+
+### Por qué en cada arranque y no una migración numerada
+
+Es la forma menos habitual y es deliberada. El paso siguiente del trabajo de
+familia es **sacar `mercado_pago` de `libracore.medios_pago.HISTORICOS`**, y a
+partir de ahí `label()` devuelve el slug crudo para cualquier fila que la
+tenga. Una base restaurada desde un backup anterior a esta versión vuelve a
+tener filas así, y una migración ya marcada como aplicada **no la volvería a
+tocar**. Corriendo en cada arranque, una restauración se arregla sola al
+levantar el contenedor. El costo es seis `UPDATE ... WHERE` que no matchean
+nada.
+
+### Qué se toca, y por qué la lista no salió de leer el código
+
+La lista de columnas salió de **recorrer todas las columnas de texto de las dos
+instancias reales** buscando el literal, no de leer los `INSERT` del repo. El
+barrido que uno escribe por reflejo —filtrar `column_name LIKE '%medio%'`—
+encontraba `caja_movimientos.medio_pago` y `cc_pagos.medio_pago` y **se perdía
+`recibos.pagos`**, que guarda el medio adentro de un JSON en una columna que no
+se llama nada parecido. Por eso el test de guarda escanea la base entera en vez
+de chequear la lista del módulo: un control que comparte el criterio con lo que
+verifica hereda su punto ciego.
+
+Son seis lugares: `sale_payments.method` (LibraCommerce) y, en LibraCore,
+`caja_movimientos.medio_pago`, `cc_pagos.medio_pago`, `egresos_pagos.medio_pago`,
+`ventas_pagos.medio` y los dos JSON (`cajas.medios_pago`, `recibos.pagos`).
+
+### El snapshot del recibo se reescribe, y el papel MEJORA
+
+`recibos.pagos` es el snapshot de un comprobante ya emitido, así que tocarlo hay
+que justificarlo sobre el papel y no sobre la fila. Medido: el
+`_MEDIOS_LABEL` de `libracore.pdf_generator` **nunca conoció `mercado_pago`**,
+así que el recibo de una cobranza por MercadoPago venía imprimiendo el slug
+crudo, con guion bajo, en la columna «Medio» de un comprobante que se le entrega
+al cliente. Con la grafía normalizada imprime la etiqueta. El resto del
+comprobante queda idéntico, y el test lo afirma comparando el **texto extraído
+del PDF** completo antes y después, no la fila.
+
+### Lo que este ADR NO hace
+
+Sacar `mercado_pago` de `libracore.medios_pago.HISTORICOS`. Ese es el último
+paso y va **sólo cuando no queden filas en ninguna instancia**, con el pin de
+LibraCore subido. Hay un test en LibraCore que se pone rojo si se intenta antes:
+es un trinquete deliberado, y su rojo es la señal de ir a verificar los datos,
+no de editarlo.
+
+- Consecuencias: 5 tests nuevos de backend y 1 archivo de guarda nuevo en el
+  frontend (`sin-grafia-vieja-de-mercadopago.test.ts`, 5 tests), que impide que
+  la grafía vuelva por cualquiera de las tres listas. La medición previa sobre
+  las 24 instancias PostgreSQL del VPS está en
+  `wiki/concepts/medios-de-pago-familia-libra.md`.

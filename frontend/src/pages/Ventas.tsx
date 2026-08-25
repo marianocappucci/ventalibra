@@ -33,7 +33,7 @@ const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
 const MEDIOS_DEVOLUCION = [
   { value: 'efectivo', label: 'Efectivo' },
   { value: 'transferencia', label: 'Transferencia' },
-  { value: 'mercado_pago', label: 'Mercado Pago' },
+  { value: 'mercadopago', label: 'Mercado Pago' },
   { value: 'cuenta_corriente', label: 'Cuenta corriente' },
 ]
 

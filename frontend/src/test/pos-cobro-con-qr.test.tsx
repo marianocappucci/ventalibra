@@ -206,7 +206,7 @@ describe('El cobro con QR', () => {
     )
     expect(confirm.body).toMatchObject({
       location_id: 1,
-      pagos: [{ medio: 'mercado_pago', monto: '3000.00' }],
+      pagos: [{ medio: 'mercadopago', monto: '3000.00' }],
       invoice: false,
     })
   }, 10000)

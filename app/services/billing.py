@@ -25,6 +25,8 @@ from libracore.db import core as libracore_core
 from libracore.db import facturas as db_facturas
 from libracore.db.schema import init_core_schema
 
+from ..normalizacion_medios import normalizar_libracore
+
 EMPRESA = "venta"
 
 TIPO_FACTURA_A = 1
@@ -69,6 +71,10 @@ def configure(db_path: str) -> None:
     try:
         init_core_schema(conn)
         conn.commit()
+        # La otra mitad de la normalizacion de grafias: caja, cuenta corriente,
+        # egresos y recibos viven en ESTA base, que contra SQLite es un archivo
+        # distinto del dominio. Ver `app/normalizacion_medios.py`.
+        normalizar_libracore(conn)
     finally:
         conn.close()
     if db_caja.get_default_caja_id() is None:

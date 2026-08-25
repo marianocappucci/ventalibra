@@ -10,6 +10,8 @@ import sqlite3
 from libracommerce.db.schema import init_schema
 from libracore.db import core
 
+from .normalizacion_medios import normalizar_dominio
+
 
 def connect(db_path: str):
     """La conexion del dominio, contra una RUTA SQLite o una URL PostgreSQL.
@@ -39,6 +41,11 @@ def connect(db_path: str):
     init_party_roles_schema(conn)
     init_modules_schema(conn)
     init_mp_qr_schema(conn)
+    # La grafia vieja de MercadoPago (`mercado_pago`) que este POS escribio
+    # desde siempre, pasada a la canonica de la familia. Va DESPUES de crear el
+    # schema —necesita las tablas— y en cada arranque, no una sola vez: ver el
+    # docstring del modulo para por que.
+    normalizar_dominio(conn)
     return conn
 
 
