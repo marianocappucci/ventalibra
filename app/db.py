@@ -36,12 +36,21 @@ def connect(db_path: str):
         conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
     init_schema(conn)
-    init_users_schema(conn)
-    init_sequences_schema(conn)
-    init_party_billing_schema(conn)
-    init_party_roles_schema(conn)
-    init_modules_schema(conn)
-    init_mp_qr_schema(conn)
+    # Las tablas propias de este producto, por un punto de entrada único. Antes
+    # las seis funciones se enumeraban acá, y la baseline de Alembic
+    # (`migrations/versions/0001_baseline_ventalibra.py`) llama a esa misma
+    # función: enumerarlas en los dos lados haría que una función nueva agregada
+    # en uno solo dejara a las instancias nuevas y a las viejas con esquemas
+    # distintos, sin fallar.
+    #
+    # 🔴 Desde esa revisión las seis son de **sólo lectura**: una columna nueva
+    # va como revisión de Alembic. Ver `app/schema_propio.py`.
+    #
+    # Import local: `schema_propio` importa de este módulo, así que arriba
+    # cerraría el ciclo.
+    from app.schema_propio import init_schema_propio
+
+    init_schema_propio(conn)
     # La grafia vieja de MercadoPago (`mercado_pago`) que este POS escribio
     # desde siempre, pasada a la canonica de la familia. Va DESPUES de crear el
     # schema —necesita las tablas— y en cada arranque, no una sola vez: ver el

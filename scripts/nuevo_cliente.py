@@ -42,24 +42,38 @@ configure(
     image_name="ventalibra:latest",
     container_prefix="ventalibra",
     db_filename="ventalibra.db",
-    # 🔴 **Este producto no tiene cadena propia de Alembic, pero SÍ corre la
-    # del motor.** Su esquema lo crean `init_core_schema()` y
-    # `init_commerce_schema()` al conectar, que **crean tablas que no existen y
-    # no alteran las que sí**. Lo que Alembic gobierna acá es el schema de
-    # LibraCore, que hasta el 2026-08-25 **no lo corría nadie**: sus migraciones
-    # no viajaban en el wheel.
+    # 🔑 **DOS cadenas, y el orden no es decorativo.** Tiene que decir lo MISMO
+    # que el otro script de `scripts/` y que el `command:` de dev del compose;
+    # hay un test que ata las tres puntas.
     #
-    # Medido ese día: de las tres instancias de este producto, la de dev estaba
-    # en `0002`, y las otras en `0001_baseline` o **sin `alembic_version`
-    # ninguna** — o sea producción atrás de dev, y sin las cuatro columnas que
-    # la revisión `0002` le agrega a `clients`.
+    # 1. `libracore-migrar` — el schema de LibraCore, que hasta el 2026-08-25
+    #    **no lo corría nadie**: sus migraciones no viajaban en el wheel. Medido
+    #    ese día: de las instancias de este producto, la de dev estaba en `0002`
+    #    y las otras en `0001_baseline` o **sin `alembic_version` ninguna**.
     #
-    # `libracore-migrar` resuelve la base por `VENTALIBRA_LIBRACORE_DB_PATH`,
-    # que este producto SÍ declara — aunque medido apunta a la **misma** base
-    # que `VENTALIBRA_DB_PATH`, porque acá el schema del core y el del dominio
-    # conviven. O sea que la variable existe y no hace falta la caída al
-    # dominio; ver `libracore.migrar.url_de_core`.
-    migraciones=(("libracore-migrar", "upgrade", "--prefijo", "ventalibra"),),
+    #    Resuelve la base por `VENTALIBRA_LIBRACORE_DB_PATH`, que este producto
+    #    SÍ declara — aunque medido apunta a la **misma** base que
+    #    `VENTALIBRA_DB_PATH`, porque acá el schema del core y el del dominio
+    #    conviven. O sea que la variable existe y no hace falta la caída al
+    #    dominio; ver `libracore.migrar.url_de_core`.
+    #
+    # 2. `alembic` — la cadena **propia**, agregada el 2026-08-25. Gobierna las
+    #    5 tablas que son sólo de este producto (`users`, `sequences`,
+    #    `party_billing`, `party_roles`, `sale_mp_orders`); las demás son de los
+    #    motores. Va SEGUNDA por el mismo motivo que en el resto de la familia:
+    #    la cadena del motor tiene que haber dejado su schema puesto antes.
+    #
+    #    🔴 Y acá el orden importa **además** por la tabla de versión: las dos
+    #    cadenas corren contra la MISMA base, así que la propia usa
+    #    `alembic_version_ventalibra` y no `alembic_version`. Ver
+    #    `migrations/env.py`.
+    #
+    # Son dos comandos y no un `sh -c "a && b"` para que el `[ERROR]` del deploy
+    # diga **cuál de las dos** falló.
+    migraciones=(
+        ("libracore-migrar", "upgrade", "--prefijo", "ventalibra"),
+        ("alembic", "upgrade", "head"),
+    ),
     repo_root=REPO_ROOT,
     base_port=8082,
 )
