@@ -84,7 +84,16 @@ dependencies = [
     # pin por debajo de v1.40.0, el cobro con QR se rompe sin que nada avise ---
     # `services/mp_qr.py` no puede detectarlo, porque la URL mal armada la
     # responde MercadoPago con un 404 igual que un POS ID inexistente.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.45.0",
+    #
+    # 🔴 **Y desde el 2026-08-25 hay un segundo piso: v1.52.0.** Es la version
+    # donde `mercado_pago` --la grafia vieja de este POS-- salio de
+    # `medios_pago.HISTORICOS` y de `MEDIOS_ELECTRONICOS`, despues de migrar las
+    # filas que la tenian. Con un pin anterior el producto vuelve a etiquetar y
+    # a aceptar por QR una grafia que sus datos ya no tienen: no falla, y por
+    # eso hay un test que lo agarra --- `test_el_motor_pineado_ya_no_conoce_la_
+    # grafia_vieja`, que pregunta por el COMPORTAMIENTO del modulo instalado y
+    # no por este string.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.52.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

@@ -16,6 +16,7 @@ from ..services.devoluciones import DevolucionService
 from ..services import mp_qr
 from ..services.tickets import ticket_de_venta
 from libracommerce.domain.sales import SalePayment
+from libracore import medios_pago
 from libracore.db import turnos as db_turnos
 
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
@@ -131,19 +132,21 @@ def _service(request: Request) -> SaleService:
 
 #: Los medios que se cobran escaneando el QR de la caja.
 #:
-#: 🔴 **Sigue con las dos grafias, y ya no por la misma razon.** Este POS
-#: escribia `mercado_pago` con guion bajo; desde el 2026-08-24 escribe
-#: `mercadopago`, que es la clave de la familia, y `app/normalizacion_medios.py`
-#: pasa a la canonica cualquier fila vieja en cada arranque (ADR-024). O sea que
-#: la grafia vieja ya no entra ni queda en esta base.
+#: 🔴 **Sale del motor, y eso arregla un defecto vivo.** El `frozenset` escrito
+#: a mano tenia SOLO MercadoPago, asi que una venta cobrada por **Cuenta DNI o
+#: por otra billetera no sellaba la referencia del pago**: se acreditaba del
+#: lado de MercadoPago sin quedar atada a la venta, y no se notaba porque el
+#: pago entra igual. `medios_pago.MEDIOS_ELECTRONICOS` suma `billetera`,
+#: `cuenta_dni` y `qr`.
 #:
-#: La de aca abajo se conserva igual porque este `frozenset` es un ESPEJO de
-#: `libracore.medios_pago.MEDIOS_ELECTRONICOS`, que todavia la lista para el
-#: resto de la familia; sacarla de un lado solo dejaria a los dos diciendo
-#: cosas distintas. Se va cuando se vaya de alla -- el ultimo paso del trabajo,
-#: con el pin de LibraCore subido y despues de verificar que no queden filas en
-#: ninguna instancia.
-MEDIOS_QR = frozenset({"mercado_pago", "mercadopago"})
+#: ⚠️ Hasta el 2026-08-25 este conjunto llevaba **dos grafias de MercadoPago**,
+#: porque este POS escribia `mercado_pago` con guion bajo. Ya no: los datos se
+#: migraron, el selector escribe `mercadopago` y la grafia vieja salio del motor
+#: en `v1.52.0`. Que el conjunto salga de alla es lo que hace que esa baja
+#: llegue aca sola, sin que nadie se acuerde de tocar este archivo.
+#:
+#: Ver wiki/concepts/medios-de-pago-familia-libra.md.
+MEDIOS_QR = frozenset(medios_pago.MEDIOS_ELECTRONICOS)
 
 
 def _referencia_del_pago(pago: "PaymentIn", orden_qr: dict | None) -> str:
