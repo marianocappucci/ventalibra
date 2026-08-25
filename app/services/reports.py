@@ -7,11 +7,11 @@ No se agrega ninguna tabla ni estado propio -- son consultas de
 agregacion sobre datos que ya se generan al confirmar ventas y
 movimientos de stock.
 """
-import sqlite3
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from libracore.db import caja as db_caja
+from libracore.db.core import Conexion
 
 #: Zona del negocio, en un solo lugar. Argentina es UTC-3 fijo, sin horario de
 #: verano, así que el desfasaje es una constante y no hace falta una tabla de
@@ -62,7 +62,7 @@ def _to_decimal(value) -> Decimal:
 
 
 class ReportsService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
 
     def sales_summary(self, date_from: date, date_to: date) -> dict:

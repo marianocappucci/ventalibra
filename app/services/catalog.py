@@ -21,10 +21,11 @@ from libracommerce.domain.catalog import (
     ItemVariant,
     Unit,
 )
+from libracore.db.core import Conexion
 
 
 class CatalogService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 

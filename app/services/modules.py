@@ -3,13 +3,13 @@
 sembraron (fuera de `plans.TODOS_LOS_MODULOS`) nunca se gatean -- mismo
 criterio que ModuleRepository.is_enabled() de gestiolibra/medlibra.
 """
-import sqlite3
 
 from plans import TODOS_LOS_MODULOS
+from libracore.db.core import Conexion
 
 
 class ModuleRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
 
     def is_enabled(self, modulo: str) -> bool:

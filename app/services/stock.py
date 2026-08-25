@@ -4,16 +4,16 @@ Los movimientos generados por una venta confirmada viven en
 app/services/sales.py::confirm_sale -- este servicio es solo para el ajuste
 manual que un admin puede necesitar (rotura, conteo fisico, etc).
 """
-import sqlite3
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from ..commerce import repositorio
 from libracommerce.domain.inventory import StockMovement, StockMovementType
+from libracore.db.core import Conexion
 
 
 class StockService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._repo = repositorio(conn)
 
     def adjust(

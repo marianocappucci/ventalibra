@@ -8,7 +8,6 @@ wiki/entities/libracommerce.md, seccion "Capa de casos de uso".
 Flujo: crear venta en borrador -> agregar lineas (snapshot de precio/costo
 del CatalogItem al momento de agregarla) -> confirmar.
 """
-import sqlite3
 from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -18,6 +17,7 @@ from libracommerce.domain.sales import Sale, SaleItem, SalePayment, SaleStatus
 from libracommerce.usecases.sales import confirm_sale
 
 from ..db import next_sequence
+from libracore.db.core import Conexion
 
 
 class SaleNotFound(Exception):
@@ -28,12 +28,12 @@ class InvalidSaleState(Exception):
     pass
 
 
-def _next_sale_number(conn: sqlite3.Connection) -> str:
+def _next_sale_number(conn: Conexion) -> str:
     return f"POS-{next_sequence(conn, 'ventalibra_sale'):06d}"
 
 
 class SaleService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 
