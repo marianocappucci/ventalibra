@@ -41,12 +41,25 @@ def test_una_url_de_postgres_no_deja_carpetas(tmp_path, monkeypatch):
     assert not any("una-clave-secreta" in str(p) for p in Path(tmp_path).rglob("*"))
 
 
-def test_una_ruta_de_archivo_si_crea_su_carpeta(tmp_path, monkeypatch):
-    """El contrapeso: sin esto, borrar el `makedirs` entero tambien pasaria el
-    test de arriba, y romperia el arranque con SQLite."""
+def test_una_ruta_de_archivo_se_rechaza(tmp_path, monkeypatch):
+    """El contrapeso, con el invariante nuevo.
+
+    Hasta el 2026-08-25 este test exigia lo contrario: que una ruta de archivo
+    CREARA su carpeta, porque el producto todavia podia arrancar sobre SQLite.
+    Ya no puede --- `configure()` rechaza cualquier destino que no sea una URL
+    de PostgreSQL, y el modo SQLite se retiro el 2026-08-12.
+
+    Sigue siendo el contrapeso del test de arriba, y por el mismo motivo: sin
+    el, una `configure()` que rechazara TODO --- incluida la URL --- pasaria
+    aquel igual, porque tampoco dejaria carpetas.
+    """
+    import pytest
+
     monkeypatch.chdir(tmp_path)
     destino = tmp_path / "una" / "carpeta" / "nueva" / "core.db"
 
-    billing.configure(str(destino))
+    with pytest.raises(RuntimeError, match="solo sobre PostgreSQL"):
+        billing.configure(str(destino))
 
-    assert destino.parent.is_dir()
+    # Y no alcanzo a crear nada antes de rechazar.
+    assert not destino.parent.exists()
