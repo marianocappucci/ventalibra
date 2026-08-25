@@ -32,6 +32,25 @@ El destino sale de `url_de_instancia("ventalibra")`, que es **el mismo lugar**
 del que lo lee `app/asgi.py`. Es a propósito: si la cadena resolviera la base
 por su cuenta, podría migrar una y el producto servir otra, sin fallar.
 """
+import os
+import sys
+
+# 🔴 **El repo primero en `sys.path`, y no es decorativo.** `alembic` es un
+# console script en `/usr/local/bin`, así que `sys.path[0]` es ESE directorio y
+# no el cwd: sin esta línea, `from app.schema_propio import ...` de la baseline
+# resuelve contra el paquete **instalado** en site-packages.
+#
+# En una imagen de cliente da lo mismo (el paquete instalado y `/app` salen del
+# mismo commit), pero en **dev** no: el servicio monta `./:/app` y trae fuente
+# nuevo *sin reinstalar*, así que el paquete instalado se queda atrás. Medido: al
+# desplegar esto a dev, los dos contenedores quedaron en crash loop con
+# `ModuleNotFoundError: No module named 'app.schema_propio'` mientras el archivo
+# estaba ahí, montado, a la vista.
+#
+# `uvicorn` ya carga desde `/app` —por eso dev sirve el código montado—; esto
+# hace que la cadena mire lo mismo que la app. Si se saca, vuelve el crash loop.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
