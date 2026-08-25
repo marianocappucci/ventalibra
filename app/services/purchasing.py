@@ -9,7 +9,6 @@ de quantity_received/estado de esa orden. VentaLibra no reimplementa esa
 orquestacion (a diferencia de las ventas en la Fase 1, que la reimplemento
 porque LibraCommerce todavia no la ofrecia -- ver app/services/sales.py).
 """
-import sqlite3
 from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -26,6 +25,7 @@ from libracommerce.domain.purchasing import (
 from libracommerce.usecases.purchasing import confirm_purchase_receipt
 
 from ..db import next_sequence
+from libracore.db.core import Conexion
 
 
 class PurchaseOrderNotFound(Exception):
@@ -41,7 +41,7 @@ class InvalidPurchaseState(Exception):
 
 
 class PurchasingService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 

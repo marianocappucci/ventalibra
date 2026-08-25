@@ -12,7 +12,6 @@ movimientos de caja no se duplican por referencia. Un reintento después de
 una falla a mitad de camino completa lo que faltaba en vez de duplicar lo
 que ya estaba.
 """
-import sqlite3
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -22,10 +21,11 @@ from libracommerce.usecases.sales import cancel_sale, return_sale_items
 from libracore.db import reversiones
 
 from .cuenta_corriente import MEDIO_CUENTA_CORRIENTE, CuentaCorrienteService
+from libracore.db.core import Conexion
 
 
 class DevolucionService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
         self._cc = CuentaCorrienteService(conn)

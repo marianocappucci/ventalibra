@@ -5,7 +5,6 @@ VentaLibra). Aca esta lo que lo rodea: donde se guarda la configuracion del
 local, y como se resuelve una etiqueta a un producto con su cantidad.
 """
 import json
-import sqlite3
 from dataclasses import dataclass, asdict
 from decimal import Decimal
 
@@ -16,6 +15,7 @@ from libracommerce.domain.scale import (
     ScaleValueKind,
     parse_scale_barcode,
 )
+from libracore.db.core import Conexion
 
 #: Clave en `commerce_settings`. La balanza esta apagada mientras no exista.
 SCALE_FORMAT_KEY = "scale.format"
@@ -44,7 +44,7 @@ class ScanResult:
 
 
 class ScaleService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 

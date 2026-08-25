@@ -4,16 +4,16 @@ resolve_price() delega enteramente en libracommerce -- ver
 wiki/entities/libracommerce.md, seccion "Fase 4 de VentaLibra: Listas de
 precio". Este servicio solo traduce entre la API HTTP y el repositorio.
 """
-import sqlite3
 from datetime import datetime
 from decimal import Decimal
 
 from ..commerce import repositorio
 from libracommerce.domain.catalog import ItemPrice, PriceList
+from libracore.db.core import Conexion
 
 
 class PricingService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._repo = repositorio(conn)
 
     def create_price_list(self, name: str, description: str = "", is_default: bool = False) -> PriceList:

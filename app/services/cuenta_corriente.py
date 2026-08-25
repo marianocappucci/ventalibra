@@ -14,7 +14,6 @@ entra al arqueo del turno. El movimiento aparece después, cuando el cliente
 paga.
 """
 import logging
-import sqlite3
 from datetime import date
 from decimal import Decimal
 from typing import NamedTuple
@@ -23,6 +22,7 @@ from libracore.db import caja as db_caja
 from libracore.db import clients as db_clients
 from libracore.db import cuenta_corriente as db_cc
 from libracore.recibos import emitir_recibo_cobranza
+from libracore.db.core import Conexion
 
 logger = logging.getLogger("ventalibra.cuenta_corriente")
 
@@ -46,7 +46,7 @@ class Cobranza(NamedTuple):
 
 
 class CuentaCorrienteService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         # La conexión es la de LibraCommerce (clientes y ventas). LibraCore
         # abre la suya por su cuenta, contra el otro archivo.
         self._conn = conn

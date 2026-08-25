@@ -11,6 +11,7 @@ from libracommerce.db.schema import init_schema
 from libracore.db import core
 
 from .normalizacion_medios import normalizar_dominio
+from libracore.db.core import Conexion
 
 
 def connect(db_path: str):
@@ -49,7 +50,7 @@ def connect(db_path: str):
     return conn
 
 
-def init_users_schema(conn: sqlite3.Connection) -> None:
+def init_users_schema(conn: Conexion) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -65,7 +66,7 @@ def init_users_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def init_sequences_schema(conn: sqlite3.Connection) -> None:
+def init_sequences_schema(conn: Conexion) -> None:
     """Numeracion propia de VentaLibra (POS-, OC-, REC-).
 
     Antes reusaba la tabla `local_sequences` del esquema de LibraCommerce
@@ -85,7 +86,7 @@ def init_sequences_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def init_party_billing_schema(conn: sqlite3.Connection) -> None:
+def init_party_billing_schema(conn: Conexion) -> None:
     """Extension de Party para facturacion (cuit/condicion_iva), mismo
     patron que `client_billing` de Gestiolibra: tabla propia con FK a
     parties.id, nunca columnas agregadas al motor generico de LibraCommerce.
@@ -103,7 +104,7 @@ def init_party_billing_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def init_party_roles_schema(conn: sqlite3.Connection) -> None:
+def init_party_roles_schema(conn: Conexion) -> None:
     """Rol con el que se dio de alta una Party (supplier/customer), mismo
     patron que `party_billing`: tabla propia con FK a parties.id, sin
     tocar el esquema generico de LibraCommerce (Party.party_type es
@@ -128,7 +129,7 @@ def init_party_roles_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def init_modules_schema(conn: sqlite3.Connection) -> None:
+def init_modules_schema(conn: Conexion) -> None:
     """Tabla de modulos gateables por plan -- variante sqlite3 crudo del
     mismo patron que Contalibra (Gestiolibra/MedLibra usan SQLAlchemy+
     Alembic, pero VentaLibra ya es 100% sqlite3 crudo desde Fase 1).
@@ -154,7 +155,7 @@ def init_modules_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def init_mp_qr_schema(conn: sqlite3.Connection) -> None:
+def init_mp_qr_schema(conn: Conexion) -> None:
     """Las ordenes puestas a cobrar en el QR de MercadoPago de la caja.
 
     Mismo patron que `party_billing` y `party_roles`: tabla propia de este
@@ -195,7 +196,7 @@ def init_mp_qr_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def next_sequence(conn: sqlite3.Connection, name: str) -> int:
+def next_sequence(conn: Conexion, name: str) -> int:
     row = conn.execute("SELECT next_value FROM sequences WHERE name = ?", (name,)).fetchone()
     if row is None:
         conn.execute("INSERT INTO sequences (name, next_value) VALUES (?, 2)", (name,))

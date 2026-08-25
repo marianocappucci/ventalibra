@@ -2,14 +2,14 @@
 
 El repositorio ya resuelve alta/edicion/lectura por id; falta el listado.
 """
-import sqlite3
 
 from ..commerce import repositorio
 from libracommerce.domain.inventory import Location
+from libracore.db.core import Conexion
 
 
 class LocationService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 
