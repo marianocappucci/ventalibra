@@ -284,15 +284,29 @@ def test_el_recibo_ya_emitido_deja_de_imprimir_el_slug_crudo(instancia_degradada
     """🔴 `recibos.pagos` es un snapshot de un comprobante YA EMITIDO.
 
     Reescribirlo hay que justificarlo sobre el papel, no sobre la fila. Y el
-    papel **mejora**: `pdf_generator._MEDIOS_LABEL` de LibraCore nunca conocio
-    `mercado_pago`, asi que el recibo de una cobranza por MercadoPago venia
-    imprimiendo el slug crudo, con guion bajo, en la columna "Medio" de un
-    comprobante que se le entrega al cliente. Con la grafia normalizada imprime
-    la etiqueta.
+    papel **mejora**: LibraCore no sabe nombrar `mercado_pago`, asi que el
+    recibo de una cobranza por MercadoPago venia imprimiendo el slug crudo, con
+    guion bajo, en la columna "Medio" de un comprobante que se le entrega al
+    cliente. Con la grafia normalizada imprime la etiqueta.
 
     Lo demas del comprobante —importe, referencia, cliente, numero— queda
     igual: se compara el texto completo del PDF, no solo la linea del medio.
+
+    🔴 **La etiqueta esperada sale del motor, no de este archivo.** Estuvo
+    hardcodeada como `"MercadoPago"` —lo que imprimia `pdf_generator` con su
+    mapa propio— y el bump del pin la cambio a `"Mercado Pago"`, porque el
+    generador pasa a usar `medios_pago.label()`. Un literal aca ata el test a
+    una version del motor y se rompe en el proximo bump por una razon que no
+    tiene nada que ver con lo que mide.
     """
+    from libracore import medios_pago
+
+    etiqueta = medios_pago.label(CANONICA)
+    # El control de que la derivacion sirve: si el motor devolviera el slug tal
+    # cual —porque no conoce la clave—, los asserts de abajo pasarian sin que el
+    # papel diga nada legible.
+    assert etiqueta != CANONICA, f"el motor no sabe nombrar «{CANONICA}»"
+
     antes = instancia_degradada["texto_antes"]
     assert VIEJA in antes, (
         "el PDF con la grafia vieja no imprime el slug: cambio el generador y "
@@ -306,10 +320,10 @@ def test_el_recibo_ya_emitido_deja_de_imprimir_el_slug_crudo(instancia_degradada
         despues = _texto_del_pdf(pdf.content)
 
     assert VIEJA not in despues
-    assert "MercadoPago" in despues
+    assert etiqueta in despues
     # El resto del comprobante, intacto: lo unico que cambia entre los dos
     # textos es como se nombra el medio.
-    assert antes.replace(VIEJA, "MercadoPago") == despues
+    assert antes.replace(VIEJA, etiqueta) == despues
 
 
 def test_es_idempotente(instancia_degradada):
