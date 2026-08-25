@@ -722,15 +722,37 @@ reemplazadas.
   agregación sobre datos que ya se generan, sin tabla ni estado propio.
 - **`/reports/sales`**: cuenta y suma `sales` con `status='confirmed'`
   en un rango de fechas, agrupa por día, y arma un top-10 de items más
-  vendidos (`sale_items` con `kind='product'`). Decisión técnica: filtrar
-  por el **prefijo `YYYY-MM-DD` de `confirmed_at` como string**
-  (`substr(confirmed_at, 1, 10) BETWEEN ? AND ?`) en vez de las funciones
-  `date()`/`datetime()` de SQLite — `confirmed_at` se guarda con offset
-  de timezone (`...+00:00`, vía `datetime.now(timezone.utc).isoformat()`
-  en `libracommerce.usecases.sales.confirm_sale`), y comparar el prefijo
-  ISO como string evita cualquier ambigüedad de cómo SQLite parsea ese
-  formato — un string ISO bien formado siempre compara/ordena
-  correctamente de forma lexicográfica.
+  vendidos (`sale_items` con `kind='product'`).
+
+  > 🔴 **Corregido el 2026-08-24.** Acá decía: filtrar por el prefijo
+  > `YYYY-MM-DD` de `confirmed_at` como string
+  > (`substr(confirmed_at, 1, 10) BETWEEN ? AND ?`), porque `confirmed_at` se
+  > guarda con offset (`...+00:00`, vía `datetime.now(timezone.utc)`) y comparar
+  > el prefijo ISO como string evita la ambigüedad de cómo SQLite parsea ese
+  > formato.
+  >
+  > **La mitad de ese razonamiento seguía siendo cierta y la otra mitad era el
+  > defecto.** Es verdad que un ISO bien formado compara y ordena
+  > lexicográficamente. Pero el prefijo de un timestamp guardado en UTC es la
+  > fecha **UTC**, y el rango que llega por querystring son fechas **locales**:
+  > entre las 21:00 y las 24:00 de Argentina son dos días distintos, así que una
+  > venta confirmada a las 22:00 del 14 quedaba contada en el 15 — **no aparecía
+  > en el reporte del día en que se vendió**, justo en la franja de cierre.
+
+  Decisión vigente: **se convierte el rango, no la columna.** El día local
+  `[desde, hasta]` se traduce en Python a una ventana **semiabierta** de
+  instantes UTC —`[desde 03:00, hasta+1d 03:00)`— y el SQL sólo compara
+  `confirmed_at >= ? AND confirmed_at < ?`. Eso conserva la idea buena (el motor
+  no parsea ninguna fecha; alcanza la comparación lexicográfica) y arregla el
+  huso. El agrupado por día se arma en Python, porque el día es el **local**.
+
+  Se convierte del lado de Python y no del motor **a propósito**: la suite corre
+  contra los dos —SQLite en el primer paso del CI y PostgreSQL en el segundo—, y
+  una conversión en SQL habría que escribirla dos veces. Cubierto por
+  `test_una_venta_del_cierre_cuenta_en_el_dia_que_se_vendio`, que fija el
+  instante guardado en vez de depender de la hora de la corrida, con su control
+  positivo (`..._del_mediodia_no_se_mueve_de_dia`) y su control negativo (que la
+  venta **no** quede contada también en el día UTC).
 - **`/reports/caja`**: delega enteramente en
   `libracore.db.caja.get_caja_resumen(desde, hasta)` — la misma conexión
   global que ya configura `app/services/billing.py::configure()` al
