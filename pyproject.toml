@@ -22,7 +22,7 @@ dependencies = [
     # implementacion-- asi que esto es alinear la version, no adoptar una
     # funcion. `transfer_stock` queda disponible el dia que se le construya el
     # endpoint y la pantalla.
-    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.7.2",
+    "libracommerce @ git+https://github.com/marianocappucci/libracommerce.git@v0.9.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
