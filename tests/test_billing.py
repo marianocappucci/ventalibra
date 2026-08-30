@@ -43,15 +43,46 @@ def test_get_arca_config_defaults_to_none(admin_client):
 
 
 def test_set_and_get_arca_config(admin_client):
+    """🔴 La fila se crea con `venta`, que es el slug con el que
+    `services/billing.py` lee la configuracion de facturacion.
+
+    Con `default` --el valor al que caia el router del motor antes de que el
+    producto pudiera declarar el suyo-- el PUT contesta 200 y la pantalla dice
+    "Guardado", pero la facturacion no lee esa fila NUNCA: se descubre al emitir
+    el primer comprobante. Ver `empresa_por_defecto` en LibraCore v1.63.0.
+
+    El cuerpo ya no lleva los paths: el certificado se sube, y el path lo pone
+    el servidor. Ver `test_el_certificado_se_sube`.
+    """
     created = admin_client.put("/config/arca", json={
         "cuit": "30-12345678-9", "punto_venta": 1,
-        "certificado_path": "/certs/venta.crt", "clave_path": "/certs/venta.key",
     })
     assert created.status_code == 200, created.text
     assert created.json()["empresa"] == "venta"
 
     fetched = admin_client.get("/config/arca")
     assert fetched.json()["cuit"] == "30-12345678-9"
+
+
+def test_el_certificado_se_sube_y_se_valida_antes_de_escribirlo(admin_client):
+    """Subir el `.csr` --el pedido-- en vez del `.crt` que ARCA devuelve es el
+    error habitual, y antes se aceptaba: el router propio escribia el path que
+    le mandaran sin mirar nada, y fallaba recien al emitir."""
+    r = admin_client.post(
+        "/config/arca/certificado",
+        files={"archivo": ("pedido.pem", b"-----BEGIN CERTIFICATE REQUEST-----", "text/plain")},
+    )
+    assert r.status_code == 422
+    assert "certificado" in r.json()["detail"].lower()
+
+
+def test_el_estado_dice_si_la_instancia_puede_facturar(admin_client):
+    """🔑 Trae el vencimiento del certificado, que es el dato que evita la falla
+    silenciosa: duran dos anos y el dia que vencen la facturacion deja de andar
+    sin que nadie haya tocado nada."""
+    r = admin_client.get("/config/arca/estado")
+    assert r.status_code == 200
+    assert r.json()["configurado"] is False
 
 
 def test_confirm_without_invoice_flag_does_not_bill(admin_client):

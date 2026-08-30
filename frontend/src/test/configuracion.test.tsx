@@ -20,6 +20,7 @@ import { MemoryRouter, Route, Routes, Navigate } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Configuracion } from '../pages/Configuracion'
+import { REDIRECCIONES_DE_CONFIGURACION } from '../rutas-viejas'
 
 function json(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -45,35 +46,30 @@ beforeEach(() => {
   }))
 })
 
+/** 🔴 Las redirecciones salen de `REDIRECCIONES_DE_CONFIGURACION`, la MISMA
+ *  tabla que monta `App.tsx`. Hasta el 2026-08-30 este archivo las escribia de
+ *  nuevo, asi que medía su propia copia: cuando el destino de ARCA cambio --de
+ *  pestaña de primer nivel a sub-seccion de "Integraciones"-- estos tests
+ *  siguieron pasando sobre la ruta vieja mientras la app redirigia a otro
+ *  lado. Un doble de prueba que reimplementa lo que mide no mide nada. */
 const montar = (ruta = '/configuracion') =>
   render(
     <MemoryRouter initialEntries={[ruta]}>
       <Routes>
         <Route path="/configuracion" element={<Configuracion />} />
-        <Route path="/config-arca" element={<Navigate to="/configuracion?seccion=arca" replace />} />
-        <Route path="/config-balanza" element={<Navigate to="/configuracion?seccion=balanza" replace />} />
-        <Route path="/config-ticket" element={<Navigate to="/configuracion?seccion=ticket" replace />} />
+        {Object.entries(REDIRECCIONES_DE_CONFIGURACION).map(([desde, hacia]) => (
+          <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
+        ))}
       </Routes>
     </MemoryRouter>,
   )
 
 
 describe('Las secciones de VentaLibra', () => {
-  it('están las siete que le corresponden', async () => {
-    montar()
-
-    // ⚠️ **La lista crece con las secciones.** Decía "las seis" hasta el
-    // 2026-08-23, cuando entró Mercado Pago. Un guard que cubre "las N de
-    // entonces" deja a la siguiente naciendo sin cobertura, y una sección que
-    // falta no rompe nada: simplemente no aparece, y nadie lo nota.
-    for (const seccion of [
-      'Empresa', 'Correo', 'Datos / Backup', 'ARCA', 'Balanza', 'Ticket',
-      'Mercado Pago',
-    ]) {
-      expect(await screen.findByRole('tab', { name: new RegExp(seccion) }))
-        .toBeInTheDocument()
-    }
-  })
+  // El listado de pestañas se fue a `configuracion-forma.test.tsx`, que además
+  // afirma el ORDEN y las dos ausencias que importan (el webhook de MercadoPago
+  // y la ruta del certificado de ARCA). Acá queda lo que es propio de este
+  // archivo: por dónde se entra.
 
   it('arranca en Empresa, que es lo que se carga una vez y no se toca más', async () => {
     montar()
@@ -86,13 +82,17 @@ describe('Las secciones de VentaLibra', () => {
 
 
 describe('Las tres pantallas viejas', () => {
-  it('/config-arca lleva a la sección de ARCA', async () => {
+  it('/config-arca lleva a la sección de ARCA, adentro de Integraciones', async () => {
+    // ⚠️ Con `?seccion=arca` a secas la redirección NO falla: aterriza en
+    // Empresa. Por eso se afirman las dos cosas —la pestaña marcada y el
+    // contenido— y no sólo que la navegación no rompió.
     montar('/config-arca')
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: /ARCA/ }))
+      expect(screen.getByRole('tab', { name: /Integraciones/ }))
         .toHaveAttribute('aria-selected', 'true')
     })
+    expect(screen.getByText('ARCA (facturación electrónica)')).toBeInTheDocument()
   })
 
   it('/config-balanza lleva a la sección de Balanza', async () => {

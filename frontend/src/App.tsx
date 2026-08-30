@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
+import { REDIRECCIONES_DE_CONFIGURACION } from './rutas-viejas'
 import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
@@ -122,10 +123,14 @@ export default function App() {
       />
       {/* Las tres pantallas sueltas pasaron a ser secciones. Se redirigen en
           vez de borrarse: son links que pueden estar en un favorito o en un
-          mensaje, y un 404 en Configuración parece que se rompió el sistema. */}
-      <Route path="/config-arca" element={<Navigate to="/configuracion?seccion=arca" replace />} />
-      <Route path="/config-balanza" element={<Navigate to="/configuracion?seccion=balanza" replace />} />
-      <Route path="/config-ticket" element={<Navigate to="/configuracion?seccion=ticket" replace />} />
+          mensaje, y un 404 en Configuración parece que se rompió el sistema.
+
+          La tabla vive en `rutas-viejas.ts` para que el test no pueda medir una
+          copia distinta de la que la app usa — ver el docstring de ese
+          archivo. */}
+      {Object.entries(REDIRECCIONES_DE_CONFIGURACION).map(([desde, hacia]) => (
+        <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
+      ))}
       <Route
         path="/reportes"
         element={

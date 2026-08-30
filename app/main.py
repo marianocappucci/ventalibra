@@ -18,6 +18,8 @@ from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
 from libracommerce.db.auditoria import ActividadRepository, entidades as entidades_auditadas
 from libracore import config_manager
+from libracore.arca_router import build_arca_router
+from libracore.mp_config_router import build_mp_config_router
 from libracore.config_router import (
     build_backup_router, build_empresa_admin_router, build_empresa_router,
 )
@@ -29,7 +31,6 @@ from . import db
 from .auth import build_session_auth, require_admin, require_admin_o_servicio, require_staff
 from .modules_gate import require_module
 from .routers import auth as auth_router
-from .routers import billing as billing_router
 from .routers import (
     accounts, catalog, customers, health, locations, pricing, purchasing, reports,
     sales, settings as settings_router, shifts, stock, suppliers,
@@ -194,7 +195,28 @@ def create_app(db_path: str) -> FastAPI:
     # `admin_only` seria ampliar el permiso sin necesidad.
     app.include_router(users_router.router, dependencies=[Depends(require_admin_o_servicio)])
     app.include_router(
-        billing_router.router, dependencies=admin_only + [Depends(require_module("facturacion"))],
+        # 🔴 `empresa_por_defecto` es el slug con el que `services/billing.py`
+        # lee la configuracion de facturacion (`EMPRESA = "venta"`). En una
+        # instancia que todavia no facturo no hay fila, y el primer guardado la
+        # crea: sin esto la crearia como `default`, donde ese servicio no mira
+        # nunca. El PUT contesta 200, la pantalla dice "Guardado", y el primer
+        # comprobante falla con "ARCA no esta configurado".
+        #
+        # La pantalla compartida ya manda el slug, pero un script, el backoffice
+        # o un curl no tienen por que saberlo. Ver LibraCore v1.63.0.
+        build_arca_router(prefix="/config/arca", empresa_por_defecto=billing.EMPRESA),
+        dependencies=admin_only + [Depends(require_module("facturacion"))],
+    )
+    # MercadoPago, del motor. Reemplaza al `GET`/`PUT /settings/mercadopago`
+    # propio, que devolvia el ACCESS TOKEN EN CLARO en el JSON de una pantalla.
+    #
+    # Escribe las MISMAS claves de `config.json`, asi que `mp_qr` y el POS no se
+    # enteran: no hay dato que migrar. Lo que suma es el token enmascarado, el
+    # boton que le pregunta a MercadoPago si el token sirve, y una puerta para
+    # desconectar la cuenta --con "vacio = no lo toques" no habia otra forma--.
+    app.include_router(
+        build_mp_config_router(),
+        dependencies=admin_only + [Depends(require_module("facturacion"))],
     )
     app.include_router(catalog.router, dependencies=staff_or_admin)
     app.include_router(pricing.router, dependencies=staff_or_admin)
