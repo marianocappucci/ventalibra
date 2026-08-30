@@ -13,6 +13,12 @@ data/*.db-shm
 /clientes/
 dev-data/
 
+# La config de la instancia: guarda el Access Token de MercadoPago y la
+# contraseña de SMTP. Los otros cuatro productos con esta pantalla ya la
+# ignoraban y VentaLibra era el único que no — con el bind mount `./:/app` del
+# servicio -dev, el archivo cae en la raíz del checkout del VPS.
+config.json
+
 # Config de NPM (credenciales de Nginx Proxy Manager para scripts/npm_*.py).
 scripts/.npm_config.json
 
