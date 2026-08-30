@@ -116,3 +116,41 @@ def test_la_instancia_de_dev_corre_las_mismas_migraciones_que_el_deploy(script):
             "esquema viejo."
         )
         cursor = pos + len(texto)
+
+
+def test_la_instancia_de_dev_declara_el_SMTP_que_el_motor_va_a_buscar():
+    """El correo saliente de dev, que este producto tiene **por historia**.
+
+    `resolver_smtp_config` cae al entorno cuando no hay nada guardado en la
+    base. Si el compose de dev no declara las variables, esa caída devuelve una
+    config vacía: la app levanta igual, `/auth/forgot-password` contesta 200, y
+    el mail no sale. No hay error en ningún lado.
+
+    🔴 **No es hipotético: le pasó a LibraClub y a LibraCargo**, que no las
+    declaraban y estuvieron meses sin poder mandar un solo mail desde dev. Acá
+    estaban desde siempre, y eso es exactamente el motivo de escribir el test —
+    lo que nadie exige se puede perder en cualquier limpieza del compose, y el
+    modo de fallar no da error.
+
+    🔑 **Se aserta sobre los NOMBRES declarados, no sobre valores.** Los valores
+    viven en el `.env` del VPS y no están en el repo; lo que este test puede
+    sostener es que el compose los deje pasar. Contar los nombres adentro del
+    contenedor **no** distingue configurado de vacío —el default es vacío—, así
+    que ese chequeo va acá, sobre el compose, y la comprobación del valor se
+    hace autenticando contra el servidor de correo.
+    """
+    bloque = _bloque_del_servicio_de_dev()
+    faltan = [v for v in (
+        "LIBRAAUTH_SMTP_HOST", "LIBRAAUTH_SMTP_PORT", "LIBRAAUTH_SMTP_USER",
+        "LIBRAAUTH_SMTP_PASSWORD", "LIBRAAUTH_SMTP_FROM_EMAIL",
+        "LIBRAAUTH_SMTP_FROM_NAME",
+    ) if not re.search(rf"^\s+- {v}=", bloque, re.MULTILINE)]
+    assert not faltan, (
+        "el servicio de dev del compose no declara " + ", ".join(faltan) + ": "
+        "la instancia de dev va a levantar sana y sin poder mandar un solo "
+        "mail, sin dar error en ningún lado."
+    )
+    # El control: que el `- VAR=` de arriba sea capaz de NO matchear. Sin esto,
+    # un patrón mal escrito daría la lista vacía y el test pasaría siempre.
+    assert re.search(r"^\s+- LIBRAAUTH_SMTP_HOST=", bloque, re.MULTILINE)
+    assert not re.search(r"^\s+- LIBRAAUTH_SMTP_INVENTADA=", bloque, re.MULTILINE)
