@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from libracommerce.domain.scale import ScaleFormat, ScaleValueKind
 from libracore import config_manager
 
-from ..services import mp_qr
 from ..services.scale import ScaleService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -110,71 +109,15 @@ def set_ticket(data: TicketConfigIn, request: Request):
     return get_ticket(request)
 
 
-class MercadoPagoConfigIn(BaseModel):
-    #: El de la aplicación de MercadoPago del comercio. Es el que firma todas
-    #: las llamadas a su API.
-    access_token: str = ""
-    #: El **collector id** de la cuenta: el `id` que devuelve `GET /users/me`.
-    #: Va en la URL de la orden, no en un header.
-    user_id: str = ""
-    #: El **external_id** de la caja creada en MercadoPago, no su nombre ni su
-    #: id numérico. Una caja sin `external_id` cargado no es direccionable por
-    #: esta API, y el síntoma es un 404 que no dice eso.
-    pos_id: str = ""
-    #: Si al acreditarse el pago se emite la factura sola.
-    auto_facturar: bool = False
-
-
-class MercadoPagoConfigOut(MercadoPagoConfigIn):
-    #: Si las tres credenciales están cargadas. Se calcula acá y no en la
-    #: pantalla para que sea el mismo criterio que usa el POS —
-    #: `mp_qr.esta_configurado()` — y no dos reglas que puedan divergir.
-    configurado: bool = False
-
-
-def _mercadopago_out(cfg: dict) -> MercadoPagoConfigOut:
-    return MercadoPagoConfigOut(
-        access_token=str(cfg.get("mp_access_token") or ""),
-        user_id=str(cfg.get("mp_user_id") or ""),
-        pos_id=str(cfg.get("mp_pos_id") or ""),
-        auto_facturar=bool(cfg.get("mp_auto_facturar_ventas")),
-        configurado=mp_qr.esta_configurado(),
-    )
-
-
-@router.get("/mercadopago", response_model=MercadoPagoConfigOut)
-def get_mercadopago():
-    """Las credenciales del QR de la caja.
-
-    Devuelve el access token en claro, igual que Contalibra: el router entero
-    es admin-only y sin devolverlo la pantalla no podría editarlo sin
-    obligar a retipearlo entero en cada cambio de POS ID. El frontend lo
-    muestra como campo de contraseña.
-    """
-    return _mercadopago_out(mp_qr.cargar_config())
-
-
-@router.put("/mercadopago", response_model=MercadoPagoConfigOut)
-def set_mercadopago(data: MercadoPagoConfigIn):
-    """Guarda las credenciales del QR.
-
-    🔴 **Se carga la config entera, se actualizan las cuatro claves y se
-    guarda.** `config_manager.save()` mergea contra los DEFAULTS, así que
-    guardar un dict con sólo estas cuatro dejaría el resto de `config.json`
-    —empresa, SMTP, ticket— en su valor por defecto. Es un borrado silencioso:
-    el PUT contesta 200 y lo que se perdió recién se nota cuando alguien va a
-    imprimir un ticket.
-    """
-    cfg = mp_qr.cargar_config()
-    cfg.update({
-        "mp_access_token": data.access_token.strip(),
-        "mp_user_id": data.user_id.strip(),
-        "mp_pos_id": data.pos_id.strip(),
-        "mp_auto_facturar_ventas": data.auto_facturar,
-    })
-    mp_qr.guardar_config(cfg)
-    return _mercadopago_out(mp_qr.cargar_config())
-
+# 🔴 Los endpoints de MercadoPago se fueron el 2026-08-30: los sirve ahora
+# `libracore.mp_config_router`, montado en `/api/config/mercadopago` (ver
+# `app/main.py`). Los que vivian aca devolvian el ACCESS TOKEN EN CLARO en el
+# JSON de una pantalla; el del motor lo devuelve enmascarado.
+#
+# `mp_qr.esta_configurado()` no cambia y sigue siendo el criterio del POS: el
+# router del motor escribe las MISMAS claves de `config.json`
+# (`mp_access_token`, `mp_user_id`, `mp_pos_id`, `mp_auto_facturar_ventas`),
+# asi que no hay dato que migrar.
 
 def _to_dict(fmt: ScaleFormat) -> dict:
     return {
