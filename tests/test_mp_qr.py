@@ -58,12 +58,20 @@ def _borrador_con_item(client, cantidad="2", price="1500.00"):
     return sale_id, location_id
 
 
+#: Las credenciales las sirve `libracore.mp_config_router` desde el 2026-08-30,
+#: en `/api/config/mercadopago`. El endpoint propio que vivia en
+#: `/settings/mercadopago` devolvia el ACCESS TOKEN EN CLARO; el del motor lo
+#: devuelve enmascarado. Escribe las MISMAS claves de `config.json`, asi que
+#: `mp_qr` y el POS no se enteran.
+RUTA_MP = "/api/config/mercadopago"
+
+
 def _configurar_mp(client, auto_facturar=False):
-    guardada = client.put("/settings/mercadopago", json={
-        "access_token": "APP_USR-token-de-prueba",
-        "user_id": "123456789",
-        "pos_id": "CAJA01",
-        "auto_facturar": auto_facturar,
+    guardada = client.put(RUTA_MP, json={
+        "mp_access_token": "APP_USR-token-de-prueba",
+        "mp_user_id": "123456789",
+        "mp_pos_id": "CAJA01",
+        "mp_auto_facturar_ventas": auto_facturar,
     })
     assert guardada.status_code == 200, guardada.text
     return guardada.json()
@@ -133,23 +141,64 @@ def test_falta_uno_solo_de_los_tres_y_sigue_sin_estar_configurado(admin_client):
 
     Sin esta comprobación, una instancia a medio configurar pasaría el chequeo
     y MercadoPago devolvería un 404 que no dice qué falta.
+
+    🔴 Se afirma sobre `mp_qr.esta_configurado()` y no sobre la respuesta del
+    endpoint. El router del motor no devuelve un `configurado`: ese calculo es
+    del POS, y la pantalla lo repite del lado del cliente. Preguntarle al
+    servicio es preguntarle a quien de verdad decide si el QR cobra.
     """
-    for faltante in ("access_token", "user_id", "pos_id"):
+    for faltante in ("mp_user_id", "mp_pos_id"):
         datos = {
-            "access_token": "APP_USR-x", "user_id": "1", "pos_id": "CAJA01",
-            "auto_facturar": False,
+            "mp_access_token": "APP_USR-x", "mp_user_id": "1", "mp_pos_id": "CAJA01",
+            "mp_auto_facturar_ventas": False,
         }
         datos[faltante] = ""
-        guardada = admin_client.put("/settings/mercadopago", json=datos)
+        guardada = admin_client.put(RUTA_MP, json=datos)
         assert guardada.status_code == 200, guardada.text
-        assert guardada.json()["configurado"] is False, faltante
+        assert mp_qr.esta_configurado() is False, faltante
 
     # Control positivo: con los tres cargados sí queda configurado. Sin esto,
     # un `esta_configurado()` que devolviera siempre False pasaría el test.
-    assert admin_client.put("/settings/mercadopago", json={
-        "access_token": "APP_USR-x", "user_id": "1", "pos_id": "CAJA01",
-        "auto_facturar": False,
-    }).json()["configurado"] is True
+    admin_client.put(RUTA_MP, json={
+        "mp_access_token": "APP_USR-x", "mp_user_id": "1", "mp_pos_id": "CAJA01",
+        "mp_auto_facturar_ventas": False,
+    })
+    assert mp_qr.esta_configurado() is True
+
+
+def test_el_token_vacio_NO_borra_el_que_estaba(admin_client):
+    """🔴 Es la diferencia de contrato con el endpoint propio que se fue.
+
+    La pantalla muestra el token **enmascarado**, no el token. Si mandar el
+    campo vacio lo borrara, guardar el POS ID desconectaria la cuenta sin que
+    nadie lo pidiera. Vacio significa "no lo toques", igual que la contrasena
+    de SMTP.
+    """
+    _configurar_mp(admin_client)
+    admin_client.put(RUTA_MP, json={
+        "mp_access_token": "", "mp_user_id": "123456789", "mp_pos_id": "CAJA02",
+    })
+    assert config_manager.load()["mp_access_token"] == "APP_USR-token-de-prueba"
+    assert config_manager.load()["mp_pos_id"] == "CAJA02"
+    assert mp_qr.esta_configurado() is True
+
+
+def test_para_desconectar_la_cuenta_hay_una_puerta_propia(admin_client):
+    """Con "vacio = no lo toques" no habria otra forma de sacar el token, y el
+    comercio quedaria atado a la cuenta que cargo la primera vez."""
+    _configurar_mp(admin_client)
+    r = admin_client.delete(f"{RUTA_MP}/credenciales")
+    assert r.status_code == 200, r.text
+    assert config_manager.load()["mp_access_token"] == ""
+    assert mp_qr.esta_configurado() is False
+
+
+def test_el_token_no_vuelve_en_claro_por_la_API(admin_client):
+    """El endpoint propio lo devolvia entero en el JSON de una pantalla."""
+    _configurar_mp(admin_client)
+    visible = admin_client.get(RUTA_MP).json()
+    assert visible["mp_access_token"] != "APP_USR-token-de-prueba"
+    assert visible["mp_access_token_cargado"] is True
 
 
 # ── La orden en la caja ──────────────────────────────────────────────────
@@ -448,7 +497,7 @@ def test_el_toggle_de_la_automatica_sobrevive_a_recargar_la_config(admin_client)
     """`mp_auto_facturar_ventas` no está en los DEFAULTS de LibraCore: viaja
     como `extra_defaults`. Leerla con un `load()` pelado la perdería."""
     _configurar_mp(admin_client, auto_facturar=True)
-    assert admin_client.get("/settings/mercadopago").json()["auto_facturar"] is True
+    assert admin_client.get(RUTA_MP).json()["mp_auto_facturar_ventas"] is True
     assert mp_qr.auto_facturar_prendida() is True
     # Y el `config.json` en disco lo tiene de verdad, no sólo el default en
     # memoria: se lee con el `load()` genérico, sin los extra_defaults.
