@@ -5,6 +5,19 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **La pantalla dice de qué ambiente es el token de MercadoPago**: `Ambiente de
+  prueba`, `Ambiente de producción` o `Ambiente sin verificar`, con la fecha en
+  que se determinó. 🔴 MercadoPago **no tiene homologación como ARCA** — no hay
+  host de sandbox, es el mismo `api.mercadopago.com` y lo que define el ambiente
+  es el token. Sin el cartel las dos fallas son mudas: un token de producción en
+  una instancia `dev` **cobra plata de verdad** y uno de prueba en la instancia
+  de un comercio **no cobra nada**, y las dos se ven igual — el QR de caja se
+  genera y la orden se crea. Mirar el prefijo no alcanza, porque un *usuario de
+  prueba* de MercadoPago entrega credenciales `APP_USR-` igual que las reales:
+  lo único que lo delata es el `nickname` de `/users/me`, así que quien clasifica
+  es **Probar conexión**, que ahora recarga la sección. La clasificación lleva la
+  huella del token, así que si la credencial cambia por cualquier vía se descarta
+  sola. Pines: `libracore` v1.65.0 y `libra-ui` v0.54.0.
 - **La grafía de MercadoPago, normalizada** (ver ADR-024): este POS escribía
   el medio como `mercado_pago` y el resto de la familia usa `mercadopago`. Era
   la última divergencia del vocabulario, y no se podía cambiar el selector sin
