@@ -154,3 +154,73 @@ def test_la_instancia_de_dev_declara_el_SMTP_que_el_motor_va_a_buscar():
     # un patrón mal escrito daría la lista vacía y el test pasaría siempre.
     assert re.search(r"^\s+- LIBRAAUTH_SMTP_HOST=", bloque, re.MULTILINE)
     assert not re.search(r"^\s+- LIBRAAUTH_SMTP_INVENTADA=", bloque, re.MULTILINE)
+
+
+def _raiz() -> pathlib.Path:
+    return pathlib.Path(__file__).parent.parent
+
+
+def _esta_ignorado(ruta: str) -> bool:
+    """Le pregunta a git, que es quien decide. Leer el `.gitignore` a mano no
+    entiende negaciones ni precedencia."""
+    import subprocess
+
+    return subprocess.run(
+        ["git", "check-ignore", "-q", ruta],
+        cwd=_raiz(), capture_output=True,
+    ).returncode == 0
+
+
+def test_el_dev_declara_DATA_DIR_y_apunta_a_una_carpeta_ignorada():
+    """🔴 El `config.json` de la instancia de dev NO puede caer en el checkout.
+
+    Este servicio monta **todo el repo** (`./:/app`). Sin `DATA_DIR`,
+    `libracore.config_manager` cae a `os.getcwd()` y escribe `/app/config.json`,
+    que en el VPS es `/root/ventalibra/config.json` — adentro del repo. Y ese
+    archivo guarda el **Access Token de MercadoPago** y la contraseña de SMTP.
+
+    Medido el 2026-08-30 sobre el VPS: los otros tres `-dev` de la familia
+    (Contalibra, Restolibra, Gestiolibra) declaraban la variable y VentaLibra
+    era el único que no. El síntoma es mudo — la pantalla guarda, dice
+    "Guardado", y el archivo aparece donde no va.
+
+    No alcanza con exigir que la variable exista: se exige que **la carpeta a la
+    que apunta esté ignorada por git**. Un `DATA_DIR=/app` volvería a poner el
+    archivo en la raíz del repo cumpliendo un guard que sólo mirara la clave.
+    """
+    bloque = _bloque_del_servicio_de_dev()
+    declarada = re.search(r"^\s+-\s+DATA_DIR=(\S+)\s*$", bloque, re.M)
+    assert declarada, (
+        "el servicio de dev no declara DATA_DIR: su config.json —con el token "
+        "de MercadoPago adentro— va a caer en la raíz del checkout, porque "
+        "este servicio monta `./:/app`.")
+
+    destino = declarada.group(1).rstrip("/")
+    assert destino not in ("/app", ""), (
+        f"DATA_DIR={destino} es la raíz del bind mount, o sea el checkout "
+        "entero: es exactamente el caso que este guard existe para impedir.")
+
+    relativa = destino.removeprefix("/app/")
+    assert _esta_ignorado(f"{relativa}/cualquier-cosa"), (
+        f"DATA_DIR apunta a `{destino}`, pero `{relativa}/` no está en el "
+        ".gitignore: el config.json quedaría versionable igual.")
+
+
+def test_el_config_json_de_la_raiz_esta_ignorado():
+    """La segunda mitad, y a propósito por separado.
+
+    El guard de arriba mueve el archivo; éste protege el caso de que alguien
+    saque `DATA_DIR` de nuevo. Si los dos vivieran en un solo test, sacar la
+    variable pondría en rojo una sola cosa y no se sabría cuál de las dos
+    defensas falta.
+
+    El control de que el chequeo mide algo: un archivo que **no** puede estar
+    ignorado tiene que dar `False`. Sin eso, un `check-ignore` que devolviera
+    siempre 0 —por correr fuera de un repo, por ejemplo— pasaría en verde.
+    """
+    assert _esta_ignorado("config.json"), (
+        "`config.json` no está en el .gitignore. Guarda el Access Token de "
+        "MercadoPago y la contraseña de SMTP; los otros cuatro productos de la "
+        "familia con esta pantalla ya lo ignoraban.")
+    assert not _esta_ignorado("pyproject.toml"), (
+        "el chequeo de ignorados da 0 para TODO: no está midiendo nada.")

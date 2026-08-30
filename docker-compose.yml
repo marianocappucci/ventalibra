@@ -103,6 +103,19 @@ services:
       - TZ=America/Argentina/Buenos_Aires
       - VENTALIBRA_ADMIN_USERNAME=${VENTALIBRA_ADMIN_USERNAME:-admin}
       - VENTALIBRA_ADMIN_PASSWORD=${VENTALIBRA_ADMIN_PASSWORD:-}
+      # 🔴 Sin esto, `libracore.config_manager` cae a `os.getcwd()` y guarda
+      # `config.json` en `/app`, que acá es el bind mount de **todo el
+      # checkout** (`./:/app`): el archivo termina en `/root/ventalibra/` del
+      # VPS, adentro del repo. Y `config.json` guarda el Access Token de
+      # MercadoPago y la contraseña de SMTP.
+      #
+      # Los otros tres `-dev` de la familia (Contalibra, Restolibra,
+      # Gestiolibra) ya declaran esta variable; VentaLibra era el único que no,
+      # y también el único cuyo `.gitignore` no cubría `config.json`. Las dos
+      # mitades se arreglan juntas: la variable mueve el archivo a una carpeta
+      # ya ignorada, y la regla del `.gitignore` lo protege si alguien vuelve a
+      # sacar la variable.
+      - DATA_DIR=/app/dev-data
       # 🔴 El corte a PostgreSQL. Las dos variables apuntan al MISMO schema:
       # las tablas del dominio y las de LibraCore conviven ahí, que es lo que
       # ya hacían las dos bases SQLite de `dev-data/`.
