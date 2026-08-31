@@ -71,3 +71,38 @@ def test_borrar_vuelve_al_entorno(admin_client):
 
 def test_host_vacio_da_422(admin_client):
     assert admin_client.put("/admin/smtp", json={"host": "   "}).status_code == 422
+
+# ------------------------------------------------------- probar la conexion
+
+def test_probar_la_conexion(admin_client, staff_client):
+    """`POST /admin/smtp/probar`, del motor (libracore v1.69.0).
+
+    🔴 **Las tres cosas en un solo test, y es a proposito.** `admin_client` arma
+    una app nueva por test y su pool queda vivo --`fresh_database_url()` suelta
+    el engine de LibraGenda y no el resto--, asi que cada test que lo pide
+    cuesta conexiones para el resto de la corrida. Esta suite pasaba con el
+    cupo por defecto de PostgreSQL (100) **sin margen**: partido en tres tests,
+    el CI moria con "too many clients" a mitad de camino, en los tests del medio
+    y no en estos. `staff_client` cuelga de `admin_client`, asi que pedir los dos
+    aca comparte la app.
+
+    Lo que se prueba:
+
+    1. Que la ruta EXISTA. Sin SMTP cargado contesta 400 y dice que falta
+       completar la pantalla --pero contesta--. Sin la linea de montaje seria
+       404, la app arrancaria igual, y el boton de la pantalla compartida
+       quedaria muerto sin que nada fallara.
+    2. El control de lo anterior: una ruta inventada colgada del mismo prefijo
+       **no** contesta. Sin esto, el 400 no distingue "montado" de "cualquier
+       cosa bajo /admin/smtp responde".
+    3. Que sea de administrador. Se prueba con un usuario de **staff** y no con
+       uno anonimo: al anonimo lo rechaza la sesion y no diria nada sobre el
+       gate de rol.
+    """
+    r = admin_client.post("/admin/smtp/probar")
+    assert r.status_code == 400, r.text
+    assert "Complet" in r.json()["detail"]
+
+    assert admin_client.post("/admin/smtp/inventado").status_code in (404, 405)
+
+    assert staff_client.post("/admin/smtp/probar").status_code == 403
