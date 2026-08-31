@@ -24,6 +24,7 @@ from libracore.config_router import (
     build_backup_router, build_empresa_admin_router, build_empresa_router,
 )
 from libracore.respaldo import Instancia
+from libracore.smtp_router import build_smtp_probe_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -111,6 +112,15 @@ def create_app(db_path: str) -> FastAPI:
     ensure_demo_user(user_repository)
 
     app = FastAPI(title="VentaLibra")
+
+    # 🔴 Colgado de la app para poder SOLTARLO. En produccion la app es una y
+    # vive lo que vive el proceso, asi que da igual; en la suite cada test arma
+    # una app nueva y este engine deja un pool vivo por test. Contra SQLite no
+    # se notaba --un `StaticPool` de una conexion que se recolecta sola--, pero
+    # contra PostgreSQL son conexiones TCP que se acumulan hasta
+    # `max_connections`, y el sintoma son errores de conexion en tests que no
+    # tienen nada que ver con el que los causo.
+    app.state.auth_engine = auth_engine
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
@@ -162,6 +172,18 @@ def create_app(db_path: str) -> FastAPI:
     # quien pueda escribir ahí puede redirigir a dónde salen los enlaces de
     # recuperación de contraseña de todos los usuarios.
     app.include_router(build_smtp_settings_router())
+    # `POST /admin/smtp/probar`, del motor: abre la conexion, negocia TLS y
+    # hace login.
+    #
+    # 🔑 Resuelve por el MISMO camino que los envios, y por eso el boton
+    # significa algo: un endpoint que probara otra config diria "Conectado"
+    # contra un servidor mientras los mails salen por otro. El gate va afuera
+    # porque el router del motor no trae ninguno propio, y esto abre una
+    # sesion SMTP con las credenciales del cliente.
+    app.include_router(
+        build_smtp_probe_router(lambda: resolver_smtp_config(auth_sessions)),
+        dependencies=[Depends(require_admin)],
+    )
     # `GET /terminos`, `POST /terminos/aceptar`, `GET /terminos/historial`.
     # NO se gatea desde afuera: es el unico camino para salir del gate.
     app.include_router(build_terminos_router())
