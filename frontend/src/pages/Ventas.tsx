@@ -5,7 +5,7 @@
 // el cliente vuelve con el producto — era imposible.
 import { useEffect, useState } from 'react'
 import {
-  api, ApiError, type Sale, type SaleListItem, type SaleStatus,
+  api, ApiError, type MpCobroSinVenta, type Sale, type SaleListItem, type SaleStatus,
 } from '../api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
+import { AlertTriangle, Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha } from '@/lib/fechas'
 
@@ -60,8 +60,27 @@ export function Ventas() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [abierta, setAbierta] = useState<number | null>(null)
+  const [sinVenta, setSinVenta] = useState<MpCobroSinVenta[]>([])
 
   useEffect(() => { cargar() }, [])
+
+  // 🔴 **Plata que entró y no quedó registrada.** Es el agujero que este
+  // producto declara: el orden es "primero la plata, después la venta", así que
+  // si el navegador se muere entre el poll y la confirmación el cobro está en
+  // MercadoPago y no en la caja.
+  //
+  // La orden aprobada se guardaba desde siempre, pero sólo se la consultaba
+  // **por venta**: sólo aparecía si alguien volvía a abrir ESE borrador. Acá se
+  // busca al revés, y por eso el aviso va en la pantalla donde el encargado
+  // busca ventas, no escondido en un reporte.
+  //
+  // Un error acá NO rompe la pantalla: el historial de ventas tiene que seguir
+  // funcionando aunque este chequeo falle.
+  useEffect(() => {
+    api.get<MpCobroSinVenta[]>('/sales/mp/cobros-sin-venta')
+      .then(setSinVenta)
+      .catch(() => setSinVenta([]))
+  }, [])
 
   async function cargar(search = '') {
     setLoading(true)
@@ -80,6 +99,43 @@ export function Ventas() {
   return (
     <div className="grid gap-4">
       <TituloPantalla icono={ReceiptText}>Ventas</TituloPantalla>
+
+      {sinVenta.length > 0 && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+              {sinVenta.length === 1
+                ? 'Hay un cobro que entró y quedó sin registrar'
+                : `Hay ${sinVenta.length} cobros que entraron y quedaron sin registrar`}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            <p className="text-muted-foreground">
+              El cliente pagó por QR y la venta no llegó a confirmarse —se cerró
+              la pantalla, se cortó la conexión—. La plata está en MercadoPago y
+              no en la caja. Abrí el borrador desde el mostrador para cerrarlo.
+            </p>
+            {sinVenta.map((c) => (
+              <div key={c.external_reference}
+                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-2">
+                <span>
+                  Borrador <strong>#{c.sale_id}</strong>
+                  {c.acreditado_el && (
+                    <span className="text-muted-foreground"> · {fecha(c.acreditado_el)}</span>
+                  )}
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    pago {c.payment_id}
+                  </span>
+                  <strong>${money(c.amount)}</strong>
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <form
         className="flex gap-2"

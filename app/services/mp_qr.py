@@ -161,6 +161,42 @@ def orden_acreditada(conn, sale_id: int) -> dict | None:
     return _a_dict(fila)
 
 
+def cobros_sin_venta(conn) -> list[dict]:
+    """Cobros que MercadoPago acredito y cuya venta quedo **sin confirmar**.
+
+    🔴 **Es el agujero que este producto declara en el docstring de arriba y no
+    vigilaba nadie.** El orden es "primero la plata, despues la venta", asi que
+    si el navegador se muere entre el poll y la confirmacion --se cierra la
+    pestana, se corta la luz, el cajero atiende a otro-- la plata entro y la
+    venta no quedo registrada.
+
+    La orden aprobada se guarda justamente para eso, pero hasta hoy solo se la
+    consultaba **por venta** (`orden_acreditada(conn, sale_id)`): la
+    mitigacion funcionaba unicamente si alguien volvia a abrir ESE borrador. Si
+    nadie lo abria, la plata estaba en MercadoPago, no estaba en la caja, y no
+    habia forma de enterarse.
+
+    Esto los busca al reves: desde el cobro hacia la venta. Ordenados por el
+    mas viejo primero, que es el que mas urge.
+    """
+    filas = conn.execute(
+        """SELECT o.id, o.sale_id, o.external_reference, o.amount, o.status,
+                  o.payment_id, o.resolved_at, s.number
+             FROM sale_mp_orders o
+             JOIN sales s ON s.id = o.sale_id
+            WHERE o.status = 'approved' AND s.status = 'draft'
+            ORDER BY o.resolved_at, o.id"""
+    ).fetchall()
+    return [
+        {
+            "id": f[0], "sale_id": f[1], "external_reference": f[2],
+            "amount": Decimal(str(f[3])), "status": f[4], "payment_id": f[5],
+            "acreditado_el": f[6], "numero": f[7],
+        }
+        for f in filas
+    ]
+
+
 def _a_dict(fila) -> dict | None:
     if fila is None:
         return None
