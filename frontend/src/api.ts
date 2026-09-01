@@ -145,6 +145,21 @@ export type MpDisponible = {
 
 /** `approved`, `pending`, `sin_orden`, o el estado crudo de MercadoPago
  *  (`rejected`, `cancelled`, `in_process`). */
+/** Un cobro que entró por el QR y cuya venta quedó sin confirmar.
+ *
+ *  🔴 El orden acá es "primero la plata, después la venta", así que si el
+ *  navegador se muere entre el poll y la confirmación la plata entró y la venta
+ *  no quedó registrada. Esto es lo que las hace encontrables — ver
+ *  `services/mp_qr.cobros_sin_venta`. */
+export type MpCobroSinVenta = {
+  sale_id: number
+  numero: string | null
+  amount: number
+  payment_id: string | null
+  external_reference: string
+  acreditado_el: string | null
+}
+
 export type MpEstado = {
   status: string
   payment_id: string | null
