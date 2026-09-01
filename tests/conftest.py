@@ -59,7 +59,16 @@ def admin_client(tmp_path):
     with https_client(create_app(db_path)) as client:
         response = client.post("/auth/login", json={"username": "admin", "password": "admin"})
         assert response.status_code == 200, response.text
-        yield client
+        try:
+            yield client
+        finally:
+            # 🔴 Sin esto, cada test deja vivo el pool del engine de auth y la
+            # corrida se come el `max_connections` del servidor. El sintoma
+            # aparece lejos: mueren tests del medio con "too many clients" y el
+            # que los causo paso en verde. Lo pago gestiolibra el 2026-08-31.
+            motor = getattr(client.app.state, "auth_engine", None)
+            if motor is not None:
+                motor.dispose()
 
 
 @pytest.fixture

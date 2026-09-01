@@ -224,6 +224,37 @@ class MpOrdenOut(BaseModel):
     amount: float
 
 
+class MpCobroHuerfanoOut(BaseModel):
+    """Un cobro que entró y cuya venta quedó sin confirmar."""
+    sale_id: int
+    numero: str | None = None
+    amount: float
+    payment_id: str | None = None
+    external_reference: str
+    #: Cuándo lo acreditó MercadoPago. El más viejo es el que más urge.
+    acreditado_el: str | None = None
+
+
+@router.get("/mp/cobros-sin-venta", response_model=list[MpCobroHuerfanoOut])
+def mp_cobros_sin_venta(request: Request):
+    """Los cobros que entraron y cuya venta quedó sin confirmar.
+
+    🔴 **El agujero que este producto declara y no vigilaba nadie.** El orden
+    acá es "primero la plata, después la venta", así que si el navegador se
+    muere entre el poll y la confirmación la plata entró y la venta no quedó
+    registrada. La orden aprobada se guarda para eso, pero sólo se la consultaba
+    **por venta**: la mitigación funcionaba únicamente si alguien volvía a abrir
+    ESE borrador.
+
+    Va junto a `/mp/estado` por prolijidad. **No depende del orden**: son dos
+    segmentos y `/{sale_id}` es uno solo, como explica el docstring de al lado.
+
+    El gate es el del router (`staff_or_admin`), igual que el resto: esto dice
+    cuánta plata entró sin registrar, y no es información de cualquiera.
+    """
+    return mp_qr.cobros_sin_venta(request.app.state.conn)
+
+
 @router.post("/{sale_id}/mp-qr", response_model=MpOrdenOut)
 async def poner_en_el_qr(sale_id: int, request: Request):
     """Pone el total de este borrador a cobrar en el QR de la caja.
