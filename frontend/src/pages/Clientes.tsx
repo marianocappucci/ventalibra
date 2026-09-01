@@ -137,7 +137,20 @@ export function Clientes() {
           {loading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : (
-            <DataTable columns={columns} data={customers} emptyMessage="Sin clientes todavía." />
+            <DataTable
+              columns={columns}
+              data={customers}
+              emptyMessage="Sin clientes todavía."
+              // La tabla no pagina: sin buscador, llegar a un cliente entre
+              // cientos es scrollear. El teléfono entra en la búsqueda aunque
+              // no sea columna -- es lo que queda anotado del mostrador; el
+              // CUIT, lo que se tiene del papel.
+              search={{
+                campos: (c) => [c.display_name, c.cuit, c.email, c.phone],
+                placeholder: 'Buscar por nombre, CUIT, email o teléfono',
+                ariaLabel: 'Buscar cliente',
+              }}
+            />
           )}
         </CardContent>
       </Card>
