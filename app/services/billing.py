@@ -150,6 +150,18 @@ async def invoice_sale(customer_billing: dict | None, sale, referencia: str) -> 
         cuit or "", razon or "",
         IVA_CODES.get(condicion_iva, IVA_CODES["Consumidor Final"]),
         [], float(subtotal), float(iva_amount), float(total),
+        # 🔴 Obligatorio desde LibraCore v1.71.0, y **sin default a propósito**:
+        # un comprobante emitido contra homologación trae CAE y numeración del
+        # WSFE de homologación. Sin marcarlo entra al Libro IVA del cliente y le
+        # rompe la correlatividad.
+        #
+        # Sale de `ambiente_de(arca_used)` —el MISMO `arca` con el que se acaba
+        # de pedir el número— y no de `get_arca_config()` leído aparte: dos
+        # lecturas dejarían la factura marcada con un ambiente distinto del que
+        # la numeró si el selector cambia en el medio. Además ese tercer valor
+        # no siempre es un dict —en dev es el string `"_dev_mock_"`— y
+        # `ambiente_de` es justamente quien sabe traducirlo.
+        ambiente=arca_facturacion.ambiente_de(arca_used),
     )
     factura = db_facturas.get_factura(factura_id)
     return await arca_facturacion.solicitar_cae(factura_id, factura, ta, arca_used)
