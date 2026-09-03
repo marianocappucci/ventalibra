@@ -50,14 +50,9 @@ HTTP, auth propia y la orquestación de casos de uso entre motores.
 
 ## Entornos y deploy
 
-- Arquitectura silo, mismo patrón que Contalibra/Restolibra/GestioLibra/MedLibra:
-  un contenedor por instancia, cada una con su **sidecar de PostgreSQL** propio
-  (sin puerto publicado, en su red `ventalibra-<instancia>-datos`).
-- Provisionadas hoy: **`ventalibra-dev`** y **`ventalibra-demo`**, las dos ya
-  sobre PostgreSQL. Todavía no hay instancias de cliente.
-- El deploy es manual y vive en `ONBOARDING_CLIENTES.md` (sección "Levantar la
-  instancia"): `git pull`, **migrar la base de LibraCore**, y `panel_admin.py
-  actualizar`.
+- Dev/demo/producción: pendientes de provisionar (arquitectura silo,
+  mismo patrón que Contalibra/Restolibra/GestioLibra/MedLibra — un
+  contenedor y una base SQLite por cliente).
 - CI: GitHub Actions corre `pytest` en cada push/PR (`.github/workflows/`).
 
 ## Riesgos y límites conocidos
