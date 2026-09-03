@@ -32,7 +32,7 @@ export default mergeConfig(
         // bien que lo sea: sirve para que nadie borre tests, no para medir
         // calidad. Medido el 2026-07-31: 17.10% de lineas; el piso queda 3
         // puntos abajo.
-        thresholds: { lines: 15 },
+        thresholds: { lines: 42 },
         reporter: ['text-summary', 'json-summary'],
         // Solo el codigo propio del producto: `libra-ui` tiene su propia
         // suite y su propio CI, medirlo aca contaria dos veces lo mismo.
