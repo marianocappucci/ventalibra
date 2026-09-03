@@ -10,8 +10,6 @@ import sqlite3
 from dataclasses import replace
 from decimal import Decimal
 
-from ..conexion import conexion_utilizable
-from ..commerce import repositorio
 from libracommerce.domain.catalog import (
     CatalogItem,
     CatalogItemType,
@@ -22,6 +20,9 @@ from libracommerce.domain.catalog import (
     Unit,
 )
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
+from ..conexion import conexion_utilizable
 
 
 class CatalogService:

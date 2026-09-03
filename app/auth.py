@@ -13,15 +13,27 @@ engine dedicado **sobre la base de libracore**, donde `usuarios` ya vivía.
 """
 from libraauth.session_auth import (
     SessionAuth,
+)
+from libraauth.session_auth import (
     json_api_get_current_user as get_current_user,
+)
+from libraauth.session_auth import (
     json_api_get_session_auth as get_session_auth,
+)
+from libraauth.session_auth import (
     json_api_require_admin as require_admin,
+)
+from libraauth.session_auth import (
     # Rol admin **o** token de servicio (libraauth v0.7.0). Lo usa el router de
     # usuarios, que es lo unico del backoffice de la suite que no puede salir
     # del motor: el router de usuarios es propio de cada producto. Sin
     # `LIBRA_SERVICE_TOKEN` en el entorno se comporta igual que `require_admin`.
     json_api_require_admin_o_servicio as require_admin_o_servicio,
+)
+from libraauth.session_auth import (
     json_api_require_role as require_role,
+)
+from libraauth.session_auth import (
     json_api_require_staff as require_staff,
 )
 

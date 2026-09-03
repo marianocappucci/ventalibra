@@ -6,9 +6,10 @@ cliente registrado -- solo hace falta un Customer si se va a facturar A/B
 con CUIT real.
 """
 
-from ..commerce import repositorio
 from libracommerce.domain.entities import Party, PartyType
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
 
 
 class CustomerService:

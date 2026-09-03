@@ -10,9 +10,8 @@ Gestiolibra y MedLibra ya tenían el endpoint (sin pantalla que lo llamara);
 LibraDesk y VentaLibra no lo tenían. La forma es la de ellos: `PUT
 /users/{id}/password`, cuerpo `{"password": ...}`, 204.
 """
-from fastapi.testclient import TestClient
-
 from conftest import https_client
+from fastapi.testclient import TestClient
 
 
 def _alta_de_staff(client: TestClient, **extra) -> dict:

@@ -9,9 +9,9 @@ import sqlite3
 
 from libracommerce.db.schema import init_schema
 from libracore.db import core
+from libracore.db.core import Conexion
 
 from .normalizacion_medios import normalizar_dominio
-from libracore.db.core import Conexion
 
 
 def connect(db_path: str):

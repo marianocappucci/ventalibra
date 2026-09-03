@@ -5,10 +5,9 @@ dueño tiene que poder ajustar sin un redeploy: qué balanza usa el local, qué
 ancho de papel tiene la ticketeadora, y con qué cuenta de MercadoPago cobra.
 """
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
-
 from libracommerce.domain.scale import ScaleFormat, ScaleValueKind
 from libracore import config_manager
+from pydantic import BaseModel
 
 from ..services.scale import ScaleService
 

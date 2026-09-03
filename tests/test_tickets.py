@@ -6,7 +6,7 @@ imprima lo que no corresponde.
 """
 import re
 import zlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 
 def _abrir_turno(client):
@@ -215,7 +215,7 @@ def test_el_ticket_se_puede_reimprimir(admin_client):
     segundo = admin_client.get(f"/sales/{sale_id}/ticket").content
     venta = admin_client.get(f"/sales/{sale_id}").json()
 
-    confirmada = datetime.fromisoformat(venta["confirmed_at"]).astimezone(timezone.utc)
+    confirmada = datetime.fromisoformat(venta["confirmed_at"]).astimezone(UTC)
     sello = re.search(rb"/CreationDate\s*\(([^)]*)\)", primero)
     # Los segundos van en cero: el puente le pasa la fecha al minuto.
     assert sello and sello.group(1) == confirmada.strftime("D:%Y%m%d%H%M00Z").encode()

@@ -14,11 +14,11 @@ importa fijar aca es el borde:
    el.
 """
 import pytest
+from conftest import https_client
 from libraauth.session_auth import SERVICE_TOKEN_ENV, SERVICE_TOKEN_HEADER
+from motor_de_test import destino_dominio
 
 from app.main import create_app
-from motor_de_test import destino_dominio
-from conftest import https_client
 
 TOKEN = "un-token-de-servicio-de-prueba"
 RUTA_USERS = "/users"

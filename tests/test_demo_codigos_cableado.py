@@ -23,9 +23,9 @@ pasar el test en una instancia sin ABM.
 """
 import pytest
 from fastapi.testclient import TestClient
+from motor_de_test import destino_dominio, limpiar_entre_tests
 
 from app.main import create_app
-from motor_de_test import destino_dominio, limpiar_entre_tests
 
 ABM = "/admin/demo-codigos"
 INVENTADA = "/admin/demo-codigos-que-no-existe"

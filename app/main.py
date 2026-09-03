@@ -3,26 +3,31 @@ los routers con gating por rol (mismo patron que gestiolibra/medlibra:
 dependencias en include_router, no por endpoint suelto)."""
 import os
 
-from libracore.db.url_de_instancia import url_de_instancia
-
 from fastapi import Depends, FastAPI
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
 from libraauth.auth_events import AuthEventRepository
+from libraauth.bootstrap import ensure_demo_user
 from libraauth.demo_codigos import DemoCodigoRepository
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
 from libraauth.session_auth import (
-    build_demo_codigos_router, build_smtp_settings_router, demo_username,
+    build_demo_codigos_router,
+    build_smtp_settings_router,
+    demo_username,
 )
 from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
-from libracommerce.db.auditoria import ActividadRepository, entidades as entidades_auditadas
+from libracommerce.db.auditoria import ActividadRepository
+from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
-from libracore.mp_config_router import build_mp_config_router
 from libracore.config_router import (
-    build_backup_router, build_empresa_admin_router, build_empresa_router,
+    build_backup_router,
+    build_empresa_admin_router,
+    build_empresa_router,
 )
+from libracore.db.url_de_instancia import url_de_instancia
+from libracore.mp_config_router import build_mp_config_router
 from libracore.respaldo import Instancia
 from libracore.smtp_router import build_smtp_probe_router
 from sqlalchemy import create_engine
@@ -31,15 +36,27 @@ from sqlalchemy.orm import sessionmaker
 from . import db
 from .auth import build_session_auth, require_admin, require_admin_o_servicio, require_staff
 from .modules_gate import require_module
+from .routers import (
+    accounts,
+    catalog,
+    customers,
+    health,
+    locations,
+    pricing,
+    purchasing,
+    reports,
+    sales,
+    shifts,
+    stock,
+    suppliers,
+)
 from .routers import auth as auth_router
 from .routers import (
-    accounts, catalog, customers, health, locations, pricing, purchasing, reports,
-    sales, settings as settings_router, shifts, stock, suppliers,
+    settings as settings_router,
 )
 from .routers import users as users_router
 from .services import billing
 from .services.modules import ModuleRepository
-from libraauth.bootstrap import ensure_demo_user
 from .services.users import UserRepository, ensure_default_admin
 
 

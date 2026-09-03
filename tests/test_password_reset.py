@@ -5,9 +5,10 @@ que el motor no puede: que ESTE producto la tenga montada, que el link del
 mail apunte a su propia pantalla, y que el flujo entero funcione contra la
 app real.
 """
-from app.main import create_app
-from motor_de_test import destino_dominio
 from conftest import https_client
+from motor_de_test import destino_dominio
+
+from app.main import create_app
 
 
 def _app_con_mailbox(monkeypatch, tmp_path):
