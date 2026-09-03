@@ -11,9 +11,8 @@ producto viven en LibraCommerce, en OTRA base, asi que el resumen clasico le
 daria siempre cero.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-
 from libracore.db import turnos as db_turnos
+from pydantic import BaseModel
 
 from ..auth import get_current_user
 

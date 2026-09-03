@@ -7,7 +7,7 @@ No se agrega ninguna tabla ni estado propio -- son consultas de
 agregacion sobre datos que ya se generan al confirmar ventas y
 movimientos de stock.
 """
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from libracore.db import caja as db_caja
@@ -48,8 +48,8 @@ def _ventana_utc(date_from: date, date_to: date) -> tuple[str, str]:
     """
     desde = datetime.combine(date_from, time.min, tzinfo=_ZONA)
     hasta = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=_ZONA)
-    return (desde.astimezone(timezone.utc).isoformat(),
-            hasta.astimezone(timezone.utc).isoformat())
+    return (desde.astimezone(UTC).isoformat(),
+            hasta.astimezone(UTC).isoformat())
 
 
 def _dia_local(confirmado_en: str) -> str:

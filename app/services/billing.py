@@ -16,7 +16,7 @@ solo se llama si el operador pidio factura para esa venta puntual.
 """
 import os
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from libracore import arca_facturacion
 from libracore.db import arca_config as db_arca_config
@@ -71,10 +71,10 @@ def configure(db_path: str) -> None:
     # hay carpeta que crear ni defecto que evitar. El bloque entero se va.
     if not libracore_core.es_url_postgres(str(db_path)):
         raise RuntimeError(
-            "VentaLibra corre solo sobre PostgreSQL y recibio {!r}, que es una "
+            f"VentaLibra corre solo sobre PostgreSQL y recibio {db_path!r}, que es una "
             "ruta de archivo. El modo SQLite se retiro el 2026-08-12: no chequea "
             "las FK, tipa dinamicamente y acepta cadenas donde la base pide "
-            "enteros.".format(db_path)
+            "enteros."
         )
     libracore_core.configure(db_path)
     conn = libracore_core.get_connection()

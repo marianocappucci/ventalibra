@@ -16,7 +16,6 @@ from pathlib import Path
 
 from app.services import billing
 
-
 URL = "postgresql://ventalibra:una-clave-secreta@ventalibra-postgres:5432/ventalibra"
 
 

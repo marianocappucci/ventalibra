@@ -16,7 +16,6 @@ import pytest
 
 from app.main import _carpeta_de_backups
 
-
 URL = "postgresql://ventalibra:una-clave-secreta@ventalibra-postgres:5432/ventalibra"
 
 

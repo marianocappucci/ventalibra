@@ -1,11 +1,14 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from libracommerce.domain.sales import SalePayment
+from libracore import medios_pago
+from libracore.db import turnos as db_turnos
 from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..modules_gate import get_module_repository
-from ..services import billing
+from ..services import billing, mp_qr
 from ..services.cuenta_corriente import (
     MEDIO_CUENTA_CORRIENTE,
     CuentaCorrienteService,
@@ -13,13 +16,8 @@ from ..services.cuenta_corriente import (
 )
 from ..services.customers import CustomerService
 from ..services.devoluciones import DevolucionService
-from ..services import mp_qr
-from ..services.tickets import ticket_de_venta
-from libracommerce.domain.sales import SalePayment
-from libracore import medios_pago
-from libracore.db import turnos as db_turnos
-
 from ..services.sales import InvalidSaleState, SaleNotFound, SaleService
+from ..services.tickets import ticket_de_venta
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 

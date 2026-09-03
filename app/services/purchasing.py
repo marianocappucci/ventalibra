@@ -10,10 +10,9 @@ orquestacion (a diferencia de las ventas en la Fase 1, que la reimplemento
 porque LibraCommerce todavia no la ofrecia -- ver app/services/sales.py).
 """
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from decimal import Decimal
 
-from ..commerce import repositorio
 from libracommerce.domain.purchasing import (
     PurchaseOrder,
     PurchaseOrderItem,
@@ -23,9 +22,10 @@ from libracommerce.domain.purchasing import (
     PurchaseReceiptStatus,
 )
 from libracommerce.usecases.purchasing import confirm_purchase_receipt
-
-from ..db import next_sequence
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
+from ..db import next_sequence
 
 
 class PurchaseOrderNotFound(Exception):
@@ -127,4 +127,4 @@ class PurchasingService:
             )
         if not receipt.items:
             raise InvalidPurchaseState("no se puede confirmar una recepcion sin lineas")
-        return confirm_purchase_receipt(self._repo, receipt, location_id, datetime.now(timezone.utc))
+        return confirm_purchase_receipt(self._repo, receipt, location_id, datetime.now(UTC))

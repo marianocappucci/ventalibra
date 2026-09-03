@@ -32,11 +32,11 @@ import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
+from motor_de_test import destino_dominio
 from pypdf import PdfReader
 
 from app import normalizacion_medios as norm
 from app.main import create_app
-from motor_de_test import destino_dominio
 
 VIEJA = "mercado_pago"
 CANONICA = "mercadopago"

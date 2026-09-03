@@ -33,7 +33,6 @@ iguales. No es tomar posesión del schema de LibraCommerce: es declarar una
 dependencia que existe.
 """
 from alembic import op
-
 from libracommerce.db.schema import init_schema as init_commerce_schema
 from libracore.db.migraciones import conexion_libracore
 

@@ -12,16 +12,16 @@ movimientos de caja no se duplican por referencia. Un reintento después de
 una falla a mitad de camino completa lo que faltaba en vez de duplicar lo
 que ya estaba.
 """
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from decimal import Decimal
 
-from ..commerce import repositorio
 from libracommerce.domain.sales import Sale
 from libracommerce.usecases.sales import cancel_sale, return_sale_items
 from libracore.db import reversiones
-
-from .cuenta_corriente import MEDIO_CUENTA_CORRIENTE, CuentaCorrienteService
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
+from .cuenta_corriente import MEDIO_CUENTA_CORRIENTE, CuentaCorrienteService
 
 
 class DevolucionService:
@@ -39,7 +39,7 @@ class DevolucionService:
         con el dinero sin revertir — visible y corregible reintentando — que
         es preferible a plata devuelta por una venta que sigue viva.
         """
-        anulada = cancel_sale(self._repo, sale, datetime.now(timezone.utc))
+        anulada = cancel_sale(self._repo, sale, datetime.now(UTC))
 
         cliente_id = None
         if sale.customer_party_id is not None:
@@ -76,7 +76,7 @@ class DevolucionService:
         devolver en efectivo.
         """
         devuelta, importe = return_sale_items(
-            self._repo, sale, devoluciones, location_id, datetime.now(timezone.utc),
+            self._repo, sale, devoluciones, location_id, datetime.now(UTC),
         )
 
         cliente_id = None

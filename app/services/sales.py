@@ -9,15 +9,15 @@ Flujo: crear venta en borrador -> agregar lineas (snapshot de precio/costo
 del CatalogItem al momento de agregarla) -> confirmar.
 """
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from decimal import Decimal
 
-from ..commerce import repositorio
 from libracommerce.domain.sales import Sale, SaleItem, SalePayment, SaleStatus
 from libracommerce.usecases.sales import confirm_sale
-
-from ..db import next_sequence
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
+from ..db import next_sequence
 
 
 class SaleNotFound(Exception):
@@ -178,7 +178,7 @@ class SaleService:
                     f"los pagos no cubren el total de la venta: cobrado={cobrado}, total={sale.total}"
                 )
             sale = replace(sale, payments=tuple(payments))
-        return confirm_sale(self._repo, sale, location_id, datetime.now(timezone.utc))
+        return confirm_sale(self._repo, sale, location_id, datetime.now(UTC))
 
     def _save_with_totals(self, sale: Sale) -> Sale:
         subtotal = sum((item.quantity * item.unit_price for item in sale.items), Decimal("0"))

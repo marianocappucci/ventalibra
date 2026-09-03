@@ -32,8 +32,8 @@ El problema es del **modelo de conexion de este producto**, no del repositorio.
 Por eso el arreglo vive aca. Si algun dia otro producto adopta una conexion
 unica y larga, ahi si conviene subirlo al motor.
 """
-from contextlib import contextmanager
 import sqlite3
+from contextlib import contextmanager
 
 
 @contextmanager
