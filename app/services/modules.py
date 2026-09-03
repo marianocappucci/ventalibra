@@ -4,8 +4,9 @@ sembraron (fuera de `plans.TODOS_LOS_MODULOS`) nunca se gatean -- mismo
 criterio que ModuleRepository.is_enabled() de gestiolibra/medlibra.
 """
 
-from plans import TODOS_LOS_MODULOS
 from libracore.db.core import Conexion
+
+from plans import TODOS_LOS_MODULOS
 
 
 class ModuleRepository:

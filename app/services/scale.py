@@ -5,10 +5,9 @@ VentaLibra). Aca esta lo que lo rodea: donde se guarda la configuracion del
 local, y como se resuelve una etiqueta a un producto con su cantidad.
 """
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from decimal import Decimal
 
-from ..commerce import repositorio
 from libracommerce.domain.catalog import CatalogItem, ItemCodeType
 from libracommerce.domain.scale import (
     ScaleFormat,
@@ -16,6 +15,8 @@ from libracommerce.domain.scale import (
     parse_scale_barcode,
 )
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
 
 #: Clave en `commerce_settings`. La balanza esta apagada mientras no exista.
 SCALE_FORMAT_KEY = "scale.format"

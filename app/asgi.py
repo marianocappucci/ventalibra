@@ -19,10 +19,9 @@ Corriendo `uvicorn app.asgi:app` sin haber buildeado el frontend sigue
 funcionando como API pura -- el mount se salta en silencio si no existe.
 """
 import os
-
-from libracore.db.url_de_instancia import url_de_instancia
 from pathlib import Path
 
+from libracore.db.url_de_instancia import url_de_instancia
 
 from app.spa import montar_spa
 

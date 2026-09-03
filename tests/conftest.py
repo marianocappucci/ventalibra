@@ -12,9 +12,9 @@ _time.tzset()
 
 import pytest
 from fastapi.testclient import TestClient
+from motor_de_test import destino_dominio, destino_libracore, limpiar_entre_tests
 
 from app.main import create_app
-from motor_de_test import destino_dominio, destino_libracore, limpiar_entre_tests
 
 
 @pytest.fixture(autouse=True)

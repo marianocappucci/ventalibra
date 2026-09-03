@@ -11,11 +11,9 @@ meses. Repetirlos acá mediría dos veces lo mismo y ninguna de las dos contra
 MercadoPago.
 """
 import pytest
-
 from libracore import config_manager, mp_api
 
 from app.services import mp_qr
-
 
 # ── Arnés ────────────────────────────────────────────────────────────────
 

@@ -2,9 +2,8 @@ import sqlite3
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
-
 from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
+from pydantic import BaseModel
 
 from ..services.catalog import CatalogService
 from ..services.scale import ScaleLabelError, ScaleService

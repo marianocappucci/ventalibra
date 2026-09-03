@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
-
 from libracommerce.domain.entities import PartyType
+from pydantic import BaseModel
 
 from ..services.suppliers import SupplierService
 

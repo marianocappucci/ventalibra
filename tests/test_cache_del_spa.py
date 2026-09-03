@@ -27,9 +27,9 @@ este archivo pasando en verde aislado. Por eso el cableado se movió a
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
 from app.spa import montar_spa
 

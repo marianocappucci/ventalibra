@@ -4,12 +4,13 @@ Los movimientos generados por una venta confirmada viven en
 app/services/sales.py::confirm_sale -- este servicio es solo para el ajuste
 manual que un admin puede necesitar (rotura, conteo fisico, etc).
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from decimal import Decimal
 
-from ..commerce import repositorio
 from libracommerce.domain.inventory import StockMovement, StockMovementType
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
 
 
 class StockService:
@@ -27,7 +28,7 @@ class StockService:
             location_id=location_id,
             movement_type=StockMovementType.ADJUSTMENT,
             quantity_delta=quantity_delta,
-            occurred_at=datetime.now(timezone.utc),
+            occurred_at=datetime.now(UTC),
             source_type="manual_adjustment",
         )
         return self._repo.append_stock_movement(movement)

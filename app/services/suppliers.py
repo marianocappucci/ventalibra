@@ -7,9 +7,10 @@ PurchaseOrder/PurchaseReceipt. Este servicio es un wrapper fino sobre
 save_party/get_party mas un listado propio, igual que CatalogService.
 """
 
-from ..commerce import repositorio
 from libracommerce.domain.entities import Party, PartyType
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
 
 
 class SupplierService:

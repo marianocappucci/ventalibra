@@ -3,9 +3,10 @@
 El repositorio ya resuelve alta/edicion/lectura por id; falta el listado.
 """
 
-from ..commerce import repositorio
 from libracommerce.domain.inventory import Location
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
 
 
 class LocationService:

@@ -7,10 +7,11 @@ precio". Este servicio solo traduce entre la API HTTP y el repositorio.
 from datetime import datetime
 from decimal import Decimal
 
-from ..conexion import conexion_utilizable
-from ..commerce import repositorio
 from libracommerce.domain.catalog import ItemPrice, PriceList
 from libracore.db.core import Conexion
+
+from ..commerce import repositorio
+from ..conexion import conexion_utilizable
 
 
 class PricingService:

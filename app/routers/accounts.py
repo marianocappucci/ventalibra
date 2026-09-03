@@ -6,12 +6,11 @@ lado: cuánto debe cada uno y el registro del pago cuando viene a saldar.
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
-
 from libracore.db import recibos as db_recibos
 from libracore.db import turnos as db_turnos
 from libracore.pdf_generator import generate_pdf_recibo_doc
 from libracore.recibos import SinCobros, emitir_recibo_cobranza
+from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..services.cuenta_corriente import CuentaCorrienteService, SinCliente
