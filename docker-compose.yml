@@ -99,7 +99,7 @@ services:
     # `exec` para que uvicorn quede como PID 1 y `docker stop` le llegue.
     command: sh -c "libracore-migrar upgrade --prefijo ventalibra && alembic upgrade head && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
     environment:
-      - SECRET_KEY=${SECRET_KEY:-ventalibra-dev-secret}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY es obligatorio, tambien en dev: sin default en un repo publico}
       - TZ=America/Argentina/Buenos_Aires
       - VENTALIBRA_ADMIN_USERNAME=${VENTALIBRA_ADMIN_USERNAME:-admin}
       - VENTALIBRA_ADMIN_PASSWORD=${VENTALIBRA_ADMIN_PASSWORD:-}
