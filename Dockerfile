@@ -14,7 +14,7 @@
 # "default" generico) -- mismo patron que Contalibra/Restolibra:
 # docker_build_ssh_args() (libracore >= v0.23.0) le pasa a este id su
 # propia key dedicada, sin ambiguedad de que identidad ofrece GitHub.
-FROM node:20-slim AS frontend-build
+FROM node:22-slim AS frontend-build
 WORKDIR /frontend
 RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p -m 0700 /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null
@@ -27,6 +27,17 @@ COPY frontend/ .
 RUN npm run build
 
 FROM python:3.12-slim
+
+# F1 (2026-09-05): las dependencias de terceros salen de `uv.lock`, no de la
+# resolucion de pip del dia del build. Dos builds del mismo commit dan la misma
+# imagen. El binario viene de la imagen oficial, pineada por version; el venv
+# vive FUERA de /app porque el compose de dev monta ./:/app encima y lo taparia.
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_NO_CACHE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/opt/venv/bin:$PATH"
 
 # Huso horario del ecosistema: Argentina, UTC-3 fijo, sin horario de verano
 # (el pais no aplica DST desde 2009). Sin esto el contenedor corre en UTC y
@@ -128,7 +139,7 @@ RUN --mount=type=ssh,id=libracore,target=/tmp/ssh-libracore.sock \
     git config --global url."ssh://git@github-libracore/marianocappucci/libracore.git".insteadOf "https://github.com/marianocappucci/libracore.git" \
     && git config --global url."ssh://git@github-libracommerce/marianocappucci/libracommerce.git".insteadOf "https://github.com/marianocappucci/libracommerce.git" \
     && git config --global url."ssh://git@github-libraauth/marianocappucci/libraauth.git".insteadOf "https://github.com/marianocappucci/libraauth.git" \
-    && pip install --no-cache-dir . \
+    && uv sync --frozen --no-dev --no-editable \
     && git config --global --unset url."ssh://git@github-libracore/marianocappucci/libracore.git".insteadOf \
     && git config --global --unset url."ssh://git@github-libracommerce/marianocappucci/libracommerce.git".insteadOf \
     && git config --global --unset url."ssh://git@github-libraauth/marianocappucci/libraauth.git".insteadOf
