@@ -573,8 +573,8 @@ wheels = [
 
 [[package]]
 name = "libraauth"
-version = "0.35.0"
-source = { git = "https://github.com/marianocappucci/libraauth.git?rev=v0.35.0#e8464455e83a45fffb5a040fc4299eaffcdd4e1b" }
+version = "0.36.0"
+source = { git = "https://github.com/marianocappucci/libraauth.git?rev=v0.36.0#d817f8e0e5cea9207e5f1264b1414517816ab7b8" }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
@@ -1252,7 +1252,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.111,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
-    { name = "libraauth", git = "https://github.com/marianocappucci/libraauth.git?rev=v0.35.0" },
+    { name = "libraauth", git = "https://github.com/marianocappucci/libraauth.git?rev=v0.36.0" },
     { name = "libracommerce", git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.9.1" },
     { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.83.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
