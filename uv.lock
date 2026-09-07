@@ -573,8 +573,8 @@ wheels = [
 
 [[package]]
 name = "libraauth"
-version = "0.35.0"
-source = { git = "https://github.com/marianocappucci/libraauth.git?rev=v0.35.0#e8464455e83a45fffb5a040fc4299eaffcdd4e1b" }
+version = "0.36.0"
+source = { git = "https://github.com/marianocappucci/libraauth.git?rev=v0.36.0#d817f8e0e5cea9207e5f1264b1414517816ab7b8" }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
@@ -586,8 +586,8 @@ dependencies = [
 
 [[package]]
 name = "libracommerce"
-version = "0.10.1"
-source = { git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.10.1#b5f7afec2536e8ba477b1422e7968878500c6d69" }
+version = "0.15.0"
+source = { git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.15.0#7bf45b3287b79f43b853144b00e227a2f1f3cbeb" }
 
 [package.optional-dependencies]
 migrations = [
@@ -598,8 +598,8 @@ migrations = [
 
 [[package]]
 name = "libracore"
-version = "1.83.0"
-source = { git = "https://github.com/marianocappucci/libracore.git?rev=v1.83.0#5f8a6595933068be96406cc401fa94e78b753a17" }
+version = "1.88.0"
+source = { git = "https://github.com/marianocappucci/libracore.git?rev=v1.88.0#2e2adb79e649b831ea78ebcb81e498861fa020ec" }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
@@ -1259,9 +1259,9 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.111,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
-    { name = "libraauth", git = "https://github.com/marianocappucci/libraauth.git?rev=v0.35.0" },
-    { name = "libracommerce", extras = ["migrations"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.10.1" },
-    { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.83.0" },
+    { name = "libraauth", git = "https://github.com/marianocappucci/libraauth.git?rev=v0.36.0" },
+    { name = "libracommerce", extras = ["migrations"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.15.0" },
+    { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.88.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6" },
