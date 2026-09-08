@@ -8,7 +8,7 @@
 # compartido con Gestiolibra/MedLibra, extraido 2026-07-26 -- ver
 # wiki/analyses/auditoria-duplicacion-familia-libra.md) via git+https,
 # mismo motivo que libracore/libracommerce en el stage de Python de mas
-# abajo. Este stage node:20-slim es independiente, necesita su propia
+# abajo. Este stage de node es independiente, necesita su propia
 # copia de git+openssh-client + deploy key de solo lectura
 # (`id_ed25519_libra_ui` en el VPS). Mount SSH con id propio (no el
 # "default" generico) -- mismo patron que Contalibra/Restolibra:
