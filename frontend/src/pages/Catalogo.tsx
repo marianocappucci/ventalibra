@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from 'libra-ui/data-table'
 import {
   api, ApiError, ITEM_CODE_TYPE_LABELS, opcionesCategoria,
   type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant, type Unit,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from 'libra-ui/data-table'
 import { api, ApiError, type Customer } from '../api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
