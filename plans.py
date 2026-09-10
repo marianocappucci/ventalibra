@@ -21,6 +21,21 @@ PLAN_MODULOS = {"basico": set(_BASICO), "estandar": set(_ESTANDAR), "premium": s
 
 TODOS_LOS_MODULOS = set(PLAN_MODULOS["premium"]) | _ESTANDAR | _BASICO
 
+# Add-ons: modulos sueltos que NO pertenecen a ningun plan. Estan disponibles en
+# cualquier plan, vienen APAGADOS y se prenden por instancia desde el backoffice
+# (`libracore.admin.services.set_addon`, que valida contra este set y escribe
+# por `app.database.set_addon` dentro del contenedor). Mismo criterio que
+# `mayorista` en Contalibra o `modo_simple` en LibraDesk.
+#
+# 🔴 Por eso quedan AFUERA de los planes y de `TODOS_LOS_MODULOS`: si entraran,
+# `init_modules_schema` los sembraria prendidos en cada arranque y
+# `aplicar_plan_en_db` los prenderia o apagaria solo con cambiar de plan -- un
+# adicional que se activa o se desactiva en silencio.
+#
+# - `resguardo_externo`: el enlace de la copia externa con la nube del cliente
+#   (`libracore.resguardo_enlace`, montado en `app/main.py`).
+ADDONS = {"resguardo_externo"}
+
 
 def modulos_de_plan(plan: str) -> set[str]:
     return set(PLAN_MODULOS.get(plan, set()))
@@ -32,9 +47,14 @@ def aplicar_plan_en_db(db_path: str, plan: str) -> None:
     Shim sobre libracore.provisioning.apply_plan_modules (extraído
     2026-07-26: el cuerpo era idéntico en Gestiolibra/MedLibra/VentaLibra
     salvo el nombre de la variable, ver
-    wiki/analyses/auditoria-duplicacion-familia-libra.md)."""
+    wiki/analyses/auditoria-duplicacion-familia-libra.md).
+
+    Los add-ons se restan de `all_modules` a proposito: aplicar un plan no
+    tiene que tocarlos (ver `ADDONS`). Hoy ya estan afuera de
+    `TODOS_LOS_MODULOS`, pero la resta deja la regla escrita aca, donde se
+    aplica, y no depende de que nadie los sume al set por error."""
     from libracore.provisioning import apply_plan_modules
     apply_plan_modules(
         db_path, active_modules=modulos_de_plan(plan),
-        all_modules=TODOS_LOS_MODULOS, plan=plan,
+        all_modules=TODOS_LOS_MODULOS - ADDONS, plan=plan,
     )
