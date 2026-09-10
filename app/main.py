@@ -28,6 +28,7 @@ from libracore.config_router import (
 )
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.mp_config_router import build_mp_config_router
+from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
@@ -318,13 +319,32 @@ def create_app(db_path: str) -> FastAPI:
         app.state.auditoria = ActividadRepository(nueva)
         auth_engine.dispose()
 
+    # Una sola variable para los dos routers: el enlace con la nube deja su
+    # `rclone.conf` en `<backups_dir>/.resguardo/`, y el cron del host lo busca
+    # AL LADO de los ZIP. Si cada router calculara su carpeta por su lado, un
+    # cambio en uno solo dejaria el enlace hecho donde el cron no mira.
+    backups_dir = _carpeta_de_backups(libracore_db_path)
     app.include_router(
         build_backup_router(
-            instancia, _carpeta_de_backups(libracore_db_path),
+            instancia, backups_dir,
             cerrar_conexiones=_cerrar_conexion,
             reabrir_conexiones=_reabrir_conexion,
         ),
         dependencies=admin_only,
+    )
+    # Enlace de la copia externa con la nube del cliente (LibraCore v1.93.0):
+    # `GET`/`DELETE /api/config/resguardo-externo/enlace`, `POST .../{proveedor}`
+    # y `GET .../callback`. La pantalla vive en `/configuracion`, asi que
+    # `volver_a` queda en el default del motor.
+    #
+    # 🔴 Admin Y add-on. `resguardo_externo` es un ADD-ON (`plans.ADDONS`): viene
+    # apagado y se prende por instancia desde el backoffice. Sin la fila en
+    # `modulos` el gate da 403, que el frontend (libra-ui) muestra como "sin
+    # plan" -- ver `ModuleRepository.is_enabled`, que para un add-on trata la
+    # falta de fila como apagado y no como prendido.
+    app.include_router(
+        build_resguardo_enlace_router(backups_dir, carpeta="Resguardo VentaLibra"),
+        dependencies=admin_only + [Depends(require_module("resguardo_externo"))],
     )
 
     # Logs: admin y nada mas. La fila dice quien vendio que y desde que IP
