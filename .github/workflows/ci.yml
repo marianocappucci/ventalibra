@@ -161,6 +161,52 @@ jobs:
           uv sync --locked --extra dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
+      # Que el pin declarado sea el que efectivamente quedo instalado. Un
+      # pip install que falla parcialmente ya dejo pasar suites en verde
+      # contra la version anterior de un motor. Mismo paso que Contalibra y
+      # Restolibra, con una diferencia a proposito:
+      #
+      # 🔴 Se leen las dependencias de `[project]` con tomllib y el nombre
+      # admite EXTRAS (`libracore[migrations] @ ...`). La regex de aquellos dos
+      # (`(libra[\w-]+) @ git\+...`) no los admite, asi que ahi este paso solo
+      # verifica libraauth: libracore y libracommerce, que son justo los que
+      # llevan extras, no matchean y pasan sin mirarse (medido el 2026-09-11).
+      # Por eso tambien el control: TODA dependencia `git+` tiene que haber
+      # matcheado, y los tres motores tienen que estar. Un verde con cero pines
+      # leidos no prueba nada.
+      - name: Verify installed engine versions match the pins
+        if: steps.cambios.outputs.backend == 'true'
+        run: |
+          python - <<'PY'
+          import importlib.metadata as m, re, sys, tomllib
+          deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]
+          patron = re.compile(r"^(libra[\w-]+)(?:\[[^\]]*\])?\s*@\s*git\+\S+\.git@v([\d.]+)$")
+          pins, sin_leer = {}, []
+          for dep in deps:
+              if "git+" not in dep:
+                  continue
+              hallado = patron.match(dep.strip())
+              if hallado:
+                  pins[hallado.group(1)] = hallado.group(2)
+              else:
+                  sin_leer.append(dep)
+          if sin_leer:
+              print("::error::Dependencias git+ que este paso no sabe leer:", sin_leer)
+              sys.exit(1)
+          faltan = {"libracore", "libracommerce", "libraauth"} - pins.keys()
+          if faltan:
+              print(f"::error::No se encontro el pin de {sorted(faltan)} en pyproject.toml")
+              sys.exit(1)
+          fallo = False
+          for paquete, esperada in sorted(pins.items()):
+              real = m.version(paquete)
+              print(f"{paquete}: pin={esperada} instalado={real}")
+              if real != esperada:
+                  print(f"::error::{paquete} instalado {real}, se esperaba {esperada}")
+                  fallo = True
+          sys.exit(1 if fallo else 0)
+          PY
+
       # Lint antes que los tests: tarda segundos y su rojo se lee mucho mas
       # facil que el de una suite. El ruleset vive en pyproject.toml y esta
       # CURADO para dar cero hallazgos hoy en los 12 repos de la familia --

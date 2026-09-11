@@ -738,7 +738,7 @@ function CambiarCantidad({ linea, onAceptar, onCerrar }: {
           onSubmit={(e) => { e.preventDefault(); onAceptar(valor) }}
           className="grid gap-3"
         >
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="cantidad-nueva">Cantidad</Label>
             <Input
               id="cantidad-nueva" value={valor} autoFocus
@@ -1263,7 +1263,7 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
           cajón ahora: es la base contra la que se arquea al cerrar.
         </p>
         <form onSubmit={abrir} className="mt-5 grid gap-3">
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="monto-inicial">Efectivo inicial en caja</Label>
             <Input
               id="monto-inicial" value={monto} autoFocus className="h-12 text-lg tabular-nums"
@@ -1346,7 +1346,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
             </div>
           </div>
 
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="declarado">Efectivo contado</Label>
             <Input
               id="declarado" value={declarado} autoFocus className="h-12 text-lg tabular-nums"
@@ -1374,7 +1374,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
             </div>
           )}
 
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="notas-cierre">Notas</Label>
             <Input
               id="notas-cierre" value={notas} placeholder="opcional"
