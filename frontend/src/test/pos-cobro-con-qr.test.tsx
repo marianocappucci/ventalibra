@@ -12,6 +12,20 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Pos } from '../pages/Pos'
+import { _resetCacheDeMedios } from '@/lib/medios-pago'
+
+/** Lo que contesta el backend: `medios_pago.para_selector()` de LibraCore. */
+const MEDIOS = [
+  { id: 'efectivo', label: 'Efectivo' },
+  { id: 'transferencia', label: 'Transferencia' },
+  { id: 'tarjeta_debito', label: 'Tarjeta de débito' },
+  { id: 'tarjeta_credito', label: 'Tarjeta de crédito' },
+  { id: 'mercadopago', label: 'Mercado Pago' },
+  { id: 'cuenta_dni', label: 'Cuenta DNI' },
+  { id: 'billetera', label: 'Otras billeteras' },
+  { id: 'cheque', label: 'Cheque' },
+  { id: 'cuenta_corriente', label: 'Cuenta corriente' },
+]
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -63,6 +77,7 @@ function montarRed(opciones: { disponible?: boolean; autoFacturar?: boolean } = 
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     })
 
+    if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json(MEDIOS))
     if (u.includes('/sales/mp/estado')) {
       return Promise.resolve(json({
         disponible: opciones.disponible ?? true,
@@ -125,6 +140,9 @@ async function abrirCobroConMercadoPago(user: ReturnType<typeof userEvent.setup>
 beforeEach(() => {
   vi.useRealTimers()
   localStorage.clear()
+  // El hook cachea la lista a nivel de módulo: sin esto, el primer test del
+  // archivo decide lo que ven todos los demás.
+  _resetCacheDeMedios()
 })
 
 describe('El botón de cobrar con QR', () => {
@@ -227,5 +245,24 @@ describe('El cobro con QR', () => {
       expect(llamadas.some((l) => l.metodo === 'DELETE' && l.url.includes('/sales/7/mp-qr')))
         .toBe(true)
     })
+  })
+})
+
+describe('Los medios del cobro', () => {
+  it('son los que manda el backend, no una lista propia', async () => {
+    montarRed()
+    const user = userEvent.setup()
+    montar()
+    await escanear(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
+    await user.click(await screen.findByRole('combobox'))
+
+    const opciones = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    // Lo único propio del POS es el nombre del fiado en el mostrador.
+    expect(opciones).toEqual(MEDIOS.map((m) => (
+      m.id === 'cuenta_corriente' ? 'Cuenta corriente (fiado)' : m.label
+    )))
+    // Los tres que la lista propia no ofrecía: la prueba de que la lista cambió de dueño.
+    expect(opciones).toEqual(expect.arrayContaining(['Cuenta DNI', 'Otras billeteras', 'Cheque']))
   })
 })
