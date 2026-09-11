@@ -185,6 +185,11 @@ def init_mp_qr_schema(conn: Conexion) -> None:
     Mientras `status` sea `pending` no hay plata: la fila sola no acredita
     nada.
     """
+    # 🔴 El DEFAULT de `created_at` cambio el 2026-09-11: era CURRENT_TIMESTAMP
+    # y pasa a la hora de Argentina de la familia (`libracore.db.schema.AHORA_AR`).
+    # Esta funcion es de solo lectura desde la baseline: el cambio aca vale para
+    # las bases NUEVAS, y a las existentes las lleva la revision
+    # `0002_created_at_hora_ar`. Ver esa revision.
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS sale_mp_orders (
@@ -194,7 +199,7 @@ def init_mp_qr_schema(conn: Conexion) -> None:
             amount NUMERIC NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             payment_id TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','-3 hours')),
             resolved_at TEXT
         );
 
