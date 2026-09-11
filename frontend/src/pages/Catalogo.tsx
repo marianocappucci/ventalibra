@@ -323,7 +323,7 @@ function ItemDetailDialog({ item, onClose }: { item: CatalogItem; onClose: () =>
             ))}
           </div>
           <div className="flex items-end gap-2">
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Tipo</Label>
               <Select value={codeType} onValueChange={(v) => setCodeType(v as ItemCodeType)}>
                 <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
@@ -334,7 +334,7 @@ function ItemDetailDialog({ item, onClose }: { item: CatalogItem; onClose: () =>
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-1.5 flex-1">
+            <div className="grid gap-2 flex-1">
               <Label>Código</Label>
               <Input value={codeValue} onChange={(e) => setCodeValue(e.target.value)} />
             </div>
@@ -349,11 +349,11 @@ function ItemDetailDialog({ item, onClose }: { item: CatalogItem; onClose: () =>
             {variants.map((v) => <Badge key={v.id} variant="outline">{v.sku} — {v.name}</Badge>)}
           </div>
           <div className="flex items-end gap-2">
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>SKU</Label>
               <Input value={variantSku} onChange={(e) => setVariantSku(e.target.value)} className="w-32" />
             </div>
-            <div className="grid gap-1.5 flex-1">
+            <div className="grid gap-2 flex-1">
               <Label>Nombre (ej. M / Azul)</Label>
               <Input value={variantName} onChange={(e) => setVariantName(e.target.value)} />
             </div>
