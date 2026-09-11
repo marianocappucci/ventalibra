@@ -101,15 +101,15 @@ export function Clientes() {
         </CardHeader>
         <CardContent className="grid gap-3">
           <div className="flex flex-wrap items-end gap-2">
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Nombre</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} className="w-48" />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>CUIT</Label>
               <Input value={cuit} onChange={(e) => setCuit(e.target.value)} className="w-36" />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Condición de IVA</Label>
               <Select value={condicionIva} onValueChange={setCondicionIva}>
                 <SelectTrigger className="w-52"><SelectValue placeholder="Condición de IVA…" /></SelectTrigger>
@@ -118,11 +118,11 @@ export function Clientes() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Email</Label>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-52" />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Teléfono</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-40" />
             </div>
