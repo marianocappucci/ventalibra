@@ -50,6 +50,9 @@ TABLAS_PROPIAS = (
     "users",
 )
 
+#: La cabeza de la cadena propia. Sube con cada revision nueva.
+CABEZA = "0002_created_at_hora_ar"
+
 
 def _schema_de_las_propias() -> str:
     """Las columnas de las tablas propias, en texto canónico y ordenado.
@@ -137,9 +140,7 @@ def test_la_secuencia_declarada_levanta_el_schema_desde_cero():
     limpiar_entre_tests()
     _correr_la_cadena()
 
-    assert [f[0] for f in _version("alembic_version_ventalibra")] == [
-        "0001_baseline_ventalibra"
-    ]
+    assert [f[0] for f in _version("alembic_version_ventalibra")] == [CABEZA]
     _schema_de_las_propias()  # exige que estén las cinco
 
 
@@ -186,7 +187,7 @@ def test_las_dos_cadenas_no_comparten_la_tabla_de_version():
     del_motor = _version("alembic_version")[0][0]
     propia = _version("alembic_version_ventalibra")[0][0]
 
-    assert propia == "0001_baseline_ventalibra"
+    assert propia == CABEZA
     assert del_motor != propia, (
         "las dos cadenas escribieron la misma revisión: están compartiendo la "
         "tabla de versión."
