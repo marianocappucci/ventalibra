@@ -67,11 +67,11 @@ export function Reportes() {
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-2 pt-6">
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label>Desde</Label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label>Hasta</Label>
             <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" />
           </div>
