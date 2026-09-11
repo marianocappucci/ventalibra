@@ -12,6 +12,8 @@ const API_PATHS = [
   '/auth', '/catalog', '/pricing', '/locations', '/stock', '/sales', '/shifts',
   '/suppliers', '/purchase-orders', '/purchase-receipts', '/customers',
   '/users', '/config', '/settings', '/accounts', '/health',
+  // Lo que monta el motor bajo `/api` (medios de pago, config, resguardo).
+  '/api',
 ]
 
 // Las claves del proxy se emiten como regex (Vite trata como RegExp toda

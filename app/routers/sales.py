@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from libracommerce.domain.sales import SalePayment
 from libracore import medios_pago
 from libracore.db import turnos as db_turnos
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..auth import get_current_user
 from ..modules_gate import get_module_repository
@@ -29,6 +29,18 @@ class SaleCreate(BaseModel):
     customer_party_id: int | None = None
 
 
+def _validar_medio(medio: str) -> str:
+    """El medio, si es uno de los que se pueden elegir hoy; si no, 422.
+
+    🔴 Hasta el 2026-09-11 este producto aceptaba cualquier texto como medio:
+    la lista existia solo en los selectores del frontend. Un medio inventado
+    entraba, creaba su movimiento de caja y aparecia en el cierre como un
+    bucket suelto con el nombre crudo. Es el mismo defecto que Contalibra y
+    Restolibra cerraron el 2026-08-24, con la misma funcion del motor.
+    """
+    return medios_pago.validar(medio)
+
+
 class SaleItemCreate(BaseModel):
     item_id: int
     quantity: Decimal
@@ -50,6 +62,11 @@ class PaymentIn(BaseModel):
     recibido: Decimal | None = None
     referencia: str = ""
 
+    @field_validator("medio")
+    @classmethod
+    def _medio_elegible(cls, medio: str) -> str:
+        return _validar_medio(medio)
+
 
 class SaleConfirm(BaseModel):
     location_id: int
@@ -60,6 +77,11 @@ class SaleConfirm(BaseModel):
     medio_pago: str = ""
     pagos: list[PaymentIn] = []
     invoice: bool = False
+
+    @field_validator("medio_pago")
+    @classmethod
+    def _medio_elegible(cls, medio: str) -> str:
+        return _validar_medio(medio) if medio else medio  # vacio es "no vino": manda `pagos`
 
 
 class SaleItemOut(BaseModel):
@@ -352,6 +374,11 @@ class DevolucionIn(BaseModel):
     location_id: int
     #: Por donde vuelve la plata, que no tiene por que ser por donde entro.
     medio_pago: str = "efectivo"
+
+    @field_validator("medio_pago")
+    @classmethod
+    def _medio_elegible(cls, medio: str) -> str:
+        return _validar_medio(medio)
 
 
 @router.post("/{sale_id}/cancel", response_model=SaleOut)

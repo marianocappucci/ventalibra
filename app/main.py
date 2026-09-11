@@ -44,6 +44,7 @@ from .routers import (
     customers,
     health,
     locations,
+    medios,
     pricing,
     purchasing,
     reports,
@@ -279,6 +280,10 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(customers.router, dependencies=staff_or_admin)
     # El cajero cobra fiado en el mostrador, asi que no es admin-only.
     app.include_router(accounts.router, dependencies=staff_or_admin)
+    # Los medios de pago de los selectores: los del motor, no una copia en el
+    # frontend. Misma ruta que `build_cajas_router` de LibraCore, que es la que
+    # pide `libra-ui/comercio/medios-pago`.
+    app.include_router(medios.router, dependencies=staff_or_admin)
     app.include_router(reports.router, dependencies=admin_only)
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
