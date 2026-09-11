@@ -1,3 +1,4 @@
+import asyncio
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -254,18 +255,35 @@ def mp_cobros_sin_venta(request: Request):
 
 
 @router.post("/{sale_id}/mp-qr", response_model=MpOrdenOut)
-async def poner_en_el_qr(sale_id: int, request: Request):
+def poner_en_el_qr(sale_id: int, request: Request):
     """Pone el total de este borrador a cobrar en el QR de la caja.
 
     No devuelve ninguna imagen: el QR es el cartel impreso del mostrador y no
     cambia nunca; lo que cambia es cuanto cobra. Ver `services/mp_qr.py`.
+
+    🔴 **`def` y no `async def`, a proposito** -- y por lo mismo `bajar_del_qr`
+    y `estado_del_qr`, abajo. uvicorn corre con **un solo proceso**, y las
+    corrutinas de `services/mp_qr.py` son `async` solo en el borde: lo que
+    esperan de MercadoPago va por `httpx` asincronico, pero antes y despues leen
+    y escriben la base (`conn.execute` + `commit`), que es sincronico. Con
+    `await` desde el loop, cada una de esas consultas frenaba la instancia
+    entera. Como `def`, FastAPI la corre en el threadpool, y la corrutina va con
+    `asyncio.run` en un loop propio de este hilo: lo sincronico bloquea a este
+    hilo y a nadie mas. El servicio no cambia de firma; el arreglo va del lado
+    de quien llama.
+
+    🔑 No es un uso nuevo de `app.state.conn`: las rutas `def` de este router
+    (`get_sale`, `add_item`...) ya la usan desde el threadpool. Y ninguna de las
+    tres tenia un "leer y despues escribir" que el loop protegiera: las tres ya
+    se partian en el `await` a MercadoPago. `confirm_sale` si lo tiene, y por
+    eso sigue `async` -- ver su comentario.
     """
     try:
         sale = _service(request).get(sale_id)
     except SaleNotFound:
         raise HTTPException(404, "sale not found")
     try:
-        orden = await mp_qr.poner_en_el_qr(request.app.state.conn, sale)
+        orden = asyncio.run(mp_qr.poner_en_el_qr(request.app.state.conn, sale))
     except mp_qr.MpNoConfigurado as exc:
         raise HTTPException(400, str(exc))
     except mp_qr.VentaYaCobrada as exc:
@@ -279,7 +297,7 @@ async def poner_en_el_qr(sale_id: int, request: Request):
 
 
 @router.delete("/{sale_id}/mp-qr", status_code=204)
-async def bajar_del_qr(sale_id: int, request: Request):
+def bajar_del_qr(sale_id: int, request: Request):
     """Saca del QR la orden de esta venta: el cartel queda sin nada que cobrar.
 
     🔴 **Sin esto el proximo cliente que escanee paga la venta anterior.** Es
@@ -287,7 +305,9 @@ async def bajar_del_qr(sale_id: int, request: Request):
     tambien al cerrar el dialogo. Idempotente: sin orden pendiente no hace
     nada.
     """
-    await mp_qr.bajar_del_qr(request.app.state.conn, sale_id)
+    # `def` + `asyncio.run`, por lo mismo que `poner_en_el_qr`: la baja lee y
+    # escribe la base alrededor del DELETE a MercadoPago.
+    asyncio.run(mp_qr.bajar_del_qr(request.app.state.conn, sale_id))
 
 
 class MpEstadoOut(BaseModel):
@@ -298,10 +318,13 @@ class MpEstadoOut(BaseModel):
 
 
 @router.get("/{sale_id}/mp-status", response_model=MpEstadoOut)
-async def estado_del_qr(sale_id: int, request: Request):
+def estado_del_qr(sale_id: int, request: Request):
     """Si el QR de esta venta ya se pago. Lo pollea el POS cada 3 segundos."""
+    # `def` + `asyncio.run`, por lo mismo que `poner_en_el_qr`. Es la que mas
+    # pesaba de las tres: el POS la pide cada 3 segundos mientras el cliente
+    # escanea, y cada poll leia --y al acreditarse, escribia-- la base en el loop.
     try:
-        estado = await mp_qr.estado_del_cobro(request.app.state.conn, sale_id)
+        estado = asyncio.run(mp_qr.estado_del_cobro(request.app.state.conn, sale_id))
     except mp_qr.MpNoConfigurado as exc:
         raise HTTPException(400, str(exc))
     except mp_qr.MpError as exc:
@@ -490,6 +513,18 @@ def update_item_quantity(sale_id: int, index: int, data: SaleItemQuantity, reque
 
 @router.post("/{sale_id}/confirm", response_model=SaleOut)
 async def confirm_sale(sale_id: int, data: SaleConfirm, request: Request):
+    # 🔴 **Sigue `async def` a proposito, aunque frena el loop** (la base, y con
+    # factura la numeracion de ARCA, que firma con `openssl`). Hoy la salva una
+    # serializacion que nadie escribio: entre "sigue en borrador" (el `get` de
+    # `SaleService.confirm`) y grabarla confirmada no hay ningun `await`, asi que
+    # en el loop dos confirmaciones de la MISMA venta no se pisan -- la segunda
+    # ve la venta confirmada y da 409. Como `def` corren en dos hilos sobre la
+    # conexion unica de `app.state.conn` --una sola transaccion para todos, sin
+    # lock de fila que valga--, las dos pasan el chequeo y la venta se confirma
+    # dos veces: stock descontado dos veces y dos facturas. Medido el
+    # 2026-09-11. Sacarla del loop pide primero serializar la confirmacion; el
+    # xfail de `tests/test_rutas_no_bloquean_el_loop.py` lo deja escrito.
+    #
     # El gating por plan corre aca adentro, no gateando todo el router:
     # confirmar una venta (y su movimiento de caja, siempre) nunca depende
     # del plan -- solo pedir factura sobre esa venta puntual lo hace.
