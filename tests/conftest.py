@@ -121,3 +121,55 @@ def _terminos_ya_aceptados(request):
     mp.setattr(TerminosRepository, "esta_aceptada", lambda self: True)
     yield
     mp.undo()
+
+
+# ── Captcha ALTCHA: dado por resuelto para el resto de la suite ─────────────
+#
+# Desde libraauth v0.40.0 el router corre con `captcha=True` (app/routers/
+# auth.py): el login y el forgot-password exigen la solucion de un desafio.
+# La suite postea al login en muchos lugares --los fixtures de sesion, los
+# tests de auth, los de roles-- y resolver una prueba de trabajo en cada uno
+# no mide nada de VentaLibra: el captcha (firma, vencimiento, anti-replay) lo
+# prueba libraauth. Aca solo se CABLEA, y eso lo mide `test_captcha_login.py`,
+# que se marca con `captcha_real` y queda afuera de esta excepcion.
+#
+# El router pide el captcha con la funcion de modulo
+# `libraauth.session_auth._captcha_de(request)` en cada request, asi que se
+# reemplaza esa funcion por un doble que acepta cualquier payload y emite
+# desafios reales (baratos). La original queda en `_CAPTCHA_DE_REAL`, tomada
+# al importar el conftest, antes de cualquier parche.
+#
+# `MonkeyPatch()` propio y no el fixture `monkeypatch`, por lo mismo que la
+# excepcion de Terminos de arriba: `test_recibos.py` llama `monkeypatch.undo()`
+# a mitad del test, y eso deshaceria tambien este parche.
+from libraauth import session_auth as _session_auth  # noqa: E402
+from libraauth.captcha import Captcha as _Captcha  # noqa: E402
+
+_CAPTCHA_DE_REAL = _session_auth._captcha_de
+
+
+class _CaptchaSiempreValido:
+    """`verificar` acepta todo; `emitir` da un desafio de verdad, de costo
+    minimo, para que `GET /auth/captcha` siga contestando con su forma."""
+
+    def __init__(self):
+        self._emisor = _Captcha("clave-de-prueba", costo=1, contador_min=1, contador_rango=5)
+
+    def emitir(self) -> dict:
+        return self._emisor.emitir()
+
+    def verificar(self, payload: str) -> bool:
+        return True
+
+
+@pytest.fixture(autouse=True)
+def _captcha_resuelto(request):
+    if request.node.get_closest_marker("captcha_real"):
+        yield
+        return
+
+    doble = _CaptchaSiempreValido()
+    mp = pytest.MonkeyPatch()
+    mp.setattr("libraauth.session_auth._captcha_de", lambda _request: doble)
+    yield
+    mp.undo()
