@@ -1,4 +1,19 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+// El captcha «No soy un robot» (ALTCHA, libraauth v0.40.0 con `captcha=True`):
+// «Ingresar» queda deshabilitado hasta que el widget resuelve el desafío, que
+// es una prueba de trabajo de alrededor de un segundo en el navegador. El tope
+// de 30 s es para un runner de CI lento, no lo esperado.
+//
+// 🔴 Se clickea el LABEL y no el checkbox. Sobre el `<input>` de ALTCHA va el
+// `<svg>` del tilde (absoluto, centrado, sin `pointer-events: none`), y un
+// click al centro del input lo recibe el svg: Playwright reintenta con
+// "<svg> intercepts pointer events" hasta el timeout. El label (`for=` el
+// input) es lo que clickea una persona y tilda sin `force`.
+async function tildarCaptcha(page: Page) {
+  await page.locator('altcha-widget label', { hasText: 'No soy un robot' }).click()
+  await expect(page.getByRole('button', { name: 'Ingresar' })).toBeEnabled({ timeout: 30_000 })
+}
 
 // Lo único que un unitario no puede ver: que la SPA construida, servida por la
 // app real, deje entrar y muestre una pantalla de dominio. Si el bundle quedó
@@ -16,6 +31,7 @@ test('entra por /login, acepta los Términos y ve la primera pantalla', async ({
 
   await page.locator('#username').fill(process.env.SMOKE_USER ?? 'admin')
   await page.locator('#password').fill(process.env.SMOKE_PASSWORD ?? '')
+  await tildarCaptcha(page)
   await page.getByRole('button', { name: 'Ingresar' }).click()
   await expect(page).toHaveURL(/\/pos/)
 
@@ -37,6 +53,9 @@ test('una credencial mala no entra (control)', async ({ page }) => {
   await page.goto('/login')
   await page.locator('#username').fill('admin')
   await page.locator('#password').fill('esta-no-es')
+  // Con el captcha tildado: sin él el botón está deshabilitado y el control
+  // no llegaría a probar la contraseña.
+  await tildarCaptcha(page)
   await page.getByRole('button', { name: 'Ingresar' }).click()
   await expect(page).toHaveURL(/\/login/)
   await expect(page.locator('p.text-destructive')).toBeVisible()

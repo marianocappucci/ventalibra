@@ -97,13 +97,16 @@ dependencies = [
     # que este producto NO tenía en su contenedor (medido) y que
     # `libracore-migrar` necesita para aplicar la cadena del motor. Sin él, el
     # paso del deploy muere con un `ModuleNotFoundError` en vez de correr.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.94.0",
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.95.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
     # de aca: el mecanismo de v0.9.0 cuelga del flush de SQLAlchemy y este
     # producto no lo tiene -- la da libracommerce v0.5.0.
-    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.38.0",
+    # v0.38.0 -> v0.40.0 (2026-09-12): el captcha ALTCHA del login y del
+    # forgot-password (v0.40.0, ADR-014; trae `altcha`) y la IP real del
+    # bloqueo por intentos detras del proxy (v0.39.0).
+    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.40.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
@@ -129,6 +132,7 @@ packages = ["app"]
 [tool.pytest.ini_options]
 markers = [
     "sin_aceptar_terminos: deja al test afuera de la excepcion autouse del conftest, para medir el gate de Terminos con el corte puesto de verdad",
+    "captcha_real: deja al test afuera del doble autouse del captcha del conftest, para medir el login con el captcha ALTCHA de verdad",
 ]
 testpaths = ["tests"]
 

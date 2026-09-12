@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'lucide-react'
+import { useMediosPago } from '@/lib/medios-pago'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -77,14 +78,15 @@ function sonarCampanita(ctx: AudioContext | null) {
   }
 }
 
-const MEDIOS_PAGO = [
-  { value: 'efectivo', label: 'Efectivo' },
-  { value: 'tarjeta_debito', label: 'Tarjeta de débito' },
-  { value: 'tarjeta_credito', label: 'Tarjeta de crédito' },
-  { value: 'transferencia', label: 'Transferencia' },
-  { value: MERCADO_PAGO, label: 'Mercado Pago' },
-  { value: CUENTA_CORRIENTE, label: 'Cuenta corriente (fiado)' },
-]
+/** 🔴 Acá había una lista propia de seis medios, y el backend no validaba:
+ *  la lista era lo único que decía qué se podía cobrar, y no ofrecía Cuenta
+ *  DNI, otras billeteras ni cheque, que la familia sí. Ahora sale del motor
+ *  (`useMediosPago`), como en Contalibra y Restolibra. Lo único propio del
+ *  mostrador es cómo se llama el fiado. El QR sigue siendo sólo de Mercado
+ *  Pago: los otros medios electrónicos se registran como un cobro manual. */
+function etiquetaEnElPos(medio: { id: string; label: string }): string {
+  return medio.id === CUENTA_CORRIENTE ? 'Cuenta corriente (fiado)' : medio.label
+}
 
 const ATAJOS = [
   ['F2', 'cobrar'], ['F3', 'dividir pago'], ['F4', 'quitar línea'],
@@ -736,7 +738,7 @@ function CambiarCantidad({ linea, onAceptar, onCerrar }: {
           onSubmit={(e) => { e.preventDefault(); onAceptar(valor) }}
           className="grid gap-3"
         >
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="cantidad-nueva">Cantidad</Label>
             <Input
               id="cantidad-nueva" value={valor} autoFocus
@@ -837,6 +839,7 @@ function Cobro({ saleId, total, mp, cliente, busy, onCobrar, onCerrar, onPedirCl
   onPedirCliente: () => void
 }) {
   const totalNum = Number(total)
+  const { medios } = useMediosPago()
   const [pagos, setPagos] = useState<PagoForm[]>([
     { medio: 'efectivo', monto: total, recibido: '' },
   ])
@@ -1001,8 +1004,8 @@ function Cobro({ saleId, total, mp, cliente, busy, onCobrar, onCerrar, onPedirCl
                 <Select value={pago.medio} onValueChange={(v) => actualizar(i, 'medio', v)}>
                   <SelectTrigger className="h-9 flex-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {MEDIOS_PAGO.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    {medios.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{etiquetaEnElPos(m)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1260,7 +1263,7 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
           cajón ahora: es la base contra la que se arquea al cerrar.
         </p>
         <form onSubmit={abrir} className="mt-5 grid gap-3">
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="monto-inicial">Efectivo inicial en caja</Label>
             <Input
               id="monto-inicial" value={monto} autoFocus className="h-12 text-lg tabular-nums"
@@ -1343,7 +1346,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
             </div>
           </div>
 
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="declarado">Efectivo contado</Label>
             <Input
               id="declarado" value={declarado} autoFocus className="h-12 text-lg tabular-nums"
@@ -1371,7 +1374,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
             </div>
           )}
 
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="notas-cierre">Notas</Label>
             <Input
               id="notas-cierre" value={notas} placeholder="opcional"

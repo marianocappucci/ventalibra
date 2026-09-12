@@ -6,11 +6,12 @@ lado: cuánto debe cada uno y el registro del pago cuando viene a saldar.
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from libracore import medios_pago
 from libracore.db import recibos as db_recibos
 from libracore.db import turnos as db_turnos
 from libracore.pdf_generator import generate_pdf_recibo_doc
 from libracore.recibos import SinCobros, emitir_recibo_cobranza
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..auth import get_current_user
 from ..services.cuenta_corriente import CuentaCorrienteService, SinCliente
@@ -39,6 +40,17 @@ class CobranzaIn(BaseModel):
     medio_pago: str = "efectivo"
     concepto: str = ""
     referencia: str = ""
+
+    @field_validator("medio_pago")
+    @classmethod
+    def _medio_de_cobro(cls, medio: str) -> str:
+        # 🔴 La cuenta corriente no es un medio de COBRO: es la marca de que
+        # la operacion se hizo a credito. Cobrar una deuda "con cuenta
+        # corriente" registraria un cobro que no cobra nada. Es el mismo
+        # criterio que `medios_pago.para_selector(incluir_cuenta_corriente=False)`.
+        if medio == "cuenta_corriente":
+            raise ValueError("la cuenta corriente no es un medio para cobrar una deuda")
+        return medios_pago.validar(medio)
 
 
 class MovimientoOut(BaseModel):

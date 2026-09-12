@@ -120,7 +120,7 @@ def test_confirm_with_invoice_and_responsable_inscripto_customer_bills_type_a(ad
     admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
     confirmed = admin_client.post(
         f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "tarjeta", "invoice": True},
+        json={"location_id": location_id, "medio_pago": "tarjeta_credito", "invoice": True},
     )
     assert confirmed.status_code == 200, confirmed.text
     factura = confirmed.json()["factura"]

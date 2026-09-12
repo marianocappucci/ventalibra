@@ -21,6 +21,7 @@ import {
 import { AlertTriangle, Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha } from '@/lib/fechas'
+import { useMediosPago } from '@/lib/medios-pago'
 
 const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
   draft: { label: 'Borrador', tono: 'neutro' },
@@ -29,13 +30,6 @@ const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
   partially_returned: { label: 'Devuelta en parte', tono: 'atencion' },
   returned: { label: 'Devuelta', tono: 'atencion' },
 }
-
-const MEDIOS_DEVOLUCION = [
-  { value: 'efectivo', label: 'Efectivo' },
-  { value: 'transferencia', label: 'Transferencia' },
-  { value: 'mercadopago', label: 'Mercado Pago' },
-  { value: 'cuenta_corriente', label: 'Cuenta corriente' },
-]
 
 function money(value: string | number): string {
   return Number(value).toLocaleString('es-AR', {
@@ -224,6 +218,8 @@ function DetalleVenta({ saleId, onCerrar, onCambio }: {
   const [devolviendo, setDevolviendo] = useState(false)
   const [aDevolver, setADevolver] = useState<Record<number, string>>({})
   const [medio, setMedio] = useState('efectivo')
+  // Por dónde vuelve la plata: los medios del motor (antes, cuatro propios).
+  const { medios } = useMediosPago()
   const [locationId, setLocationId] = useState<string>('')
 
   useEffect(() => {
@@ -338,8 +334,8 @@ function DetalleVenta({ saleId, onCerrar, onCambio }: {
                     <Select value={medio} onValueChange={setMedio}>
                       <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {MEDIOS_DEVOLUCION.map((m) => (
-                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                        {medios.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

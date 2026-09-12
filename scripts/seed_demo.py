@@ -565,6 +565,51 @@ def _cargar_logo(api, nombre: str, inicial: str, color: tuple, contar) -> None:
         print(f"  -- logo: {e}")
 
 
+def iniciar_sesion(api: Api, usuario: str, password: str) -> None:
+    """El login del seed, con el captcha ALTCHA resuelto si la instancia lo pide.
+
+    Desde libraauth v0.40.0 (`captcha=True` en app/routers/auth.py) el login
+    exige la solucion de un desafio. El seed hace lo mismo que el navegador
+    --pide `GET /auth/captcha`, lo resuelve y manda la solucion en `captcha`--,
+    solo que en Python, con `altcha` (viene con libraauth).
+
+    🔴 **Si la instancia NO emite desafios, entra sin captcha.** No es teorico:
+    `reset_demo.sh` saca el seed de `origin/develop` y la demo corre la imagen
+    de `main`, asi que entre el merge a develop y la promocion el seed nuevo
+    corre contra el backend viejo. Ahi `/auth/captcha` no existe, y el catch-all
+    de la SPA contesta el `index.html` con 200 (o un 404, sin frontend).
+    """
+    cuerpo = {"username": usuario, "password": password}
+    try:
+        desafio = api.get("/auth/captcha")
+    except ValueError:
+        # El `index.html` del catch-all: no es JSON, no hay captcha.
+        desafio = None
+    except RuntimeError as e:
+        if "-> 404" not in str(e):
+            raise
+        desafio = None
+
+    if isinstance(desafio, dict) and "parameters" in desafio and "signature" in desafio:
+        try:
+            from altcha import Challenge, Payload, solve_challenge
+        except ImportError:
+            sys.exit(
+                "ERROR: la instancia pide el captcha del login y este python no "
+                "tiene `altcha` (viene con libraauth >= v0.40.0). Corre el seed con "
+                "el python del producto: `python3` adentro del contenedor (el de "
+                "/opt/venv, como lo corre scripts/reset_demo.sh) o "
+                "`.venv-scripts/bin/python` del checkout, si esta al dia con el pin."
+            )
+        reto = Challenge.from_dict(desafio)
+        solucion = solve_challenge(reto)
+        if solucion is None:
+            sys.exit("ERROR: no se pudo resolver el captcha del login a tiempo.")
+        cuerpo["captcha"] = Payload(reto, solucion).to_base64()
+
+    api.post("/auth/login", cuerpo)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", required=True)
@@ -584,7 +629,7 @@ def main() -> int:
         return 2
 
     api = Api(args.url)
-    api.post("/auth/login", {"username": args.usuario, "password": args.password})
+    iniciar_sesion(api, args.usuario, args.password)
     sembrar(api)
     return 0
 

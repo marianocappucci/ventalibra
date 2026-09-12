@@ -20,13 +20,7 @@ import {
 import { ReceiptText, Wallet } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha } from '@/lib/fechas'
-
-const MEDIOS_PAGO = [
-  { value: 'efectivo', label: 'Efectivo' },
-  { value: 'tarjeta_debito', label: 'Tarjeta de débito' },
-  { value: 'transferencia', label: 'Transferencia' },
-  { value: 'mercadopago', label: 'Mercado Pago' },
-]
+import { useMediosPago } from '@/lib/medios-pago'
 
 function money(value: string | number): string {
   return Number(value).toLocaleString('es-AR', {
@@ -149,6 +143,10 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
   const [cuenta, setCuenta] = useState<CuentaCorriente | null>(null)
   const [monto, setMonto] = useState('')
   const [medio, setMedio] = useState('efectivo')
+  const { medios } = useMediosPago()
+  // La cuenta corriente no es un medio de COBRO: saldar deuda "con cuenta
+  // corriente" no cobra nada. El backend también la rechaza (422).
+  const mediosDeCobro = medios.filter((m) => m.id !== 'cuenta_corriente')
   const [concepto, setConcepto] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -240,8 +238,8 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
               <Select value={medio} onValueChange={setMedio}>
                 <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {MEDIOS_PAGO.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  {mediosDeCobro.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

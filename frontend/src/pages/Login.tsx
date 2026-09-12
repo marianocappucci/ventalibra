@@ -21,4 +21,9 @@ export const Login = createLogin({
   // libra-ui consulta GET /auth/demo al montar y solo lo pinta si la
   // instancia contesta que es una demo.
   demoPath: '/auth/demo',
+  // Captcha «No soy un robot» (ALTCHA, libra-ui v0.69.0) -- va de la mano con
+  // captcha=True en app/routers/auth.py. Igual que `demoPath`, libra-ui sondea
+  // la ruta al montar y solo dibuja el recuadro si contesta un desafio; con el
+  // recuadro puesto, «Ingresar» espera a que se tilde.
+  captchaPath: '/auth/captcha',
 })

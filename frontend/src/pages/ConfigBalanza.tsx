@@ -113,7 +113,7 @@ export function ConfigBalanza() {
           {activa && (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Prefijo</Label>
                   <Input
                     value={fmt.prefix}
@@ -125,7 +125,7 @@ export function ConfigBalanza() {
                   </p>
                 </div>
 
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Qué trae la etiqueta</Label>
                   <Select
                     value={fmt.value_kind}
@@ -144,7 +144,7 @@ export function ConfigBalanza() {
                   </p>
                 </div>
 
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Dígitos del código de producto</Label>
                   <Input
                     type="number" min={1} value={fmt.code_digits}
@@ -153,7 +153,7 @@ export function ConfigBalanza() {
                   />
                 </div>
 
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Dígitos del {fmt.value_kind === 'weight' ? 'peso' : 'importe'}</Label>
                   <Input
                     type="number" min={1} value={fmt.value_digits}
@@ -162,7 +162,7 @@ export function ConfigBalanza() {
                   />
                 </div>
 
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Largo total del código</Label>
                   <Input
                     type="number" min={1} value={fmt.total_digits}
@@ -172,7 +172,7 @@ export function ConfigBalanza() {
                   <p className="text-xs text-muted-foreground">13 en un EAN-13, 8 en un EAN-8.</p>
                 </div>
 
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Unidad mínima</Label>
                   <Select
                     value={String(fmt.divisor)}

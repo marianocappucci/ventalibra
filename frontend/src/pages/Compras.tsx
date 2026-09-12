@@ -112,7 +112,7 @@ function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: Catal
         </CardHeader>
         <CardContent className="grid gap-3">
           <div className="flex items-end gap-2">
-            <div className="grid gap-1.5 flex-1">
+            <div className="grid gap-2 flex-1">
               <Label>Proveedor</Label>
               <SelectBuscable
                 value={supplierId}
@@ -175,7 +175,7 @@ function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: Catal
                 PurchasingService.add_order_item() valida del lado del backend. */}
             {(selected.status === 'draft' || selected.status === 'sent') && (
               <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Item</Label>
                   <SelectBuscable
                     value={lineItemId}
@@ -186,11 +186,11 @@ function OrdersPanel({ suppliers, items }: { suppliers: Supplier[]; items: Catal
                     className="w-40"
                   />
                 </div>
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Cantidad</Label>
                   <Input value={lineQuantity} onChange={(e) => setLineQuantity(e.target.value)} className="w-24" />
                 </div>
-                <div className="grid gap-1.5">
+                <div className="grid gap-2">
                   <Label>Costo unitario</Label>
                   <Input value={lineCost} onChange={(e) => setLineCost(e.target.value)} className="w-28" />
                 </div>
@@ -303,7 +303,7 @@ function ReceiptsPanel({
         </CardHeader>
         <CardContent className="grid gap-3">
           <div className="flex flex-wrap items-end gap-2">
-            <div className="grid gap-1.5 flex-1">
+            <div className="grid gap-2 flex-1">
               <Label>Proveedor</Label>
               <SelectBuscable
                 value={supplierId}
@@ -313,7 +313,7 @@ function ReceiptsPanel({
                 ariaLabel="Proveedor"
               />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Orden vinculada (opcional)</Label>
               <SelectBuscable
                 value={orderId}
@@ -373,7 +373,7 @@ function ReceiptsPanel({
             {selected.status === 'draft' && (
               <>
                 <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-2">
                     <Label>Item</Label>
                     <SelectBuscable
                       value={lineItemId}
@@ -384,18 +384,18 @@ function ReceiptsPanel({
                       className="w-40"
                     />
                   </div>
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-2">
                     <Label>Cantidad</Label>
                     <Input value={lineQuantity} onChange={(e) => setLineQuantity(e.target.value)} className="w-24" />
                   </div>
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-2">
                     <Label>Costo unitario</Label>
                     <Input value={lineCost} onChange={(e) => setLineCost(e.target.value)} className="w-28" />
                   </div>
                   <Button onClick={addItem} disabled={busy || !lineItemId}>Agregar línea</Button>
                 </div>
                 <div className="flex items-end gap-2 border-t pt-3">
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-2">
                     <Label>Depósito de destino</Label>
                     <Select value={locationId} onValueChange={setLocationId}>
                       <SelectTrigger className="w-48"><SelectValue placeholder="Depósito…" /></SelectTrigger>

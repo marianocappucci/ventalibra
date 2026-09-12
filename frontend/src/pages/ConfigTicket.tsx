@@ -73,7 +73,7 @@ export function ConfigTicket() {
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Ancho del papel</Label>
               <Select value={cfg.ancho_mm} onValueChange={(v) => cambiar('ancho_mm', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -88,7 +88,7 @@ export function ConfigTicket() {
               </p>
             </div>
 
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label>Tamaño de letra</Label>
               <Input
                 type="number" min={6} max={14} value={cfg.fuente_size}
@@ -99,7 +99,7 @@ export function ConfigTicket() {
             </div>
           </div>
 
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Label htmlFor="pie">Texto al pie</Label>
             <Input
               id="pie" value={cfg.pie} placeholder="¡Gracias por su compra!"
