@@ -29,9 +29,21 @@ function json(body: unknown, status = 200) {
   })
 }
 
-/** Sin sesion: la ruta de sesion responde 401, como con la cookie vencida. */
+/** Sin sesion: la ruta de sesion responde 401, como con la cookie vencida.
+ *
+ * La sonda del captcha contesta 404 y no 401: el api-client de libra-ui trata
+ * cualquier 401 como sesion vencida y navega al login, cosa que jsdom no sabe
+ * hacer ("Not implemented: navigation to another Document") y que ningun
+ * backend real haria con esta ruta, que es publica. El 404 es la respuesta de
+ * una instancia sin captcha: el login se dibuja sin el recuadro. */
 function sinSesion() {
-  fetchMock.mockImplementation(() => Promise.resolve(json({ detail: 'No autenticado' }, 401)))
+  fetchMock.mockImplementation((url: string) =>
+    Promise.resolve(
+      String(url).includes('/auth/captcha')
+        ? json({ detail: 'Not Found' }, 404)
+        : json({ detail: 'No autenticado' }, 401),
+    ),
+  )
 }
 
 /** Con sesion: devuelve un usuario; el resto de las llamadas, vacio. */
@@ -107,6 +119,35 @@ describe('guard de rutas', () => {
     // Y que el usuario de la sesion llego hasta la UI, no solo que hubo shell.
     expect(await screen.findAllByText('Ana')).not.toHaveLength(0)
     expect(screen.queryByLabelText('Usuario')).not.toBeInTheDocument()
+  })
+})
+
+describe('el captcha «No soy un robot»', () => {
+  // El recuadro y el boton deshabilitado los prueba libra-ui. Aca se fija el
+  // cableado de ESTE producto: que las dos pantallas que postean credenciales
+  // o piden un mail consulten el desafio en la ruta que monta el backend
+  // (`captcha=True` en app/routers/auth.py). Sin `captchaPath` el login no
+  // pregunta nada y el backend le contesta 400 a cada intento.
+  const RUTA_CAPTCHA = '/auth/captcha'
+  const consulto = () => fetchMock.mock.calls.some(([u]) => String(u).includes(RUTA_CAPTCHA))
+
+  it('el login consulta el desafio', async () => {
+    sinSesion()
+    montar('/login')
+    await waitFor(() => expect(consulto()).toBe(true))
+  })
+
+  it('«olvidé mi contraseña» tambien', async () => {
+    sinSesion()
+    montar('/forgot-password')
+    await waitFor(() => expect(consulto()).toBe(true))
+  })
+
+  it('el reset con el token del mail no', async () => {
+    sinSesion()
+    montar('/reset-password?token=abc123')
+    expect(await screen.findByLabelText('Contraseña nueva')).toBeInTheDocument()
+    expect(consulto()).toBe(false)
   })
 })
 
