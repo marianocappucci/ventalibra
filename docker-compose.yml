@@ -87,7 +87,7 @@ services:
       retries: 3
       start_period: 10s
     ports:
-      - "8081:8000"
+      - "127.0.0.1:8081:8000"
     volumes:
       - ./:/app
     # 🔴 Las migraciones también acá, no sólo en el deploy.
