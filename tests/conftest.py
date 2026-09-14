@@ -77,7 +77,10 @@ def staff_client(admin_client: TestClient):
     created = admin_client.post("/users", json={
         "username": "staff-1", "name": "Empleada", "password": "staff-pass", "role": "staff",
     })
-    assert created.status_code == 200, created.text
+    # 201 desde la adopción de `libraauth.usuarios.build_users_router`
+    # (2026-09-13, ADR-018): la factory declara `status_code=201` en el alta,
+    # a diferencia del router propio que reemplazó.
+    assert created.status_code == 201, created.text
     with https_client(admin_client.app) as client:
         response = client.post("/auth/login", json={"username": "staff-1", "password": "staff-pass"})
         assert response.status_code == 200, response.text
