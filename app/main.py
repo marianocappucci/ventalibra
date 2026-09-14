@@ -17,6 +17,7 @@ from libraauth.session_auth import (
 )
 from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
+from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
 from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracore import config_manager
@@ -57,7 +58,6 @@ from .routers import auth as auth_router
 from .routers import (
     settings as settings_router,
 )
-from .routers import users as users_router
 from .services import billing
 from .services.modules import ModuleRepository
 from .services.users import UserRepository, ensure_default_admin
@@ -244,7 +244,25 @@ def create_app(db_path: str) -> FastAPI:
     # exigiendo sesion de un usuario del producto. El backoffice no tiene por
     # que poder tocar el resto del dominio, y colgar la dependencia de
     # `admin_only` seria ampliar el permiso sin necesidad.
-    app.include_router(users_router.router, dependencies=[Depends(require_admin_o_servicio)])
+    #
+    # Contrato unico de la familia (libraauth v0.43.0, ADR-018): reemplaza a
+    # `app/routers/users.py`, que antes se montaba sin `Depends` propio y
+    # tomaba el gate de aca mismo -- por eso el guard sigue siendo
+    # EXACTAMENTE el mismo (`require_admin_o_servicio`), pasado ahora como
+    # `admin_guard=` de la factory en vez de en `dependencies=` del
+    # `include_router`. `roles` sin pasar: el default de la factory
+    # ("admin", "staff") es el mismo que ya usa `UserRepository` en este
+    # producto (ver su construccion, arriba, "Sin `roles=`").
+    #
+    # 🔴 El `DELETE` ahora responde `204` (antes `200` con `{"ok": true}` --
+    # ver README de libraauth, seccion "Router de usuarios unificado"). El
+    # frontend de VentaLibra es el shim de `Usuarios` de `libra-ui`, que no
+    # mira el cuerpo del borrado (llama `api.del()` y descarta la respuesta):
+    # no hay nada que actualizar de este lado.
+    app.include_router(build_users_router(
+        prefix="/users",
+        admin_guard=require_admin_o_servicio,
+    ))
     app.include_router(
         # 🔴 `empresa_por_defecto` es el slug con el que `services/billing.py`
         # lee la configuracion de facturacion (`EMPRESA = "venta"`). En una

@@ -67,10 +67,11 @@ def test_el_token_puede_dar_de_alta_un_usuario(sin_sesion, monkeypatch):
         headers={SERVICE_TOKEN_HEADER: TOKEN},
         json={"username": "ana", "name": "Ana", "password": "clave-inicial", "role": "staff"},
     )
-    # 200 y no 201: el router de usuarios de VentaLibra no declara
-    # `status_code=201`, a diferencia del de los otros productos. Es una
-    # divergencia real del producto, no de este test.
-    assert r.status_code == 200
+    # 201 desde la adopción de `libraauth.usuarios.build_users_router`
+    # (2026-09-13, ADR-018). Hasta esa fecha era 200: el router propio de
+    # VentaLibra no declaraba `status_code=201`, a diferencia del de los
+    # otros productos -- la factory unifica también esto.
+    assert r.status_code == 201
     assert r.json()["username"] == "ana"
 
 
