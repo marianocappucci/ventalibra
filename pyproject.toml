@@ -106,7 +106,7 @@ dependencies = [
     # v0.38.0 -> v0.40.0 (2026-09-12): el captcha ALTCHA del login y del
     # forgot-password (v0.40.0, ADR-014; trae `altcha`) y la IP real del
     # bloqueo por intentos detras del proxy (v0.39.0).
-    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.40.0",
+    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.43.1",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
