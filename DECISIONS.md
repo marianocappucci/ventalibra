@@ -1257,3 +1257,116 @@ no de editarlo.
   la grafía vuelva por cualquiera de las tres listas. La medición previa sobre
   las 24 instancias PostgreSQL del VPS está en
   `wiki/concepts/medios-de-pago-familia-libra.md`.
+
+## ADR-025 — La venta pasa a la capa ERP de LibraCommerce (plan post-P9)
+
+- Estado: aceptada
+- Fecha: 2026-09-13
+- Contexto: VentaLibra vende hoy con los casos de uso **viejos** del motor
+  (`usecases/sales.py`): un borrador que se llena por posición y se confirma
+  después contra `confirm_sale`, que sólo descuenta stock y deja
+  `reason_code` en NULL. Numeración propia `POS-000001` con la tabla
+  `sequences`; caja, cuenta corriente y factura los orquesta el router fuera
+  de toda transacción, con IVA fijo al 21 %; un turno único para toda la
+  instancia. No usa la capa `erp/` + `web/` que Contalibra y Restolibra
+  adoptaron en la migración P9 — la de `crear_venta_links` y las factories de
+  routers de LibraCore. Pasar a esa capa no es cambiar imports: cambia el
+  modelo de la venta (borrador → registrar en una sola llamada) y cambia
+  datos ya guardados. El plan completo, con la brecha medida contra el motor
+  el 2026-09-11, está en el wiki (`plan-ventalibra-a-libracommerce`). Antes
+  de F1 se vuelve a medir sobre `develop`: el motor se movió desde entonces.
+- Decisión: las seis que contestó el humano el 2026-09-13. D4 y D5 eran la
+  recomendación del plan y el humano las aceptó sin objeción:
+
+  | | Decisión |
+  |---|---|
+  | **D1** Borrador | El POS arma la venta **en el navegador** y la registra en una sola llamada, como Contalibra |
+  | **D2** Cobro por QR | El **modelo de la familia**: venta pendiente y `acreditar_pago_qr` |
+  | **D3** Cuenta corriente | **Modelo derivado**: se migran los `cc_debitos` y se alinean los ids |
+  | **D4** Vuelto | **Se guarda** (columna `recibido` en `ventas_pagos`) |
+  | **D5** Numeración | **Se mantiene `POS-`** |
+  | **D6** Alcance | **Todo junto**: catálogo, listas de precio y reportes también pasan ahora a las factories |
+
+- **El mismo día se sumaron decisiones que cambian el alcance**, por fuera de
+  D1–D6: varias cajas por sucursal, con la sucursal como el **depósito**
+  (`Location` de LibraCommerce, id entero, entra en `cajas.sucursal_id` sin
+  tocar el schema); punto de venta de ARCA por sucursal, como LibraClub; y QR
+  de MercadoPago **por caja**, calcado del punto de venta por caja que ya
+  resuelve LibraCore (`resolver_punto_venta`), así que Contalibra y Restolibra
+  lo heredan sin tocar su código. Queda por confirmar contra MercadoPago si el
+  collector (`mp_user_id`) es de la cuenta o de la caja, y si un pago informa
+  desde qué caja salió. **Las cajas múltiples y el cierre diario de VentaLibra
+  van después de este plan**, no en paralelo — orden fijado por el humano.
+- **El relevamiento de D6 encontró que LibraCommerce ya tiene** variantes y
+  precios con vigencia y por sucursal en el dominio y en el schema
+  (`item_variants`, `item_prices` con `valid_from`/`valid_until`/`branch_id`),
+  y VentaLibra ya los usa. Lo plano a propósito es la capa `erp/` + `web/`
+  (`erp/listas_precio.py` fuerza un sentinel de vigencia y `branch_id IS
+  NULL`): el trabajo es extenderla de forma aditiva, sin cambiarle nada a
+  Contalibra ni a Restolibra. La pantalla de catálogo con variantes en
+  libra-ui es nueva de punta a punta.
+
+### F0, contado el 2026-09-13
+
+Lectura de sólo lectura (`default_transaction_read_only`) en `ventalibra-dev`
+y `ventalibra-demo`:
+
+| | dev | demo |
+|---|---|---|
+| Ventas | 7 confirmadas y 3 borradores abandonados (más de un día) | 4 confirmadas, 1 anulada y 1 borrador |
+| Líneas de venta, stock y catálogo con variante | 0 | 0 |
+| Precios con vigencia cerrada o por sucursal | 0 (`item_prices` vacía) | 0 |
+| Pagos con vuelto guardado | 1 de 1 | 3 de 5 |
+| Órdenes QR (`sale_mp_orders`) | 0 | 0 |
+| `cc_debitos` | 3, $18.000 | 1, $40.800 |
+| `ventas_pagos` | 0 | 0 |
+| Cajas | 1 caja sin sucursal y 2 depósitos | la salida se cortó antes de esa parte |
+
+🔑 **Hallazgo de F0, en demo: la venta a cuenta corriente está contada dos
+veces** — como débito ($40.800 en `cc_debitos`) y como pago con medio
+`cuenta_corriente` ($40.800). Es exactamente el doble conteo que anticipa D3
+al pasar al modelo derivado: LibraCore también deriva deuda de `ventas_pagos`
+con `cuenta_corriente`, así que migrar los pagos fiados y mantener
+`cc_debitos` tal cual duplicaría la deuda. La migración tiene que llevar **uno
+solo** de los dos registros por venta a cuenta corriente, y el invariante que
+lo atrapa es *"el saldo de cada cliente da igual"* antes y después.
+
+### Fases
+
+| Fase | Qué | Repo | Gate |
+|---|---|---|---|
+| **F0** | Contar borradores, precios con vigencia/sucursal, líneas con variante, `cc_debitos`, QR pendientes, vuelto guardado, en dev y demo | VentaLibra + wiki | esta ADR-025 con D1–D6 escritas |
+| **F1** | Extensiones del motor; `anular_venta` tolerante a filas viejas por condición (`source_type='sale' AND movement_type='sale'`), sin `UPDATE` sobre el ledger inmutable | LibraCommerce | suite verde + mutaciones dirigidas; Contalibra y Restolibra sin tocar con el pin nuevo; tag |
+| **F2** | QR en `ventas_cobro_router`; columna `recibido` en `ventas_pagos`; cotejar el resumen de turno de `build_turnos_router` con el de VentaLibra | LibraCore | suites de LibraCore y productos verdes; tag |
+| **F3** | Ganchos, factories, revisión de migración `0002` con `downgrade`; `/sales` queda de sólo lectura | VentaLibra | invariantes portados (ventas, devoluciones, cuenta corriente, QR, reportes); test de migración upgrade → conteos → downgrade; mutaciones muertas; cobertura ≥ piso |
+| **F4** | `Pos.tsx`, `Ventas.tsx` de libra-ui; reescribir el seed de demo; sacar `/sales` | VentaLibra + libra-ui | tests de frontend, smoke de navegador |
+| **F5** | Deploy: `ventalibra-dev` primero (backup, cadenas de migración, conteos, verificación por contenido), después `demo` | VPS | — |
+
+F1 y F2 pueden ir en paralelo. Esta vez no hay "suite sin tocar" en el
+producto: la API cambia, así que el gate son los invariantes portados, no la
+suite vieja intacta.
+
+### Consecuencias y riesgos visibles para el cliente
+
+- **La factura pasa del IVA fijo al 21 % a las alícuotas de
+  `venta_facturacion`**: cambia el comprobante que recibe el cliente.
+- **El reporte por día local, arreglado el 2026-08-25, tiene que sobrevivir**
+  al pasaje a `erp/reportes`, que filtra por `occurred_on` — verificar que no
+  vuelva el defecto que ese arreglo cerró.
+- **`/sales` queda de sólo lectura en F3 y se saca recién en F4**, pero el POS
+  pasa a `/api/ventas` recién en F4. Por eso **F3 no se despliega sola**: F3 y
+  F4 llegan juntas a dev y a demo en F5. Desplegar F3 sin F4 dejaría el POS
+  escribiendo contra una ruta de sólo lectura, sin poder vender.
+
+### Lo que este ADR NO hace
+
+No implementa nada de F1 a F5 — es la decisión de alcance y orden, no el
+código. No cambia la numeración (D5 mantiene `POS-`). No toca cajas múltiples
+ni cierre diario de VentaLibra: esas quedan **después** de este plan, por
+decisión explícita del humano, y no forman parte de esta ADR.
+
+- Consecuencias: plan de seis fases (F0–F5) sobre dos repos motor
+  (LibraCommerce, LibraCore) y VentaLibra; con esta ADR se cierra F0. El
+  detalle de la brecha, las decisiones D1–D6 y los lugares donde el motor,
+  tal como está, rompería a VentaLibra en silencio están en
+  `plan-ventalibra-a-libracommerce` (wiki).
