@@ -20,6 +20,7 @@ from libraauth.terminos import TerminosRepository, build_terminos_router
 from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
 from libracommerce.db.auditoria import entidades as entidades_auditadas
+from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
 from libracore.config_router import (
@@ -27,17 +28,26 @@ from libracore.config_router import (
     build_empresa_admin_router,
     build_empresa_router,
 )
+from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.mp_config_router import build_mp_config_router
 from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
+from libracore.ventas_cobro_router import build_cobro_de_ventas_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from . import db
-from .auth import build_session_auth, require_admin, require_admin_o_servicio, require_staff
+from . import db, venta_facturacion
+from .auth import (
+    build_session_auth,
+    get_current_user,
+    require_admin,
+    require_admin_o_servicio,
+    require_staff,
+)
+from .ganchos import GANCHOS, nombre_de_cliente
 from .modules_gate import require_module
 from .routers import (
     accounts,
@@ -172,6 +182,15 @@ def create_app(db_path: str) -> FastAPI:
     )
     app.state.modules = ModuleRepository(conn)
 
+    def _facturacion_habilitada() -> bool:
+        """Mismo chequeo que `require_module("facturacion")` (`app.state.
+        modules.is_enabled`), pero como `() -> bool` sin request: es lo que
+        pide `build_cobro_de_ventas_router` (libracore v1.101.0) para su gate
+        interno. Lee `app.state.modules` en cada llamada -- no una foto de
+        cuando arrancó la app -- así que un cambio de plan a mitad de proceso
+        se refleja en la próxima request, igual que el `Depends` que reemplaza."""
+        return app.state.modules.is_enabled("facturacion")
+
     # Los dos logs, cada uno contra la base donde ocurre lo que registra.
     #
     # Actividad: la base del DOMINIO, que es donde escriben los repositorios.
@@ -291,7 +310,88 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(pricing.router, dependencies=staff_or_admin)
     app.include_router(locations.router, dependencies=staff_or_admin)
     app.include_router(stock.router, dependencies=staff_or_admin)
+    # `/sales` de siempre: GET sigue legible (últimas ventas, detalle,
+    # ticket); las escrituras contestan 410 apuntando a `/api/ventas` desde
+    # F3 (ver app/routers/sales.py). El POS todavía le pega en F3 -- pasa a
+    # `/api/ventas` recién en F4 (ADR-025: F3 no se despliega sola).
     app.include_router(sales.router, dependencies=staff_or_admin)
+    # `POST`/`GET /api/ventas`, detalle, anular y devolver -- la capa ERP de
+    # LibraCommerce (F3 del plan post-P9, ver DECISIONS.md ADR-025). Sin
+    # `require_module("ventas")`: catálogo, stock y venta/POS nunca se gatean
+    # por plan en este producto (ADR-009), mismo criterio que `sales.router`.
+    #
+    # `exigir_turno=True`/`caja_con_turno=True`: sin turno abierto no se
+    # registra la venta (mismo criterio que el `confirm_sale` legado), y el
+    # arqueo por turno de este producto suma `caja_movimientos` por
+    # `turno_id` -- sin esto daría siempre cero (ver `app/db_ventas.py`).
+    app.include_router(
+        build_ventas_router(
+            conexion=lc_get_connection,
+            usuario_actual=get_current_user,
+            # 🔴 SIN `solo_admin`, a propósito. La factory sólo lo usa para
+            # gatear `POST /{vid}/anular` y `.../devolver` (verificado en el
+            # código instalado, `libracommerce/web/ventas_router.py`: el
+            # `gate_anular` que arma con `solo_admin` no cuelga de ninguna
+            # otra ruta). Hasta hoy, en este producto, un cajero (staff)
+            # podía anular (`/sales/{id}/cancel`, retirado) y devolver
+            # (`/sales/{id}/returns`, retirado): el router llevaba `staff_or_
+            # admin` y el endpoint en sí sólo pedía `get_current_user`, sin
+            # ningún chequeo de rol propio. Pasar `require_admin` acá sería
+            # restringir ese permiso sin que nadie lo haya decidido -- se
+            # preserva el comportamiento de siempre. Si el humano quiere que
+            # anular/devolver pase a ser sólo de admin, es una decisión
+            # pendiente aparte, no un efecto colateral de F3.
+            opciones=OpcionesVentas(
+                stock_habilitado=lambda: True,
+                # 🔴 El default del motor busca `cliente_id` en `clients`
+                # (LibraCore): acá ese id es un `party_id` de LibraCommerce
+                # (D3, ADR-025), así que sin esto `cliente_nombre` quedaba
+                # vacío en `POST /api/ventas` -- aunque la venta sí tuviera
+                # cliente. Ver `app/ganchos.py::nombre_de_cliente`.
+                nombre_de_cliente=nombre_de_cliente,
+                hooks=GANCHOS,
+                exigir_turno=True,
+                caja_con_turno=True,
+                # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
+                # retirado) rechazaba estos dos casos antes de confirmar --
+                # ADR-020. Con las dos apagadas (el default) `POST /api/ventas`
+                # registraba una venta 'pendiente' que nadie iba a acreditar
+                # (pago que no cubre el total, sin QR) o un fiado sin cliente,
+                # sin nadie a quien atribuirle la deuda.
+                exigir_pago_completo=True,
+                exigir_cliente_para_fiar=True,
+            ),
+        ),
+        dependencies=staff_or_admin,
+    )
+    # `POST /api/ventas/{vid}/facturar`, `/mp-qr`, `GET /mp-status` -- dinero y
+    # comprobantes, de LibraCore (D2: modelo de la familia, venta pendiente +
+    # `acreditar_pago_qr`).
+    #
+    # 🔴 **Hasta libracore v1.100.0 esto montaba `/facturar` APARTE de
+    # `/mp-qr`/`/mp-status`, con un `require_module("facturacion")` a mano**:
+    # ADR-009 fija que facturar es lo único de esta app condicionado al plan
+    # ("catálogo, stock y venta/POS nunca se gatean"), y las tres rutas salían
+    # de la MISMA factory (un solo `APIRouter`) -- montar el router entero
+    # bajo ese gate apagaba también el cobro por QR (que no factura nada por
+    # sí solo) cuando el plan no incluye facturación, y no gatear nada dejaba
+    # facturar con el módulo apagado (medido: `POST .../facturar` contestaba
+    # 200 igual armando la app con `facturacion` en `False`).
+    #
+    # v1.101.0 mueve el gate ADENTRO de la factory: `facturacion_habilitada`
+    # corre en cada request (no al armar el router), así que sirve el MISMO
+    # 403 que daba el `require_module` de acá -- mismo código, misma
+    # evaluación por request, sólo cambia el texto del mensaje -- y de paso
+    # tapa `mp-status`, que auto-facturaba con la automática prendida aunque
+    # el módulo estuviera apagado. Con esto en la factory, el split de router
+    # deja de hacer falta: las tres rutas se montan juntas, sin gate externo.
+    app.include_router(
+        build_cobro_de_ventas_router(
+            ventas=venta_facturacion.PUERTO, usuario_actual=get_current_user,
+            facturacion_habilitada=_facturacion_habilitada,
+        ),
+        dependencies=staff_or_admin,
+    )
     app.include_router(shifts.router, dependencies=staff_or_admin)
     app.include_router(suppliers.router, dependencies=staff_or_admin)
     app.include_router(purchasing.router, dependencies=staff_or_admin)

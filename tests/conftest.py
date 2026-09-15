@@ -51,12 +51,59 @@ def https_client(app) -> TestClient:
     return TestClient(app, base_url="https://ventalibra.test")
 
 
+def _migrar_libracore(db_path: str) -> None:
+    """Deja la base de LibraCore en `head`, como en producción.
+
+    `create_app()` -> `app/services/billing.py::configure()` sólo corre
+    `init_core_schema()` -- la baseline CONGELADA (ver su docstring: "por eso
+    correrlas en cada arranque es un no-op sobre una base que ya las tiene").
+    En una instancia real eso alcanza porque `libracore-migrar upgrade
+    --prefijo <producto>` corre ANTES, en el `command` del compose y en
+    `panel_admin.py actualizar` (ver DECISIONS.md/CLAUDE.md, "Git y Deploy").
+    Sin ese paso acá, la suite nacía sin ninguna columna agregada por Alembic
+    después de la baseline -- la que rompía D4 era `ventas_pagos.recibido`
+    (migración `0010` de LibraCore), parcheada hasta ahora con un `ALTER
+    TABLE` a mano en cada test que la necesitaba (`tests/ventas_helpers.py`/
+    `tests/test_sales.py`).
+
+    `upgrade()` es idempotente sobre lo que `init_core_schema()` ya creó
+    (mismo criterio que usa `tests/test_migracion_0003.py::escenario`, que
+    corre esta misma cadena sobre una base recién armada) -- no hay CREATE
+    TABLE que choque con una tabla existente ni ALTER que se repita.
+
+    🔴 **La cadena PROPIA de VentaLibra (`migrations/versions/`) NO se corre
+    acá, a propósito.** `0001_baseline_ventalibra` llama exactamente a
+    `init_commerce_schema()` + `init_schema_propio()` -- lo mismo que ya hace
+    `create_app()` por su cuenta -- así que correrla de nuevo no agregaría
+    schema, sólo estamparía `alembic_version_ventalibra`. `0002_created_at_
+    hora_ar` corrige el DEFAULT de una columna que hoy no lee nadie
+    (`sale_mp_orders.created_at`, ver su docstring) y `0003_capa_erp` es una
+    migración de DATOS para una instancia que ya tiene ventas -- sobre una
+    base vacía como la de cada test no tiene nada que migrar (su propio test,
+    `test_migracion_0003.py`, la ejercita aparte, con el escenario que arma a
+    mano). Correrla igual acá sumaría una dependencia entre el arranque de
+    CADA test y el estado de una migración que además hace su propio
+    `conn.commit()` fuera de la transacción de Alembic (ver el comentario en
+    esa revisión) -- riesgo real por un schema que ya sale completo sin ella.
+    Si algún día una revisión de VentaLibra agrega una columna que la suite
+    necesita, se corre acá también, igual que se hizo con la de LibraCore.
+    """
+    from libracore.migrar import upgrade as _upgrade_libracore
+
+    _upgrade_libracore(db_path)
+
+
 @pytest.fixture
 def admin_client(tmp_path):
     """App nueva contra un archivo SQLite temporal real (no :memory:, no
     mocks) + sesion logueada como el admin de bootstrap (admin/admin)."""
     db_path = destino_dominio(tmp_path / "ventalibra.db")
-    with https_client(create_app(db_path)) as client:
+    app = create_app(db_path)
+    # Misma base que `db_path`: `destino_libracore()` devuelve la MISMA URL
+    # contra PostgreSQL (ver `motor_de_test.py`) -- las dos bases conviven en
+    # un schema.
+    _migrar_libracore(destino_libracore(tmp_path / "ventalibra_libracore.db"))
+    with https_client(app) as client:
         response = client.post("/auth/login", json={"username": "admin", "password": "admin"})
         assert response.status_code == 200, response.text
         try:

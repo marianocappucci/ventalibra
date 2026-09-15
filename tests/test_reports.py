@@ -1,9 +1,18 @@
+"""Reportes de ventas, caja y stock: `app/services/reports.py` es propio de
+VentaLibra y F3 no lo toca (D6 -- catálogo/listas/reportes a las factories de
+LibraCommerce -- queda fuera de esta fase por tamaño; ver el reporte de F3).
+Lo que cambió es CÓMO se registra la venta que el reporte después agrupa:
+`POST /api/ventas` (D1, una sola llamada) en vez de borrador + confirmar.
+"""
+import secrets
 from datetime import date, timedelta
+
+from ventas_helpers import hoy
 
 
 def _abrir_turno(client, monto_inicial=0):
-    """Sin turno abierto, confirmar una venta da 409: una venta fuera de
-    turno seria plata sin control de caja."""
+    """Sin turno abierto, registrar una venta da 409: una venta fuera de
+    turno sería plata sin control de caja."""
     abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
     assert abierto.status_code == 200, abierto.text
     return abierto.json()["turno"]["id"]
@@ -25,18 +34,35 @@ def _make_location(client, name="Sucursal 1"):
     return created.json()["id"]
 
 
-def _confirmed_sale(client, item_id, location_id, quantity="1"):
+def _confirmed_sale(client, item_id, location_id, quantity="1", price="1500.00", name="línea"):  # noqa: ARG001
+    """Registra una venta de una línea, en una sola llamada (D1).
+
+    `location_id` se mantiene en la firma (no se usa: `POST /api/ventas` no
+    pide depósito -- el motor descuenta stock a través de `erp.stock`, que
+    resuelve el depósito por su cuenta) para no reescribir cada call site del
+    archivo; queda documentado acá por qué el parámetro no viaja.
+
+    `name` es el `nombre` de la línea (`description_snapshot` en el
+    resultado): el payload no lo resuelve solo desde el catálogo -- a
+    diferencia del modelo viejo, acá es texto libre por línea (mismo criterio
+    que Contalibra) -- así que un test que verifique la descripción tiene que
+    mandar la misma que le puso al ítem.
+    """
     _abrir_turno(client)
-    draft = client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": quantity})
-    return client.post(
-        f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
+    return client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": name, "qty": float(quantity), "precio": float(price), "producto_id": item_id}],
+        "pagos": [{"medio": "efectivo", "monto": float(quantity) * float(price)}],
+    })
 
 
 def _today_range():
-    today = date.today().isoformat()
+    """Ventana de "hoy" para los reportes -- misma `hoy()` (hora de Argentina)
+    que usa `_confirmed_sale()` para fechar la venta, no `date.today()` del
+    proceso: si difieren, la venta cae fuera de la ventana y el reporte da
+    vacío sin que haya ningún bug (el corrimiento de fecha real del
+    2026-09-15 rompió estos tests exactamente así)."""
+    today = hoy()
     return {"date_from": today, "date_to": today}
 
 
@@ -55,77 +81,70 @@ def test_sales_report_totals_confirmed_sale(admin_client):
     assert body["por_dia"][0]["cantidad"] == 1
 
 
-def _mover_confirmacion(client, sale_id, instante_iso):
-    """Le fija a la venta un `confirmed_at` conocido, en UTC.
-
-    Es la única forma de probar el borde sin depender de a qué hora corra el
-    CI: el reloj de la corrida no se puede elegir, el instante guardado sí.
-    """
+def _mover_occurred_on(client, sale_id, fecha):
     conn = client.app.state.conn
-    conn.execute("UPDATE sales SET confirmed_at = ? WHERE id = ?", (instante_iso, sale_id))
+    conn.execute("UPDATE sales SET occurred_on = ? WHERE id = ?", (fecha, sale_id))
     conn.commit()
 
 
-def test_una_venta_del_cierre_cuenta_en_el_dia_que_se_vendio(admin_client):
-    """22:00 en Argentina ya es el día siguiente en UTC.
+def test_el_reporte_agrupa_por_occurred_on_no_por_confirmed_at(admin_client):
+    """🔴 **F3 cambia dónde vive el defecto que ADR-016 cerró el 2026-08-24,
+    no lo reintroduce.**
 
-    🔴 Este es el defecto que el reporte tuvo hasta el 2026-08-24: filtraba por
-    `substr(confirmed_at, 1, 10)`, o sea la fecha **UTC**, contra un rango de
-    fechas **locales**. Una venta confirmada a las 22:00 del 14 se guarda como
-    `2026-03-15T01:00:00+00:00` y quedaba contada en el 15 — así que en la franja
-    de cierre no aparecía en el reporte del día, que es justo cuando se mira.
+    Hasta acá el reporte filtraba `confirmed_at` (UTC) con una ventana
+    convertida a hora local, justamente para que una venta de las 22:00 no
+    quedara contada en el día siguiente. Desde F3, `libracommerce.erp.
+    ventas.crear_venta` -- que es quien registra la venta ahora -- **nunca
+    escribe `confirmed_at`**: sólo `occurred_on`, que llega ya en la fecha
+    LOCAL (`VentaPayload.fecha`). Sin este cambio en `app/services/
+    reports.py`, toda venta nueva quedaba fuera de todos los reportes, sin
+    ningún error -- el riesgo que ADR-025 dejó anotado ("el reporte tiene
+    que sobrevivir al pasaje").
 
-    Se lo destapó el CI por casualidad, corriendo a las 22:21 ART. Este test
-    **no depende de la hora**: fija el instante guardado, así falla siempre que
-    el defecto vuelva y nunca por el reloj de la corrida.
+    La conversión de huso ya no la hace el reporte: la hace quien pone
+    `occurred_on` (el caller, al crear; la migración `0003`, para las ventas
+    viejas -- ver `tests/test_migracion_0003.py`, que cubre exactamente el
+    caso de cruce de medianoche). Acá sólo se verifica que el reporte
+    agrupa por esa columna, no por `confirmed_at`.
     """
     item_id = _make_item(admin_client, price="1000.00")
     location_id = _make_location(admin_client)
-    confirmed = _confirmed_sale(admin_client, item_id, location_id)
+    confirmed = _confirmed_sale(admin_client, item_id, location_id, price="1000.00")
     assert confirmed.status_code == 200, confirmed.text
+    # La venta nueva no escribe confirmed_at.
+    conn = admin_client.app.state.conn
+    fila = conn.execute(
+        "SELECT confirmed_at, occurred_on FROM sales WHERE id = ?", (confirmed.json()["id"],),
+    ).fetchone()
+    assert fila[0] is None
+    assert fila[1] == hoy()
 
-    # 22:00 del 14-03 en Argentina — un instante dentro de la franja.
-    _mover_confirmacion(admin_client, confirmed.json()["id"], "2026-03-15T01:00:00+00:00")
+    _mover_occurred_on(admin_client, confirmed.json()["id"], "2026-03-14")
 
     en_el_dia = admin_client.get(
         "/reports/sales", params={"date_from": "2026-03-14", "date_to": "2026-03-14"})
-    assert en_el_dia.json()["total_ventas"] == 1, (
-        "la venta de las 22:00 no aparece en el reporte del día en que se vendió")
+    assert en_el_dia.json()["total_ventas"] == 1
 
-    # 🔑 El control negativo. Sin esto, un reporte que contara la venta en LOS
-    # DOS días pasaría la aserción de arriba igual.
-    en_el_dia_utc = admin_client.get(
+    # 🔑 El control negativo: sin filtrar de verdad por `occurred_on`, la
+    # venta seguiría apareciendo en cualquier rango (o en el de "hoy").
+    otro_dia = admin_client.get(
         "/reports/sales", params={"date_from": "2026-03-15", "date_to": "2026-03-15"})
-    assert en_el_dia_utc.json()["total_ventas"] == 0, (
-        "la venta quedó contada en el día UTC, que es el defecto original")
-
-
-def test_una_venta_del_mediodia_no_se_mueve_de_dia(admin_client):
-    """El control positivo del test de arriba.
-
-    La conversión tiene que mover **sólo** lo que cae en la franja. Si moviera
-    todo un día para atrás, el test del borde pasaría igual y este fallaría.
-    """
-    item_id = _make_item(admin_client, price="1000.00")
-    location_id = _make_location(admin_client)
-    confirmed = _confirmed_sale(admin_client, item_id, location_id)
-    assert confirmed.status_code == 200, confirmed.text
-
-    _mover_confirmacion(admin_client, confirmed.json()["id"], "2026-03-15T12:00:00+00:00")
-
-    mismo_dia = admin_client.get(
-        "/reports/sales", params={"date_from": "2026-03-15", "date_to": "2026-03-15"})
-    assert mismo_dia.json()["total_ventas"] == 1, (
-        "un instante del mediodía se movió de día: la conversión corre de más")
+    assert otro_dia.json()["total_ventas"] == 0
 
 
 def test_sales_report_ignores_draft_sales(admin_client):
-    item_id = _make_item(admin_client)
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    # nunca se confirma
+    """Un borrador que nunca se registró no cuenta.
+
+    D1 no deja un borrador vía API (`POST /api/ventas` registra completo en
+    una sola llamada): se escribe directo en la base, con la misma forma que
+    dejaba `POST /sales` antes de F3.
+    """
+    conn = admin_client.app.state.conn
+    conn.execute(
+        "INSERT INTO sales (number, status, source_type, subtotal, total) "
+        "VALUES (?, 'draft', 'pos', 0, 0)", (f"POS-{secrets.token_hex(4)}",),
+    )
+    conn.commit()
 
     response = admin_client.get("/reports/sales", params=_today_range())
     assert response.status_code == 200
@@ -135,7 +154,7 @@ def test_sales_report_ignores_draft_sales(admin_client):
 def test_sales_report_top_items_reflects_confirmed_sale(admin_client):
     item_id = _make_item(admin_client, name="Yerba 1kg", price="2000.00")
     location_id = _make_location(admin_client)
-    _confirmed_sale(admin_client, item_id, location_id, quantity="3")
+    _confirmed_sale(admin_client, item_id, location_id, quantity="3", price="2000.00", name="Yerba 1kg")
 
     response = admin_client.get("/reports/sales", params=_today_range())
     top_items = response.json()["top_items"]
@@ -151,8 +170,9 @@ def test_sales_report_excludes_dates_outside_range(admin_client):
     location_id = _make_location(admin_client)
     _confirmed_sale(admin_client, item_id, location_id)
 
-    yesterday = (date.today() - timedelta(days=2)).isoformat()
-    day_before = (date.today() - timedelta(days=5)).isoformat()
+    hoy_date = date.fromisoformat(hoy())
+    yesterday = (hoy_date - timedelta(days=2)).isoformat()
+    day_before = (hoy_date - timedelta(days=5)).isoformat()
     response = admin_client.get(
         "/reports/sales", params={"date_from": day_before, "date_to": yesterday},
     )
@@ -162,7 +182,7 @@ def test_sales_report_excludes_dates_outside_range(admin_client):
 def test_caja_report_reflects_confirmed_sale_payment(admin_client):
     item_id = _make_item(admin_client, price="500.00")
     location_id = _make_location(admin_client)
-    _confirmed_sale(admin_client, item_id, location_id)
+    _confirmed_sale(admin_client, item_id, location_id, price="500.00")
 
     response = admin_client.get("/reports/caja", params=_today_range())
     assert response.status_code == 200, response.text

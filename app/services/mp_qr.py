@@ -45,7 +45,6 @@ guardada en `sale_mp_orders` con su `payment_id`: el borrador sigue existiendo
 y volver a abrirlo muestra el pago ya acreditado, en vez de perderse.
 """
 import logging
-import secrets
 from datetime import date
 from decimal import Decimal
 
@@ -60,10 +59,6 @@ class MpNoConfigurado(RuntimeError):
 
 class MpError(RuntimeError):
     """MercadoPago rechazo la orden."""
-
-
-class VentaYaCobrada(RuntimeError):
-    """Esa venta ya tiene un pago de QR acreditado."""
 
 
 #: El toggle de la factura automatica. No esta en los DEFAULTS de
@@ -118,17 +113,6 @@ def auto_facturar_prendida(cfg: dict | None = None) -> bool:
 
 
 # ── La orden en la caja ──────────────────────────────────────────────────
-
-
-def nueva_referencia(sale_id: int) -> str:
-    """La referencia externa que viaja a MercadoPago y vuelve con el pago.
-
-    Lleva el id de la venta **y** un sufijo aleatorio. El id solo no alcanza:
-    un pago rechazado se reintenta, y un pago viejo de ese mismo borrador
-    volveria como aprobado en la busqueda del intento nuevo -- por otra plata,
-    si entre medio se agrego una linea.
-    """
-    return f"vl-{sale_id}-{secrets.token_hex(6)}"
 
 
 def orden_vigente(conn, sale_id: int) -> dict | None:
@@ -204,102 +188,6 @@ def _a_dict(fila) -> dict | None:
         "id": fila[0], "sale_id": fila[1], "external_reference": fila[2],
         "amount": Decimal(str(fila[3])), "status": fila[4], "payment_id": fila[5],
     }
-
-
-async def poner_en_el_qr(conn, sale) -> dict:
-    """Pone el total de esta venta a cobrar en el QR de la caja.
-
-    Levanta `VentaYaCobrada` si ya hay un pago acreditado: volver a poner el
-    monto rotaria la referencia y dejaria el pago ya cobrado sin nada que lo
-    ate a la venta.
-    """
-    if orden_acreditada(conn, sale.id) is not None:
-        raise VentaYaCobrada(f"La venta {sale.id} ya tiene un pago de QR acreditado.")
-
-    total = Decimal(str(sale.total))
-    if total <= 0:
-        raise MpError("No hay nada que cobrar: el total de la venta es cero.")
-
-    token, user_id, pos_id = credenciales()
-    referencia = nueva_referencia(sale.id)
-
-    try:
-        await mp_api.crear_orden_qr(
-            user_id=user_id,
-            pos_id=pos_id,
-            access_token=token,
-            external_reference=referencia,
-            titulo=f"Venta {sale.number}",
-            items=_items_para_mp(sale),
-            total=float(total),
-        )
-    except RuntimeError as exc:
-        # `crear_orden_qr` levanta RuntimeError con el status y el cuerpo de
-        # MercadoPago adentro. Se propaga tal cual: el 404 de un POS ID que no
-        # existe es lo unico que le dice al operador que se equivoco de dato.
-        raise MpError(str(exc)) from exc
-
-    conn.execute(
-        """INSERT INTO sale_mp_orders (sale_id, external_reference, amount, status)
-           VALUES (?, ?, ?, 'pending')""",
-        (sale.id, referencia, float(total)),
-    )
-    conn.commit()
-    logger.info("Venta %s puesta en el QR de la caja por %s (ref %s)",
-                sale.id, total, referencia)
-    return {"external_reference": referencia, "amount": float(total)}
-
-
-def _items_para_mp(sale) -> list[dict]:
-    """Las lineas de la venta en la forma que espera `crear_orden_qr`.
-
-    Van los precios FINALES, no los netos: es lo que el cliente ve en la app de
-    MercadoPago al escanear y tiene que coincidir con lo que dice el visor de
-    la caja. El desglose de IVA es cosa de la factura, no del cobro.
-    """
-    return [
-        {
-            "producto_id": item.item_id,
-            "nombre": item.description_snapshot,
-            "qty": float(item.quantity),
-            "precio": float(item.unit_price),
-            "subtotal": float(item.line_total),
-        }
-        for item in sale.items
-    ]
-
-
-async def bajar_del_qr(conn, sale_id: int) -> bool:
-    """Saca la orden del QR: el cartel de la caja queda sin nada que cobrar.
-
-    🔴 **Es lo que evita que el proximo cliente pague la venta anterior.** Una
-    orden que queda puesta sigue cobrando ese monto a quien escanee, aunque el
-    cajero haya cancelado la venta hace media hora. Contalibra no llama nunca a
-    `eliminar_orden_qr` -- no tiene call sites en todo el repo -- y por eso
-    depende de que el cliente siguiente no escanee antes de que el cajero
-    cargue la venta nueva.
-
-    Devuelve si habia algo que bajar. No levanta si falta configuracion: se
-    llama al cancelar, y hacer fallar una cancelacion por eso seria peor.
-    """
-    orden = orden_vigente(conn, sale_id)
-    # `pending` y no "distinto de approved": una orden ya cancelada tampoco se
-    # vuelve a bajar. El POS llama a esto al cerrar el dialogo, asi que dos
-    # bajas seguidas son el caso normal y no un error -- pero cada una es un
-    # DELETE contra MercadoPago.
-    if orden is None or orden["status"] != "pending":
-        return False
-    try:
-        token, user_id, pos_id = credenciales()
-    except MpNoConfigurado:
-        return False
-    await mp_api.eliminar_orden_qr(user_id, pos_id, token)
-    conn.execute(
-        "UPDATE sale_mp_orders SET status = 'cancelled', resolved_at = ? WHERE id = ?",
-        (date.today().isoformat(), orden["id"]),
-    )
-    conn.commit()
-    return True
 
 
 async def estado_del_cobro(conn, sale_id: int) -> dict:

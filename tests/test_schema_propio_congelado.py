@@ -51,7 +51,7 @@ TABLAS_PROPIAS = (
 )
 
 #: La cabeza de la cadena propia. Sube con cada revision nueva.
-CABEZA = "0002_created_at_hora_ar"
+CABEZA = "0003_capa_erp"
 
 
 def _schema_de_las_propias() -> str:
@@ -192,7 +192,13 @@ def test_las_dos_cadenas_no_comparten_la_tabla_de_version():
         "las dos cadenas escribieron la misma revisión: están compartiendo la "
         "tabla de versión."
     )
-    assert del_motor.startswith("000"), (
+    # 🔴 `startswith("000")` se rompió solo al pinear libracore v1.99.0/F3:
+    # la cadena del motor ya llegó a la revisión `0010`, que no empieza con
+    # "000" (sí con "00"). El chequeo real es "es una revisión numerada de
+    # cuatro dígitos", no cuántos ceros trae adelante.
+    import re
+
+    assert re.match(r"^\d{4}_", del_motor), (
         f"la tabla del motor quedó en {del_motor!r}, que no parece una revisión "
         "de LibraCore"
     )
