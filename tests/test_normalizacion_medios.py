@@ -34,6 +34,7 @@ import pytest
 from fastapi.testclient import TestClient
 from motor_de_test import destino_dominio
 from pypdf import PdfReader
+from ventas_helpers import hoy
 
 from app import normalizacion_medios as norm
 from app.main import create_app
@@ -126,6 +127,23 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     Entre las dos tocan las cuatro tablas que este producto llena con un medio
     de pago: `sale_payments`, `caja_movimientos`, `cc_pagos` y el snapshot de
     `recibos.pagos`. Devuelve el id del recibo emitido.
+
+    🔴 **Portado a F3 (2026-09-14, ADR-025), y con una excepción declarada.**
+    Registrar y fiar una venta ya no es `POST /sales` (borrador) +
+    `.../items` + `.../confirm` (410 desde F3) -- es `POST /api/ventas`
+    (D1), con `cliente_id` para la fiada (el `party_id` de `/customers`; D3:
+    lo traduce `app/ganchos.py::cliente_cc_de`, y `/accounts/{id}/payments`
+    ya tomaba ese mismo id, así que el paso 3 no cambia). La venta cobrada
+    escribe `ventas_pagos` (LibraCore), NO `sale_payments` (LibraCommerce,
+    medido: `libracommerce.erp.ventas.registrar_venta` sólo llama a
+    `agregar_pago`, que hace `INSERT INTO ventas_pagos`) -- desde F3 **ningún**
+    camino en vivo escribe `sale_payments.method`, así que la única forma de
+    sembrar esa columna para probar que la normalización TODAVÍA la cubre
+    (hace falta para una base restaurada de antes de F3, ver el docstring de
+    `app/normalizacion_medios.py` sobre por qué corre en cada arranque) es un
+    `INSERT` directo, documentado como excepción a la regla del módulo
+    ("por los endpoints reales, no un INSERT"): no hay endpoint que la
+    ejercite más.
     """
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     item = client.post("/catalog/items", json={
@@ -134,10 +152,6 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     assert item.status_code == 200, item.text
     item_id = item.json()["id"]
 
-    location = client.post("/locations", json={"name": "Sucursal 1"})
-    assert location.status_code == 200, location.text
-    location_id = location.json()["id"]
-
     cliente = client.post("/customers", json={"display_name": "Panaderia Sol"})
     assert cliente.status_code == 200, cliente.text
     cliente_id = cliente.json()["id"]
@@ -145,30 +159,32 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     turno = client.post("/shifts/open", json={"monto_inicial": 0})
     assert turno.status_code == 200, turno.text
 
-    # 1) Venta cobrada por MercadoPago -> sale_payments + caja_movimientos.
-    borrador = client.post("/sales", json={})
-    sale_id = borrador.json()["id"]
-    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    # Con `pagos` y no con `medio_pago`: el camino de un solo medio NO crea
-    # linea en `sale_payments` —registra el movimiento de caja y nada mas—, asi
-    # que sembrar por ahi dejaria esa tabla vacia y el test pasaria sin haberla
-    # ejercitado nunca.
-    cobrada = client.post(f"/sales/{sale_id}/confirm", json={
-        "location_id": location_id,
-        "pagos": [{"medio": CANONICA, "monto": "2000.00"}],
+    # 1) Venta cobrada por MercadoPago -> ventas_pagos + caja_movimientos +
+    #    (excepción declarada arriba) sale_payments.
+    cobrada = client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": 2000.00, "producto_id": item_id}],
+        "pagos": [{"medio": CANONICA, "monto": 2000.00}],
     })
     assert cobrada.status_code == 200, cobrada.text
+    client.app.state.conn.execute(
+        "INSERT INTO sale_payments (sale_id, method, amount) VALUES (?, ?, ?)",
+        (cobrada.json()["id"], CANONICA, 2000.00),
+    )
+    client.app.state.conn.commit()
 
     # 2) Una venta fiada, para que el cliente tenga deuda que saldar.
-    fiada = client.post("/sales", json={"customer_party_id": cliente_id})
-    fiada_id = fiada.json()["id"]
-    client.post(f"/sales/{fiada_id}/items", json={"item_id": item_id, "quantity": "1"})
-    confirmada = client.post(f"/sales/{fiada_id}/confirm", json={
-        "location_id": location_id, "medio_pago": "cuenta_corriente",
+    fiada = client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": 2000.00, "producto_id": item_id}],
+        "pagos": [{"medio": "cuenta_corriente", "monto": 2000.00}],
+        "cliente_id": cliente_id,
     })
-    assert confirmada.status_code == 200, confirmada.text
+    assert fiada.status_code == 200, fiada.text
 
     # 3) La cobranza por MercadoPago -> cc_pagos + caja_movimientos + recibos.
+    #    Sin cambios: sigue siendo este producto (`app/routers/accounts.py`),
+    #    ajeno a la migración -- y ya tomaba el `party_id`, igual que D3.
     cobranza = client.post(f"/accounts/{cliente_id}/payments", json={
         "monto": "2000.00", "medio_pago": CANONICA, "referencia": "mp 7781",
     })

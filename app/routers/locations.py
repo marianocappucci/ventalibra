@@ -18,6 +18,15 @@ class LocationOut(BaseModel):
     branch_id: int | None
     location_type: str
     active: bool
+    #: 🔴 Agregado 2026-09-14 (F3, ADR-025): el dominio (`Location.is_default`)
+    #: ya lo traía -- `LocationOut(**location.__dict__)` lo venía DESCARTANDO
+    #: en silencio (Pydantic ignora claves de más). Hace falta desde F3 porque
+    #: `POST /api/ventas` ya no recibe `location_id`: descuenta siempre del
+    #: default (`erp.stock.descontar_stock_venta`), y sin este campo no hay
+    #: forma de que un cliente HTTP (la SPA, `scripts/seed_demo.py`) sepa CUÁL
+    #: de los depósitos es ese -- antes no hacía falta saberlo, porque
+    #: `/sales/{id}/confirm` dejaba elegir cualquiera.
+    is_default: bool
 
 
 def _service(request: Request) -> LocationService:

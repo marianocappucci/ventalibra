@@ -1,96 +1,118 @@
-def _abrir_turno(client, monto_inicial=0):
-    """Sin turno abierto no se puede cobrar (409): toda venta tiene que caer
-    dentro de un turno para que el arqueo cierre."""
-    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
-    assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+"""El punto de venta: registrar una venta, cobrar y el turno de caja.
+
+Portado a la capa ERP de LibraCommerce (F3, ADR-025): `POST /api/ventas`
+registra la venta completa en una sola llamada (D1) -- ya no hay un borrador
+que se llena de a una línea (`POST /sales` + `/items` + `/confirm`, retirados
+a 410, ver `app/routers/sales.py`). Varios invariantes del modelo viejo eran
+del borrador incremental en sí (agregar, corregir, quitar una línea antes de
+cobrar) y quedan retirados con su justificación al lado; los de cobro, turno y
+arqueo se portan porque no dependían de CÓMO se armó la venta, sólo de qué
+quedó cobrado.
+"""
+import pytest
+from ventas_helpers import abrir_turno, con_stock, crear_item, deposito_default, hoy, registrar_venta, stock
 
 
 def _make_item(client, name="Fideos 500g", price="1500.00"):
-    client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
-    created = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": price, "default_cost": "900.00"},
-    )
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
+    return crear_item(client, name=name, price=price)
 
 
-def _make_location(client, name="Sucursal 1"):
-    created = client.post("/locations", json={"name": name})
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
+def test_sales_ya_no_existe(admin_client):
+    """F4 (2026-09-15, ADR-025): `/sales` se retiró entero (`app/routers/
+    sales.py` no existe más) -- lo que hasta F3 contestaba 410 apuntando a
+    `/api/ventas` ahora no tiene router que lo sirva, así que cae en el
+    catch-all de la SPA en producción (`app/spa.py`, sólo se monta con un
+    frontend buildeado) o, en la suite -- sin ese mount --, en un 404 liso de
+    FastAPI. Cualquiera de las dos formas confirma lo mismo: no hay ningún
+    endpoint bajo `/sales`, ni de lectura ni de escritura."""
+    sid = 1
+    retiradas = [
+        ("get", "/sales", None),
+        ("post", "/sales", {}),
+        ("get", f"/sales/{sid}", None),
+        ("get", f"/sales/{sid}/ticket", None),
+        ("patch", f"/sales/{sid}", {}),
+        ("post", f"/sales/{sid}/items", {}),
+        ("delete", f"/sales/{sid}/items/0", None),
+        ("patch", f"/sales/{sid}/items/0", {}),
+        ("post", f"/sales/{sid}/confirm", {}),
+        ("post", f"/sales/{sid}/cancel", {}),
+        ("post", f"/sales/{sid}/returns", {}),
+        ("post", f"/sales/{sid}/mp-qr", {}),
+        ("delete", f"/sales/{sid}/mp-qr", None),
+        ("get", "/sales/mp/estado", None),
+        ("get", "/sales/mp/cobros-sin-venta", None),
+    ]
+    for metodo, ruta, cuerpo in retiradas:
+        llamar = getattr(admin_client, metodo)
+        respuesta = llamar(ruta, json=cuerpo) if cuerpo is not None else llamar(ruta)
+        assert respuesta.status_code == 404, f"{metodo.upper()} {ruta}: {respuesta.text}"
 
 
 def test_full_pos_flow_confirms_sale_and_decrements_stock(admin_client):
     item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "20"},
-    )
+    location_id = deposito_default(admin_client)
+    con_stock(admin_client, item_id, location_id, "20")
+    abrir_turno(admin_client)
 
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={"branch_id": 1, "register_id": 1})
-    assert draft.status_code == 200, draft.text
-    sale_id = draft.json()["id"]
-    assert draft.json()["status"] == "draft"
+    venta = registrar_venta(admin_client, item_id, precio="1500.00", cantidad="3")
+    assert venta["estado"] == "cobrada"
+    assert float(venta["total"]) == 4500.0
+    assert venta["factura_id"] is None
+    # D5: se mantiene el prefijo de siempre (`app/ganchos.py::numerador`).
+    assert venta["numero"].startswith("POS-")
 
-    with_item = admin_client.post(
-        f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "3"},
-    )
-    assert with_item.status_code == 200, with_item.text
-    assert float(with_item.json()["total"]) == 4500.0
+    assert stock(admin_client, item_id, location_id) == 17
 
-    confirmed = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
-    assert confirmed.status_code == 200, confirmed.text
-    assert confirmed.json()["status"] == "confirmed"
-    assert confirmed.json()["confirmed_at"] is not None
-    assert confirmed.json()["factura"] is None
 
-    stock = admin_client.get(f"/stock/{item_id}", params={"location_id": location_id})
-    assert float(stock.json()["quantity"]) == 17.0
+def test_registrar_venta_con_cliente_completa_su_nombre(admin_client):
+    """🔴 `OpcionesVentas.nombre_de_cliente` por default busca `cliente_id` en
+    `clients` (`libracore.db.clients.get_client`): acá ese id es un
+    `party_id` de LibraCommerce (D3, ADR-025), no un `clients.id`, así que sin
+    `app/ganchos.py::nombre_de_cliente` (montado en `app/main.py`) la venta
+    quedaba con `cliente_nombre` vacío aunque sí tuviera cliente."""
+    item_id = _make_item(admin_client)
+    abrir_turno(admin_client)
+    cliente = admin_client.post("/customers", json={"display_name": "Vecina del 12"})
+    assert cliente.status_code == 200, cliente.text
+
+    venta = registrar_venta(admin_client, item_id, cliente_id=cliente.json()["id"])
+    assert venta["cliente_nombre"] == "Vecina del 12"
 
 
 def test_confirm_without_items_fails(admin_client):
-    location_id = _make_location(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    response = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
-    assert response.status_code == 409
+    abrir_turno(admin_client)
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(), "items": [],
+        "pagos": [{"medio": "efectivo", "monto": 0}],
+    })
+    assert respuesta.status_code == 422
 
 
-def test_cannot_add_item_after_confirm(admin_client):
-    _abrir_turno(admin_client)
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
-    )
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
-
-    response = admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    assert response.status_code == 409
+# 🔴 **Retirado, invariante de borrador incremental**:
+# `test_cannot_add_item_after_confirm` probaba que `POST /sales/{id}/items` fallaba
+# sobre una venta ya confirmada. D1 borró el concepto: no hay más "agregar una línea" como
+# operación de la API -- toda la venta (líneas, pagos, cliente) se manda junta en
+# `POST /api/ventas`, que es atómica. No hay un estado "confirmada pero todavía se le puede
+# agregar algo" que verificar.
 
 
 def test_add_item_with_unknown_item_id_fails(admin_client):
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    response = admin_client.post(f"/sales/{sale_id}/items", json={"item_id": 999, "quantity": "1"})
-    assert response.status_code == 422
+    """Cerrado en libracommerce v0.16.2: un `producto_id` que no existe en el
+    catálogo levanta `ProductoInexistente` -> 422, ANTES del catch-all que
+    daba 409 ("conflicto con otra venta simultánea") -- ese sí seguía siendo
+    correcto para un choque de verdad (`sales.number`), pero para un producto
+    inexistente reintentar daba el mismo 409 para siempre."""
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, item_id=999999, cantidad="1", precio="10.00", esperar=422)
+    assert "999999" in venta["detail"]
 
 
 def test_get_unknown_sale_404(admin_client):
-    response = admin_client.get("/sales/999")
-    assert response.status_code == 404
+    assert admin_client.get("/api/ventas/999").status_code == 404
 
 
 def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
-    _abrir_turno(admin_client)
     admin_client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     item = admin_client.post(
         "/catalog/items", json={"name": "Remera", "unit_code": "u", "default_sale_price": "5000.00"},
@@ -101,26 +123,24 @@ def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
     variant_l = admin_client.post(
         f"/catalog/items/{item['id']}/variants", json={"sku": "REM-L", "name": "L"},
     ).json()
-    location_id = _make_location(admin_client)
+    location_id = deposito_default(admin_client)
     admin_client.post(
         "/stock/adjustments",
-        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "10", "variant_id": variant_m["id"]},
+        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "10",
+              "variant_id": variant_m["id"]},
     )
     admin_client.post(
         "/stock/adjustments",
-        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "5", "variant_id": variant_l["id"]},
+        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "5",
+              "variant_id": variant_l["id"]},
     )
+    abrir_turno(admin_client)
 
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    added = admin_client.post(
-        f"/sales/{sale_id}/items",
-        json={"item_id": item["id"], "variant_id": variant_m["id"], "quantity": "2"},
-    )
-    assert added.status_code == 200, added.text
-    assert added.json()["items"][0]["variant_id"] == variant_m["id"]
-
-    admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
+    venta = registrar_venta(admin_client, items=[
+        {"nombre": "Remera M", "qty": 2, "precio": 5000.0, "producto_id": item["id"],
+         "variante_id": variant_m["id"]},
+    ])
+    assert venta["items"][0]["variante_id"] == variant_m["id"]
 
     stock_m = admin_client.get(f"/stock/{item['id']}", params={"location_id": location_id, "variant_id": variant_m["id"]})
     stock_l = admin_client.get(f"/stock/{item['id']}", params={"location_id": location_id, "variant_id": variant_l["id"]})
@@ -128,295 +148,148 @@ def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
     assert float(stock_l.json()["quantity"]) == 5.0
 
 
-def test_add_item_with_unknown_variant_fails(admin_client):
-    item_id = _make_item(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
+# 🔴 **Retirado, invariante de borrador incremental**: `test_add_item_with_unknown_variant_fails`
+# probaba el 422 de `POST /sales/{id}/items` contra un `variant_id` inexistente -- mismo
+# mecanismo que `test_add_item_with_unknown_item_id_fails` de arriba (D1: sin lookup contra el
+# catálogo al registrar). No se repite una segunda vez el mismo cambio de invariante.
 
-    response = admin_client.post(
-        f"/sales/{sale_id}/items", json={"item_id": item_id, "variant_id": 999, "quantity": "1"},
-    )
-    assert response.status_code == 422
-
-
-def test_add_item_uses_resolved_price_list_over_default(admin_client):
-    item_id = _make_item(admin_client)
-    price_list = admin_client.post("/pricing/lists", json={"name": "Mayorista"}).json()
-    admin_client.post(
-        f"/pricing/items/{item_id}/prices",
-        json={"price_list_id": price_list["id"], "amount": "1000.00", "valid_from": "2026-01-01T00:00:00"},
-    )
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-
-    added = admin_client.post(
-        f"/sales/{sale_id}/items",
-        json={"item_id": item_id, "quantity": "1", "price_list_id": price_list["id"]},
-    )
-    assert added.status_code == 200, added.text
-    assert float(added.json()["items"][0]["unit_price"]) == 1000.0
-
-
-def test_add_item_falls_back_to_default_sale_price_without_price_list_match(admin_client):
-    item_id = _make_item(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-
-    added = admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    assert added.status_code == 200, added.text
-    assert float(added.json()["items"][0]["unit_price"]) == 1500.0
+# 🔴 **Retirados, invariante ya no aplica**: `test_add_item_uses_resolved_price_list_over_default`
+# y `test_add_item_falls_back_to_default_sale_price_without_price_list_match` probaban que
+# `POST /sales/{id}/items` resolvía el precio vigente de una lista de precios en el SERVIDOR
+# cuando no se mandaba `unit_price`. `POST /api/ventas` no tiene ese camino: el payload exige
+# `precio` por línea (D1, el navegador arma la venta ya con el precio resuelto -- la pantalla de
+# POS con listas de precio es de F4, `Pos.tsx`). No hay nada del lado de la API que resuelva un
+# precio a partir de un `price_list_id` para poder probarlo acá.
 
 
 def test_staff_can_run_full_pos_flow(admin_client, staff_client):
     """El catalogo/stock lo carga un admin; el flujo de venta lo corre staff."""
     item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
-    )
+    location_id = deposito_default(admin_client)
+    con_stock(admin_client, item_id, location_id, "5")
 
-    _abrir_turno(staff_client)
-    draft = staff_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    staff_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
-    confirmed = staff_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"})
-    assert confirmed.status_code == 200, confirmed.text
+    abrir_turno(staff_client)
+    venta = registrar_venta(staff_client, item_id, cantidad="2")
+    assert venta["estado"] == "cobrada"
 
 
-# --- corregir el ticket antes de cobrar ---------------------------------
-#
-# El cajero se equivoca en el mostrador: escanea de mas, tipea mal la
-# cantidad, el cliente se arrepiente. Antes habia que rehacer la venta
-# entera porque solo existia POST /items.
-
-
-def _make_extra_item(client, name, price):
-    """Item adicional: la unidad ya la creo _make_item (crearla de nuevo
-    choca contra la unique de `code`)."""
-    created = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": price, "default_cost": "500.00"},
-    )
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
-
-
-def test_remove_item_recalculates_total(admin_client):
-    item_id = _make_item(admin_client)
-    otro_id = _make_extra_item(admin_client, "Arroz 1kg", "2000.00")
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": otro_id, "quantity": "1"})
-
-    quitada = admin_client.delete(f"/sales/{sale_id}/items/0")
-
-    assert quitada.status_code == 200, quitada.text
-    assert len(quitada.json()["items"]) == 1
-    assert quitada.json()["items"][0]["description_snapshot"] == "Arroz 1kg"
-    assert float(quitada.json()["total"]) == 2000.0
-
-
-def test_remove_last_item_leaves_empty_sale_that_cannot_be_confirmed(admin_client):
-    """Quitar todo deja la venta vacia, no la cancela: el cajero puede seguir
-    escaneando. Pero vacia no se puede cobrar."""
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-
-    vacia = admin_client.delete(f"/sales/{sale_id}/items/0")
-    assert vacia.status_code == 200, vacia.text
-    assert vacia.json()["items"] == []
-    assert float(vacia.json()["total"]) == 0.0
-
-    _abrir_turno(admin_client)
-    rechazada = admin_client.post(
-        f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
-    assert rechazada.status_code == 409
-
-
-def test_remove_item_out_of_range_is_404(admin_client):
-    draft = admin_client.post("/sales", json={})
-    assert admin_client.delete(f"/sales/{draft.json()['id']}/items/0").status_code == 404
-
-
-def test_update_item_quantity_recalculates_total(admin_client):
-    item_id = _make_item(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
-
-    corregida = admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "5"})
-
-    assert corregida.status_code == 200, corregida.text
-    assert float(corregida.json()["items"][0]["quantity"]) == 5.0
-    assert float(corregida.json()["total"]) == 7500.0
-
-
-def test_update_item_quantity_keeps_the_frozen_unit_price(admin_client):
-    """El precio quedo congelado al agregar la linea (puede venir de una lista
-    o haber sido puesto a mano): corregir la cantidad no lo revive."""
-    item_id = _make_item(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(
-        f"/sales/{sale_id}/items",
-        json={"item_id": item_id, "quantity": "1", "unit_price": "999.00"},
-    )
-
-    corregida = admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "3"})
-
-    assert float(corregida.json()["items"][0]["unit_price"]) == 999.0
-    assert float(corregida.json()["total"]) == 2997.0
+# 🔴 **Retirados, invariante de borrador incremental**: `test_remove_item_recalculates_total`,
+# `test_remove_last_item_leaves_empty_sale_that_cannot_be_confirmed`,
+# `test_remove_item_out_of_range_is_404`, `test_update_item_quantity_recalculates_total`,
+# `test_update_item_quantity_keeps_the_frozen_unit_price` y `test_cannot_edit_a_confirmed_sale`
+# probaban corregir el ticket ANTES de cobrar -- quitar una línea, ajustar una cantidad -- y que
+# una venta ya cobrada quedara inmutable. D1 borró el borrador editable: la corrección de un
+# error de carga pasa a ser responsabilidad del navegador (F4, antes de mandar `POST
+# /api/ventas`) o, después de cobrada, una devolución (`POST /api/ventas/{vid}/devolver`, ver
+# `tests/test_devoluciones.py`) -- no una edición. No queda ningún endpoint de edición de línea
+# contra el que portar estos tests: los seis contestarían 410 sobre rutas que ya no representan
+# ninguna operación del dominio nuevo.
 
 
 def test_update_item_quantity_rejects_zero_and_negative(admin_client):
+    """🔴 **Invariante cambiado, no retirado.** El modelo viejo rechazaba con 409 corregir una
+    línea a cantidad cero o negativa. `POST /api/ventas` no corrige líneas -- las arma todas
+    juntas -- y una línea con `qty <= 0` se **descarta en silencio** (`crear()`: `for i in
+    payload.items if i.nombre.strip() and i.qty > 0`), no se rechaza. El invariante que
+    sobrevive es el de más arriba (`test_confirm_without_items_fails`): si la venta se queda sin
+    ninguna línea válida, ahí sí es 422. Se afirma esa forma nueva."""
+    abrir_turno(admin_client)
     item_id = _make_item(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-
-    assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "0"}).status_code == 409
-    assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "-2"}).status_code == 409
-
-
-def test_cannot_edit_a_confirmed_sale(admin_client):
-    """Una venta cobrada es inmutable: corregirla es una devolucion, no una
-    edicion."""
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "10"},
-    )
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    admin_client.post(
-        f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
-
-    assert admin_client.delete(f"/sales/{sale_id}/items/0").status_code == 409
-    assert admin_client.patch(f"/sales/{sale_id}/items/0", json={"quantity": "2"}).status_code == 409
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 0, "precio": 1500.0, "producto_id": item_id}],
+        "pagos": [{"medio": "efectivo", "monto": 0}],
+    })
+    assert respuesta.status_code == 422
 
 
 # --- cobro: pago mixto y vuelto -----------------------------------------
 
 
-def _venta_lista(client, total_esperado="3000.00"):
-    """Venta en borrador con stock suficiente y turno abierto, lista para
-    cobrar."""
-    _abrir_turno(client)
-    item_id = _make_item(client)
-    location_id = _make_location(client)
-    client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "20"},
-    )
-    draft = client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "2"})
-    return sale_id, location_id
+def _venta_lista_items(cantidad="2", precio="1500.00"):
+    return [{"nombre": "línea", "qty": float(cantidad), "precio": float(precio), "producto_id": None}]
 
 
 def test_cash_payment_records_the_change(admin_client):
-    sale_id, location_id = _venta_lista(admin_client)
-
-    cobrada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={
-            "location_id": location_id,
-            "pagos": [{"medio": "efectivo", "monto": "3000.00", "recibido": "5000.00"}],
-        },
+    """D4: el vuelto se guarda (`ventas_pagos.recibido`), pero la API no lo precomputa -- a
+    diferencia del modelo viejo (`SalePaymentOut.vuelto`, una property del dominio), acá
+    `recibido` es la única columna nueva y el vuelto es `recibido - monto`, a cargo de quien
+    lea (ver D4, DECISIONS.md ADR-025)."""
+    item_id = _make_item(admin_client)
+    abrir_turno(admin_client)
+    venta = registrar_venta(
+        admin_client, item_id, cantidad="2", precio="1500.00",
+        pagos=[{"medio": "efectivo", "monto": 3000.00, "recibido": 5000.00}],
     )
-
-    assert cobrada.status_code == 200, cobrada.text
-    assert cobrada.json()["status"] == "confirmed"
-    assert float(cobrada.json()["vuelto_total"]) == 2000.0
-    assert float(cobrada.json()["pagos"][0]["vuelto"]) == 2000.0
-    assert float(cobrada.json()["pagos"][0]["recibido"]) == 5000.0
+    assert venta["estado"] == "cobrada"
+    pago = venta["pagos"][0]
+    assert float(pago["recibido"]) == 5000.0
+    assert float(pago["recibido"]) - float(pago["monto"]) == 2000.0
 
 
 def test_mixed_payment_is_persisted_per_method(admin_client):
-    sale_id, location_id = _venta_lista(admin_client)
-
-    cobrada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={
-            "location_id": location_id,
-            "pagos": [
-                {"medio": "efectivo", "monto": "1000.00", "recibido": "1000.00"},
-                {"medio": "tarjeta_debito", "monto": "2000.00", "referencia": "lote 7"},
-            ],
-        },
+    item_id = _make_item(admin_client)
+    abrir_turno(admin_client)
+    venta = registrar_venta(
+        admin_client, item_id, cantidad="2", precio="1500.00",
+        pagos=[
+            {"medio": "efectivo", "monto": 1000.00, "recibido": 1000.00},
+            {"medio": "tarjeta_debito", "monto": 2000.00, "referencia": "lote 7"},
+        ],
     )
-
-    assert cobrada.status_code == 200, cobrada.text
-    pagos = cobrada.json()["pagos"]
+    pagos = venta["pagos"]
     assert [p["medio"] for p in pagos] == ["efectivo", "tarjeta_debito"]
-    assert float(cobrada.json()["vuelto_total"]) == 0.0
     assert pagos[1]["recibido"] is None
     assert pagos[1]["referencia"] == "lote 7"
 
-    # sobrevive a releer la venta, no solo en la respuesta del confirm
-    releida = admin_client.get(f"/sales/{sale_id}")
+    # sobrevive a releer la venta, no solo en la respuesta de POST
+    releida = admin_client.get(f"/api/ventas/{venta['id']}")
     assert len(releida.json()["pagos"]) == 2
 
 
 def test_payments_below_total_are_rejected(admin_client):
-    """Cobrar de menos dejaria una venta a medio pagar: este POS no lo
-    modela."""
-    sale_id, location_id = _venta_lista(admin_client)
-
-    rechazada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={
-            "location_id": location_id,
-            "pagos": [{"medio": "efectivo", "monto": "1000.00"}],
-        },
-    )
-
-    assert rechazada.status_code == 409
-    assert "no cubren el total" in rechazada.json()["detail"]
+    """Cerrado en libracommerce v0.16.2: `OpcionesVentas.exigir_pago_completo`
+    (prendida en `app/main.py`) rechaza con 422 -- no 409, que es el código
+    del modelo viejo -- una venta cuyos pagos declarados no cubren el total,
+    antes de escribir nada."""
+    _make_item(admin_client)
+    abrir_turno(admin_client)
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(), "items": _venta_lista_items(),
+        "pagos": [{"medio": "efectivo", "monto": 1000.00}],
+    })
+    assert respuesta.status_code == 422, respuesta.text
+    assert "no cubren el total" in respuesta.json()["detail"]
 
 
 def test_received_less_than_the_payment_is_rejected(admin_client):
-    sale_id, location_id = _venta_lista(admin_client)
-
-    rechazada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={
-            "location_id": location_id,
-            "pagos": [{"medio": "efectivo", "monto": "3000.00", "recibido": "2000.00"}],
-        },
-    )
-
-    assert rechazada.status_code == 422
+    """Cerrado en libracommerce v0.16.2: `PagoPayload` valida `recibido >=
+    monto` -- un vuelto negativo es un dato imposible."""
+    _make_item(admin_client)
+    abrir_turno(admin_client)
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(), "items": _venta_lista_items(),
+        "pagos": [{"medio": "efectivo", "monto": 3000.00, "recibido": 2000.00}],
+    })
+    assert respuesta.status_code == 422
 
 
 def test_confirm_without_any_payment_info_is_rejected(admin_client):
-    sale_id, location_id = _venta_lista(admin_client)
-    sin_datos = admin_client.post(f"/sales/{sale_id}/confirm", json={"location_id": location_id})
-    assert sin_datos.status_code == 422
+    _make_item(admin_client)
+    abrir_turno(admin_client)
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(), "items": _venta_lista_items(), "pagos": [],
+    })
+    assert respuesta.status_code == 422
 
 
-def test_single_medio_pago_still_works_and_records_no_payments(admin_client):
-    """El camino de siempre no cambia: un solo medio, sin lista de pagos."""
-    sale_id, location_id = _venta_lista(admin_client)
-
-    cobrada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
-
-    assert cobrada.status_code == 200, cobrada.text
-    assert cobrada.json()["pagos"] == []
-    assert float(cobrada.json()["vuelto_total"]) == 0.0
+# 🔴 **Retirado, invariante ya no aplica**: `test_single_medio_pago_still_works_and_records_no_
+# payments` probaba el atajo del modelo viejo (`medio_pago` suelto en vez de la lista `pagos`,
+# que confirmaba sin dejar ninguna fila de pago). D1 no tiene atajo: `POST /api/ventas` siempre
+# recibe `pagos` como lista, y cada pago -- sea uno solo o varios -- queda como una fila de
+# `ventas_pagos` (ver `test_mixed_payment_is_persisted_per_method` y
+# `test_full_pos_flow_confirms_sale_and_decrements_stock`, que ya cubren "un solo medio,
+# registrado").
 
 
 def test_mixed_payment_creates_one_caja_movement_per_method(admin_client):
@@ -424,19 +297,18 @@ def test_mixed_payment_creates_one_caja_movement_per_method(admin_client):
     se arquea. Un solo movimiento con el total no serviria."""
     from libracore.db import caja as db_caja
 
-    sale_id, location_id = _venta_lista(admin_client)
-    admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={
-            "location_id": location_id,
-            "pagos": [
-                {"medio": "efectivo", "monto": "1000.00"},
-                {"medio": "tarjeta_debito", "monto": "2000.00"},
-            ],
-        },
+    item_id = _make_item(admin_client)
+    abrir_turno(admin_client)
+    venta = registrar_venta(
+        admin_client, item_id, cantidad="2", precio="1500.00",
+        pagos=[
+            {"medio": "efectivo", "monto": 1000.00},
+            {"medio": "tarjeta_debito", "monto": 2000.00},
+        ],
     )
 
-    nuevos = [m for m in db_caja.get_caja_movimientos() if str(m["referencia"]).startswith(f"sale-{sale_id}")]
+    numero = venta["numero"]
+    nuevos = [m for m in db_caja.get_caja_movimientos() if m["concepto"].startswith(f"Venta {numero}")]
     assert len(nuevos) == 2
     assert sorted(m["medio_pago"] for m in nuevos) == ["efectivo", "tarjeta_debito"]
     assert sorted(float(m["monto"]) for m in nuevos) == [1000.0, 2000.0]
@@ -449,33 +321,24 @@ def test_cobrar_sin_turno_abierto_es_rechazado(admin_client):
     """La regla que sostiene el arqueo: una venta fuera de turno seria plata
     sin control de caja."""
     item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
-    )
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-
-    rechazada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
-
-    assert rechazada.status_code == 409
-    assert "turno" in rechazada.json()["detail"]
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": 1500.0, "producto_id": item_id}],
+        "pagos": [{"medio": "efectivo", "monto": 1500.0}],
+    })
+    assert respuesta.status_code == 409
+    assert "turno" in respuesta.json()["detail"]
 
 
 def test_no_se_puede_abrir_un_turno_sobre_otro(admin_client):
-    _abrir_turno(admin_client)
+    abrir_turno(admin_client)
     segundo = admin_client.post("/shifts/open", json={"monto_inicial": 100})
     assert segundo.status_code == 409
 
 
 def test_turno_actual_arranca_vacio_y_despues_reporta_el_abierto(admin_client):
     assert admin_client.get("/shifts/current").json()["turno"] is None
-    tid = _abrir_turno(admin_client, monto_inicial=5000)
+    tid = abrir_turno(admin_client, 5000)
     actual = admin_client.get("/shifts/current").json()
     assert actual["turno"]["id"] == tid
     assert actual["turno"]["estado"] == "abierto"
@@ -484,18 +347,14 @@ def test_turno_actual_arranca_vacio_y_despues_reporta_el_abierto(admin_client):
 
 def test_el_cobro_queda_dentro_del_turno_y_suma_al_arqueo(admin_client):
     """El arqueo se cuenta sobre la caja: cada medio entra por separado."""
-    sale_id, location_id = _venta_lista(admin_client)
-    tid = admin_client.get("/shifts/current").json()["turno"]["id"]
-
-    admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={
-            "location_id": location_id,
-            "pagos": [
-                {"medio": "efectivo", "monto": "1000.00", "recibido": "2000.00"},
-                {"medio": "tarjeta_debito", "monto": "2000.00"},
-            ],
-        },
+    item_id = _make_item(admin_client)
+    tid = abrir_turno(admin_client)
+    registrar_venta(
+        admin_client, item_id, cantidad="2", precio="1500.00",
+        pagos=[
+            {"medio": "efectivo", "monto": 1000.00, "recibido": 2000.00},
+            {"medio": "tarjeta_debito", "monto": 2000.00},
+        ],
     )
 
     resumen = admin_client.get(f"/shifts/{tid}/summary").json()["resumen"]
@@ -506,12 +365,9 @@ def test_el_cobro_queda_dentro_del_turno_y_suma_al_arqueo(admin_client):
 
 
 def test_cierre_calcula_esperado_y_conserva_la_diferencia(admin_client):
-    sale_id, location_id = _venta_lista(admin_client)
-    tid = admin_client.get("/shifts/current").json()["turno"]["id"]
-    admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "pagos": [{"medio": "efectivo", "monto": "3000.00"}]},
-    )
+    item_id = _make_item(admin_client)
+    tid = abrir_turno(admin_client)
+    registrar_venta(admin_client, item_id, cantidad="2", precio="1500.00")
 
     cerrado = admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 2900.0})
 
@@ -526,30 +382,73 @@ def test_cierre_calcula_esperado_y_conserva_la_diferencia(admin_client):
 
 
 def test_no_se_cierra_dos_veces(admin_client):
-    tid = _abrir_turno(admin_client)
+    tid = abrir_turno(admin_client)
     assert admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0}).status_code == 200
     repetido = admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0})
     assert repetido.status_code == 409
 
 
 def test_despues_de_cerrar_no_se_puede_cobrar_hasta_abrir_otro(admin_client):
-    sale_id, location_id = _venta_lista(admin_client)
-    tid = admin_client.get("/shifts/current").json()["turno"]["id"]
+    item_id = _make_item(admin_client)
+    tid = abrir_turno(admin_client)
     admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0})
 
-    rechazada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
-    assert rechazada.status_code == 409
+    respuesta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": 1500.0, "producto_id": item_id}],
+        "pagos": [{"medio": "efectivo", "monto": 1500.0}],
+    })
+    assert respuesta.status_code == 409
 
-    _abrir_turno(admin_client)
-    cobrada = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
+    abrir_turno(admin_client)
+    cobrada = admin_client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": 1500.0, "producto_id": item_id}],
+        "pagos": [{"medio": "efectivo", "monto": 1500.0}],
+    })
     assert cobrada.status_code == 200, cobrada.text
 
 
 def test_cerrar_un_turno_inexistente_es_404(admin_client):
     assert admin_client.post("/shifts/9999/close", json={"monto_declarado": 0}).status_code == 404
+
+
+# --- depósito de la venta (F4, VentaLibra multisucursal, ADR-025) ---------
+#
+# El POS manda `deposito_id` = el depósito de la sucursal elegida en pantalla
+# (`GET /locations` -- en este producto un "location" ES un depósito del
+# motor, mismo `id`: `app/services/locations.py::LocationService` envuelve el
+# MISMO repositorio y la MISMA tabla `locations` que lee `libracommerce.erp.
+# catalogo.get_deposito`). Sin el campo (el default, `None`), el motor sigue
+# descontando del default de siempre -- eso ya lo cubre el resto de este
+# archivo. Acá se afirma el campo aditivo en sí.
+
+
+def test_deposito_id_descuenta_del_deposito_elegido_no_del_default(admin_client):
+    item_id = _make_item(admin_client)
+    default_id = deposito_default(admin_client)
+    otro = admin_client.post("/locations", json={"name": "Sucursal Once"}).json()
+    con_stock(admin_client, item_id, otro["id"], "10")
+    con_stock(admin_client, item_id, default_id, "10")
+    abrir_turno(admin_client)
+
+    venta = registrar_venta(admin_client, item_id, cantidad="3", deposito_id=otro["id"])
+    assert venta["estado"] == "cobrada"
+
+    assert stock(admin_client, item_id, otro["id"]) == 7
+    # El default no se tocó: la venta declaró un depósito propio.
+    assert stock(admin_client, item_id, default_id) == 10
+
+
+def test_deposito_id_inexistente_es_422_y_no_registra_nada(admin_client):
+    item_id = _make_item(admin_client)
+    default_id = deposito_default(admin_client)
+    con_stock(admin_client, item_id, default_id, "10")
+    abrir_turno(admin_client)
+
+    venta = registrar_venta(
+        admin_client, item_id, cantidad="1", deposito_id=999999, esperar=422,
+    )
+    assert "999999" in venta["detail"]
+    # Ni el stock ni la caja se movieron: la validación corre antes de escribir.
+    assert stock(admin_client, item_id, default_id) == 10

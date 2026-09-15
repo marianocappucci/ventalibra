@@ -55,8 +55,16 @@ def api(admin_client):
 
 def _salon(api) -> int:
     """El id del depósito donde el seed carga el stock. El saldo es **por
-    depósito**, así que preguntarlo sin decir cuál no tiene respuesta."""
-    return next(d["id"] for d in api.get("/locations") if d["name"] == "Salón")
+    depósito**, así que preguntarlo sin decir cuál no tiene respuesta.
+
+    🔴 Portado a F3 (2026-09-14, ADR-025): ya NO es el depósito que se llama
+    "Salón" -- es el default real del sistema, que es contra el que
+    `POST /api/ventas` descuenta (ver `scripts.seed_demo._deposito_default`
+    y su docstring, con la cuenta que no cerraba antes de este cambio). Se
+    mantiene el nombre de la función porque el resto del archivo la llama
+    así, pero ya no filtra por `name`.
+    """
+    return next(d["id"] for d in api.get("/locations") if d.get("is_default"))
 
 
 # ── 🔴 Desde cero ─────────────────────────────────────────────────────────
@@ -94,7 +102,7 @@ def test_hay_una_unidad_con_fraccion(api):
 # ── 🔴 Las ventas, confirmadas de verdad ──────────────────────────────────
 
 def _ventas(api):
-    lista = api.get("/sales") or []
+    lista = api.get("/api/ventas") or []
     if isinstance(lista, dict):
         lista = next((v for v in lista.values() if isinstance(v, list)), [])
     return lista
@@ -125,6 +133,20 @@ def test_las_ventas_descontaron_stock(api):
     total = _existencia(api, items["Yerba mate 1 kg"], _salon(api))
 
     assert total == 48 - 5 + 24, f"la cuenta no cierra: quedó {total}"
+
+
+def test_el_deudor_sembrado_aparece_en_el_listado_de_deudores(api):
+    """🔴 Hasta que `CustomerService.create` empezó a crear la fila `clients`
+    enlazada al dar de alta un cliente (2026-09-14), `GET /accounts` -- el
+    listado, no la cuenta puntual -- no traía a un cliente que acababa de
+    fiar por primera vez (ver el docstring de `_sembrar_cuenta_corriente`).
+    Medido de nuevo con el código actual para `tests/test_seed_demo.py`: si
+    esto vuelve a fallar es un bug de plata VISIBLE en la demo pública -- un
+    cajero mirando la pantalla de deudores y sin ver a quién cobrarle."""
+    sembrar(api)
+
+    deudores = api.get("/accounts")
+    assert any(d["nombre"] == "Kiosco La Esquina" and float(d["saldo"]) > 0 for d in deudores), deudores
 
 
 def test_hay_ventas_en_mas_de_un_estado(api):

@@ -22,7 +22,32 @@ dependencies = [
     # implementacion-- asi que esto es alinear la version, no adoptar una
     # funcion. `transfer_stock` queda disponible el dia que se le construya el
     # endpoint y la pantalla.
-    "libracommerce[migrations] @ git+https://github.com/marianocappucci/libracommerce.git@v0.15.0",
+    # v0.15.0 -> v0.16.0 (F3 del plan ERP, 2026-09-14): la capa `erp/` + `web/`
+    # de P9 (factories de router sobre LibraCore: ventas, catalogo, listas de
+    # precio) que Contalibra y Restolibra ya adoptaron. VentaLibra pasa sus
+    # ventas a esa capa -- ver DECISIONS.md ADR-025 y
+    # wiki/analyses/plan-ventalibra-a-libracommerce.md. Extras nuevos:
+    # `erp` (los casos de uso que cruzan a LibraCore) y `web` (las factories
+    # de router FastAPI), sumados a `migrations` que ya se pineaba.
+    # v0.16.0 -> v0.16.2 (2026-09-14, mismo dia, pedido del orquestador):
+    # `OpcionesVentas.exigir_pago_completo`/`exigir_cliente_para_fiar`
+    # (apagadas por defecto), `PagoPayload.recibido` valida `recibido >=
+    # monto`, un `producto_id` inexistente en una linea levanta
+    # `ProductoInexistente` -> 422 (antes caia como conflicto de numero de
+    # venta, 409 -- sólo las violaciones de `sales.number`/`sales_number_key`
+    # siguen reintentando/dando 409), y `acreditar_pago_qr` no pisa una
+    # referencia existente del pago (sólo la completa si esta vacia o NULL).
+    # v0.16.2 -> 71bf532 (F4 del plan ERP, 2026-09-15, todavia sin tag):
+    # `VentaPayload.deposito_id: int | None` en `POST /api/ventas` -- sin el
+    # campo, descuenta del deposito default como siempre. `DepositoInexistente`
+    # -> 422 al vender y al devolver.
+    # 71bf532 -> 5893544 -> v0.16.3 (tag anotado sobre main 69d1c31, mismo
+    # contenido que 5893544): `_validar_deposito` se muda a `erp/catalogo.py`
+    # (mismo `DepositoInexistente`, 422); `transferir_stock` valida origen y
+    # destino (422); ya no se puede desactivar el deposito default ni
+    # marcarlo default a uno inactivo (422 en el PATCH de depositos y en el
+    # set-default); `deposito_id=0` ya no cae al default.
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.16.3",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -97,7 +122,24 @@ dependencies = [
     # que este producto NO tenía en su contenedor (medido) y que
     # `libracore-migrar` necesita para aplicar la cadena del motor. Sin él, el
     # paso del deploy muere con un `ModuleNotFoundError` en vez de correr.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.97.0",
+    # v1.97.0 -> v1.99.0 (F3 del plan ERP, 2026-09-14): `libracore.ventas_cobro_router`
+    # (build_cobro_de_ventas_router: /facturar, /mp-qr, /mp-status sobre una
+    # venta de la capa ERP) y la columna `ventas_pagos.recibido` (migracion
+    # `0010`, D4: el vuelto se guarda).
+    # v1.99.0 -> v1.100.0 (mismo dia): `libracore.db.cuenta_corriente.
+    # VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF`, el origen que cruza la venta con
+    # su cliente por `clients.external_ref = 'party-' || customer_party_id` en
+    # vez de por id -- el punto 4 de la especificacion de F3 (ADR-025, D3),
+    # que hasta este pin quedaba diferido porque el origen no existia todavia.
+    # v1.100.0 -> v1.101.0 (2026-09-14, mismo dia, pedido del orquestador):
+    # `build_cobro_de_ventas_router` (`libracore/ventas_cobro_router.py`) suma
+    # `facturacion_habilitada: Callable[[], bool]` (default siempre True; con
+    # False, `mp-status` no factura y `POST /{vid}/facturar` da 403), y cierra
+    # dos huecos sin gancho nuevo: `POST /{vid}/mp-qr` da 409 sobre una venta
+    # anulada o que ya tiene `mp_payment_id` (antes llamaba a MercadoPago
+    # igual), y `mp-status` sobre una venta anulada devuelve status "anulada"
+    # sin facturar.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.101.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

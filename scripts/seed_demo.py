@@ -233,8 +233,14 @@ def sembrar(api: Api) -> None:
         depositos[d["name"]] = registro["id"]
         contar("depósitos", nuevo)
 
+    # 🔴 Portado a F3 (2026-09-14, ADR-025): el depósito de stock y ventas NO
+    # es más `depositos["Salón"]`. Ver `_deposito_default` -- desde acá en
+    # adelante "Salón" es sólo un nombre bonito en la lista de depósitos, sin
+    # una sola unidad adentro; lo real vive en el default del sistema.
+    deposito_ventas = _deposito_default(api)
+
     print("Stock…")
-    _sembrar_stock(api, articulos, depositos["Salón"], contar)
+    _sembrar_stock(api, articulos, deposito_ventas, contar)
 
     print("Turno de caja…")
     # 🔴 **Confirmar una venta exige un turno abierto.** Sin esto, las ventas
@@ -244,13 +250,13 @@ def sembrar(api: Api) -> None:
     _abrir_turno(api, contar)
 
     print("Ventas…")
-    _sembrar_ventas(api, articulos, clientes, depositos["Salón"], contar)
+    _sembrar_ventas(api, articulos, clientes, deposito_ventas, contar)
 
     print("Compras (orden y recepción)…")
-    _sembrar_compras(api, articulos, depositos["Salón"], contar)
+    _sembrar_compras(api, articulos, deposito_ventas, contar)
 
     print("Cuenta corriente…")
-    _sembrar_cuenta_corriente(api, articulos, clientes, depositos["Salón"], contar)
+    _sembrar_cuenta_corriente(api, articulos, clientes, deposito_ventas, contar)
 
     # El logo del negocio, para que los comprobantes salgan como los de
     # un cliente y no con un hueco arriba.
@@ -307,6 +313,33 @@ def _sembrar_stock(api: Api, articulos: dict, deposito: int, contar) -> None:
             print(f"  -- {nombre}: {e}")
 
 
+def _deposito_default(api: Api) -> int:
+    """El depósito del que descuenta `POST /api/ventas` -- SIEMPRE el default
+    del sistema (`Location.is_default`), no uno elegido por nombre acá.
+
+    🔴 **Gap real de F3 (2026-09-14, ADR-025), no de este script -- reportado
+    al orquestador.** Hasta ahora el seed ponía el stock y hacía las ventas
+    contra `depositos["Salón"]`, el depósito que ÉL MISMO crea, porque
+    `POST /sales/{id}/confirm` (retirado, 410) aceptaba `location_id`
+    explícito. `POST /api/ventas` no lo recibe: descuenta siempre del default
+    real (`erp.stock.descontar_stock_venta` -> `get_default_deposito_id`),
+    que es "Depósito principal" -- sembrado por `app/db.py::connect()` ANTES
+    de que este script cree ningún depósito propio, y que no hay forma de
+    cambiar por API (`app/routers/locations.py` no tiene `set-default`).
+    Medido sin este fix: la yerba (stock inicial 48, se venden 5, entran 24
+    por la compra) quedaba en 72 = 48 + 24 -- **la resta nunca pasó**, porque
+    las ventas descontaban de "Depósito principal" (que arranca vacío) y el
+    stock/la compra se veían en "Salón", que nunca se tocaba. `is_default` no
+    viajaba en `LocationOut` hasta este mismo cambio (`app/routers/
+    locations.py`): el dato ya estaba en el dominio, sólo faltaba exponerlo.
+
+    Con esto, "Salón" y "Depósito" (`DEPOSITOS`, arriba) siguen existiendo
+    como depósitos con nombre -- para que la pantalla de depósitos no quede
+    vacía -- pero el stock y las ventas van contra el default real.
+    """
+    return next(d["id"] for d in api.get("/locations") if d.get("is_default"))
+
+
 def _existencia(api: Api, item_id: int, location_id: int) -> float:
     """El saldo actual de un artículo en un depósito.
 
@@ -327,16 +360,31 @@ def _existencia(api: Api, item_id: int, location_id: int) -> float:
     return sum(float(e.get("quantity", 0)) for e in filas)
 
 
+#: `nombre -> precio de venta`, para armar las líneas de `POST /api/ventas`
+#: (el `producto_id` no alcanza para calcular el total: la API no lo busca
+#: sola, lo declara quien vende -- ver `ItemPayload` en
+#: `libracommerce.web.ventas_router`).
+_PRECIOS = {nombre: precio for nombre, _unidad, _categoria, precio, _costo in ARTICULOS}
+
+
 def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
-                    deposito: int, contar) -> None:
+                    deposito: int, contar) -> None:  # noqa: ARG001
     """Ventas confirmadas y una cancelada.
 
-    Cada venta se arma con el mismo recorrido que hace el mostrador: crear,
-    agregar líneas, confirmar con el pago. Confirmar es lo que descuenta stock
-    y mueve la caja — armarlas por SQL dejaría ventas sin ninguna de las dos
-    cosas.
+    Portado a F3 (2026-09-14, DECISIONS.md ADR-025): registrar una venta ya
+    no es `POST /sales` (borrador) + `.../items` + `.../confirm` (410) -- es
+    una sola llamada, `POST /api/ventas` (D1), y anular es
+    `POST /api/ventas/{vid}/anular` en vez de `.../cancel`. `deposito` ya no
+    se manda: `POST /api/ventas` descuenta siempre del depósito default (ver
+    `app/db.py::connect`), y el "Salón" de este seed lo es -- es el primero
+    que se crea, y `init_schema` sólo siembra uno si no hay ninguno.
+
+    F4 (2026-09-15, ADR-025): `/sales` se fue entero -- la idempotencia se
+    chequea contra `GET /api/ventas`, que es la misma tabla `sales` con otro
+    nombre de campo (`numero`/`estado`, no `number`/`status`; no cambia nada
+    de lo que este chequeo mira, sólo cuenta filas).
     """
-    existentes = api.get("/sales") or []
+    existentes = api.get("/api/ventas") or []
     if isinstance(existentes, dict):
         existentes = next((v for v in existentes.values() if isinstance(v, list)), [])
     if len(existentes) >= 4:
@@ -344,13 +392,15 @@ def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
         print(f"  (ya hay {len(existentes)} ventas)")
         return
 
+    hoy = datetime.now().strftime("%Y-%m-%d")
+
     PLAN = [
         # (cliente, [(artículo, cantidad)], medio de pago, cancelar)
         ("Consumidor final",
          [("Yerba mate 1 kg", 1), ("Fideos guiseros 500 g", 2)], "efectivo", False),
         ("Rosa Giménez",
          [("Queso cremoso", 0.35), ("Jamón cocido", 0.25),
-          ("Agua mineral 2 L", 2)], "debito", False),
+          ("Agua mineral 2 L", 2)], "tarjeta_debito", False),
         ("Kiosco La Esquina",
          [("Gaseosa cola 2,25 L", 12), ("Detergente 750 ml", 6)], "transferencia", False),
         ("Consumidor final",
@@ -370,23 +420,22 @@ def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
 
     for cliente, lineas, medio, cancelar in PLAN:
         try:
-            venta = api.post("/sales", {
-                "customer_party_id": clientes[cliente].get("party_id")
-                or clientes[cliente].get("id"),
-            })
-            for articulo, cantidad in lineas:
-                venta = api.post(f"/sales/{venta['id']}/items", {
-                    "item_id": articulos[articulo], "quantity": cantidad,
-                })
-            total = venta.get("total") or venta.get("total_amount") or 0
-            venta = api.post(f"/sales/{venta['id']}/confirm", {
+            items = [
+                {"nombre": articulo, "qty": cantidad, "precio": _PRECIOS[articulo],
+                 "producto_id": articulos[articulo]}
+                for articulo, cantidad in lineas
+            ]
+            total = sum(i["qty"] * i["precio"] for i in items)
+            venta = api.post("/api/ventas", {
+                "fecha": hoy,
+                "items": items,
                 "pagos": [{"medio": medio, "monto": total,
                            "recibido": total if medio == "efectivo" else None}],
-                "location_id": deposito,
+                "cliente_id": clientes[cliente]["id"],
             })
             contar("ventas", True)
             if cancelar:
-                api.post(f"/sales/{venta['id']}/cancel", {})
+                api.post(f"/api/ventas/{venta['id']}/anular", {})
         except RuntimeError as e:
             print(f"  -- venta de {cliente}: {e}")
 
@@ -447,7 +496,7 @@ def _sembrar_compras(api: Api, articulos: dict, deposito: int, contar) -> None:
 
 
 def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
-                              deposito: int, contar) -> None:
+                              deposito: int, contar) -> None:  # noqa: ARG001
     """Un cliente con saldo y una cobranza parcial.
 
     🔴 **Cobrar exige turno de caja abierto** —es plata que entra y tiene que
@@ -456,30 +505,33 @@ def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
 
     La cobranza además emite su **recibo**: es la otra pantalla que quedaba
     vacía, y el papel que el cliente se lleva.
+
+    🔴 **Portado a F3 (2026-09-14, DECISIONS.md ADR-025).** Se sigue pidiendo
+    la cuenta PUNTUAL (`GET /accounts/{party_id}`) y no el listado (`GET
+    /accounts`) -- pero ya no por la razón que decía esta nota hasta el
+    2026-09-15: esa era la trampa de antes de que `POST /customers`
+    (`CustomerService.create`) creara de una la fila `clients` enlazada por
+    `external_ref` al dar de alta un cliente (arreglo del mismo día). Medido
+    de nuevo con el código actual: `GET /accounts` justo después de la venta
+    fiada de `_sembrar_ventas` YA trae a Kiosco La Esquina -- el listado no
+    devuelve `[]`. La razón real para seguir pidiendo la cuenta puntual es
+    otra: sólo esa respuesta trae `movimientos` (con `cc_pago_id`), que es lo
+    que este chequeo de idempotencia necesita para no cobrar dos veces si el
+    seed corre de nuevo -- el listado (`CuentaCorrienteService.deudores()`)
+    sólo da `party_id`/`nombre`/`saldo`, sin movimientos.
     """
-    cuentas = _lista(api.get("/accounts"))
-    # La guarda va por "ya cobre?", no por "hay saldo?". Escrita al reves
-    # salteaba justamente el caso en el que hay que cobrar, y la pantalla de
-    # recibos quedaba vacia con la cuenta cargada.
-    if not cuentas:
-        print("  -- sin cuentas: la venta fiada no se confirmo")
+    party_id = clientes["Kiosco La Esquina"]["id"]
+    cuenta = api.get(f"/accounts/{party_id}")
+    if not cuenta or not float(cuenta.get("saldo") or 0):
+        print("  -- sin saldo: la venta fiada no se confirmó")
         return
-    _c = cuentas[0]
-    _party = _c.get("party_id") or _c.get("id")
-    if any(m.get("cc_pago_id") for m in _lista(api.get(f"/accounts/{_party}"))):
+    if any(m.get("cc_pago_id") for m in _lista(cuenta.get("movimientos"))):
         contar("cobranza", False)
         print("  (ya hay una cobranza)")
         return
 
-    # El fiado nace de la venta a cuenta corriente del plan de ventas. Si no
-    # hay ninguna cuenta, es que esa venta no llegó a confirmarse.
-    if not cuentas:
-        print("  -- sin cuentas: la venta fiada no se confirmó")
-        return
-    cuenta = cuentas[0]
-    party = cuenta.get("party_id") or cuenta.get("id")
     try:
-        api.post(f"/accounts/{party}/payments", {
+        api.post(f"/accounts/{party_id}/payments", {
             "monto": 5000, "medio_pago": "efectivo",
             "concepto": "Pago a cuenta", "referencia": "Recibo de la demo",
         })

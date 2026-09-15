@@ -7,6 +7,7 @@ con CUIT real.
 """
 
 from libracommerce.domain.entities import Party, PartyType
+from libracore.db import clients as db_clients
 from libracore.db.core import Conexion
 
 from ..commerce import repositorio
@@ -34,6 +35,16 @@ class CustomerService:
                 (party.id, cuit, condicion_iva),
             )
         self._conn.commit()
+        # 🔴 Crea de una el `clients.id` enlazado por `external_ref = party-<id>`
+        # (misma función que usa `CuentaCorrienteService._cliente_cc`/
+        # `app/ganchos.py::cliente_cc_de`, no se duplica la lógica). Sin esto la
+        # fila nacía recién cuando alguien pedía LA CUENTA de este cliente
+        # puntual (`GET /accounts/{party_id}`): un cliente que fía por primera
+        # vez no aparecía en `GET /accounts` (`get_clientes_con_saldo_cc`), que
+        # sólo enumera `clients` ya existentes -- ver F3, ADR-025.
+        db_clients.resolver_cliente_externo(
+            f"party-{party.id}", display_name, cuit_dni=cuit or "", email=email or "", phone=phone or "",
+        )
         return self._to_out(party)
 
     def get(self, party_id: int) -> dict | None:

@@ -36,6 +36,20 @@ def connect(db_path: str):
         conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
     init_schema(conn)
+    # Depósito por defecto -- necesario desde F3 (2026-09-14, DECISIONS.md
+    # ADR-025): `libracommerce.erp.stock.descontar_stock_venta` (la capa que
+    # ahora registra la venta, montada en `app/main.py`) no recibe ningún
+    # depósito en el payload -- descuenta del que `get_default_deposito_id`
+    # encuentre, y sin ninguno la primera venta revienta con
+    # `NOT NULL location_id`. `LibraCommerce` no seed-ea ninguna location;
+    # las instancias reales ya tienen al menos una (dev/demo, medido en el
+    # plan), pero una base nueva (onboarding, o esta suite) no. Mismo fix
+    # que Contalibra/Restolibra en su `init_db()`.
+    if not conn.execute("SELECT 1 FROM locations LIMIT 1").fetchone():
+        conn.execute(
+            "INSERT INTO locations (name, description, is_default, active)"
+            " VALUES ('Depósito principal', '', 1, 1)"
+        )
     # Las tablas propias de este producto, por un punto de entrada único. Antes
     # las seis funciones se enumeraban acá, y la baseline de Alembic
     # (`migrations/versions/0001_baseline_ventalibra.py`) llama a esa misma

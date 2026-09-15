@@ -73,16 +73,25 @@ def test_ningun_servicio_usa_el_repositorio_desnudo():
     )
 
 
-def test_los_diez_servicios_pasan_por_la_fabrica():
+def test_los_nueve_servicios_pasan_por_la_fabrica():
     """La contracara del test de arriba: que la fábrica se esté usando de
     verdad y no que simplemente nadie importe nada. Si un servicio dejara de
-    construir su repositorio, el test de arriba seguiría en verde."""
+    construir su repositorio, el test de arriba seguiría en verde.
+
+    🔴 Eran DIEZ hasta F3 (2026-09-14, DECISIONS.md ADR-025): el décimo era
+    `app/services/devoluciones.py` (anular/devolver), que esta migración
+    BORRÓ -- su lógica pasó a `libracommerce.erp.ventas` (`anular_venta`/
+    `devolver_items`), del lado del motor, expuesta como `POST /api/ventas/
+    {vid}/anular` y `.../devolver`. No es un servicio que "se saltee la
+    fábrica": dejó de ser un servicio propio de este producto. Pendiente
+    vencido, no un bug -- el número baja con el archivo que lo justificaba.
+    """
     raiz = pathlib.Path(__file__).resolve().parent.parent / "app" / "services"
     usan = [
         f.name for f in raiz.glob("*.py")
         if "from ..commerce import repositorio" in f.read_text(encoding="utf-8")
     ]
-    assert len(usan) == 10, f"esperaba 10 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
+    assert len(usan) == 9, f"esperaba 9 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
 
 
 # ── Que registre, end-to-end ──────────────────────────────────────────────

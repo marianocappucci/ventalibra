@@ -8,6 +8,7 @@ balanza (peso e importe) terminen en un cobro distinto.
 from decimal import Decimal
 
 import pytest
+from ventas_helpers import abrir_turno, registrar_venta
 
 
 def _kilo(client):
@@ -192,6 +193,10 @@ def test_etiquetas_mal_impresas_no_resuelven(admin_client, codigo):
 
 
 def test_una_venta_pesada_cobra_el_peso_por_el_precio_por_kilo(admin_client):
+    """Portado a F3 (2026-09-14, ADR-025): no hay más borrador + `POST
+    .../items` (410) -- el escaneo sigue siendo el mismo GET de siempre; lo
+    que cambia es cómo esa línea se convierte en venta: una sola llamada a
+    `POST /api/ventas` con la cantidad que devolvió el escaneo."""
     item_id = _producto_pesable(admin_client, "Queso", precio="8500")
     _codigo_de_balanza(admin_client, item_id)
     _configurar(admin_client)
@@ -200,11 +205,9 @@ def test_una_venta_pesada_cobra_el_peso_por_el_precio_por_kilo(admin_client):
         "/catalog/items/scan", params={"code": "2000123007504"}
     ).json()
 
-    venta = admin_client.post("/sales", json={}).json()
-    agregado = admin_client.post(
-        f"/sales/{venta['id']}/items",
-        json={"item_id": item_id, "quantity": escaneo["quantity"]},
+    abrir_turno(admin_client)
+    venta = registrar_venta(
+        admin_client, item_id, precio="8500", cantidad=escaneo["quantity"],
     )
-    assert agregado.status_code == 200, agregado.text
     # 0,750 kg a $8500 el kilo = $6375
-    assert Decimal(agregado.json()["total"]) == Decimal("6375.000")
+    assert Decimal(str(venta["total"])) == Decimal("6375.00")

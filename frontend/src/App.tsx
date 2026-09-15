@@ -15,6 +15,7 @@ import { Usuarios } from './pages/Usuarios'
 import { Configuracion } from './pages/Configuracion'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
 import { Ventas } from './pages/Ventas'
+import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
 import { Logs } from './pages/Logs'
 
@@ -84,6 +85,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Ventas />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ventas/:id"
+        element={
+          <ProtectedRoute>
+            <VentaDetalle />
           </ProtectedRoute>
         }
       />

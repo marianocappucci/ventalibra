@@ -1,9 +1,78 @@
+"""Facturación desde una venta: hoy pasa por `/api/ventas` (la capa ERP de
+LibraCommerce, F3 del plan post-P9, ver DECISIONS.md ADR-025).
+
+Portado desde el modelo viejo (`POST /sales/{id}/confirm` con `invoice: bool`,
+que confirmaba y facturaba en la misma llamada, con IVA fijo al 21%): ahora
+`POST /api/ventas` registra la venta completa en una sola llamada (D1) y
+`POST /api/ventas/{vid}/facturar` es un paso aparte (D2/D6, `libracore.
+venta_facturacion`, montado como `libracore.ventas_cobro_router` en
+`app/main.py`).
+
+🔴 **Lo que cambió de verdad, no sólo de ruta**: la alícuota. El motor nuevo
+no tiene el 21% fijo de `app/services/billing.py` (que queda vivo pero sólo
+para el camino LEGADO, de sólo lectura desde F3) -- usa las de
+`libracore.venta_facturacion`, que default a Monotributista/Factura C sin
+discriminar IVA cuando la instancia no configuró su propia condición de IVA
+(`empresa_iva_condition`, `PUT /api/config/empresa`). Es la corrección que
+menciona el plan post-P9 (sección "Lo que este ADR NO hace" de ADR-025): antes
+facturaba tipo B con IVA discriminado aunque el emisor fuera monotributista,
+que no es correcto.
+"""
 from libracore.db import caja as db_caja
+from ventas_helpers import hoy
+
+
+def _make_location(client):
+    """Compat para los tests de otros archivos que todavía importan esto de
+    acá (`test_la_factura_declara_su_ambiente.py`, `test_medios_elegibles.py`).
+    `POST /api/ventas` no recibe depósito: devuelve el default que
+    `app/db.py::connect()` siembra (ver `tests/test_devoluciones.py`, que
+    tiene el mismo comentario más largo)."""
+    conn = client.app.state.conn
+    return conn.execute("SELECT id FROM locations WHERE is_default = 1 LIMIT 1").fetchone()[0]
+
+
+class _RespuestaConFactura:
+    """Envoltorio para que `_confirmed_sale(..., invoice=True)` siga
+    devolviendo `.json()["factura"]` como en el modelo viejo, aunque ahora
+    sean dos llamadas HTTP (`POST /api/ventas` + `POST .../facturar`)."""
+
+    def __init__(self, venta_response, factura: dict | None):
+        self._venta_response = venta_response
+        self._factura = factura
+
+    @property
+    def status_code(self):
+        return self._venta_response.status_code
+
+    @property
+    def text(self):
+        return self._venta_response.text
+
+    def json(self):
+        return {**self._venta_response.json(), "factura": self._factura}
+
+
+def _confirmed_sale(client, item_id, location_id=None, quantity="1",  # noqa: ARG001
+                    medio_pago="efectivo", invoice=False, **_ignorados):
+    """Compat con el modelo viejo (`POST /sales` borrador + `POST .../confirm`,
+    que abría el turno solo) para los tests de otros archivos que todavía la
+    importan de acá. Registra la venta completa en una sola llamada (D1) y,
+    si `invoice=True`, factura aparte (D2/D6) -- ver el docstring del módulo.
+    """
+    if client.get("/shifts/current").json().get("turno") is None:
+        client.post("/shifts/open", json={"monto_inicial": 0})
+    venta = _registrar_venta(client, item_id, medio=medio_pago, monto=float(quantity) * 1500.0)
+    factura = None
+    if invoice and venta.status_code == 200:
+        vid = venta.json()["id"]
+        factura = client.post(f"/api/ventas/{vid}/facturar").json().get("factura")
+    return _RespuestaConFactura(venta, factura)
 
 
 def _abrir_turno(client, monto_inicial=0):
-    """Sin turno abierto, confirmar una venta da 409: una venta fuera de
-    turno seria plata sin control de caja."""
+    """Sin turno abierto, registrar una venta da 409: una venta fuera de
+    turno sería plata sin control de caja."""
     abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
     assert abierto.status_code == 200, abierto.text
     return abierto.json()["turno"]["id"]
@@ -19,21 +88,20 @@ def _make_item(client, name="Fideos 500g", price="1500.00"):
     return created.json()["id"]
 
 
-def _make_location(client, name="Sucursal 1"):
-    created = client.post("/locations", json={"name": name})
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
-
-
-def _confirmed_sale(client, item_id, location_id, quantity="1", **confirm_extra):
-    _abrir_turno(client)
-    draft = client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": quantity})
-    return client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo", **confirm_extra},
-    )
+def _registrar_venta(client, item_id, *, cliente_id=None, cliente_nombre="",
+                     precio="1500.00", medio="efectivo", monto=None):
+    """Arma y registra una venta de una línea, en una sola llamada (D1). El
+    turno tiene que estar abierto antes: lo abre el caller."""
+    monto = float(precio) if monto is None else monto
+    payload = {
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": float(precio), "producto_id": item_id}],
+        "pagos": [{"medio": medio, "monto": monto}],
+    }
+    if cliente_id is not None:
+        payload["cliente_id"] = cliente_id
+        payload["cliente_nombre"] = cliente_nombre
+    return client.post("/api/ventas", json=payload)
 
 
 def test_get_arca_config_defaults_to_none(admin_client):
@@ -44,16 +112,10 @@ def test_get_arca_config_defaults_to_none(admin_client):
 
 def test_set_and_get_arca_config(admin_client):
     """🔴 La fila se crea con `venta`, que es el slug con el que
-    `services/billing.py` lee la configuracion de facturacion.
-
-    Con `default` --el valor al que caia el router del motor antes de que el
-    producto pudiera declarar el suyo-- el PUT contesta 200 y la pantalla dice
-    "Guardado", pero la facturacion no lee esa fila NUNCA: se descubre al emitir
-    el primer comprobante. Ver `empresa_por_defecto` en LibraCore v1.63.0.
-
-    El cuerpo ya no lleva los paths: el certificado se sube, y el path lo pone
-    el servidor. Ver `test_el_certificado_se_sube`.
-    """
+    `services/billing.py` lee la configuracion de facturacion (el camino
+    LEGADO -- `libracore.venta_facturacion` no usa `db_arca_config` por
+    empresa: resuelve el punto de venta con `resolver_punto_venta`, ver
+    `app/db_ventas.py`)."""
     created = admin_client.put("/config/arca", json={
         "cuit": "30-12345678-9", "punto_venta": 1,
     })
@@ -85,60 +147,119 @@ def test_el_estado_dice_si_la_instancia_puede_facturar(admin_client):
     assert r.json()["configurado"] is False
 
 
-def test_confirm_without_invoice_flag_does_not_bill(admin_client):
+def test_registrar_una_venta_no_la_factura_sola(admin_client):
+    """Registrar la venta (D1) nunca factura: facturar es `POST .../facturar`,
+    un paso aparte y explícito."""
     item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    confirmed = _confirmed_sale(admin_client, item_id, location_id)
-    assert confirmed.status_code == 200, confirmed.text
-    assert confirmed.json()["factura"] is None
+    _abrir_turno(admin_client)
+    venta = _registrar_venta(admin_client, item_id)
+    assert venta.status_code == 200, venta.text
+    assert venta.json()["factura_id"] is None
 
 
-def test_confirm_with_invoice_and_no_customer_bills_consumidor_final(admin_client):
+def test_facturar_sin_cliente_factura_a_consumidor_final(admin_client):
+    """Sin `empresa_iva_condition` configurada, el emisor es Monotributista
+    por default y factura tipo C -- sin discriminar IVA. Es la corrección
+    documentada en ADR-025: antes de esto, este producto facturaba tipo B con
+    IVA discriminado aunque el emisor fuera monotributista."""
     item_id = _make_item(admin_client, price="1000.00")
-    location_id = _make_location(admin_client)
-    confirmed = _confirmed_sale(admin_client, item_id, location_id, invoice=True)
-    assert confirmed.status_code == 200, confirmed.text
-    factura = confirmed.json()["factura"]
-    assert factura is not None
+    _abrir_turno(admin_client)
+    venta = _registrar_venta(admin_client, item_id, precio="1000.00")
+    vid = venta.json()["id"]
+
+    facturada = admin_client.post(f"/api/ventas/{vid}/facturar")
+    assert facturada.status_code == 200, facturada.text
+    factura = facturada.json()["factura"]
     assert factura["cliente_razon"] == "Consumidor Final"
-    assert factura["tipo"] == 6  # factura B
+    assert factura["tipo"] == 11  # factura C: monotributista, sin discriminar IVA
     assert factura["cae"] is not None  # mock de dev, ver arca_facturacion.get_next_numero_with_arca
 
 
-def test_confirm_with_invoice_and_responsable_inscripto_customer_bills_type_a(admin_client):
+def test_facturar_con_emisor_responsable_inscripto_no_reconoce_al_cliente(admin_client):
+    """🔴 **Gap cerrado en esta fase** (venía documentado como pendiente por
+    el agente anterior; ver `app/venta_facturacion.py`, docstring del módulo).
+
+    `libracore.venta_facturacion.facturar_venta` resuelve el cliente con
+    `libracore.db.clients.get_client(venta["cliente_id"])`, y `venta[
+    "cliente_id"]` es `sales.customer_party_id` -- el id de PARTY de
+    LibraCommerce, no un `clients.id`. `app/venta_facturacion.py::PUERTO`
+    ahora envuelve `obtener` para traducirlo por `external_ref = 'party-<id>'`
+    (mismo criterio que `app/ganchos.py::cliente_cc_de`, reusada).
+
+    Colisión adversarial, mismo patrón que
+    `tests/test_cuenta_corriente_origen_externo.py`: el `clients.id` real de
+    "Empresa SA" se fuerza a un número que NO es su `party_id` (acá,
+    literalmente el `party_id` de OTRO cliente -- "Cliente Equivocado"), para
+    que un cruce por id directo (el bug) facture con el nombre y el CUIT
+    ajenos, en vez de sólo caer a Consumidor Final por no encontrar nada.
+    """
+    admin_client.put("/api/config/empresa", json={"empresa_iva_condition": "Responsable Inscripto"})
+    otro = admin_client.post("/customers", json={
+        "display_name": "Cliente Equivocado", "party_type": "person",
+    })
+    assert otro.status_code == 200, otro.text
+    otro_party_id = otro.json()["id"]
+
     customer = admin_client.post("/customers", json={
         "display_name": "Empresa SA", "party_type": "organization",
         "cuit": "30-99999999-1", "condicion_iva": "Responsable Inscripto",
     })
+    assert customer.status_code == 200, customer.text
     customer_id = customer.json()["id"]
+    assert customer_id != otro_party_id
+
+    # El `clients.id` de "Empresa SA" en LibraCore: a propósito el `party_id`
+    # de "Cliente Equivocado", no el suyo. Si `facturar_venta` cruzara por id
+    # directo (el bug), leería esta fila -- que es la de OTRO cliente.
+    #
+    # 🔴 Desde F3 (2026-09-14, ADR-025 D3, punto 1(a) del arreglo) `POST
+    # /customers` ya crea la fila `clients` enlazada al dar de alta
+    # (`CustomerService.create`): no se puede volver a `INSERT`ar una con ese
+    # `id` a mano -- colisiona con la que "Cliente Equivocado" ya tiene
+    # (`clients_pkey`). Se REPURPOSEa esa fila -- mismo `id`, que sigue
+    # siendo el `party_id` de Cliente Equivocado -- para que sea la de
+    # "Empresa SA": primero se borra la propia de Empresa SA, si no el
+    # `external_ref` único de la fila repurpuesta choca con ella.
+    conn = admin_client.app.state.conn
+    conn.execute("DELETE FROM clients WHERE external_ref = ?", (f"party-{customer_id}",))
+    conn.execute(
+        "UPDATE clients SET name = ?, cuit_dni = ?, iva_condition = ?, external_ref = ? "
+        "WHERE external_ref = ?",
+        ("Empresa SA", "30-99999999-1", "Responsable Inscripto", f"party-{customer_id}",
+         f"party-{otro_party_id}"),
+    )
+    conn.commit()
 
     item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
     _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={"customer_party_id": customer_id})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    confirmed = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "tarjeta_credito", "invoice": True},
+    venta = _registrar_venta(
+        admin_client, item_id, cliente_id=customer_id, cliente_nombre="Empresa SA",
+        medio="tarjeta_credito",
     )
-    assert confirmed.status_code == 200, confirmed.text
-    factura = confirmed.json()["factura"]
-    assert factura["tipo"] == 1  # factura A
+    assert venta.status_code == 200, venta.text
+    vid = venta.json()["id"]
+
+    facturada = admin_client.post(f"/api/ventas/{vid}/facturar")
+    assert facturada.status_code == 200, facturada.text
+    factura = facturada.json()["factura"]
+    # Factura A: RI factura a RI, con los datos de la venta -- no los de
+    # "Cliente Equivocado", pese a compartir id con su `clients.id`.
+    assert factura["tipo"] == 1
+    assert factura["cliente_razon"] == "Empresa SA"
     assert factura["cliente_cuit"] == "30-99999999-1"
 
 
-def test_confirming_a_sale_always_records_a_caja_movement(admin_client):
+def test_registrar_una_venta_siempre_registra_un_movimiento_de_caja(admin_client):
     item_id = _make_item(admin_client, price="500.00")
-    location_id = _make_location(admin_client)
+    _abrir_turno(admin_client)
 
     before = len(db_caja.get_caja_movimientos())
-    confirmed = _confirmed_sale(admin_client, item_id, location_id)
-    assert confirmed.status_code == 200, confirmed.text
-    sale_number = confirmed.json()["number"]
+    venta = _registrar_venta(admin_client, item_id, precio="500.00")
+    assert venta.status_code == 200, venta.text
+    numero = venta.json()["numero"]
 
     movimientos = db_caja.get_caja_movimientos()
     assert len(movimientos) == before + 1
-    assert movimientos[0]["concepto"] == f"Venta {sale_number}"
+    assert numero in movimientos[0]["concepto"]
     assert movimientos[0]["factura_id"] is None
     assert float(movimientos[0]["monto"]) == 500.0

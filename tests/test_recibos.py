@@ -15,6 +15,7 @@ distingue "anda" de "no explota".
 import io
 
 from pypdf import PdfReader
+from ventas_helpers import hoy
 
 
 def _abrir_turno(client, monto_inicial=0):
@@ -33,26 +34,27 @@ def _make_item(client, name="Fideos 500g", price="1500.00"):
     return creado.json()["id"]
 
 
-def _make_location(client, name="Sucursal 1"):
-    creada = client.post("/locations", json={"name": name})
-    assert creada.status_code == 200, creada.text
-    return creada.json()["id"]
-
-
 def _deudor(client, nombre="Vecina del 12", cantidad="2"):
-    """Cliente con deuda real: la venta fiada es la que la genera."""
+    """Cliente con deuda real: la venta fiada es la que la genera.
+
+    Portado a F3 (2026-09-14, DECISIONS.md ADR-025): fiar ya no es
+    `POST /sales` (borrador) + `.../items` + `.../confirm` con
+    `medio_pago=cuenta_corriente` (410) -- es `POST /api/ventas` (D1) con
+    `cliente_id` y un pago `cuenta_corriente` (D3: ese pago ES la deuda, no
+    hace falta un `cc_debito` aparte)."""
     item_id = _make_item(client)
-    location_id = _make_location(client)
     cliente_id = client.post("/customers", json={"display_name": nombre}).json()["id"]
     _abrir_turno(client)
 
-    borrador = client.post("/sales", json={"customer_party_id": cliente_id})
-    sale_id = borrador.json()["id"]
-    client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": cantidad})
-    confirmada = client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "cuenta_corriente"},
-    )
+    precio = 1500.0
+    total = float(cantidad) * precio
+    confirmada = client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": float(cantidad), "precio": precio,
+                   "producto_id": item_id}],
+        "pagos": [{"medio": "cuenta_corriente", "monto": total}],
+        "cliente_id": cliente_id,
+    })
     assert confirmada.status_code == 200, confirmada.text
     return cliente_id
 

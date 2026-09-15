@@ -1,26 +1,23 @@
+"""Gating por módulo del plan (ADR-009): catálogo, stock y venta/POS nunca se
+gatean; sólo `facturacion` está condicionado.
 
-def _abrir_turno(client, monto_inicial=0):
-    """Sin turno abierto, confirmar una venta da 409: una venta fuera de
-    turno seria plata sin control de caja."""
-    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
-    assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+Portado a F3 (2026-09-14, DECISIONS.md ADR-025): registrar una venta ya no es
+`POST /sales` (borrador) + `.../items` + `.../confirm` -- es una sola llamada,
+`POST /api/ventas` (D1, helper `registrar_venta` de `ventas_helpers.py`).
+Facturar dejó de ser el flag `invoice` de esa llamada: es un paso aparte,
+`POST /api/ventas/{vid}/facturar` (D2/D6, `libracore.ventas_cobro_router`).
 
-
-def _make_item(client, name="Fideos 500g", price="1500.00"):
-    client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
-    created = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": price, "default_cost": "900.00"},
-    )
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
-
-
-def _make_location(client, name="Deposito"):
-    created = client.post("/locations", json={"name": name})
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
+🔴 **El invariante de ADR-009 no venía solo por portar los tests.** Medido
+armando la app con `facturacion` en `False` y facturando una venta real:
+`POST /api/ventas/{vid}/facturar` contestaba **200** igual -- el mount de
+`app/main.py` para esa ruta no traía ningún `require_module`, a diferencia
+del `confirm_sale` legado, que sí lo chequeaba antes de tocar nada. Se agregó
+el gate en `app/main.py` (ver el comentario ahí, sobre por qué va sólo en
+`/facturar` y no en todo el router de cobro que comparte con `/mp-qr` y
+`/mp-status`) -- no es un cambio de test, es la causa real de que estos
+cuatro test fallaran.
+"""
+from ventas_helpers import abrir_turno, crear_item, deposito_default, registrar_venta
 
 
 def _disable(client, modulo: str) -> None:
@@ -36,59 +33,43 @@ def test_billing_router_requires_facturacion_module(admin_client):
     assert admin_client.get("/config/arca").status_code == 403
 
 
-def test_confirm_sale_without_invoice_ignores_disabled_module(admin_client):
+def test_registrar_venta_sin_facturar_ignora_el_modulo_apagado(admin_client):
     _disable(admin_client, "facturacion")
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    confirmed = admin_client.post(
-        f"/sales/{sale_id}/confirm", json={"location_id": location_id, "medio_pago": "efectivo"},
-    )
-    assert confirmed.status_code == 200, confirmed.text
-    assert confirmed.json()["factura"] is None
+    item_id = crear_item(admin_client)
+    deposito_default(admin_client)
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, item_id)
+    assert venta["factura_id"] is None
 
 
-def test_confirm_sale_with_invoice_requires_facturacion_module(admin_client):
+def test_facturar_exige_el_modulo_facturacion(admin_client):
     _disable(admin_client, "facturacion")
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    response = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo", "invoice": True},
-    )
-    assert response.status_code == 403
+    item_id = crear_item(admin_client)
+    deposito_default(admin_client)
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, item_id)
+    respuesta = admin_client.post(f"/api/ventas/{venta['id']}/facturar")
+    assert respuesta.status_code == 403
 
 
-def test_confirm_sale_with_invoice_succeeds_when_module_enabled(admin_client):
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={})
-    sale_id = draft.json()["id"]
-    admin_client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    response = admin_client.post(
-        f"/sales/{sale_id}/confirm",
-        json={"location_id": location_id, "medio_pago": "efectivo", "invoice": True},
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["factura"] is not None
+def test_facturar_funciona_con_el_modulo_habilitado(admin_client):
+    item_id = crear_item(admin_client)
+    deposito_default(admin_client)
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, item_id)
+    respuesta = admin_client.post(f"/api/ventas/{venta['id']}/facturar")
+    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.json()["factura"] is not None
 
 
 def test_catalog_stock_and_sales_are_never_gated(admin_client):
     _disable(admin_client, "facturacion")
-    item_id = _make_item(admin_client)
-    location_id = _make_location(admin_client)
+    item_id = crear_item(admin_client)
+    location_id = deposito_default(admin_client)
     assert admin_client.post(
         "/stock/adjustments",
         json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
     ).status_code == 200
-    _abrir_turno(admin_client)
-    draft = admin_client.post("/sales", json={})
-    assert draft.status_code == 200
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, item_id)
+    assert venta["id"] is not None
