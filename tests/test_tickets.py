@@ -7,8 +7,26 @@ imprima lo que no corresponde.
 Portado a F3 (2026-09-14, DECISIONS.md ADR-025): registrar y cobrar una venta
 ya no es `POST /sales` (borrador) + `.../items` + `.../confirm` (410) -- es
 una sola llamada, `POST /api/ventas` (D1). `GET /sales/{id}/ticket` en sí NO
-cambió: sigue siendo la misma lectura de siempre sobre la tabla `sales`.
+cambió con F3: siguió siendo la misma lectura de siempre sobre la tabla
+`sales`.
+
+Movido a `GET /ventas/{id}/ticket` en F4 (2026-09-15, mismo ADR): `/sales` se
+retiró entero (ver `app/routers/ventas_extra.py`), y la ruta nueva es la que
+`VentaDetalle`/`Pos.tsx` de libra-ui ya piden por default. El PDF y el
+servicio que lo arma (`app/services/sales.py::SaleService`) no cambiaron --
+sólo el prefijo. Como `GET /sales/{id}` (el detalle "viejo", con `number` y
+`confirmed_at`) se fue con el resto del router, los tests que necesitaban ese
+detalle para armar su aserción (no para ejercitar ninguna ruta) pasan a leerlo
+con `SaleService` directo -- `_detalle()`, acá abajo.
 """
+from app.services.sales import SaleService
+
+
+def _detalle(client, sale_id):
+    """El mismo objeto que arma `GET /ventas/{id}/ticket` puertas adentro
+    (`number`, `status`, `confirmed_at`) -- ya no hay un `GET /sales/{id}`
+    HTTP del que leerlo: se fue con el resto del router en F4."""
+    return SaleService(client.app.state.conn).get(sale_id)
 import re
 import zlib
 from datetime import UTC, datetime, timedelta, timezone
@@ -77,7 +95,7 @@ def _texto_del_pdf(pdf: bytes) -> str:
 def test_el_ticket_es_un_pdf_que_se_abre_en_pantalla(admin_client):
     sale_id = _venta_confirmada(admin_client)
 
-    respuesta = admin_client.get(f"/sales/{sale_id}/ticket")
+    respuesta = admin_client.get(f"/ventas/{sale_id}/ticket")
     assert respuesta.status_code == 200, respuesta.text
     assert respuesta.headers["content-type"] == "application/pdf"
     # inline y no attachment: el POS lo abre para imprimir, no lo descarga.
@@ -88,7 +106,7 @@ def test_el_ticket_es_un_pdf_que_se_abre_en_pantalla(admin_client):
 def test_el_ticket_lleva_el_producto_y_el_total(admin_client):
     sale_id = _venta_confirmada(admin_client, cantidad="2")
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert "Yerba 1kg" in texto
     assert "3.000,00" in texto
 
@@ -96,8 +114,8 @@ def test_el_ticket_lleva_el_producto_y_el_total(admin_client):
 def test_el_ticket_lleva_el_numero_de_la_venta(admin_client):
     sale_id = _venta_confirmada(admin_client)
 
-    numero = admin_client.get(f"/sales/{sale_id}").json()["number"]
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    numero = _detalle(admin_client, sale_id).number
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert numero in texto
 
 
@@ -105,7 +123,7 @@ def test_el_ticket_nombra_al_cliente_cuando_lo_hay(admin_client):
     cliente = admin_client.post("/customers", json={"display_name": "Vecina del 12"})
     sale_id = _venta_confirmada(admin_client, customer_id=cliente.json()["id"])
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert "Vecina del 12" in texto
 
 
@@ -114,7 +132,7 @@ def test_el_ticket_muestra_el_medio_de_pago(admin_client):
         admin_client, pagos=[{"medio": "tarjeta_debito", "monto": 3000.0}],
     )
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     # El POS tiene medios que LibraCore no conoce: se traducen del lado de
     # VentaLibra para que no salga "tarjeta_debito" crudo en el papel.
     assert "Tarjeta de" in texto
@@ -126,7 +144,7 @@ def test_el_cobro_mixto_sale_desglosado(admin_client):
         {"medio": "mercadopago", "monto": 2000.0},
     ])
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert "Efectivo" in texto
     assert "Mercado Pago" in texto
 
@@ -144,10 +162,10 @@ def test_una_venta_nueva_lista_sus_pagos_en_el_ticket(admin_client):
     """
     sale_id = _venta_confirmada(admin_client)
 
-    pagos = admin_client.get(f"/sales/{sale_id}").json()["pagos"]
+    pagos = _detalle(admin_client, sale_id).payments
     assert len(pagos) == 1
-    assert pagos[0]["medio"] == "efectivo"
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    assert pagos[0].method == "efectivo"
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert "Yerba 1kg" in texto
     assert "Efectivo" in texto
 
@@ -156,7 +174,7 @@ def test_una_venta_pesada_imprime_los_decimales(admin_client):
     """Un ticket de fiambrería tiene que decir 0,75 kg, no 1."""
     sale_id = _venta_confirmada(admin_client, cantidad="0.75")
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert "0.75 x" in texto
 
 
@@ -175,26 +193,26 @@ def test_no_se_imprime_el_ticket_de_un_borrador(admin_client):
     cur = conn.execute("INSERT INTO sales (number) VALUES ('POS-BORRADOR-TEST')")
     conn.commit()
     sale_id = cur.lastrowid
-    respuesta = admin_client.get(f"/sales/{sale_id}/ticket")
+    respuesta = admin_client.get(f"/ventas/{sale_id}/ticket")
     assert respuesta.status_code == 409
 
 
 def test_el_ticket_de_una_venta_inexistente_es_404(admin_client):
-    assert admin_client.get("/sales/9999/ticket").status_code == 404
+    assert admin_client.get("/ventas/9999/ticket").status_code == 404
 
 
 def test_el_ancho_del_papel_se_puede_configurar(admin_client):
     """58 y 80 mm son rollos distintos: si el ancho no llega al PDF, el
     ticket sale cortado y sólo se nota con el papel puesto."""
     sale_id = _venta_confirmada(admin_client)
-    ancho_80 = admin_client.get(f"/sales/{sale_id}/ticket").content
+    ancho_80 = admin_client.get(f"/ventas/{sale_id}/ticket").content
 
     guardado = admin_client.put("/settings/ticket", json={
         "ancho_mm": "58", "fuente_size": 9, "mostrar_logo": False,
         "linea_corte": True, "pie": "",
     })
     assert guardado.status_code == 200, guardado.text
-    ancho_58 = admin_client.get(f"/sales/{sale_id}/ticket").content
+    ancho_58 = admin_client.get(f"/ventas/{sale_id}/ticket").content
 
     assert b"226.77" in ancho_80  # 80mm en puntos
     assert b"164.4" in ancho_58   # 58mm
@@ -207,7 +225,7 @@ def test_el_pie_configurado_sale_impreso(admin_client):
         "linea_corte": True, "pie": "Gracias por su compra",
     })
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert "Gracias por su compra" in texto
 
 
@@ -238,11 +256,11 @@ def test_el_ticket_se_puede_reimprimir(admin_client):
     """
     sale_id = _venta_confirmada(admin_client)
 
-    primero = admin_client.get(f"/sales/{sale_id}/ticket").content
-    segundo = admin_client.get(f"/sales/{sale_id}/ticket").content
-    venta = admin_client.get(f"/sales/{sale_id}").json()
+    primero = admin_client.get(f"/ventas/{sale_id}/ticket").content
+    segundo = admin_client.get(f"/ventas/{sale_id}/ticket").content
+    venta = _detalle(admin_client, sale_id)
 
-    confirmada = datetime.fromisoformat(venta["confirmed_at"]).astimezone(UTC)
+    confirmada = venta.confirmed_at.astimezone(UTC)
     sello = re.search(rb"/CreationDate\s*\(([^)]*)\)", primero)
     # 🔴 El sello son los DÍGITOS de Argentina leídos como si fueran UTC, no
     # el instante real en UTC. `libracore.pdf_generator` usa el MISMO string
@@ -257,7 +275,7 @@ def test_el_ticket_se_puede_reimprimir(admin_client):
     assert sello and sello.group(1) == confirmada.astimezone(_AR).strftime("D:%Y%m%d%H%M00Z").encode()
 
     assert primero == segundo
-    assert venta["status"] == "confirmed"
+    assert venta.status == "confirmed"
 
 
 # ── Zona horaria de `confirmed_at`: revisión del orquestador ─────────────
@@ -272,9 +290,10 @@ def test_el_ticket_se_puede_reimprimir(admin_client):
 
 def test_una_venta_nueva_tiene_el_offset_de_argentina_no_utc(admin_client):
     """El bug real: `confirmed_at` reconstruido con offset `+00:00` en vez de
-    `-03:00`. `GET /sales/{id}` tiene que devolver el instante VERDADERO --
-    con el offset real -- para que un consumidor que convierte por zona
-    (el frontend) muestre la hora local correcta y no una corrida 3 horas.
+    `-03:00`. `SaleService.get()` -- lo que arma el ticket, y hasta F4 también
+    `GET /sales/{id}` -- tiene que devolver el instante VERDADERO -- con el
+    offset real -- para que un consumidor que convierte por zona (el
+    frontend) muestre la hora local correcta y no una corrida 3 horas.
 
     `_venta_confirmada()` manda `hoy()` (la fecha real de Argentina, no una
     fecha fija) en el payload, así que comparar contra `datetime.now(_AR)` ya
@@ -282,9 +301,8 @@ def test_una_venta_nueva_tiene_el_offset_de_argentina_no_utc(admin_client):
     se rompió apenas la sesión cruzó la medianoche real del 2026-09-15, sin
     que el código tuviera ningún bug (ver `tests/ventas_helpers.py::hoy`)."""
     sale_id = _venta_confirmada(admin_client)
-    venta = admin_client.get(f"/sales/{sale_id}").json()
-    confirmado = datetime.fromisoformat(venta["confirmed_at"])
-    assert confirmado.utcoffset() == timedelta(hours=-3), venta["confirmed_at"]
+    confirmado = _detalle(admin_client, sale_id).confirmed_at
+    assert confirmado.utcoffset() == timedelta(hours=-3), confirmado
     assert abs(confirmado.astimezone(_AR) - datetime.now(_AR)) < timedelta(minutes=5)
 
 
@@ -319,13 +337,12 @@ def test_el_ticket_de_una_venta_vieja_imprime_hora_de_argentina():
 
 
 def test_el_ticket_de_una_venta_nueva_imprime_la_hora_local(admin_client):
-    """El ticket y `GET /sales/{id}` tienen que coincidir en qué hora fue la
-    venta -- ambos parten del mismo `confirmed_at` reconstruido, por
+    """El ticket y `_detalle()` tienen que coincidir en qué hora fue la
+    venta -- las dos parten del mismo `confirmed_at` reconstruido, por
     caminos de lectura distintos (`SaleService.get()` cada vez)."""
     sale_id = _venta_confirmada(admin_client)
-    venta = admin_client.get(f"/sales/{sale_id}").json()
-    confirmado = datetime.fromisoformat(venta["confirmed_at"])
+    confirmado = _detalle(admin_client, sale_id).confirmed_at
     esperado = confirmado.astimezone(_AR).strftime("%d-%m-%Y %H:%M")
 
-    texto = _texto_del_pdf(admin_client.get(f"/sales/{sale_id}/ticket").content)
+    texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)
     assert esperado in texto

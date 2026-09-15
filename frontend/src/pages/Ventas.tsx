@@ -1,47 +1,36 @@
-// Historial de ventas, con anulación y devolución.
+// Historial de ventas: la pantalla del kit (F4, ADR-025, P9-M3), con la
+// devolución por línea como acción propia de este producto.
 //
-// Antes no había forma de ver una venta ya cobrada: el POS la cerraba y
-// desaparecía. Sin esta pantalla, deshacer la venta de ayer — que es cuando
-// el cliente vuelve con el producto — era imposible.
+// Hasta F4 esto era una pantalla entera escrita acá, contra `/sales` (el
+// listado y el detalle con anular/devolver a mano). El listado y el detalle
+// pasan a `libra-ui/comercio/Ventas`/`VentaDetalle`, que hablan con
+// `/api/ventas` -- lo que sigue siendo propio de VentaLibra es la devolución
+// parcial, que el kit no implementa (cada producto la resuelve distinto), así
+// que se monta como `accionesExtra`.
 import { useEffect, useState } from 'react'
+import { Ventas as VentasComercio } from 'libra-ui/comercio/Ventas'
+import type { VentaDetalleAccionesExtraCtx } from 'libra-ui/comercio/VentaDetalle'
 import {
-  api, ApiError, type MpCobroSinVenta, type Sale, type SaleListItem, type SaleStatus,
+  api, ApiError, type Location, type VentaDevuelto,
 } from '../api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { BadgeEstado, type TonoEstado } from 'libra-ui/badge-estado'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { AlertTriangle, Ban, Printer, ReceiptText, Undo2 } from 'lucide-react'
-import { TituloPantalla } from 'libra-ui/titulo-pantalla'
-import { fecha } from '@/lib/fechas'
+import { Undo2 } from 'lucide-react'
 import { useMediosPago } from '@/lib/medios-pago'
 
-const ESTADOS: Record<SaleStatus, { label: string; tono: TonoEstado }> = {
-  draft: { label: 'Borrador', tono: 'neutro' },
-  confirmed: { label: 'Cobrada', tono: 'ok' },
-  cancelled: { label: 'Anulada', tono: 'negativo' },
-  partially_returned: { label: 'Devuelta en parte', tono: 'atencion' },
-  returned: { label: 'Devuelta', tono: 'atencion' },
-}
-
-function money(value: string | number): string {
-  return Number(value).toLocaleString('es-AR', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  })
-}
-
-function cantidad(value: string): string {
-  const n = Number(value)
-  return Number.isInteger(n) ? String(n)
-    : n.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
-}
+// La sesión de este producto siempre puede anular/devolver (F4, corrección
+// del orquestador): `app/main.py` no le pasa `solo_admin` al motor -- hasta
+// hoy un cajero (staff) podía hacer las dos cosas, y restringirlo sería una
+// decisión que nadie tomó. Constante y no `user.role === 'admin'` a
+// propósito: acá NO hay chequeo de rol que replicar.
+const PUEDE_ANULAR = true
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -49,214 +38,94 @@ function describeError(err: unknown): string {
 }
 
 export function Ventas() {
-  const [ventas, setVentas] = useState<SaleListItem[]>([])
-  const [busqueda, setBusqueda] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [abierta, setAbierta] = useState<number | null>(null)
-  const [sinVenta, setSinVenta] = useState<MpCobroSinVenta[]>([])
-
-  useEffect(() => { cargar() }, [])
-
-  // 🔴 **Plata que entró y no quedó registrada.** Es el agujero que este
-  // producto declara: el orden es "primero la plata, después la venta", así que
-  // si el navegador se muere entre el poll y la confirmación el cobro está en
-  // MercadoPago y no en la caja.
-  //
-  // La orden aprobada se guardaba desde siempre, pero sólo se la consultaba
-  // **por venta**: sólo aparecía si alguien volvía a abrir ESE borrador. Acá se
-  // busca al revés, y por eso el aviso va en la pantalla donde el encargado
-  // busca ventas, no escondido en un reporte.
-  //
-  // Un error acá NO rompe la pantalla: el historial de ventas tiene que seguir
-  // funcionando aunque este chequeo falle.
-  useEffect(() => {
-    api.get<MpCobroSinVenta[]>('/sales/mp/cobros-sin-venta')
-      .then(setSinVenta)
-      .catch(() => setSinVenta([]))
-  }, [])
-
-  async function cargar(search = '') {
-    setLoading(true)
-    try {
-      setVentas(await api.get<SaleListItem[]>(
-        `/sales?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`,
-      ))
-      setError(null)
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className="grid gap-4">
-      <TituloPantalla icono={ReceiptText}>Ventas</TituloPantalla>
-
-      {sinVenta.length > 0 && (
-        <Card className="border-amber-500/50 bg-amber-500/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
-              {sinVenta.length === 1
-                ? 'Hay un cobro que entró y quedó sin registrar'
-                : `Hay ${sinVenta.length} cobros que entraron y quedaron sin registrar`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 text-sm">
-            <p className="text-muted-foreground">
-              El cliente pagó por QR y la venta no llegó a confirmarse —se cerró
-              la pantalla, se cortó la conexión—. La plata está en MercadoPago y
-              no en la caja. Abrí el borrador desde el mostrador para cerrarlo.
-            </p>
-            {sinVenta.map((c) => (
-              <div key={c.external_reference}
-                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-2">
-                <span>
-                  Borrador <strong>#{c.sale_id}</strong>
-                  {c.acreditado_el && (
-                    <span className="text-muted-foreground"> · {fecha(c.acreditado_el)}</span>
-                  )}
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-muted-foreground">
-                    pago {c.payment_id}
-                  </span>
-                  <strong>${money(c.amount)}</strong>
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => { e.preventDefault(); cargar(busqueda) }}
-      >
-        <Input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por número o cliente"
-          className="max-w-sm"
-        />
-        <Button type="submit" variant="secondary">Buscar</Button>
-      </form>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Últimas ventas</CardTitle></CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Cargando…</p>
-          ) : ventas.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              No hay ventas todavía.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="p-2">Número</th>
-                    <th className="p-2">Fecha</th>
-                    <th className="p-2">Cliente</th>
-                    <th className="w-32 p-2 text-right">Total</th>
-                    <th className="w-40 p-2">Estado</th>
-                    <th className="w-24 p-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {ventas.map((v) => (
-                    <tr key={v.id} className="border-b last:border-0">
-                      <td className="p-2 font-medium tabular-nums">{v.number}</td>
-                      <td className="p-2 tabular-nums text-muted-foreground">
-                        {fecha(v.confirmed_at)}
-                      </td>
-                      <td className="p-2">{v.cliente || 'Consumidor final'}</td>
-                      <td className="p-2 text-right tabular-nums">${money(v.total)}</td>
-                      <td className="p-2">
-                        <BadgeEstado tono={ESTADOS[v.status].tono}>
-                          {ESTADOS[v.status].label}
-                        </BadgeEstado>
-                      </td>
-                      <td className="p-2 text-right">
-                        <Button size="sm" variant="secondary" onClick={() => setAbierta(v.id)}>
-                          Ver
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {abierta !== null && (
-        <DetalleVenta
-          saleId={abierta}
-          onCerrar={() => setAbierta(null)}
-          onCambio={() => cargar(busqueda)}
-        />
-      )}
-    </div>
+    <VentasComercio
+      puedeAnular={PUEDE_ANULAR}
+      // `permitirAlta={false}`: este producto carga las ventas desde el POS
+      // (Pos.tsx); el alta manual del kit queda para Contalibra/Restolibra.
+      permitirAlta={false}
+      // `null` (libra-ui v0.72.1, nullable desde acá): VentaLibra no tiene
+      // pantalla de facturas ni de recibos -- el dato de la factura queda
+      // como texto (`factura_display`), sin link, y el botón de recibo no se
+      // ofrece. El ticket sigue con su ruta de siempre
+      // (`/ventas/{id}/ticket`, la del backend): esa no es prop, el kit la
+      // tiene fija.
+      rutaDeFactura={null}
+      rutaDeRecibo={null}
+    />
   )
 }
 
-function DetalleVenta({ saleId, onCerrar, onCambio }: {
-  saleId: number
-  onCerrar: () => void
-  onCambio: () => void
-}) {
-  const [venta, setVenta] = useState<Sale | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [devolviendo, setDevolviendo] = useState(false)
-  const [aDevolver, setADevolver] = useState<Record<number, string>>({})
+/** La devolución parcial de líneas, montada como `accionesExtra` de
+ *  `VentaDetalle` (libra-ui). Sólo se ofrece con la venta cobrada o
+ *  parcialmente devuelta -- lo decide el propio kit (no renderiza
+ *  `accionesExtra` fuera de esos estados). */
+export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExtraCtx) {
+  const [open, setOpen] = useState(false)
+  const [devuelto, setDevuelto] = useState<VentaDevuelto | null>(null)
+  const [locations, setLocations] = useState<Location[]>([])
+  const [locationId, setLocationId] = useState('')
   const [medio, setMedio] = useState('efectivo')
-  // Por dónde vuelve la plata: los medios del motor (antes, cuatro propios).
+  const [cantidades, setCantidades] = useState<Record<number, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { medios } = useMediosPago()
-  const [locationId, setLocationId] = useState<string>('')
 
   useEffect(() => {
-    api.get<Sale>(`/sales/${saleId}`).then(setVenta).catch((e) => setError(describeError(e)))
-    api.get<{ id: number }[]>('/locations')
-      .then((ls) => { if (ls.length > 0) setLocationId(String(ls[0].id)) })
-      .catch(() => {})
-  }, [saleId])
-
-  async function anular() {
-    setBusy(true)
+    if (!open) return
     setError(null)
-    try {
-      setVenta(await api.post<Sale>(`/sales/${saleId}/cancel`, {}))
-      onCambio()
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setBusy(false)
-    }
+    setCantidades({})
+    Promise.all([
+      api.get<VentaDevuelto>(`/ventas/${detalle.id}/devuelto`),
+      api.get<Location[]>('/locations'),
+    ]).then(([d, ls]) => {
+      setDevuelto(d)
+      setLocations(ls)
+      // Default: el depósito de la venta original si se pudo saber; si no,
+      // el default del sistema (o el primero, si tampoco hay uno marcado).
+      const sugerido = d.deposito_id
+        ?? ls.find((l) => l.is_default)?.id
+        ?? ls[0]?.id
+      setLocationId(sugerido ? String(sugerido) : '')
+    }).catch((err) => setError(describeError(err)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, detalle.id])
+
+  // Vendido por (producto, variante): el pozo es compartido entre líneas
+  // iguales -- mismo criterio que `libracommerce.erp.ventas.devolver_items`.
+  function claveDe(it: { producto_id: number | null; variante_id?: number | null }) {
+    return `${it.producto_id}:${it.variante_id ?? ''}`
   }
+  const vendidoPorClave = new Map<string, number>()
+  for (const it of detalle.items) {
+    const k = claveDe(it)
+    vendidoPorClave.set(k, (vendidoPorClave.get(k) ?? 0) + it.qty)
+  }
+  const devueltoPorClave = new Map<string, number>()
+  for (const d of devuelto?.por_clave ?? []) {
+    devueltoPorClave.set(claveDe(d), d.cantidad)
+  }
+  function disponibleDe(it: { producto_id: number | null; variante_id?: number | null; qty: number }): number {
+    if (it.producto_id == null) return 0
+    const k = claveDe(it)
+    const pozo = (vendidoPorClave.get(k) ?? 0) - (devueltoPorClave.get(k) ?? 0)
+    return Math.max(0, Math.min(it.qty, pozo))
+  }
+
+  const lineas = Object.entries(cantidades)
+    .map(([id, cant]) => ({ sale_item_id: Number(id), cantidad: Number(cant) }))
+    .filter((l) => l.cantidad > 0)
 
   async function devolver() {
-    const lineas = Object.entries(aDevolver)
-      .filter(([, cant]) => Number(cant) > 0)
-      .map(([index, cant]) => ({ index: Number(index), quantity: cant }))
-    if (lineas.length === 0) return
-
+    if (lineas.length === 0 || !locationId) return
     setBusy(true)
     setError(null)
     try {
-      setVenta(await api.post<Sale>(`/sales/${saleId}/returns`, {
-        lineas, location_id: Number(locationId), medio_pago: medio,
-      }))
-      setADevolver({})
-      setDevolviendo(false)
-      onCambio()
+      await api.post(`/api/ventas/${detalle.id}/devolver`, {
+        lineas, deposito_id: Number(locationId), medio_pago: medio,
+      })
+      setOpen(false)
+      recargar()
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -264,116 +133,92 @@ function DetalleVenta({ saleId, onCerrar, onCambio }: {
     }
   }
 
-  const puedeDeshacer = venta?.status === 'confirmed'
-    || venta?.status === 'partially_returned'
-
   return (
-    <Dialog open onOpenChange={(o) => !o && onCerrar()}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            Venta {venta?.number ?? ''}
-            {venta && (
-              <BadgeEstado tono={ESTADOS[venta.status].tono} className="ml-2">
-                {ESTADOS[venta.status].label}
-              </BadgeEstado>
-            )}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <Undo2 />Devolver productos
+      </Button>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Devolver productos de la venta {detalle.numero}</DialogTitle></DialogHeader>
 
-        {venta && (
-          <>
-            <div className="max-h-64 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="p-2">Producto</th>
-                    <th className="w-20 p-2 text-center">Cant.</th>
-                    <th className="w-28 p-2 text-right">Importe</th>
-                    {devolviendo && <th className="w-28 p-2 text-center">Devolver</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {venta.items.map((linea, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="p-2">{linea.description_snapshot}</td>
-                      <td className="p-2 text-center tabular-nums">{cantidad(linea.quantity)}</td>
-                      <td className="p-2 text-right tabular-nums">${money(linea.line_total)}</td>
-                      {devolviendo && (
-                        <td className="p-2">
-                          <Input
-                            value={aDevolver[i] ?? ''}
-                            onChange={(e) => setADevolver((a) => ({ ...a, [i]: e.target.value }))}
-                            placeholder="0"
-                            className="h-8 text-center tabular-nums"
-                          />
-                        </td>
-                      )}
+          <p className="text-sm text-muted-foreground">
+            Indicá cuánto vuelve de cada línea. Se repone el stock y se
+            reintegra el importe.
+          </p>
+
+          <div className="max-h-64 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="p-2">Producto</th>
+                  <th className="w-20 p-2 text-center">Vendido</th>
+                  <th className="w-24 p-2 text-center">Devolver</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detalle.items.map((it) => {
+                  const disponible = disponibleDe(it)
+                  const lineaId = it.id
+                  return (
+                    <tr key={lineaId ?? it.nombre} className="border-b last:border-0">
+                      <td className="p-2">{it.nombre}</td>
+                      <td className="p-2 text-center tabular-nums">{it.qty}</td>
+                      <td className="p-2">
+                        <Input
+                          value={lineaId != null ? (cantidades[lineaId] ?? '') : ''}
+                          disabled={lineaId == null || disponible <= 0 || busy}
+                          onChange={(e) => {
+                            if (lineaId == null) return
+                            setCantidades((prev) => ({ ...prev, [lineaId]: e.target.value }))
+                          }}
+                          placeholder={disponible > 0 ? `máx. ${disponible}` : '0 disponible'}
+                          className="h-8 text-center tabular-nums"
+                        />
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-baseline justify-between border-t pt-3">
-              <span className="text-sm text-muted-foreground">Total</span>
-              <span className="text-2xl font-medium tabular-nums">${money(venta.total)}</span>
-            </div>
-
-            {devolviendo && (
-              <div className="grid gap-2 rounded-md border p-3">
-                <p className="text-sm">
-                  Indicá cuánto vuelve de cada línea. Se repone el stock y se
-                  reintegra el importe.
-                </p>
-                <div className="flex items-end gap-2">
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Devolver por</Label>
-                    <Select value={medio} onValueChange={setMedio}>
-                      <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {medios.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button onClick={devolver} disabled={busy}>
-                    {busy ? 'Devolviendo…' : 'Confirmar devolución'}
-                  </Button>
-                  <Button variant="ghost" onClick={() => { setDevolviendo(false); setADevolver({}) }}>
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        <DialogFooter className="gap-2 sm:justify-between">
-          <Button
-            variant="outline"
-            onClick={() => window.open(`/sales/${saleId}/ticket`, '_blank')}
-          >
-            <Printer />Ticket
-          </Button>
-          <div className="flex gap-2">
-            {puedeDeshacer && !devolviendo && (
-              <>
-                <Button variant="outline" onClick={() => setDevolviendo(true)}>
-                  <Undo2 />Devolver productos
-                </Button>
-                <Button variant="destructive" onClick={anular} disabled={busy}>
-                  <Ban />Anular venta
-                </Button>
-              </>
-            )}
-            <Button variant="secondary" onClick={onCerrar}>Cerrar</Button>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="grid gap-1">
+              <Label className="text-xs">Depósito</Label>
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger className="w-48" aria-label="Depósito"><SelectValue placeholder="Elegí un depósito…" /></SelectTrigger>
+                <SelectContent>
+                  {locations.map((l) => (
+                    <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Devolver por</Label>
+              <Select value={medio} onValueChange={setMedio}>
+                <SelectTrigger className="w-48" aria-label="Devolver por"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {medios.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={devolver} disabled={busy || lineas.length === 0 || !locationId}>
+              {busy ? 'Devolviendo…' : 'Confirmar devolución'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

@@ -1,5 +1,13 @@
 // El cobro con QR de MercadoPago desde el POS.
 //
+// Portado a F4 del plan ERP (2026-09-15, DECISIONS.md ADR-025, D1/D2): el
+// carrito vive en el navegador y la venta se registra completa con
+// `POST /api/ventas` -- ya no hay un borrador (`POST /sales` + `.../items`,
+// retirados) que crecía a medida que se escaneaba. El cobro con QR tampoco
+// "pone el monto sobre un borrador que ya existe": la venta nace PENDIENTE
+// recién al apretar "Cobrar con QR", con el pago `mercadopago` en
+// `cobrar_con_qr: true`.
+//
 // Lo que se prueba acá es el **cableado de la pantalla**, que es donde vive la
 // lógica que el backend no puede ver: cuándo se ofrece el botón, qué se llama
 // al apretarlo, y qué se manda al confirmar cuando el pago se acredita. Las
@@ -45,56 +53,77 @@ const ITEM = {
   unit_code: 'u', default_sale_price: '3000.00', active: true,
 }
 
-const VENTA_VACIA = {
-  id: 7, number: 'POS-000007', status: 'draft', items: [], pagos: [],
-  vuelto_total: '0.00', subtotal: '0.00', discount_total: '0.00',
-  tax_total: '0.00', total: '0.00', confirmed_at: null, factura: null,
-}
+const LOCATION = { id: 1, name: 'Salón', branch_id: null, location_type: 'warehouse', active: true, is_default: true }
 
-const VENTA = {
-  ...VENTA_VACIA,
-  items: [{
-    kind: 'product', item_id: 3, variant_id: null,
-    description_snapshot: 'Yerba 1kg', quantity: '1', unit_price: '3000.00',
-    discount_amount: '0.00', tax_amount: '0.00', line_total: '3000.00',
-  }],
-  subtotal: '3000.00', total: '3000.00',
+/** La venta ya registrada -- lo que devuelve `POST /api/ventas` (D1: nace
+ *  completa, no un borrador vacío). */
+function venta(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 7, numero: 'POS-000007', fecha: '2026-08-23', estado: 'cobrada', status: 'confirmed',
+    items: [{ id: 1, nombre: 'Yerba 1kg', qty: 1, precio: 3000, subtotal: 3000, producto_id: 3, variante_id: null }],
+    subtotal: 3000, descuento: 0, total: 3000,
+    cliente_id: null, cliente_nombre: '', observaciones: '',
+    pagos: [{ medio: 'mercadopago', monto: 3000, referencia: 'MP#112233', recibido: null }],
+    factura_id: null, factura_display: null, remito_id: null,
+    mp_order_id: '', mp_payment_id: '', created_at: '2026-08-23T10:05:00',
+    ...overrides,
+  }
 }
 
 type Llamada = { metodo: string; url: string; body: unknown }
 
 /** El doble de la red. `mpStatus` es lo que contesta el poll; los tests lo
  *  mueven de `pending` a `approved` para simular que el cliente escaneó. */
-function montarRed(opciones: { disponible?: boolean; autoFacturar?: boolean } = {}) {
+function montarRed(opciones: {
+  disponible?: boolean
+  autoFacturar?: boolean
+  ventaId?: number
+  mpQrFalla?: boolean
+  anularFalla?: boolean
+  onPost?: (url: string, body: unknown) => void
+} = {}) {
   const llamadas: Llamada[] = []
   const estado = { mpStatus: 'pending' as string }
+  const vid = opciones.ventaId ?? 7
 
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
     const metodo = init?.method ?? 'GET'
-    llamadas.push({
-      metodo, url: u,
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
-    })
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined
+    llamadas.push({ metodo, url: u, body })
+    opciones.onPost?.(u, body)
 
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json(MEDIOS))
-    if (u.includes('/sales/mp/estado')) {
+    if (u.includes('/pos/mp-estado')) {
       return Promise.resolve(json({
         disponible: opciones.disponible ?? true,
         auto_facturar: opciones.autoFacturar ?? true,
       }))
     }
     if (u.includes('/mp-status')) {
-      return Promise.resolve(json({
-        status: estado.mpStatus,
-        payment_id: estado.mpStatus === 'approved' ? '112233' : null,
-      }))
+      return Promise.resolve(json(
+        estado.mpStatus === 'approved'
+          ? { status: 'approved', payment_id: '112233' }
+          : { status: estado.mpStatus },
+      ))
     }
-    if (u.includes('/mp-qr')) return Promise.resolve(json({
-      external_reference: 'vl-7-abc123', amount: 3000,
-    }))
+    if (u.match(/\/api\/ventas\/\d+\/mp-qr$/)) {
+      if (opciones.mpQrFalla) return Promise.resolve(json({ detail: 'MercadoPago no responde.' }, 502))
+      return Promise.resolve(json({ total: 3000 }))
+    }
+    if (u.match(/\/api\/ventas\/\d+\/anular$/)) {
+      if (opciones.anularFalla) return Promise.resolve(json({ detail: 'No se pudo anular.' }, 500))
+      return Promise.resolve(json(venta({ id: vid, estado: 'anulada', status: 'cancelled' })))
+    }
+    if (u.match(/\/api\/ventas\/\d+\/facturar$/)) return Promise.resolve(json({}))
+    if (u.match(new RegExp(`/api/ventas/${vid}$`)) && metodo === 'GET') {
+      return Promise.resolve(json(venta({ id: vid })))
+    }
+    if (u.endsWith('/api/ventas') && metodo === 'POST') {
+      return Promise.resolve(json(venta({ id: vid, estado: 'pendiente', status: 'confirmed' })))
+    }
     if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/locations')) return Promise.resolve(json([{ id: 1, name: 'Salón', active: true }]))
+    if (u.includes('/locations')) return Promise.resolve(json([LOCATION]))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/catalog/items/scan')) {
       return Promise.resolve(json({
@@ -103,11 +132,6 @@ function montarRed(opciones: { disponible?: boolean; autoFacturar?: boolean } = 
     }
     // Sin variantes: el POS agrega el ítem pelado, sin diálogo intermedio.
     if (u.includes('/variants')) return Promise.resolve(json([]))
-    if (u.includes('/confirm')) {
-      return Promise.resolve(json({ ...VENTA, status: 'confirmed', confirmed_at: '2026-08-23T10:05:00' }))
-    }
-    if (u.includes('/sales/7/items')) return Promise.resolve(json(VENTA))
-    if (u.endsWith('/sales') && metodo === 'POST') return Promise.resolve(json(VENTA_VACIA))
     return Promise.resolve(json([]))
   })
 
@@ -119,7 +143,8 @@ function montar() {
   render(<MemoryRouter><Pos /></MemoryRouter>)
 }
 
-/** La venta nace al escanear: el POS no crea el borrador al montar. */
+/** La venta se arma en el navegador: escanear sólo agrega al carrito local,
+ *  sin ningún POST (D1). */
 async function escanear(user: ReturnType<typeof userEvent.setup>) {
   const campo = await screen.findByPlaceholderText(/scane|Escane|código|codigo/i)
   await user.type(campo, '779000001{Enter}')
@@ -184,7 +209,7 @@ describe('El botón de cobrar con QR', () => {
 })
 
 describe('El cobro con QR', () => {
-  it('pone el monto en el QR y avisa que el cliente lo escanee', async () => {
+  it('registra la venta pendiente con deposito_id y pone el monto en el QR', async () => {
     const { llamadas } = montarRed()
     const user = userEvent.setup()
     montar()
@@ -192,18 +217,28 @@ describe('El cobro con QR', () => {
     await abrirCobroConMercadoPago(user)
     await user.click(await screen.findByRole('button', { name: /Cobrar con QR/ }))
 
+    const registro = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(registro.body).toMatchObject({
+      deposito_id: 1,
+      pagos: [{ medio: 'mercadopago', monto: 3000, cobrar_con_qr: true }],
+    })
+
     await waitFor(() => {
-      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/sales/7/mp-qr')))
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/api/ventas/7/mp-qr')))
         .toBe(true)
     })
     expect(await screen.findByText(/Pedile al cliente que lo escanee/)).toBeInTheDocument()
   })
 
-  it('al acreditarse, confirma la venta sin mandar `invoice`', async () => {
-    // 🔑 **La factura automática la decide el backend.** Si la pantalla mandara
-    // `invoice: true`, cualquier otro cliente de la API cobraría por QR sin
-    // facturar y nada avisaría. Este test es lo que fija que el POS no la
-    // pida: pasa con `auto_facturar: true` en la config.
+  it('al acreditarse, refresca la venta y no pide facturar sola', async () => {
+    // 🔑 **La factura automática la decide el backend.** El POS no manda
+    // ningún pedido de facturar cuando la automática está prendida -- si lo
+    // hiciera, una venta con la automática apagada podría terminar facturada
+    // igual por el POS, sin que el backend lo hubiera decidido.
     const { llamadas, estado } = montarRed({ autoFacturar: true })
     const user = userEvent.setup()
     montar()
@@ -214,23 +249,12 @@ describe('El cobro con QR', () => {
 
     estado.mpStatus = 'approved'
 
-    const confirm = await waitFor(
-      () => {
-        const encontrada = llamadas.find((l) => l.url.includes('/sales/7/confirm'))
-        expect(encontrada).toBeDefined()
-        return encontrada!
-      },
-      { timeout: 6000 },
-    )
-    expect(confirm.body).toMatchObject({
-      location_id: 1,
-      pagos: [{ medio: 'mercadopago', monto: '3000.00' }],
-      invoice: false,
-    })
+    await screen.findByText(/Venta POS-000007 cobrada/, {}, { timeout: 6000 })
+    expect(llamadas.some((l) => l.url.includes('/api/ventas/7/facturar'))).toBe(false)
   }, 10000)
 
-  it('cancelar el cobro baja el monto del QR', async () => {
-    // 🔴 Una orden que queda puesta le cobra ese monto al próximo que escanee.
+  it('cancelar el cobro pide confirmación y anula la venta pendiente', async () => {
+    // D2: no hay "bajar del QR" -- cancelar es anular la venta pendiente.
     const { llamadas } = montarRed()
     const user = userEvent.setup()
     montar()
@@ -240,11 +264,119 @@ describe('El cobro con QR', () => {
     await screen.findByText(/Pedile al cliente que lo escanee/)
 
     await user.click(screen.getByRole('button', { name: /Cancelar el cobro por QR/ }))
+    // Con confirmación: el primer click no dispara la anulación todavía.
+    expect(screen.queryByRole('button', { name: /Cobrar con QR/ })).toBeNull()
+    expect(llamadas.some((l) => l.url.includes('/anular'))).toBe(false)
+
+    await user.click(await screen.findByRole('button', { name: /Anular la venta/ }))
 
     await waitFor(() => {
-      expect(llamadas.some((l) => l.metodo === 'DELETE' && l.url.includes('/sales/7/mp-qr')))
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/api/ventas/7/anular')))
         .toBe(true)
     })
+    expect(await screen.findByText(/se anuló/)).toBeInTheDocument()
+  })
+
+  it('un pago rechazado por MercadoPago también anula la venta pendiente', async () => {
+    const { llamadas, estado } = montarRed()
+    const user = userEvent.setup()
+    montar()
+
+    await abrirCobroConMercadoPago(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar con QR/ }))
+    await screen.findByText(/Pedile al cliente que lo escanee/)
+
+    estado.mpStatus = 'rejected'
+
+    // El poll tarda `QR_POLL_MS` (3s) en volver a preguntar: el default de
+    // `waitFor` (1s) no alcanza a verlo.
+    await waitFor(() => {
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/api/ventas/7/anular')))
+        .toBe(true)
+    }, { timeout: 6000 })
+    expect(await screen.findByText(/rechazado o cancelado/)).toBeInTheDocument()
+  }, 10000)
+
+  // ── Revisión adversarial (2026-09-15): QR huérfano ──────────────────────
+  it('si "poner el monto en el QR" falla, anula la venta que ya se había registrado', async () => {
+    // 🔴 La venta se registra (PENDIENTE, stock ya descontado) ANTES de
+    // pedirle a MercadoPago que ponga el monto en el QR: si ese segundo POST
+    // falla, sin este arreglo la venta quedaba huérfana -- nadie la volvía a
+    // mencionar, sin ticket y sin aparecer como cobrada.
+    const { llamadas } = montarRed({ mpQrFalla: true })
+    const user = userEvent.setup()
+    montar()
+
+    await abrirCobroConMercadoPago(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar con QR/ }))
+
+    // Se registró...
+    await waitFor(() => {
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))).toBe(true)
+    })
+    // ...mp-qr falló...
+    await waitFor(() => {
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/mp-qr'))).toBe(true)
+    })
+    // ...y por eso se anula esa MISMA venta (id 7), sin esperar al poll.
+    await waitFor(() => {
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/api/ventas/7/anular')))
+        .toBe(true)
+    })
+    expect(await screen.findByText(/La venta se anuló/)).toBeInTheDocument()
+  })
+
+  it('si además falla anular, el aviso nombra la venta para anularla a mano', async () => {
+    montarRed({ mpQrFalla: true, anularFalla: true })
+    const user = userEvent.setup()
+    montar()
+
+    await abrirCobroConMercadoPago(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar con QR/ }))
+
+    expect(await screen.findByText(/No se pudo anular sola/)).toBeInTheDocument()
+    expect(screen.getByText(/POS-000007/)).toBeInTheDocument()
+  })
+
+  // ── Revisión adversarial (2026-09-15): la carrera del cancelar ──────────
+  it('cancelar cuando el pago ya se acreditó no anula: la venta queda cobrada', async () => {
+    // El cliente escanea justo cuando el cajero aprieta "Cancelar": el chequeo
+    // final (`verificarYAnular`) tiene que ganarle a la cancelación.
+    const { llamadas, estado } = montarRed()
+    const user = userEvent.setup()
+    montar()
+
+    await abrirCobroConMercadoPago(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar con QR/ }))
+    await screen.findByText(/Pedile al cliente que lo escanee/)
+
+    estado.mpStatus = 'approved'
+    await user.click(screen.getByRole('button', { name: /Cancelar el cobro por QR/ }))
+    await user.click(await screen.findByRole('button', { name: /Anular la venta/ }))
+
+    await screen.findByText(/Venta POS-000007 cobrada/)
+    expect(llamadas.some((l) => l.url.includes('/anular'))).toBe(false)
+    expect(screen.getByText(/se acreditó justo ahora/)).toBeInTheDocument()
+  })
+
+  it('cancelar con el pago todavía pendiente sí anula', async () => {
+    const { llamadas, estado } = montarRed()
+    const user = userEvent.setup()
+    montar()
+
+    await abrirCobroConMercadoPago(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar con QR/ }))
+    await screen.findByText(/Pedile al cliente que lo escanee/)
+
+    expect(estado.mpStatus).toBe('pending')
+    await user.click(screen.getByRole('button', { name: /Cancelar el cobro por QR/ }))
+    await user.click(await screen.findByRole('button', { name: /Anular la venta/ }))
+
+    await waitFor(() => {
+      expect(llamadas.some((l) => l.metodo === 'POST' && l.url.includes('/api/ventas/7/anular')))
+        .toBe(true)
+    })
+    expect(await screen.findByText(/Cobro por QR cancelado/)).toBeInTheDocument()
   })
 })
 

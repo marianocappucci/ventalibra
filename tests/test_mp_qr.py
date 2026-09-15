@@ -2,10 +2,18 @@
 
 Portado a la capa ERP (F3, ADR-025 D2: "el modelo de la familia" -- venta
 PENDIENTE + `acreditar_pago_qr`, en vez del QR sobre un borrador propio con
-`sale_mp_orders`). Las rutas del QR viejo (`/sales/{id}/mp-qr`, `/mp-status`)
-contestan 410/quedan de sólo lectura sin nada que encontrar (ver
-`app/routers/sales.py`); las nuevas son las del motor
+`sale_mp_orders`). Las rutas nuevas son las del motor
 (`libracore.ventas_cobro_router`, montado en `/api/ventas`).
+
+`/sales` se retiró entero en F4 (2026-09-15, mismo ADR): las rutas del QR
+viejo (`/sales/{id}/mp-qr`, `.../mp-status`) y el "camino legado" que este
+archivo probaba contra `sale_mp_orders` sembrada a mano se fueron con el
+router -- D2 nunca escribió esa tabla para una venta nueva (0 filas en
+dev/demo), así que no queda nada que leer por ese camino: se retira la
+sección entera, no se porta. `GET /sales/mp/estado` -- si el POS puede
+cobrar por QR -- se movió a `GET /pos/mp-estado` (`app/routers/
+ventas_extra.py`): mismo criterio (`app/services/mp_qr.py::esta_configurado`),
+afuera de `/sales`.
 
 Nada de esto habla con MercadoPago: `libracore.mp_api` se reemplaza por dobles
 que registran con qué se los llamó. Lo que se mide acá es **este** producto —
@@ -117,9 +125,31 @@ def mp(monkeypatch):
 
 
 def test_sin_credenciales_el_pos_sabe_que_no_puede_cobrar_por_qr(admin_client):
-    estado = admin_client.get("/sales/mp/estado")
+    estado = admin_client.get("/pos/mp-estado")
     assert estado.status_code == 200, estado.text
     assert estado.json() == {"disponible": False, "auto_facturar": False}
+
+
+def test_un_cajero_tambien_puede_leer_mp_estado(staff_client):
+    """A diferencia de `/api/config/mercadopago` (admin-only), esto lo lee el
+    cajero que arma el POS: decide si le ofrece el botón de QR."""
+    assert staff_client.get("/pos/mp-estado").status_code == 200
+
+
+def test_mp_estado_no_se_cae_sin_el_modulo_de_facturacion(admin_client):
+    """Cobrar por QR no depende del plan de facturación (ADR-009): el gate
+    de `/pos/mp-estado` es sólo de rol, sin `require_module`.
+
+    Configura ANTES de apagar el módulo: `PUT /api/config/mercadopago` sí
+    está gateado por `facturacion` (es la pantalla de Configuración, admin) --
+    apagarlo primero daría 403 en el paso de armado, no en lo que se mide."""
+    _configurar_mp(admin_client, auto_facturar=True)
+    admin_client.app.state.modules.set_enabled("facturacion", False)
+
+    estado = admin_client.get("/pos/mp-estado")
+    assert estado.status_code == 200, estado.text
+    # Prometería una factura que el plan no deja emitir.
+    assert estado.json() == {"disponible": True, "auto_facturar": False}
 
 
 def test_falta_uno_solo_de_los_tres_y_sigue_sin_estar_configurado(admin_client):
@@ -523,89 +553,13 @@ def test_sin_el_modulo_de_facturacion_el_cobro_por_qr_no_se_cae(admin_client, mp
     assert estado["factura_id"] is None
 
 
-# ── El camino LEGADO: GET /sales/{id}/mp-status ───────────────────────────
-#
-# `app/services/mp_qr.py::estado_del_cobro` (con `orden_vigente`/`orden_
-# acreditada`), alcanzable desde antes de F3 vía `app/routers/sales.py::
-# estado_del_qr` -- sólo lectura desde F3, pero sigue vivo para una orden que
-# quedó de una venta vieja: D2 no escribe `sale_mp_orders` para ninguna venta
-# nueva (mismo criterio que `tests/test_cobros_sin_venta.py`), así que estos
-# tests siembran la fila directo en la base, como hacía el modelo viejo.
-
-
-def _borrador_con_item(client) -> int:
-    conn = client.app.state.conn
-    item_id = _make_item(client)
-    numero = f"POS-legado-{item_id}"
-    sale_id = conn.execute(
-        "INSERT INTO sales (number, status, source_type, subtotal, total) "
-        "VALUES (?, 'draft', 'pos', 1500, 1500)", (numero,),
-    ).lastrowid
-    conn.commit()
-    return sale_id
-
-
-def test_mp_status_legado_sin_ninguna_orden_dice_sin_orden(admin_client):
-    sale_id = _borrador_con_item(admin_client)
-    r = admin_client.get(f"/sales/{sale_id}/mp-status")
-    assert r.status_code == 200, r.text
-    assert r.json() == {"status": "sin_orden", "payment_id": None}
-
-
-def test_mp_status_legado_ya_acreditada_no_llama_a_mercadopago(admin_client, mp):
-    """`orden_acreditada` corta antes de pedir credenciales: una orden ya
-    aprobada no necesita volver a preguntarle nada a MercadoPago."""
-    sale_id = _borrador_con_item(admin_client)
-    conn = admin_client.app.state.conn
-    conn.execute(
-        "INSERT INTO sale_mp_orders (sale_id, external_reference, amount, status, payment_id) "
-        "VALUES (?, ?, ?, 'approved', ?)",
-        (sale_id, f"vl-{sale_id}-a", "1500", "998877"),
-    )
-    conn.commit()
-
-    r = admin_client.get(f"/sales/{sale_id}/mp-status")
-    assert r.status_code == 200, r.text
-    assert r.json() == {"status": "approved", "payment_id": "998877"}
-    assert mp.busquedas == []
-
-
-def test_mp_status_legado_pendiente_sin_configurar_da_400(admin_client):
-    sale_id = _borrador_con_item(admin_client)
-    conn = admin_client.app.state.conn
-    conn.execute(
-        "INSERT INTO sale_mp_orders (sale_id, external_reference, amount, status) "
-        "VALUES (?, ?, ?, 'pending')",
-        (sale_id, f"vl-{sale_id}-p", "1500"),
-    )
-    conn.commit()
-
-    r = admin_client.get(f"/sales/{sale_id}/mp-status")
-    assert r.status_code == 400, r.text
-
-
-def test_mp_status_legado_sella_el_pago_cuando_mercadopago_dice_approved(admin_client, mp):
-    _configurar_mp(admin_client)
-    sale_id = _borrador_con_item(admin_client)
-    conn = admin_client.app.state.conn
-    conn.execute(
-        "INSERT INTO sale_mp_orders (sale_id, external_reference, amount, status) "
-        "VALUES (?, ?, ?, 'pending')",
-        (sale_id, f"vl-{sale_id}-p2", "1500"),
-    )
-    conn.commit()
-    mp.pago = {"id": 445566, "status": "approved"}
-
-    r = admin_client.get(f"/sales/{sale_id}/mp-status")
-    assert r.status_code == 200, r.text
-    assert r.json() == {"status": "approved", "payment_id": "445566"}
-
-    fila = conn.execute(
-        "SELECT status, payment_id FROM sale_mp_orders WHERE sale_id = ?", (sale_id,),
-    ).fetchone()
-    assert tuple(fila) == ("approved", "445566")
-
-    # Y el POS se entera de que no va a facturar, en vez de prometerlo.
-    assert admin_client.get("/sales/mp/estado").json() == {
-        "disponible": True, "auto_facturar": False,
-    }
+# 🔴 **Retirado en F4 (2026-09-15, ADR-025), no portado**: el "camino LEGADO"
+# probaba `GET /sales/{id}/mp-status` (`app/services/mp_qr.py::estado_del_cobro`,
+# con `orden_vigente`/`orden_acreditada`) sembrando una fila de `sale_mp_orders`
+# a mano -- el modelo viejo, antes de D2. Con `/sales` retirado entero no queda
+# ninguna ruta que ejercite ese código, y D2 nunca escribe esa tabla para una
+# venta nueva (0 filas en dev/demo, mismo hallazgo que
+# `tests/test_cobros_sin_venta.py`, retirado junto con el aviso que probaba):
+# no hay nada vivo que este archivo deba seguir cubriendo. `estado_del_cobro`,
+# `orden_vigente`, `orden_acreditada` y `MpError` se borraron de
+# `app/services/mp_qr.py` -- la tabla `sale_mp_orders` NO se borra.
