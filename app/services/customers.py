@@ -62,17 +62,6 @@ class CustomerService:
         ).fetchall()
         return [self._to_out(self._repo.get_party(row[0])) for row in rows]
 
-    def get_billing(self, party_id: int) -> dict | None:
-        """cuit/condicion_iva de un cliente, para facturar -- None si nunca
-        se le cargo esa extension (venta ad-hoc sin datos fiscales)."""
-        row = self._conn.execute(
-            "SELECT cuit, condicion_iva FROM party_billing WHERE party_id = ?", (party_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        party = self._repo.get_party(party_id)
-        return {"cuit": row[0], "condicion_iva": row[1], "display_name": party.display_name if party else ""}
-
     def _to_out(self, party: Party) -> dict:
         billing = self._conn.execute(
             "SELECT cuit, condicion_iva FROM party_billing WHERE party_id = ?", (party.id,)
