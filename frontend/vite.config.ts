@@ -9,12 +9,14 @@ import tailwindcss from '@tailwindcss/vite'
 // mismo truco que se usa en produccion, donde el build de este frontend
 // se sirve desde el mismo proceso FastAPI (ver app/asgi.py).
 const API_PATHS = [
-  '/auth', '/catalog', '/pricing', '/locations', '/stock', '/sales', '/shifts',
+  '/auth', '/catalog', '/pricing', '/locations', '/stock', '/shifts',
   '/suppliers', '/purchase-orders', '/purchase-receipts', '/customers',
   '/users', '/config', '/settings', '/accounts', '/health',
-  // Lo que monta el motor bajo `/api` (medios de pago, config, resguardo).
+  // Lo que monta el motor bajo `/api` (ventas, medios de pago, config, resguardo).
   '/api',
 ]
+// `/sales` se retiró entero en F4 (2026-09-15, DECISIONS.md ADR-025) -- sin
+// backend que lo sirva, ya no tiene nada que hacer en esta lista.
 
 // Las claves del proxy se emiten como regex (Vite trata como RegExp toda
 // clave que empieza con `^`) que exige que el path TERMINE ahi o siga con
@@ -33,6 +35,24 @@ const API_PATHS = [
 // deja caer `/catalogo` al catch-all de la SPA.
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+// Dos rutas del backend (F4, 2026-09-15, ADR-025: `app/routers/
+// ventas_extra.py`) cuelgan de un prefijo que TAMBIÉN es una pantalla de la
+// SPA -- `/ventas` (el listado/detalle) y `/pos` (el mostrador). Un proxy por
+// PREFIJO como el de `API_PATHS` las secuestraría: es la MISMA colisión que
+// el comentario de arriba documenta para `/catalog`/`/catalogo`, ahora contra
+// las propias pantallas de este producto en vez de una ajena -- `/ventas/5`
+// (el detalle de una venta) o `/pos` a secas irían al backend, que no tiene
+// esas rutas, y el navegador vería un 404 de FastAPI en vez de la SPA.
+//
+// Por eso van con un patrón tan angosto como la ruta real del backend, no
+// por prefijo: sólo `/ventas/<id>/ticket`, `/ventas/<id>/devuelto` y
+// `/pos/mp-estado` se proxian; `/ventas`, `/ventas/<id>` y `/pos` a secas
+// caen en el catch-all de la SPA, que es lo que tienen que hacer.
+const RUTAS_PROPIAS_DEL_BACKEND: Record<string, { target: string; changeOrigin: boolean }> = {
+  '^/ventas/\\d+/(?:ticket|devuelto)$': { target: 'http://localhost:8000', changeOrigin: true },
+  '^/pos/mp-estado$': { target: 'http://localhost:8000', changeOrigin: true },
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -41,11 +61,14 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: Object.fromEntries(
-      API_PATHS.map((apiPath) => [
-        `^${escapeRegex(apiPath)}(?:/|$)`,
-        { target: 'http://localhost:8000', changeOrigin: true },
-      ]),
-    ),
+    proxy: {
+      ...Object.fromEntries(
+        API_PATHS.map((apiPath) => [
+          `^${escapeRegex(apiPath)}(?:/|$)`,
+          { target: 'http://localhost:8000', changeOrigin: true },
+        ]),
+      ),
+      ...RUTAS_PROPIAS_DEL_BACKEND,
+    },
   },
 })

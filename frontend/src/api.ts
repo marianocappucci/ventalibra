@@ -68,22 +68,6 @@ export const ITEM_CODE_TYPE_LABELS: Record<ItemCodeType, string> = {
   other: 'Otro',
 }
 
-/** Encabezado de venta para el listado: sin líneas ni pagos. */
-export type SaleListItem = {
-  id: number
-  number: string
-  status: SaleStatus
-  total: string
-  confirmed_at: string | null
-  cliente: string
-}
-
-export type DevolucionLinea = {
-  /** Posición de la línea en la venta, no un id. */
-  index: number
-  quantity: string
-}
-
 export type MovimientoCuenta = {
   fecha: string
   tipo: 'debito' | 'credito'
@@ -143,26 +127,13 @@ export type MpDisponible = {
   auto_facturar: boolean
 }
 
-/** `approved`, `pending`, `sin_orden`, o el estado crudo de MercadoPago
- *  (`rejected`, `cancelled`, `in_process`). */
-/** Un cobro que entró por el QR y cuya venta quedó sin confirmar.
- *
- *  🔴 El orden acá es "primero la plata, después la venta", así que si el
- *  navegador se muere entre el poll y la confirmación la plata entró y la venta
- *  no quedó registrada. Esto es lo que las hace encontrables — ver
- *  `services/mp_qr.cobros_sin_venta`. */
-export type MpCobroSinVenta = {
-  sale_id: number
-  numero: string | null
-  amount: number
-  payment_id: string | null
-  external_reference: string
-  acreditado_el: string | null
-}
-
+/** `approved`, `pending`, `rejected`, `cancelled`, `in_process` -- el estado
+ *  crudo de MercadoPago. `payment_id`/`factura_id` sólo vienen cuando hay algo
+ *  que informar (el motor omite la clave, no manda `null` a secas). */
 export type MpEstado = {
   status: string
-  payment_id: string | null
+  payment_id?: string | null
+  factura_id?: number | null
 }
 
 export type ScaleValueKind = 'weight' | 'amount'
@@ -208,29 +179,11 @@ export type Location = {
   branch_id: number | null
   location_type: string
   active: boolean
+  /** El depósito del que descuenta una venta que no declara `deposito_id`
+   *  (F4, ADR-025) -- en este producto un "location" ES un depósito del
+   *  motor, mismo `id` (ver `app/services/locations.py`). */
+  is_default: boolean
 }
-
-export type SaleStatus = 'draft' | 'confirmed' | 'cancelled' | 'partially_returned' | 'returned'
-
-export type SaleItem = {
-  kind: 'product' | 'service'
-  item_id: number | null
-  variant_id: number | null
-  description_snapshot: string
-  quantity: string
-  unit_price: string
-  discount_amount: string
-  tax_amount: string
-  line_total: string
-}
-
-export type Factura = {
-  id: number
-  tipo: number
-  punto_venta: number
-  numero: number
-  cae: string
-} | null
 
 export type Shift = {
   id: number
@@ -266,28 +219,93 @@ export type ShiftSummary = {
 
 export type ShiftState = { turno: Shift | null; resumen?: ShiftSummary }
 
-export type SalePayment = {
-  medio: string
-  monto: string
-  // Solo en efectivo: cuanto entrego el cliente. En los demas medios va null.
-  recibido: string | null
-  vuelto: string
-  referencia: string
+// ── La venta (F4, ADR-025): la capa ERP de LibraCommerce ──────────────────
+//
+// `Venta`/`VentaItem`/`VentaPago` son los tipos del kit (`libra-ui/comercio/
+// tipos`), el contrato de `libracommerce.web.ventas_router` +
+// `libracore.ventas_cobro_router` (montados como `/api/ventas` en
+// `app/main.py`). Re-exportados acá para que las pantallas de este producto
+// los importen desde `../api` como todo lo demás, sin acordarse de cuál
+// paquete los declara.
+//
+// 🔴 A diferencia del `Sale` viejo (con montos `string`, por el `Decimal` de
+// Pydantic), acá los montos son `number`: ni `crear()` ni `obtener_venta()`
+// pasan por un `response_model` -- son dicts de Python con floats, que FastAPI
+// serializa como número JSON directo.
+export type { Venta, VentaItem, VentaPago } from 'libra-ui/comercio/tipos'
+import type { VentaPago as _VentaPago } from 'libra-ui/comercio/tipos'
+
+/** Un pago con el vuelto ya calculable (D4, ADR-025): `recibido` no está en
+ *  el tipo compartido del kit -- ni Contalibra ni Restolibra lo mandan -- pero
+ *  `ventas_pagos.recibido` sí viaja en el JSON de este producto (columna de
+ *  LibraCore, ver `libracommerce.erp.ventas.agregar_pago`). El vuelto es
+ *  `recibido - monto`, a cargo de quien lea (no lo precalcula la API). */
+export type VentaPagoConRecibido = _VentaPago & {
+  /** `null` en cualquier medio que no sea efectivo, o si no se mandó. */
+  recibido: number | null
 }
 
-export type Sale = {
-  id: number
-  number: string
-  status: SaleStatus
-  items: SaleItem[]
-  pagos: SalePayment[]
-  vuelto_total: string
-  subtotal: string
-  discount_total: string
-  tax_total: string
-  total: string
-  confirmed_at: string | null
-  factura: Factura
+/** El body de `POST /api/ventas` (`libracommerce.web.ventas_router.
+ *  VentaPayload`). Los montos van en `number`, no `string`: el backend valida
+ *  con Pydantic (`float`), a diferencia de las lecturas (`Decimal`-como-string
+ *  del modelo viejo). */
+export type VentaItemPayload = {
+  nombre: string
+  qty: number
+  precio: number
+  producto_id: number | null
+  variante_id?: number | null
+}
+
+export type VentaPagoPayload = {
+  medio: string
+  monto: number
+  referencia?: string
+  /** `true`: "le voy a cobrar", nace pendiente y lo acredita el poll del QR.
+   *  Sólo aplica al medio `mercadopago` (el motor lo valida). */
+  cobrar_con_qr?: boolean
+  /** Cuánto entregó el cliente (D4). Sólo tiene sentido en efectivo. */
+  recibido?: number
+}
+
+export type VentaPayload = {
+  fecha: string
+  items: VentaItemPayload[]
+  cliente_id?: number | null
+  observaciones?: string
+  pagos: VentaPagoPayload[]
+  /** El depósito de la sucursal elegida en el POS (F4, VentaLibra
+   *  multisucursal). Sin mandarlo, el motor descuenta del default de siempre. */
+  deposito_id?: number | null
+}
+
+/** El body de `POST /api/ventas/{vid}/devolver`
+ *  (`libracommerce.web.ventas_router.DevolucionPayload`). Indexa por
+ *  `sale_item_id` -- el id de `sale_items`, no la posición de la línea, que
+ *  es como indexaba el modelo viejo (`DevolucionLinea`, retirado). */
+export type DevolucionLineaPayload = {
+  sale_item_id: number
+  cantidad: number
+}
+
+export type DevolucionPayload = {
+  lineas: DevolucionLineaPayload[]
+  deposito_id: number
+  medio_pago?: string
+}
+
+/** Cuánto se devolvió ya de una venta, por (producto, variante) -- lo que
+ *  `GET /api/ventas/{id}` no trae (`app/routers/ventas_extra.py`). Sirve para
+ *  topear la cantidad a devolver y proponer el depósito por default. */
+export type VentaDevueltoPorClave = {
+  producto_id: number
+  variante_id: number | null
+  cantidad: number
+}
+
+export type VentaDevuelto = {
+  por_clave: VentaDevueltoPorClave[]
+  deposito_id: number | null
 }
 
 export type CurrentStock = {

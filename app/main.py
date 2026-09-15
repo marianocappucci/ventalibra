@@ -59,10 +59,10 @@ from .routers import (
     pricing,
     purchasing,
     reports,
-    sales,
     shifts,
     stock,
     suppliers,
+    ventas_extra,
 )
 from .routers import auth as auth_router
 from .routers import (
@@ -310,11 +310,12 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(pricing.router, dependencies=staff_or_admin)
     app.include_router(locations.router, dependencies=staff_or_admin)
     app.include_router(stock.router, dependencies=staff_or_admin)
-    # `/sales` de siempre: GET sigue legible (últimas ventas, detalle,
-    # ticket); las escrituras contestan 410 apuntando a `/api/ventas` desde
-    # F3 (ver app/routers/sales.py). El POS todavía le pega en F3 -- pasa a
-    # `/api/ventas` recién en F4 (ADR-025: F3 no se despliega sola).
-    app.include_router(sales.router, dependencies=staff_or_admin)
+    # `GET /ventas/{id}/ticket` y `GET /pos/mp-estado` -- las dos lecturas
+    # sueltas que quedaron cuando `/sales` se retiró entero en F4 (ADR-025,
+    # ver `app/routers/ventas_extra.py`, que reemplaza a `app/routers/
+    # sales.py`). Montado ANTES del catch-all de la SPA (`app/asgi.py`), así
+    # que `/ventas/{id}/ticket` gana sobre `/{full_path:path}`.
+    app.include_router(ventas_extra.router, dependencies=staff_or_admin)
     # `POST`/`GET /api/ventas`, detalle, anular y devolver -- la capa ERP de
     # LibraCommerce (F3 del plan post-P9, ver DECISIONS.md ADR-025). Sin
     # `require_module("ventas")`: catálogo, stock y venta/POS nunca se gatean

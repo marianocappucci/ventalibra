@@ -102,7 +102,7 @@ def test_hay_una_unidad_con_fraccion(api):
 # ── 🔴 Las ventas, confirmadas de verdad ──────────────────────────────────
 
 def _ventas(api):
-    lista = api.get("/sales") or []
+    lista = api.get("/api/ventas") or []
     if isinstance(lista, dict):
         lista = next((v for v in lista.values() if isinstance(v, list)), [])
     return lista

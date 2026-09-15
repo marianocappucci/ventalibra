@@ -17,14 +17,20 @@ def _make_item(client, name="Fideos 500g", price="1500.00"):
     return crear_item(client, name=name, price=price)
 
 
-def test_las_escrituras_legadas_de_sales_estan_retiradas(admin_client):
-    """`/sales` es de sólo lectura desde F3 (ADR-025): todo lo que antes
-    escribía contesta 410 apuntando a `/api/ventas`, sin mirar el cuerpo ni
-    si la venta existe -- ninguno de estos diez caminos se había ejercitado
-    todavía en la suite portada."""
+def test_sales_ya_no_existe(admin_client):
+    """F4 (2026-09-15, ADR-025): `/sales` se retiró entero (`app/routers/
+    sales.py` no existe más) -- lo que hasta F3 contestaba 410 apuntando a
+    `/api/ventas` ahora no tiene router que lo sirva, así que cae en el
+    catch-all de la SPA en producción (`app/spa.py`, sólo se monta con un
+    frontend buildeado) o, en la suite -- sin ese mount --, en un 404 liso de
+    FastAPI. Cualquiera de las dos formas confirma lo mismo: no hay ningún
+    endpoint bajo `/sales`, ni de lectura ni de escritura."""
     sid = 1
     retiradas = [
+        ("get", "/sales", None),
         ("post", "/sales", {}),
+        ("get", f"/sales/{sid}", None),
+        ("get", f"/sales/{sid}/ticket", None),
         ("patch", f"/sales/{sid}", {}),
         ("post", f"/sales/{sid}/items", {}),
         ("delete", f"/sales/{sid}/items/0", None),
@@ -34,12 +40,13 @@ def test_las_escrituras_legadas_de_sales_estan_retiradas(admin_client):
         ("post", f"/sales/{sid}/returns", {}),
         ("post", f"/sales/{sid}/mp-qr", {}),
         ("delete", f"/sales/{sid}/mp-qr", None),
+        ("get", "/sales/mp/estado", None),
+        ("get", "/sales/mp/cobros-sin-venta", None),
     ]
     for metodo, ruta, cuerpo in retiradas:
         llamar = getattr(admin_client, metodo)
         respuesta = llamar(ruta, json=cuerpo) if cuerpo is not None else llamar(ruta)
-        assert respuesta.status_code == 410, f"{metodo.upper()} {ruta}: {respuesta.text}"
-        assert "/api/ventas" in respuesta.json()["detail"]
+        assert respuesta.status_code == 404, f"{metodo.upper()} {ruta}: {respuesta.text}"
 
 
 def test_full_pos_flow_confirms_sale_and_decrements_stock(admin_client):
@@ -404,3 +411,44 @@ def test_despues_de_cerrar_no_se_puede_cobrar_hasta_abrir_otro(admin_client):
 
 def test_cerrar_un_turno_inexistente_es_404(admin_client):
     assert admin_client.post("/shifts/9999/close", json={"monto_declarado": 0}).status_code == 404
+
+
+# --- depósito de la venta (F4, VentaLibra multisucursal, ADR-025) ---------
+#
+# El POS manda `deposito_id` = el depósito de la sucursal elegida en pantalla
+# (`GET /locations` -- en este producto un "location" ES un depósito del
+# motor, mismo `id`: `app/services/locations.py::LocationService` envuelve el
+# MISMO repositorio y la MISMA tabla `locations` que lee `libracommerce.erp.
+# catalogo.get_deposito`). Sin el campo (el default, `None`), el motor sigue
+# descontando del default de siempre -- eso ya lo cubre el resto de este
+# archivo. Acá se afirma el campo aditivo en sí.
+
+
+def test_deposito_id_descuenta_del_deposito_elegido_no_del_default(admin_client):
+    item_id = _make_item(admin_client)
+    default_id = deposito_default(admin_client)
+    otro = admin_client.post("/locations", json={"name": "Sucursal Once"}).json()
+    con_stock(admin_client, item_id, otro["id"], "10")
+    con_stock(admin_client, item_id, default_id, "10")
+    abrir_turno(admin_client)
+
+    venta = registrar_venta(admin_client, item_id, cantidad="3", deposito_id=otro["id"])
+    assert venta["estado"] == "cobrada"
+
+    assert stock(admin_client, item_id, otro["id"]) == 7
+    # El default no se tocó: la venta declaró un depósito propio.
+    assert stock(admin_client, item_id, default_id) == 10
+
+
+def test_deposito_id_inexistente_es_422_y_no_registra_nada(admin_client):
+    item_id = _make_item(admin_client)
+    default_id = deposito_default(admin_client)
+    con_stock(admin_client, item_id, default_id, "10")
+    abrir_turno(admin_client)
+
+    venta = registrar_venta(
+        admin_client, item_id, cantidad="1", deposito_id=999999, esperar=422,
+    )
+    assert "999999" in venta["detail"]
+    # Ni el stock ni la caja se movieron: la validación corre antes de escribir.
+    assert stock(admin_client, item_id, default_id) == 10

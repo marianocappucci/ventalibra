@@ -49,11 +49,19 @@ def crear_item(client, name="Yerba 1kg", price="1500.00") -> int:
 
 
 def deposito_default(client) -> int:
-    """El depósito del que descuenta la venta.
+    """El depósito del que descuenta la venta cuando no se declara ninguno.
 
-    `POST /api/ventas` no recibe depósito: `erp.stock.descontar_stock_venta` descuenta siempre
-    del default (`app/db.py::connect` siembra "Depósito principal" si no hay ninguno). Crear otro
-    depósito en el test dejaría el stock del test y el que descuenta el motor en lugares distintos.
+    Hasta F4, `POST /api/ventas` no recibía depósito en absoluto:
+    `erp.stock.descontar_stock_venta` descontaba siempre del default
+    (`app/db.py::connect` siembra "Depósito principal" si no hay ninguno).
+    Desde F4 (2026-09-15, ADR-025) `deposito_id` es un campo ADITIVO del
+    payload -- sin él (el default, `None`) el comportamiento es EXACTAMENTE
+    el mismo de siempre. Sigue siendo el valor correcto para pasar como
+    `deposito_id` explícito en los tests que quieren ejercitar ese campo:
+    "Depósito principal" ES `is_default=1`, así que declararlo a propósito no
+    cambia dónde descuenta la venta -- crear otro depósito en el test sí lo
+    haría, y dejaría el stock del test y el que descuenta el motor en
+    lugares distintos.
     """
     conn = client.app.state.conn
     return conn.execute("SELECT id FROM locations WHERE is_default = 1 LIMIT 1").fetchone()[0]
@@ -70,7 +78,8 @@ def stock(client, item_id, location_id) -> Decimal:
 
 
 def registrar_venta(client, item_id=None, *, precio="1500.00", cantidad="2", items=None,
-                    pagos=None, cliente_id=None, fecha=None, esperar=200) -> dict:
+                    pagos=None, cliente_id=None, fecha=None, deposito_id=None,
+                    esperar=200) -> dict:
     """Registra una venta completa (D1) y devuelve el JSON de la respuesta.
 
     - `items`: la lista completa en el formato de `POST /api/ventas`
@@ -79,6 +88,8 @@ def registrar_venta(client, item_id=None, *, precio="1500.00", cantidad="2", ite
     - `pagos`: por defecto, un solo pago en efectivo por el total.
     - `fecha`: por defecto, `hoy()` -- la fecha real de Argentina. Pasar una fecha fija sólo
       cuando el test necesita a propósito una venta de otro día.
+    - `deposito_id`: el depósito del que descuenta ESTA venta (F4, VentaLibra multisucursal,
+      ADR-025). Por defecto no se manda -- el motor descuenta del default, igual que siempre.
     - `esperar`: el status HTTP esperado (p. ej. 409 sin turno abierto); si no es 200, devuelve
       el JSON del error.
     """
@@ -93,6 +104,8 @@ def registrar_venta(client, item_id=None, *, precio="1500.00", cantidad="2", ite
     }
     if cliente_id is not None:
         payload["cliente_id"] = cliente_id
+    if deposito_id is not None:
+        payload["deposito_id"] = deposito_id
     respuesta = client.post("/api/ventas", json=payload)
     assert respuesta.status_code == esperar, respuesta.text
     return respuesta.json()

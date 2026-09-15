@@ -1,11 +1,17 @@
-"""Lecturas de venta que `app/routers/sales.py` sigue exponiendo.
+"""Lo que `app/routers/ventas_extra.py::ticket` necesita para armar el PDF.
 
 Desde F3 del plan post-P9 (2026-09-14, ver DECISIONS.md ADR-025) las
 escrituras (borrador, confirmar, anular, devolver) viven en
-`libracommerce.erp.ventas`, montado en `app/main.py` como `/api/ventas`.
-`SaleService` queda reducido a lo que `app/routers/sales.py` mantiene de
-sólo lectura: el listado de ventas recientes y el detalle de una, que
-`GET /sales/{id}/ticket` también necesita.
+`libracommerce.erp.ventas`, montado en `app/main.py` como `/api/ventas`, y
+el listado/detalle de venta los sirve esa misma capa (`GET /api/ventas`,
+`GET /api/ventas/{vid}`). `SaleService` queda reducido a lo único que le
+falta a esa capa: el detalle en la FORMA que pide `services/tickets.py`
+(el dataclass `Sale` del repositorio del motor, no el dict de la ERP) -- el
+puente que arma `_con_pagos_y_fecha` sigue haciendo falta porque los pagos y
+`confirmed_at` de una venta nueva no viven donde el repositorio los busca
+(ver el docstring de ese método). `list_recent` -- el listado que usaba
+`GET /sales` -- se retiró en F4 junto con ese router: quedó sin ningún
+consumidor.
 """
 import dataclasses
 from datetime import datetime, timedelta, timezone
@@ -29,35 +35,6 @@ class SaleService:
     def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
-
-    def list_recent(self, *, limit: int = 50, search: str = "") -> list[dict]:
-        """Las últimas ventas, para encontrar una y poder deshacerla.
-
-        Devuelve el encabezado nada más (sin líneas ni pagos): es una lista
-        para buscar, y traer todo de cada venta la haría lenta sin que nadie
-        lo mire. El detalle se pide con `get()` al abrir una.
-        """
-        sql = """
-            SELECT id, number, status, status_detail, total, confirmed_at, occurred_on,
-                   customer_name_snapshot
-            FROM sales
-            WHERE status != 'draft'
-        """
-        params: list = []
-        if search:
-            sql += " AND (number LIKE ? OR customer_name_snapshot LIKE ?)"
-            params += [f"%{search}%", f"%{search}%"]
-        sql += " ORDER BY id DESC LIMIT ?"
-        params.append(limit)
-        return [
-            {
-                "id": row[0], "number": row[1], "status": row[2],
-                "status_detail": row[3], "total": Decimal(str(row[4] or 0)),
-                "confirmed_at": row[5], "occurred_on": row[6],
-                "cliente": row[7] or "",
-            }
-            for row in self._conn.execute(sql, params).fetchall()
-        ]
 
     def get(self, sale_id: int) -> Sale:
         sale = self._repo.get_sale(sale_id)

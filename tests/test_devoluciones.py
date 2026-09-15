@@ -350,3 +350,55 @@ def test_sin_sesion_no_se_puede_anular_ni_devolver(admin_client):
     assert admin_client.post(f"/api/ventas/{sale_id}/devolver", json={
         "lineas": [{"sale_item_id": sale_item_id, "cantidad": 1}], "deposito_id": location_id,
     }).status_code == 401
+
+
+# ── GET /ventas/{id}/devuelto (F4, lo que la pantalla usa para topear) ────
+#
+# `GET /api/ventas/{id}` no expone cuánto se devolvió (`sale_items.quantity`
+# es el snapshot de lo vendido, nunca cambia): esto lee el ledger
+# `stock_movements` con el MISMO criterio que `libracommerce.erp.ventas.
+# devolver_items` usa para validar -- ver `app/routers/ventas_extra.py`.
+
+
+def test_devuelto_arranca_en_cero(admin_client):
+    item_id = crear_item(admin_client)
+    location_id = deposito_default(admin_client)
+    con_stock(admin_client, item_id, location_id, "10")
+    abrir_turno(admin_client)
+    sale_id = _venta(admin_client, item_id, cantidad="2")
+
+    respuesta = admin_client.get(f"/ventas/{sale_id}/devuelto")
+    assert respuesta.status_code == 200, respuesta.text
+    datos = respuesta.json()
+    assert datos["por_clave"] == []
+    # Una sola venta, un solo depósito: se puede determinar sin ambigüedad.
+    assert datos["deposito_id"] == location_id
+
+
+def test_devuelto_refleja_la_devolucion_parcial(admin_client):
+    item_id = crear_item(admin_client)
+    location_id = deposito_default(admin_client)
+    con_stock(admin_client, item_id, location_id, "10")
+    abrir_turno(admin_client)
+    sale_id = _venta(admin_client, item_id, cantidad="5")
+    sale_item_id = primer_sale_item_id(admin_client, sale_id)
+
+    admin_client.post(f"/api/ventas/{sale_id}/devolver", json={
+        "lineas": [{"sale_item_id": sale_item_id, "cantidad": 2}], "deposito_id": location_id,
+    })
+
+    datos = admin_client.get(f"/ventas/{sale_id}/devuelto").json()
+    assert len(datos["por_clave"]) == 1
+    fila = datos["por_clave"][0]
+    assert fila["producto_id"] == item_id
+    assert fila["variante_id"] is None
+    assert fila["cantidad"] == 2.0
+
+
+def test_devuelto_de_una_venta_inexistente_no_revienta(admin_client):
+    """Sin filas que agregar: `por_clave` vacío y depósito indeterminado, no
+    un 404 -- `sale_id` es sólo la clave de búsqueda del ledger, no algo que
+    esta lectura valide contra `sales`."""
+    respuesta = admin_client.get("/ventas/999999/devuelto")
+    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.json() == {"por_clave": [], "deposito_id": None}

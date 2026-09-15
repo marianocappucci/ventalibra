@@ -378,8 +378,13 @@ def _sembrar_ventas(api: Api, articulos: dict, clientes: dict,
     se manda: `POST /api/ventas` descuenta siempre del depósito default (ver
     `app/db.py::connect`), y el "Salón" de este seed lo es -- es el primero
     que se crea, y `init_schema` sólo siembra uno si no hay ninguno.
+
+    F4 (2026-09-15, ADR-025): `/sales` se fue entero -- la idempotencia se
+    chequea contra `GET /api/ventas`, que es la misma tabla `sales` con otro
+    nombre de campo (`numero`/`estado`, no `number`/`status`; no cambia nada
+    de lo que este chequeo mira, sólo cuenta filas).
     """
-    existentes = api.get("/sales") or []
+    existentes = api.get("/api/ventas") or []
     if isinstance(existentes, dict):
         existentes = next((v for v in existentes.values() if isinstance(v, list)), [])
     if len(existentes) >= 4:

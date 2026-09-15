@@ -37,7 +37,17 @@ dependencies = [
     # venta, 409 -- sólo las violaciones de `sales.number`/`sales_number_key`
     # siguen reintentando/dando 409), y `acreditar_pago_qr` no pisa una
     # referencia existente del pago (sólo la completa si esta vacia o NULL).
-    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.16.2",
+    # v0.16.2 -> 71bf532 (F4 del plan ERP, 2026-09-15, todavia sin tag):
+    # `VentaPayload.deposito_id: int | None` en `POST /api/ventas` -- sin el
+    # campo, descuenta del deposito default como siempre. `DepositoInexistente`
+    # -> 422 al vender y al devolver.
+    # 71bf532 -> 5893544 -> v0.16.3 (tag anotado sobre main 69d1c31, mismo
+    # contenido que 5893544): `_validar_deposito` se muda a `erp/catalogo.py`
+    # (mismo `DepositoInexistente`, 422); `transferir_stock` valida origen y
+    # destino (422); ya no se puede desactivar el deposito default ni
+    # marcarlo default a uno inactivo (422 en el PATCH de depositos y en el
+    # set-default); `deposito_id=0` ya no cae al default.
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.16.3",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
