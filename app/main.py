@@ -337,11 +337,9 @@ def create_app(db_path: str) -> FastAPI:
             # podía anular (`/sales/{id}/cancel`, retirado) y devolver
             # (`/sales/{id}/returns`, retirado): el router llevaba `staff_or_
             # admin` y el endpoint en sí sólo pedía `get_current_user`, sin
-            # ningún chequeo de rol propio. Pasar `require_admin` acá sería
-            # restringir ese permiso sin que nadie lo haya decidido -- se
-            # preserva el comportamiento de siempre. Si el humano quiere que
-            # anular/devolver pase a ser sólo de admin, es una decisión
-            # pendiente aparte, no un efecto colateral de F3.
+            # ningún chequeo de rol propio. Se conserva: **decisión del humano del
+            # 2026-09-15** ("dejá anular y devolver para el cajero también"). No pasar
+            # `require_admin` acá; lo custodia `test_un_staff_puede_anular_y_devolver`.
             opciones=OpcionesVentas(
                 stock_habilitado=lambda: True,
                 # 🔴 El default del motor busca `cliente_id` en `clients`
