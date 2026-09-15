@@ -15,8 +15,31 @@ from libracore.db import turnos as db_turnos
 from pydantic import BaseModel
 
 from ..auth import get_current_user
+from ..services.cuenta_corriente import MEDIO_CUENTA_CORRIENTE
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
+
+
+def _sin_fiado(resumen: dict) -> dict:
+    """`get_resumen_turno_caja` suma TODOS los medios de `caja_movimientos`,
+    `cuenta_corriente` incluido.
+
+    🔴 **Desde F3 (2026-09-14, DECISIONS.md ADR-025) eso ya no es un no-op.**
+    El modelo viejo (`services/cuenta_corriente.py::registrar_venta_fiada`,
+    retirado) nunca escribía un movimiento de caja para el fiado -- ADR-020:
+    "fiar no es cobrar". La capa ERP nueva (`libracommerce.erp.ventas.
+    registrar_venta`) sí escribe uno por cada medio, cuenta_corriente
+    incluido -- lo excluye del `/reports/caja` (`get_caja_resumen`, que usa
+    `sql_no_es_cuenta_corriente`) pero NO de `get_resumen_turno_caja`, que es
+    lo que arma ESTE router. Sin este filtro, el arqueo del cajero mostraría
+    como "vendido" plata que nunca entró al cajón.
+
+    Se filtra acá, en el router propio de VentaLibra, y no en
+    `libracore.db.turnos`: esa función la comparten otros productos
+    (LibraClub) para los que sumar todo es lo esperado.
+    """
+    pagos = {m: t for m, t in resumen["pagos_por_medio"].items() if m != MEDIO_CUENTA_CORRIENTE}
+    return {**resumen, "pagos_por_medio": pagos, "total_ventas": sum(pagos.values())}
 
 
 class ShiftOpen(BaseModel):
@@ -38,7 +61,7 @@ def turno_actual():
     turno = db_turnos.get_turno_activo_any()
     if not turno:
         return {"turno": None}
-    return {"turno": turno, "resumen": db_turnos.get_resumen_turno_caja(turno["id"])}
+    return {"turno": turno, "resumen": _sin_fiado(db_turnos.get_resumen_turno_caja(turno["id"]))}
 
 
 @router.post("/open")
@@ -57,7 +80,7 @@ def resumen(turno_id: int):
     turno = db_turnos.get_turno(turno_id)
     if not turno:
         raise HTTPException(404, "turno no encontrado")
-    return {"turno": turno, "resumen": db_turnos.get_resumen_turno_caja(turno_id)}
+    return {"turno": turno, "resumen": _sin_fiado(db_turnos.get_resumen_turno_caja(turno_id))}
 
 
 @router.post("/{turno_id}/close")
@@ -70,7 +93,7 @@ def cerrar(turno_id: int, data: ShiftClose):
     # El resumen se calcula ANTES de cerrar y se devuelve junto al turno: es
     # lo que el cajero necesita ver para entender la diferencia, y despues de
     # cerrar ya no puede reconstruirlo en pantalla.
-    resumen_final = db_turnos.get_resumen_turno_caja(turno_id)
+    resumen_final = _sin_fiado(db_turnos.get_resumen_turno_caja(turno_id))
     cerrado = db_turnos.cerrar_turno_caja(turno_id, data.monto_declarado, data.notas)
     return {"turno": cerrado, "resumen": resumen_final}
 

@@ -1,21 +1,28 @@
-"""Los cobros que entraron y cuya venta quedó sin confirmar.
+"""Los cobros que entraron y cuya venta quedó sin confirmar, del camino VIEJO
+de QR (`sale_mp_orders`).
 
-🔴 **El agujero que este producto declara en `services/mp_qr.py` y no vigilaba
-nadie.** El orden acá es, a propósito, *"primero la plata, después la venta"* —
-al revés que Contalibra, y por una buena razón: así no existe la ventana en la
-que hay una venta registrada como cobrada que nadie pagó.
+🔴 **Este mecanismo entero es del modelo D2 viejo** (`app/services/mp_qr.py`,
+`GET /sales/mp/cobros-sin-venta`, que sigue de sólo lectura desde F3 -- ver
+`app/routers/sales.py`). D2 pasó al "modelo de la familia" (venta pendiente +
+`acreditar_pago_qr`, sobre `libracore.ventas_cobro_router`): una venta nueva
+jamás escribe `sale_mp_orders` -- ADR-025 lo mide en 0 filas en dev y demo, y
+D2 dice explícitamente que la tabla "deja de usarse (D2)".
 
-Pero el agujero se invierte: si el navegador se muere entre el poll y la
-confirmación —se cierra la pestaña, se corta la luz, el cajero pasa a atender a
-otro— **la plata entró y la venta no quedó registrada**.
-
-La orden aprobada se guarda en `sale_mp_orders` justamente para eso. Lo que
-faltaba es poder **encontrarla**: hasta hoy sólo se la consultaba por venta
-(`orden_acreditada(conn, sale_id)`), así que la mitigación funcionaba únicamente
-si alguien volvía a abrir ESE borrador. Si nadie lo abría, la plata estaba en
-MercadoPago, no estaba en la caja, y no había forma de enterarse.
+**Por qué se porta y no se retira.** El código bajo prueba (`mp_qr.
+cobros_sin_venta`, el orden por fecha, el filtro `pending`/`cancelled`, el
+`Decimal`) sigue vivo y sigue siendo alcanzable por `GET
+/sales/mp/cobros-sin-venta` para leer filas que quedaron de ANTES de F3 -- no
+hay ninguna razón de negocio para que deje de funcionar. Lo único que rompía
+era el fixture: `_borrador()` armaba el borrador con `POST /sales` (retirado,
+410) y `test_una_venta_confirmada_NO_aparece` confirmaba con `POST
+/sales/{id}/confirm` (retirado, 410). Los dos se reemplazan por lo que
+representan -- un borrador y una confirmación -- escrito directo en la base,
+que es exactamente lo que hacía el modelo viejo por debajo de esos endpoints.
+No se prueba una feature nueva: se preserva la cobertura de una vieja que el
+código todavía sirve.
 """
 
+import secrets
 from decimal import Decimal
 
 from app.services import mp_qr
@@ -37,13 +44,23 @@ def _item(client, precio="1500.00"):
 
 
 def _borrador(client, item_id):
-    """Un borrador con un ítem: lo que el cajero tiene en pantalla cuando pone
-    el monto en el QR."""
-    draft = client.post("/sales", json={})
-    assert draft.status_code in (200, 201), draft.text
-    sale_id = draft.json()["id"]
-    r = client.post(f"/sales/{sale_id}/items", json={"item_id": item_id, "quantity": "1"})
-    assert r.status_code == 200, r.text
+    """Un borrador con un ítem, escrito directo en la base: el modelo D1
+    nuevo no tiene "crear borrador y agregar líneas" (`POST /sales`/`POST
+    /sales/{id}/items` están retirados, 410) -- se escribe la forma exacta
+    que esos dos endpoints dejaban antes de F3."""
+    conn = client.app.state.conn
+    numero = f"POS-{secrets.token_hex(4)}"
+    sale_id = conn.execute(
+        "INSERT INTO sales (number, status, source_type, subtotal, total) "
+        "VALUES (?, 'draft', 'pos', 1500, 1500)",
+        (numero,),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO sale_items (sale_id, kind, item_id, description_snapshot, quantity, unit_price) "
+        "VALUES (?, 'product', ?, 'Gaseosa', 1, 1500)",
+        (sale_id, item_id),
+    )
+    conn.commit()
     return sale_id
 
 
@@ -84,10 +101,12 @@ def test_una_venta_confirmada_NO_aparece(admin_client):
     registrado** figuraría como plata perdida y el cajero lo cobraría dos veces:
     exactamente el daño que esta pantalla viene a evitar, al revés.
 
-    ⚠️ Este test estaba en el primer borrador del archivo y **se perdió** al
-    reescribirlo para las fixtures reales del producto. Lo delató una mutación
-    que sobrevivió: sacar `AND s.status = 'draft'` de la consulta no ponía nada
-    en rojo.
+    La confirmación se escribe directo en la base (D1 no tiene un paso de
+    "confirmar un borrador" separado de crearlo) -- lo único que
+    `cobros_sin_venta` mira es `sales.status != 'draft'` (ver
+    `app/services/mp_qr.py`), así que el `UPDATE` alcanza para reproducir el
+    caso sin reimplementar el flujo de cobro entero, que no es lo que este
+    archivo prueba.
     """
     conn = admin_client.app.state.conn
     sale_id = _borrador(admin_client, _item(admin_client))
@@ -95,14 +114,8 @@ def test_una_venta_confirmada_NO_aparece(admin_client):
     # Con la orden ya acreditada figura en la lista...
     assert len(admin_client.get(RUTA).json()) == 1
 
-    # Sin turno abierto, confirmar da 409: una venta fuera de turno sería plata
-    # sin control de caja.
-    admin_client.post("/shifts/open", json={"monto_inicial": 0})
-    deposito = admin_client.post("/locations", json={"name": "Mostrador"})
-    assert deposito.status_code == 200, deposito.text
-    confirmada = admin_client.post(f"/sales/{sale_id}/confirm", json={
-        "location_id": deposito.json()["id"], "medio_pago": "mercadopago"})
-    assert confirmada.status_code == 200, confirmada.text
+    conn.execute("UPDATE sales SET status = 'confirmed' WHERE id = ?", (sale_id,))
+    conn.commit()
 
     # ...y al confirmarla deja de figurar.
     assert admin_client.get(RUTA).json() == []

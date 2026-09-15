@@ -1,17 +1,22 @@
-"""Fiado: vender a cuenta corriente, cobrar la deuda y ver el saldo.
+"""Cobrar deuda vieja y ver el saldo/movimientos de cuenta corriente.
 
-El cálculo del saldo es de LibraCore (`db.cuenta_corriente`), donde ya vive
-para Contalibra y Restolibra. Lo propio de VentaLibra es el puente entre sus
-dos bases: los clientes y las ventas están en la de LibraCommerce, y la
-caja, los débitos y los pagos en la de LibraCore. Por eso cada cliente que
-fía se registra allá con `external_ref = party-<id>` y la deuda entra como
-`cc_debito` explícito en vez de derivarse de un JOIN contra las ventas
-(ver ADR-020 y `libracore/db/cuenta_corriente.py`).
+Desde F3 del plan post-P9 (2026-09-14, ver DECISIONS.md ADR-025, D3) fiar ya
+no escribe un `cc_debito` explícito: la venta a cuenta corriente se registra
+como cualquier otra, con un pago `ventas_pagos.medio='cuenta_corriente'`
+(`libracommerce.erp.ventas.registrar_venta`/`crear_venta_directa`, montado en
+`app/main.py`) -- ese pago ES la deuda. Lo que este módulo sigue resolviendo
+es el puente entre las dos bases para LEER: el cliente de la venta es una
+`party` de LibraCommerce y la cuenta corriente vive en LibraCore, así que el
+saldo/movimientos/deudores cruzan por `clients.external_ref = party-<id>`
+-- el origen `VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF` (libracore v1.100.0),
+que reemplaza el cruce directo por id que asume `VENTAS_LIBRACOMMERCE`
+(válido para Contalibra/Restolibra, donde `clients.id == parties.id`; NO acá,
+ver ADR-025).
 
-La regla que ordena todo: **fiar no es cobrar**. Una venta a cuenta
-corriente no mueve un peso de la caja, así que no genera movimiento y no
-entra al arqueo del turno. El movimiento aparece después, cuando el cliente
-paga.
+`cc_debitos` sigue existiendo y `get_cc_saldo` lo sigue sumando (para lo que
+la migración `0003` no reclasificó como duplicado, y para cualquier deuda
+que se cargue a mano desde el backoffice) -- no se retira la tabla ni el
+mecanismo, sólo dejó de ser el camino de escritura de una venta fiada.
 """
 import logging
 from datetime import date
@@ -29,6 +34,11 @@ logger = logging.getLogger("ventalibra.cuenta_corriente")
 #: Medio de pago que representa el fiado. Coincide con el que usan
 #: Contalibra/Restolibra, que es lo que hace que el saldo se calcule igual.
 MEDIO_CUENTA_CORRIENTE = "cuenta_corriente"
+
+#: El cruce venta -> cliente de este producto: por `external_ref`, no por id
+#: (ver docstring del módulo). Se declara acá y no se repite `db_cc.` en cada
+#: llamada de abajo.
+_ORIGEN = db_cc.VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF
 
 
 class SinCliente(Exception):
@@ -71,28 +81,6 @@ class CuentaCorrienteService:
             cuit_dni=row[1] or "",
             email=row[2] or "",
             phone=row[3] or "",
-        )
-
-    # ── fiar ─────────────────────────────────────────────────────────────
-
-    def registrar_venta_fiada(self, sale, monto: Decimal, referencia: str,
-                              usuario_id: int | None = None) -> int:
-        """Anota la deuda de una venta cobrada a cuenta corriente.
-
-        Deliberadamente NO toca la caja: lo fiado no es plata que entró, y
-        sumarlo al arqueo dejaría al cajero cuadrando contra un total que no
-        está en el cajón.
-        """
-        if sale.customer_party_id is None:
-            raise SinCliente(
-                "una venta a cuenta corriente necesita un cliente: no se le "
-                "puede fiar a consumidor final"
-            )
-        cliente_id = self._cliente_cc(sale.customer_party_id)
-        return db_cc.create_cc_debito(
-            cliente_id, float(monto), date.today().isoformat(),
-            concepto=f"Venta {sale.number}", referencia=referencia,
-            usuario_id=usuario_id,
         )
 
     # ── cobrar ───────────────────────────────────────────────────────────
@@ -138,18 +126,18 @@ class CuentaCorrienteService:
 
     def saldo(self, party_id: int) -> Decimal:
         cliente_id = self._cliente_cc(party_id)
-        return Decimal(str(db_cc.get_cc_saldo(cliente_id)))
+        return Decimal(str(db_cc.get_cc_saldo(cliente_id, origen=_ORIGEN)))
 
     def movimientos(self, party_id: int) -> list[dict]:
         cliente_id = self._cliente_cc(party_id)
-        return db_cc.get_cc_movimientos(cliente_id)
+        return db_cc.get_cc_movimientos(cliente_id, origen=_ORIGEN)
 
     def deudores(self) -> list[dict]:
         """Quiénes deben, con su saldo. Devuelve el `party_id` del cliente en
         VentaLibra, no el id interno de LibraCore, para que el consumidor no
         tenga que saber que hay dos bases."""
         salida = []
-        for fila in db_cc.get_clientes_con_saldo_cc():
+        for fila in db_cc.get_clientes_con_saldo_cc(origen=_ORIGEN):
             party_id = _party_id_de(fila.get("external_ref"))
             if party_id is None:
                 # Un cliente sin `external_ref` no vino de VentaLibra: no

@@ -16,7 +16,6 @@ import inspect
 
 from libracore import medios_pago
 
-from app.routers import sales
 from app.services import tickets
 
 
@@ -60,34 +59,25 @@ def test_las_historicas_que_SI_siguen_vivas_se_leen():
 
 
 # ── El cobro por QR ────────────────────────────────────────────────────────
-
-def test_el_conjunto_de_qr_sale_del_motor_y_no_de_una_copia():
-    """🔴 **Esto arregla un defecto vivo.** El `frozenset` escrito a mano tenía
-    sólo MercadoPago, así que una venta cobrada por **Cuenta DNI o por otra
-    billetera no sellaba la referencia del pago**: se acreditaba del lado de
-    MercadoPago sin quedar atada a la venta, y no se notaba porque el pago entra
-    igual."""
-    for medio in ("mercadopago", "billetera", "cuenta_dni", "qr"):
-        assert medio in sales.MEDIOS_QR, medio
-
-
-def test_el_conjunto_de_qr_hereda_la_baja_de_la_grafia_vieja():
-    """🔴 La razón de fondo para que salga del motor y no de una copia local.
-
-    Cuando `mercado_pago` se retiró de `MEDIOS_ELECTRONICOS`, este conjunto se
-    enteró solo. Con el `frozenset` escrito a mano, la baja habría que acordarse
-    de replicarla acá — y nadie se acuerda.
-    """
-    assert "mercado_pago" not in sales.MEDIOS_QR
-    assert sales.MEDIOS_QR == frozenset(medios_pago.MEDIOS_ELECTRONICOS)
-
-
-def test_el_efectivo_NO_es_un_medio_de_qr():
-    """El control: si el conjunto incluyera todo, el botón de cobrar con QR
-    aparecería en una venta en efectivo."""
-    assert "efectivo" not in sales.MEDIOS_QR
-    assert "transferencia" not in sales.MEDIOS_QR
-    assert "cuenta_corriente" not in sales.MEDIOS_QR
+#
+# 🔴 **Los tres tests de `sales.MEDIOS_QR` se retiran (2026-09-14, F3,
+# DECISIONS.md ADR-025), no se portan.** `app/routers/sales.py` ya no declara
+# ese `frozenset` -- se fue con `confirm_sale` y el resto de las escrituras
+# retiradas (410): era el conjunto que decidía, en el POS legado, si un pago
+# se cobraba escaneando el QR. Medido (`grep -rn MEDIOS_QR app/`): no queda
+# ninguna referencia en el código del producto.
+#
+# El invariante que probaban -- qué medios cobran por QR -- no desapareció,
+# **se angostó y se movió al motor**: `libracommerce.web.ventas_router.
+# PagoPayload` valida `cobrar_con_qr` con `_el_qr_es_de_mercadopago`, y esa
+# validación es **más estricta** que el `frozenset` de acá (D2, "el modelo de
+# la familia"): sólo el medio `mercadopago` puede pedir `cobrar_con_qr=True`,
+# no toda `medios_pago.MEDIOS_ELECTRONICOS` (billetera, cuenta_dni, qr
+# quedan afuera). No es un recorte accidental de esta migración: es una
+# decisión del motor compartido por Contalibra y Restolibra, y ese es el
+# repo que la prueba -- repetirla acá mediría código que ya no es de
+# VentaLibra. Ver `PagoPayload._el_qr_es_de_mercadopago` en
+# `libracommerce.web.ventas_router` (instalado en `.venv`) para el detalle.
 
 
 # ── El ticket ──────────────────────────────────────────────────────────────

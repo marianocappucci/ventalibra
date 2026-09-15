@@ -10,43 +10,15 @@ medlibra/app/services/billing.py y gestiolibra/app/services/billing.py.
 A diferencia de esos dos productos (donde caja solo se toca si hay
 factura, seña+saldo de un turno), en retail toda venta cobrada debe
 quedar en caja sin importar si se factura o no -- decision explicita del
-usuario, 2026-07-25. Por eso `record_sale_payment` es una funcion aparte
-de `invoice_sale`, llamada siempre al confirmar una venta; `invoice_sale`
-solo se llama si el operador pidio factura para esa venta puntual.
+usuario, 2026-07-25.
 """
-import os
-from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
-
-from libracore import arca_facturacion
-from libracore.db import arca_config as db_arca_config
 from libracore.db import caja as db_caja
 from libracore.db import core as libracore_core
-from libracore.db import facturas as db_facturas
 from libracore.db.schema import init_core_schema
 
 from ..normalizacion_medios import normalizar_libracore
 
 EMPRESA = "venta"
-
-TIPO_FACTURA_A = 1
-TIPO_FACTURA_B = 6
-
-# Mismo mapeo que medlibra/gestiolibra (a su vez tomado de
-# web/routers/facturas.py de Contalibra) -- dict chico y estable, no
-# migrado a libracore por no tener logica propia.
-IVA_CODES = {
-    "Responsable Inscripto": 1,
-    "IVA Responsable Inscripto": 1,
-    "Monotributista": 6,
-    "Responsable Monotributo": 6,
-    "IVA Exento": 4,
-    "Consumidor Final": 5,
-    "No Alcanzado": 3,
-    "IVA No Responsable": 3,
-}
-
-_IVA_RATE = Decimal("0.21")
 
 
 def configure(db_path: str) -> None:
@@ -81,6 +53,22 @@ def configure(db_path: str) -> None:
     try:
         init_core_schema(conn)
         conn.commit()
+        # F3 del plan post-P9 (2026-09-14, ver DECISIONS.md ADR-025): la
+        # capa ERP de LibraCommerce. La migracion `0003` los aplica sobre
+        # una instancia YA EXISTENTE, pero una base nueva (la de la suite,
+        # `admin_client`; o un cliente que se onboardea de cero) nunca corre
+        # esa revision -- nace ya con el schema de `init_*_schema()`. Sin
+        # esto acá, cualquier venta con un pago fallaria con
+        # `ForeignKeyViolation` contra `ventas_pagos_venta_id_fkey`, que
+        # sigue apuntando a la tabla `ventas` legada de LibraCore. Mismo
+        # patron que `app/database.py::init_db()` de Contalibra/Restolibra:
+        # las dos funciones son idempotentes, así que correrlas en cada
+        # arranque es un no-op sobre una base que ya las tiene.
+        from libracommerce.erp.schema import crear_venta_links
+        from libracommerce.erp.ventas import repuntar_fk_ventas_pagos
+
+        crear_venta_links(conn)
+        repuntar_fk_ventas_pagos(conn)
         # La otra mitad de la normalizacion de grafias: caja, cuenta corriente,
         # egresos y recibos viven en ESTA base, que contra SQLite es un archivo
         # distinto del dominio. Ver `app/normalizacion_medios.py`.
@@ -94,93 +82,16 @@ def configure(db_path: str) -> None:
         db_caja.set_default_caja(caja_id)
 
 
-def get_arca_config() -> dict | None:
-    return db_arca_config.obtener_arca_config(EMPRESA)
-
-
-def set_arca_config(
-    cuit: str, punto_venta: int, clave_path: str, certificado_path: str,
-    ambiente: str = "homologacion",
-) -> dict:
-    if get_arca_config() is None:
-        db_arca_config.crear_arca_config(
-            EMPRESA, cuit, punto_venta, clave_path, certificado_path, ambiente,
-        )
-    else:
-        db_arca_config.actualizar_arca_config(
-            EMPRESA, cuit=cuit, punto_venta=punto_venta,
-            clave_path=clave_path, certificado_path=certificado_path, ambiente=ambiente,
-        )
-    return get_arca_config()
-
-
-def _tipo_comprobante(condicion_iva: str | None) -> int:
-    return TIPO_FACTURA_A if condicion_iva == "Responsable Inscripto" else TIPO_FACTURA_B
-
-
-def _split_iva(total: Decimal) -> tuple[Decimal, Decimal]:
-    """Asume `total` como monto final (IVA incluido) y separa subtotal/IVA
-    al 21% -- misma simplificacion documentada que medlibra/gestiolibra: no
-    contempla otras alicuotas ni exentos; a revisar con un contador antes
-    de facturar contra ARCA real."""
-    subtotal = (total / (Decimal("1") + _IVA_RATE)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    iva_amount = total - subtotal
-    return subtotal, iva_amount
-
-
-async def invoice_sale(customer_billing: dict | None, sale, referencia: str) -> dict:
-    """Emite una factura por el total de la venta -- un solo comprobante,
-    sin sena/saldo (a diferencia de invoice_appointment de medlibra/
-    gestiolibra): en un POS de retail la venta se cobra entera al
-    confirmar. No genera movimiento de caja -- eso es record_sale_payment,
-    llamado siempre, factures o no.
-    """
-    total = Decimal(str(sale.total))
-    arca_cfg = get_arca_config()
-    punto_venta = arca_cfg["punto_venta"] if arca_cfg else 1
-    condicion_iva = customer_billing.get("condicion_iva") if customer_billing else None
-    cuit = customer_billing.get("cuit") if customer_billing else None
-    razon = customer_billing.get("display_name") if customer_billing else "Consumidor Final"
-    tipo = _tipo_comprobante(condicion_iva)
-    subtotal, iva_amount = _split_iva(total)
-
-    numero, ta, arca_used = await arca_facturacion.get_next_numero_with_arca(punto_venta, tipo)
-    factura_id = db_facturas.create_factura(
-        tipo, punto_venta, numero, date.today().isoformat(),
-        cuit or "", razon or "",
-        IVA_CODES.get(condicion_iva, IVA_CODES["Consumidor Final"]),
-        [], float(subtotal), float(iva_amount), float(total),
-        # 🔴 Obligatorio desde LibraCore v1.71.0, y **sin default a propósito**:
-        # un comprobante emitido contra homologación trae CAE y numeración del
-        # WSFE de homologación. Sin marcarlo entra al Libro IVA del cliente y le
-        # rompe la correlatividad.
-        #
-        # Sale de `ambiente_de(arca_used)` —el MISMO `arca` con el que se acaba
-        # de pedir el número— y no de `get_arca_config()` leído aparte: dos
-        # lecturas dejarían la factura marcada con un ambiente distinto del que
-        # la numeró si el selector cambia en el medio. Además ese tercer valor
-        # no siempre es un dict —en dev es el string `"_dev_mock_"`— y
-        # `ambiente_de` es justamente quien sabe traducirlo.
-        ambiente=arca_facturacion.ambiente_de(arca_used),
-    )
-    factura = db_facturas.get_factura(factura_id)
-    return await arca_facturacion.solicitar_cae(factura_id, factura, ta, arca_used)
-
-
-def record_sale_payment(
-    sale, medio_pago: str, referencia: str, factura_id: int | None = None,
-    monto: Decimal | None = None, turno_id: int | None = None,
-) -> None:
-    """Movimiento de caja para una venta confirmada -- siempre, factures o
-    no. `create_caja_movimiento` es idempotente por (referencia,
-    factura_id), asi que reintentar con la misma referencia no duplica.
-
-    `monto` permite registrar un cobro parcial: en un pago mixto entra un
-    movimiento por medio y cada uno lleva lo suyo, no el total de la venta.
-    Sin `monto` (un solo medio) se registra el total, como siempre."""
-    db_caja.create_caja_movimiento(
-        date.today().isoformat(), "ingreso", f"Venta {sale.number}",
-        Decimal(str(sale.total)) if monto is None else Decimal(str(monto)),
-        referencia=referencia, factura_id=factura_id, medio_pago=medio_pago,
-        turno_id=turno_id,
-    )
+#: 🔴 Este módulo tenía `get_arca_config`/`set_arca_config`, `invoice_sale` y
+#: `record_sale_payment` -- del camino LEGADO (`POST /sales/{id}/confirm`,
+#: IVA fijo al 21%, retirado a 410 en F3, ver `app/routers/sales.py`). Sin
+#: caller: `GET`/`PUT /config/arca` los sirve `libracore.arca_router.
+#: build_arca_router` (montado en `app/main.py` con `empresa_por_defecto=
+#: billing.EMPRESA`, la única pieza de este módulo que sigue usando), que
+#: lee/escribe `libracore.db.arca_config` directo -- nunca llamó a estas dos
+#: funciones (sus tests, `test_get_arca_config_defaults_to_none`/`test_set_
+#: and_get_arca_config` en `tests/test_billing.py`, pegan sobre ese router
+#: por HTTP y siguen vivos igual). Facturar y anotar la caja de una venta
+#: nueva son `app/venta_facturacion.py` (D2/D6, `libracore.venta_
+#: facturacion`) y `libracommerce.erp.ventas.registrar_venta`,
+#: respectivamente. Borrado en F3 (2026-09-14, ADR-025).
