@@ -62,13 +62,20 @@ log "=== reset de $CONTENEDOR ==="
 # todas las noches. El orden correcto es conseguir el seed primero: si no esta,
 # no se borra nada.
 #
-# Sale de `origin/develop` y no del arbol de trabajo, que es de donde sale la
-# imagen que corre la demo — y asi da igual en que rama quede el checkout.
+# 🔴 **Sale de la IMAGEN que corre la demo, no de una rama.** Hasta el
+# 2026-09-15 salia de `origin/develop`, y esa noche la demo amanecio vacia: F3
+# del plan ERP entro a `develop` a las 02:13 con un seed que pide `is_default`
+# en `/locations`, la demo seguia en la imagen de `main` (sin ese campo), y el
+# seed murio con `StopIteration` DESPUES del `DROP SCHEMA`. Cualquier rama puede
+# estar adelante o atras de la imagen: la unica copia que coincide siempre con
+# el codigo que la va a recibir es la que viene adentro de la imagen
+# (`/app/scripts/seed_demo.py`, que el Dockerfile copia). Y se sigue sacando
+# ANTES de borrar: si la imagen no la trae, no se toca la base.
 SEED_LOCAL=/tmp/seed-ventalibra.py
-git -C /root/ventalibra fetch -q origin || { log "ABORTA: no se pudo hacer fetch de ventalibra."; exit 5; }
-git -C /root/ventalibra show origin/develop:scripts/seed_demo.py > "$SEED_LOCAL" || { log "ABORTA: no esta scripts/seed_demo.py en origin/develop."; exit 6; }
+docker exec "$CONTENEDOR" cat /app/scripts/seed_demo.py > "$SEED_LOCAL" || { log "ABORTA: la imagen de $CONTENEDOR no trae /app/scripts/seed_demo.py."; exit 6; }
 [ -s "$SEED_LOCAL" ] || { log "ABORTA: el seed salio vacio."; exit 7; }
-log "seed listo desde origin/develop ($(wc -l < "$SEED_LOCAL") lineas)"
+COMMIT_IMAGEN=$(docker image inspect --format '{{index .Config.Labels "org.libra.commit"}}' "$(docker inspect --format '{{.Image}}' "$CONTENEDOR")" 2>/dev/null || true)
+log "seed listo desde la imagen de $CONTENEDOR (commit ${COMMIT_IMAGEN:-?}, $(wc -l < "$SEED_LOCAL") lineas)"
 
 # --- 1. Base de cero ------------------------------------------------------
 # 🔴 Que sea "borrar los .db" depende del motor, y desde el corte a PostgreSQL
