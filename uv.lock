@@ -654,6 +654,11 @@ dependencies = [
     { name = "starlette" },
 ]
 
+[package.optional-dependencies]
+migrations = [
+    { name = "alembic" },
+]
+
 [[package]]
 name = "libracommerce"
 version = "0.16.4.dev4"
@@ -1316,7 +1321,7 @@ version = "0.1.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "libraauth" },
+    { name = "libraauth", extra = ["migrations"] },
     { name = "libracommerce", extra = ["erp", "migrations", "web"] },
     { name = "libracore", extra = ["migrations"] },
     { name = "sqlalchemy" },
@@ -1336,7 +1341,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.111,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
-    { name = "libraauth", git = "https://github.com/marianocappucci/libraauth.git?rev=v0.43.1" },
+    { name = "libraauth", extras = ["migrations"], git = "https://github.com/marianocappucci/libraauth.git?rev=v0.43.1" },
     { name = "libracommerce", extras = ["migrations", "erp", "web"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.16.4" },
     { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.102.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
