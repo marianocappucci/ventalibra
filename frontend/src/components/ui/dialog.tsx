@@ -57,6 +57,22 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-md rounded-lg",
+          // El tope de alto y su scroll viven ACA, no en cada pantalla: es el
+          // unico lugar por el que pasan todos los dialogos del producto,
+          // incluidos los de las pantallas que vienen de `libra-ui` --que
+          // importan `@/components/ui/dialog`, o sea ESTE archivo, resuelto por
+          // el alias del producto--.
+          //
+          // Lo que arregla: un dialogo mas alto que la ventana crecia sin tope,
+          // con el pie --donde estan Guardar y Cancelar-- fuera de la pantalla
+          // y sin scroll propio para alcanzarlo. El mismo arreglo ya estaba en
+          // LibraCargo, LibraClub y LibraDesk; aca faltaba.
+          //
+          // Un modal que necesite otra cosa lo sigue pudiendo pisar por
+          // `className`: `cn` es twMerge, asi que un `overflow-hidden` de una
+          // pantalla que arme su propio scroll interno le gana a este
+          // `overflow-y-auto`.
+          "max-h-[85vh] overflow-y-auto",
           className
         )}
         {...props}
