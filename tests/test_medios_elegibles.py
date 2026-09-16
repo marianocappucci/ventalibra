@@ -28,7 +28,7 @@ causó el medio y no otra cosa del cuerpo.
 """
 import pytest
 from libracore import medios_pago
-from ventas_helpers import hoy
+from ventas_helpers import caja_default, hoy
 
 from tests.test_billing import _confirmed_sale, _make_item, _make_location
 
@@ -91,7 +91,9 @@ def test_registrar_con_cualquier_elegible_pasa_la_validacion(admin_client, medio
     # como si fuera una colisión de numeración, con un mensaje engañoso
     # ("conflicto con otra venta simultánea" cuando en realidad el ítem no
     # existe).
-    admin_client.post("/shifts/open", json={"monto_inicial": 0})
+    admin_client.post(
+        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(admin_client)}
+    )
     assert _registrar(admin_client, medio).status_code == 422
     # Y confirma que fue POR EL ÍTEM, no por el medio: con un ítem real pasa.
     item_id = _make_item(admin_client)

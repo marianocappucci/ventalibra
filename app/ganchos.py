@@ -7,8 +7,10 @@ comercial, expresado como los puntos de extensión que declara
 
 - `numerador`: `POS-000001` contra la tabla `sequences` propia (D5: se
   mantiene el prefijo de siempre, ver ADR-005), no `V-00001`.
-- `turno_para`: el turno de caja es COMPARTIDO (`get_turno_activo_any`), no
-  uno por cajero -- mismo criterio que ya usaba `app/routers/sales.py`.
+- `turno_para`: el turno abierto de ESE usuario, en SU caja. Hasta el
+  2026-09-16 era compartido (`get_turno_activo_any`, una sola caja para toda
+  la instancia); con varias cajas por sucursal cada cajero tiene el suyo
+  (ver `app/routers/shifts.py`).
 - `cliente_cc_de`: traduce `customer_party_id` (`parties.id` de
   LibraCommerce) al `clients.id` de LibraCore por `external_ref = party-<id>`
   -- acá los dos ids NO coinciden (D3, ADR-025), a diferencia de Contalibra
@@ -41,17 +43,21 @@ def numerador(conn: Any) -> str:
     return f"POS-{next_sequence(conn, SECUENCIA_VENTA):06d}"
 
 
-def turno_para(conn: Any, usuario_id: int | None) -> dict | None:  # noqa: ARG001
-    """El turno abierto de la caja COMPARTIDA de este producto.
+def turno_para(conn: Any, usuario_id: int | None) -> dict | None:
+    """El turno abierto de ESE usuario.
 
-    `usuario_id` no se usa a propósito: a diferencia del default del motor
-    (turno por cajero, `get_turno_activo`), acá el turno es uno solo para
-    toda la instancia. `get_turno_activo_any()` abre su propia conexión de
-    lectura -- no acepta `conn=` como sí hace `get_turno_activo` -- así que
-    `conn` tampoco se usa acá; es una lectura del turno abierto, no una
-    escritura que necesite la transacción de la venta.
+    🔴 **Hasta el 2026-09-16 esto era `get_turno_activo_any()`** (el turno de
+    TODA la instancia, compartido): con un solo mostrador no importaba de
+    quién era. Con varias cajas por sucursal (cada local vendiendo a la vez)
+    eso mezclaba la plata de dos cajeros distintos en el mismo arqueo — es
+    exactamente el defecto que esta feature vino a cerrar. Ahora es el
+    default del motor (`get_turno_activo`, por cajero), con la misma `conn`
+    de la transacción de la venta: es lo que hace que el numerador, el pago y
+    el `turno_id` de la venta salgan todos de la misma foto.
     """
-    return db_turnos.get_turno_activo_any()
+    if not usuario_id:
+        return None
+    return db_turnos.get_turno_activo(int(usuario_id), conn=conn)
 
 
 def cliente_cc_de(conn: Any, venta: Any) -> int | None:

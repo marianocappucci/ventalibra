@@ -8,6 +8,8 @@ import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
 import { Catalogo } from './pages/Catalogo'
 import { Sucursales } from './pages/Sucursales'
+import { Cajas } from './pages/Cajas'
+import { CierreDiario } from './pages/CierreDiario'
 import { Proveedores } from './pages/Proveedores'
 import { Compras } from './pages/Compras'
 import { Clientes } from './pages/Clientes'
@@ -109,6 +111,24 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Sucursales />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cajas"
+        element={
+          <ProtectedRoute adminOnly>
+            <Cajas />
+          </ProtectedRoute>
+        }
+      />
+      {/* Admin y cajero (staff): el cierre diario lo puede hacer cualquiera
+          de los dos -- ver DECISIONS.md, la feature de cajas por sucursal. */}
+      <Route
+        path="/cierre-diario"
+        element={
+          <ProtectedRoute>
+            <CierreDiario />
           </ProtectedRoute>
         }
       />

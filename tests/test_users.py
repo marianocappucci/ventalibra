@@ -60,6 +60,7 @@ from fastapi.testclient import TestClient
 from libraauth.session_auth import SERVICE_TOKEN_ENV, SERVICE_TOKEN_HEADER
 from libraauth.testing import verificar_contrato_de_usuarios
 from motor_de_test import destino_dominio
+from ventas_helpers import caja_default
 
 from app.main import create_app
 
@@ -223,7 +224,9 @@ def test_borrar_a_un_usuario_con_turno_da_409(
     esa sesión y después el admin intenta borrar a ESE usuario."""
     victima_id = staff_client.get("/auth/me").json()["id"]
 
-    abierto = staff_client.post("/shifts/open", json={"monto_inicial": 100})
+    abierto = staff_client.post(
+        "/shifts/open", json={"monto_inicial": 100, "caja_id": caja_default(staff_client)}
+    )
     assert abierto.status_code == 200, abierto.text
 
     r = admin_client.delete(f"/users/{victima_id}")
