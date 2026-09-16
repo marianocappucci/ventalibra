@@ -153,7 +153,7 @@ dependencies = [
     # reemplaza a `app/routers/users.py` -- ver ese router. Trae ademas la
     # sesion de 8 h con renovacion deslizante (ADR-017), que llega gratis
     # porque `app/auth.py` reexporta las funciones del paquete sin envolverlas.
-    "libraauth @ git+https://github.com/marianocappucci/libraauth.git@v0.43.1",
+    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.43.1",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
