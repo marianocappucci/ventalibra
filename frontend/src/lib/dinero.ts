@@ -1,10 +1,10 @@
 /**
- * Formateo de montos en pesos. Consolida los `function money(...)` locales
- * que había repetidos en `CierreDiario.tsx`, `CuentasCorrientes.tsx`,
- * `Reportes.tsx`, `Catalogo.tsx` y `Pos.tsx` -- acá sólo el que puede recibir
- * un valor NEGATIVO (diferencia, saldo): los que sólo formatean importes que
- * nunca bajan de cero (precios, totales de venta) se dejan como estaban, sin
- * tocar su formato.
+ * Formateo de montos en pesos. `money()` reemplaza los locales de
+ * `CierreDiario.tsx`, `CuentasCorrientes.tsx`, `Reportes.tsx` y `Pos.tsx`
+ * (mismo formato), y `pesos()` se usa donde el valor puede ser NEGATIVO
+ * (diferencia, saldo). Los que sólo formatean importes que nunca bajan de
+ * cero en otras pantallas (precios en `Productos.tsx`, costos en Compras) se
+ * dejaron como estaban.
  *
  * Encontrado en la prueba en pantalla del 2026-09-17: con un negativo, un
  * `$` antepuesto a mano en el JSX + `money(v)` da `$-500,00` en vez de
