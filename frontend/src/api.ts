@@ -295,6 +295,11 @@ export type CierreDiario = {
   diferencia_total: number
   notas: string
   created_at: string
+  // "Reabrir día" (LibraCore v1.107.0): `anulado_en` puesto marca un cierre
+  // anulado -- ver `CierreDiario.tsx`, "Cierres anteriores".
+  anulado_en: string | null
+  anulado_por: number | null
+  motivo_anulacion: string | null
 }
 
 // Arqueo del turno: se calcula sobre los movimientos de caja, no sobre las

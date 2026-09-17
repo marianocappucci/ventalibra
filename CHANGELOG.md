@@ -5,6 +5,24 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Reabrir día: un admin puede anular un cierre diario, con motivo.**
+  Pedido del humano: en dev, una sucursal con el día cerrado no podía abrir
+  turno, y no había forma de destrabarla sin tocar la base a mano.
+  - LibraCore `v1.106.1` → `v1.107.0` (`libracore.db.cierre_diario.
+    reabrir_dia`, migración `0011_reabrir_cierre_diario`).
+    `POST /api/cierre-diario/{cierre_id}/reabrir` (body `{motivo}`) sólo se
+    monta porque `app/main.py` pasa `autorizar_reabrir=Depends(require_admin)`
+    -- **sólo admin**, a diferencia de cerrar el día, que sigue siendo
+    "admin o cajero" (`staff_or_admin`). 404 si el cierre no existe, 409 si ya
+    estaba anulado o si hay un cierre posterior activo de la misma sucursal,
+    422 con motivo vacío.
+  - `listar_cierres`/`get_cierre` suman `anulado_en`, `anulado_por`,
+    `motivo_anulacion`; `preview.ya_cerrado` ignora los cierres anulados, así
+    que reabrir el día destraba la apertura de turnos de inmediato.
+  - En Cierre diario, «Cierres anteriores» muestra un cierre anulado con
+    badge «Anulado» y quién/cuándo/por qué lo reabrió; uno activo tiene un
+    botón «Reabrir día» **visible sólo para admin**, con diálogo de motivo
+    obligatorio.
 - **Se puede editar una sucursal, y el POS deja claro cómo elegir en cuál
   trabajar.** Sucursales se podían crear pero no modificar, y no había forma
   visible de elegir sobre cuál operar -- eso último ya se resolvía al abrir

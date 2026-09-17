@@ -3,6 +3,7 @@
 // DECISIONS.md, feature de cajas por sucursal.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type Location, type ShiftState } from '../api'
+import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,6 +25,11 @@ function describeError(err: unknown): string {
 }
 
 export function CierreDiario() {
+  // Reabrir día (LibraCore v1.107.0) es sólo de admin -- el backend ya lo
+  // exige (`autorizar_reabrir=Depends(require_admin)` en app/main.py), esto
+  // es sólo para no ofrecer un botón que va a dar 403.
+  const { user } = useAuth()
+  const esAdmin = user?.role === 'admin'
   const [locations, setLocations] = useState<Location[]>([])
   const [sucursalId, setSucursalId] = useState<string>('')
   const [preview, setPreview] = useState<CierreDiarioPreview | null>(null)
@@ -37,6 +43,14 @@ export function CierreDiario() {
   // cierre reusara `error` -- el diálogo sigue abierto y la tarjeta de atrás
   // quedaría mostrando el mismo texto, duplicado en el DOM.
   const [errorCierre, setErrorCierre] = useState<string | null>(null)
+
+  // Reapertura: qué cierre se está reabriendo (null = diálogo cerrado),
+  // motivo obligatorio y su propio error -- mismo criterio que `errorCierre`,
+  // separado para no pisar el mensaje del diálogo de cierre.
+  const [reabriendo, setReabriendo] = useState<CierreDiarioRow | null>(null)
+  const [motivoReabrir, setMotivoReabrir] = useState('')
+  const [reabriendoEnCurso, setReabriendoEnCurso] = useState(false)
+  const [errorReabrir, setErrorReabrir] = useState<string | null>(null)
 
   // Preselecciona la sucursal del turno/caja del usuario, si tiene uno.
   useEffect(() => {
@@ -95,6 +109,22 @@ export function CierreDiario() {
       setErrorCierre(describeError(err))
     } finally {
       setCerrando(false)
+    }
+  }
+
+  async function confirmarReabrir() {
+    if (!reabriendo || !motivoReabrir.trim()) return
+    setReabriendoEnCurso(true)
+    setErrorReabrir(null)
+    try {
+      await api.post(`/api/cierre-diario/${reabriendo.id}/reabrir`, { motivo: motivoReabrir.trim() })
+      setReabriendo(null)
+      setMotivoReabrir('')
+      await cargar()
+    } catch (err) {
+      setErrorReabrir(describeError(err))
+    } finally {
+      setReabriendoEnCurso(false)
     }
   }
 
@@ -193,15 +223,26 @@ export function CierreDiario() {
               <div>
                 <span className="font-medium">Cierre #{c.numero}</span>
                 <span className="ml-2 text-muted-foreground">{fecha(c.fecha)} · {nombreSucursal(c.sucursal_id)}</span>
+                {c.anulado_en && <BadgeEstado tono="negativo" className="ml-2">Anulado</BadgeEstado>}
                 <p className="text-xs text-muted-foreground">
                   Cerrado por {c.cerrado_por_nombre} el {fechaHora(c.created_at)}
                 </p>
+                {c.anulado_en && (
+                  <p className="text-xs text-muted-foreground">
+                    Reabierto el {fechaHora(c.anulado_en)}: {c.motivo_anulacion}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="tabular-nums">${money(c.monto_declarado_total)}</span>
                 <Button size="sm" variant="outline" onClick={() => abrirTicket(`/api/cierre-diario/${c.id}/ticket`)}>
                   <Printer />Imprimir ticket
                 </Button>
+                {!c.anulado_en && esAdmin && (
+                  <Button size="sm" variant="outline" onClick={() => setReabriendo(c)}>
+                    Reabrir día
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -216,7 +257,7 @@ export function CierreDiario() {
           <DialogHeader><DialogTitle>Confirmar cierre del día</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
             Se cierra {fecha(preview?.fecha ?? '')} para {nombreSucursal(sucursalId ? Number(sucursalId) : null)}.
-            No se puede deshacer.
+            Sólo un administrador puede reabrirlo.
           </p>
           <textarea
             className="min-h-16 rounded-md border p-2 text-sm"
@@ -229,6 +270,35 @@ export function CierreDiario() {
             <Button variant="outline" onClick={() => setConfirmando(false)}>Cancelar</Button>
             <Button onClick={confirmarCierre} disabled={cerrando}>
               {cerrando ? 'Cerrando…' : 'Confirmar cierre'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={reabriendo !== null}
+        onOpenChange={(o) => { if (!o) { setReabriendo(null); setMotivoReabrir(''); setErrorReabrir(null) } }}
+      >
+        <DialogContent>
+          <DialogHeader><DialogTitle>Reabrir día</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Se anula el cierre #{reabriendo?.numero} del {fecha(reabriendo?.fecha ?? '')}. Queda registrado
+            quién lo reabrió y por qué, y se van a poder volver a abrir turnos ese día.
+          </p>
+          <textarea
+            className="min-h-16 rounded-md border p-2 text-sm"
+            placeholder="Motivo (obligatorio)"
+            value={motivoReabrir}
+            onChange={(e) => setMotivoReabrir(e.target.value)}
+          />
+          {errorReabrir && <p className="text-sm text-destructive">{errorReabrir}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReabriendo(null)}>Cancelar</Button>
+            <Button
+              onClick={confirmarReabrir}
+              disabled={reabriendoEnCurso || !motivoReabrir.trim()}
+            >
+              {reabriendoEnCurso ? 'Reabriendo…' : 'Reabrir día'}
             </Button>
           </DialogFooter>
         </DialogContent>

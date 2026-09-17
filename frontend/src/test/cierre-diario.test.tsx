@@ -1,9 +1,18 @@
 // Pantalla de Cierre diario (2026-09-16): preview del día, turnos abiertos
-// que bloquean, confirmación al cerrar y listado con ticket.
-import { render, screen, waitFor } from '@testing-library/react'
+// que bloquean, confirmación al cerrar y listado con ticket. Reabrir día
+// (2026-09-17, LibraCore v1.107.0) se sumó acá mismo: sólo admin, motivo
+// obligatorio y el anulado se ve en el historial.
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// El rol de la sesión, cambiable por test -- mismo patrón que
+// `sucursales.test.tsx`: "Reabrir día" es sólo de admin.
+const sesion = vi.hoisted(() => ({ rol: 'admin' }))
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', username: 'u', name: 'U', role: sesion.rol }, loading: false }),
+}))
 
 import { CierreDiario } from '../pages/CierreDiario'
 
@@ -52,7 +61,23 @@ const PREVIEW_CON_FALTANTE = {
   diferencia_total: -500,
 }
 
-function montarRed(opciones: { preview?: unknown; cerrarStatus?: number; cerrarBody?: unknown } = {}) {
+const CIERRE_ACTIVO = {
+  id: 1, sucursal_id: 1, numero: 1, fecha: '2026-09-16', usuario_id: 1,
+  cerrado_por_nombre: 'Admin', monto_esperado_total: 5000, monto_declarado_total: 5000,
+  diferencia_total: 0, notas: '', created_at: '2026-09-16T20:00:00',
+  anulado_en: null, anulado_por: null, motivo_anulacion: null,
+}
+
+const CIERRE_ANULADO = {
+  ...CIERRE_ACTIVO,
+  id: 2, numero: 2,
+  anulado_en: '2026-09-17T09:00:00', anulado_por: 1, motivo_anulacion: 'Faltaba abrir turno',
+}
+
+function montarRed(opciones: {
+  preview?: unknown; cerrarStatus?: number; cerrarBody?: unknown
+  historial?: unknown[]; reabrirStatus?: number; reabrirBody?: unknown
+} = {}) {
   const llamadas: { metodo: string; url: string; body: unknown }[] = []
 
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -67,7 +92,10 @@ function montarRed(opciones: { preview?: unknown; cerrarStatus?: number; cerrarB
     if (u.endsWith('/api/cierre-diario/cerrar') && metodo === 'POST') {
       return Promise.resolve(json(opciones.cerrarBody ?? { id: 1 }, opciones.cerrarStatus ?? 200))
     }
-    if (u.match(/\/api\/cierre-diario\?/)) return Promise.resolve(json([]))
+    if (u.match(/\/api\/cierre-diario\/\d+\/reabrir$/) && metodo === 'POST') {
+      return Promise.resolve(json(opciones.reabrirBody ?? CIERRE_ANULADO, opciones.reabrirStatus ?? 200))
+    }
+    if (u.match(/\/api\/cierre-diario\?/)) return Promise.resolve(json(opciones.historial ?? []))
     return Promise.resolve(json([]))
   })
 
@@ -81,6 +109,7 @@ function montar() {
 
 beforeEach(() => {
   vi.useRealTimers()
+  sesion.rol = 'admin'
 })
 
 describe('Cierre diario', () => {
@@ -147,5 +176,82 @@ describe('Cierre diario', () => {
 
     await screen.findByText('-$500,00')
     expect(screen.queryByText('$-500,00')).not.toBeInTheDocument()
+  })
+
+  // ── Reabrir día (2026-09-17) ────────────────────────────────────────────
+
+  it('el admin ve «Reabrir día» en un cierre activo y no en uno anulado', async () => {
+    montarRed({ preview: PREVIEW_LISTO, historial: [CIERRE_ACTIVO, CIERRE_ANULADO] })
+    montar()
+
+    await screen.findByText('Cierre #1')
+    expect(screen.getAllByRole('button', { name: /Reabrir día/ }).length).toBe(1)
+  })
+
+  it('el staff no ve «Reabrir día»', async () => {
+    sesion.rol = 'staff'
+    montarRed({ preview: PREVIEW_LISTO, historial: [CIERRE_ACTIVO] })
+    montar()
+
+    await screen.findByText('Cierre #1')
+    expect(screen.queryByRole('button', { name: /Reabrir día/ })).toBeNull()
+  })
+
+  it('un cierre anulado muestra el badge «Anulado» y el motivo', async () => {
+    montarRed({ preview: PREVIEW_LISTO, historial: [CIERRE_ANULADO] })
+    montar()
+
+    await screen.findByText('Anulado')
+    expect(screen.getByText(/Faltaba abrir turno/)).toBeInTheDocument()
+  })
+
+  it('reabrir manda el POST con el motivo y recarga', async () => {
+    const { llamadas } = montarRed({ preview: PREVIEW_LISTO, historial: [CIERRE_ACTIVO] })
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole('button', { name: /Reabrir día/ }))
+    const dialogo = await screen.findByRole('dialog')
+
+    await user.type(within(dialogo).getByPlaceholderText('Motivo (obligatorio)'), 'Faltaba abrir turno')
+    await user.click(within(dialogo).getByRole('button', { name: /^Reabrir día$/ }))
+
+    await waitFor(() => {
+      const post = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/cierre-diario/1/reabrir'))
+      expect(post).toBeDefined()
+      expect(post!.body).toEqual({ motivo: 'Faltaba abrir turno' })
+    })
+  })
+
+  it('con el motivo vacío, el botón de confirmar queda deshabilitado', async () => {
+    montarRed({ preview: PREVIEW_LISTO, historial: [CIERRE_ACTIVO] })
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole('button', { name: /Reabrir día/ }))
+    const dialogo = await screen.findByRole('dialog')
+
+    const confirmar = within(dialogo).getByRole('button', { name: /^Reabrir día$/ })
+    expect(confirmar).toBeDisabled()
+
+    await user.type(within(dialogo).getByPlaceholderText('Motivo (obligatorio)'), '   ')
+    expect(confirmar).toBeDisabled()
+  })
+
+  it('un 409 al reabrir (cierre posterior activo) se muestra en el diálogo', async () => {
+    montarRed({
+      preview: PREVIEW_LISTO, historial: [CIERRE_ACTIVO],
+      reabrirStatus: 409,
+      reabrirBody: { detail: 'La sucursal ya tiene el cierre #2, posterior al 16-09-2026.' },
+    })
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole('button', { name: /Reabrir día/ }))
+    const dialogo = await screen.findByRole('dialog')
+    await user.type(within(dialogo).getByPlaceholderText('Motivo (obligatorio)'), 'Faltaba abrir turno')
+    await user.click(within(dialogo).getByRole('button', { name: /^Reabrir día$/ }))
+
+    await within(dialogo).findByText(/posterior al 16-09-2026/)
   })
 })
