@@ -5,6 +5,16 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **«Catálogo» pasa a llamarse «Productos», y «Unidades» se muda a
+  Configuración.** La pestaña «Unidades» que tenía esa pantalla ahora es una
+  sección propia de Configuración («Unidades de medida») — el alta de un
+  producto las sigue necesitando, así que Productos las sigue cargando, sólo
+  que ya no las muestra. `/catalogo` redirige a `/productos` (mismo patrón que
+  las redirecciones de Configuración). Los endpoints `/catalog/*` no cambian.
+  Como Configuración es sólo de admin, la pantalla de unidades deja de verse
+  para el cajero (staff).
+- **La pantalla de venta del mostrador pasa a llamarse «POS (Caja)»** en el
+  menú lateral. La ruta (`/pos`) y la pantalla en sí no cambian.
 - **Compras al 100% del ancho, con la recepción de mercadería DENTRO de la
   orden.** El listado de órdenes de compra dejó la grilla al 50% con el
   detalle desplegado al costado: ahora es una tabla completa, igual que el
