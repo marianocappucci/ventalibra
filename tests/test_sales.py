@@ -10,7 +10,16 @@ arqueo se portan porque no dependían de CÓMO se armó la venta, sólo de qué
 quedó cobrado.
 """
 import pytest
-from ventas_helpers import abrir_turno, con_stock, crear_item, deposito_default, hoy, registrar_venta, stock
+from ventas_helpers import (
+    abrir_turno,
+    caja_default,
+    con_stock,
+    crear_item,
+    deposito_default,
+    hoy,
+    registrar_venta,
+    stock,
+)
 
 
 def _make_item(client, name="Fideos 500g", price="1500.00"):
@@ -332,7 +341,9 @@ def test_cobrar_sin_turno_abierto_es_rechazado(admin_client):
 
 def test_no_se_puede_abrir_un_turno_sobre_otro(admin_client):
     abrir_turno(admin_client)
-    segundo = admin_client.post("/shifts/open", json={"monto_inicial": 100})
+    segundo = admin_client.post(
+        "/shifts/open", json={"monto_inicial": 100, "caja_id": caja_default(admin_client)}
+    )
     assert segundo.status_code == 409
 
 

@@ -5,6 +5,19 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Varias cajas por sucursal, turno por cajero y por caja, y cierre diario**
+  (ver DECISIONS.md ADR-026). Hasta ahora había una sola caja para toda la
+  instancia y el turno era compartido (`get_turno_activo_any`): con dos
+  locales vendiendo a la vez eso mezclaba la plata de los dos cajeros en el
+  mismo arqueo. Ahora cada sucursal tiene sus propias cajas (con su propio
+  punto de venta de ARCA), el turno es del usuario y de la caja donde abrió,
+  y una caja no admite dos turnos abiertos a la vez. Pantallas nuevas «Cajas»
+  (admin) y «Cierre diario» (admin y cajero, con ticket de 80 mm); el POS fija
+  la sucursal a la de la caja del turno mientras hay uno abierto. El arranque
+  reasigna las cajas huérfanas y le crea su primera caja a toda sucursal que
+  no tenga (incluida una nueva, al darla de alta) — idempotente, no rompe
+  instancias existentes con turnos abiertos sin caja. Pin de `libracore`
+  actualizado a v1.104.0.
 - **La pantalla dice de qué ambiente es el token de MercadoPago**: `Ambiente de
   prueba`, `Ambiente de producción` o `Ambiente sin verificar`, con la fecha en
   que se determinó. 🔴 MercadoPago **no tiene homologación como ARCA** — no hay

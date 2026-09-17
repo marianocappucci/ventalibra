@@ -185,6 +185,9 @@ export type Location = {
   is_default: boolean
 }
 
+export type ShiftCaja = { id: number; nombre: string; punto_venta: number | null }
+export type ShiftSucursal = { id: number; nombre: string }
+
 export type Shift = {
   id: number
   usuario_id: number
@@ -196,6 +199,84 @@ export type Shift = {
   monto_esperado_cierre: number | null
   estado: 'abierto' | 'cerrado'
   notas: string
+  caja_id: number | null
+  /** `null` en un turno viejo, de antes de la feature de cajas por sucursal
+   *  (2026-09-16), o sin caja asignada. */
+  caja: ShiftCaja | null
+  sucursal: ShiftSucursal | null
+}
+
+// ── Cajas por sucursal (2026-09-16) ───────────────────────────────────────
+
+export type Caja = {
+  id: number
+  nombre: string
+  descripcion: string
+  medios_pago: string[]
+  punto_venta: number | null
+  activo: boolean
+  es_default: boolean
+  sucursal_id: number | null
+  /** Si ya hay un turno abierto en esta caja (de cualquier usuario) -- el POS
+   *  la excluye del selector al abrir turno. */
+  tiene_turno_abierto: boolean
+}
+
+export type CajaEntrada = {
+  nombre: string
+  descripcion?: string
+  medios_pago: string[]
+  punto_venta?: number | null
+}
+
+export type CajaAlta = CajaEntrada & { sucursal_id: number }
+export type CajaEdicion = CajaEntrada & { activo: boolean }
+
+// ── Cierre diario (2026-09-16) ─────────────────────────────────────────────
+
+export type CierreDiarioMedio = { medio_pago: string; ingresos: number; egresos: number; neto: number }
+
+export type CierreDiarioTurnoPreview = {
+  id: number
+  usuario_id: number
+  usuario_nombre: string
+  caja_id: number | null
+  caja_nombre: string | null
+  apertura: string
+  cierre: string | null
+  estado: 'abierto' | 'cerrado'
+  monto_inicial: number
+  monto_esperado_cierre: number | null
+  monto_declarado_cierre: number | null
+  diferencia: number
+  medios: CierreDiarioMedio[]
+}
+
+export type CierreDiarioPreview = {
+  fecha: string
+  sucursal_id: number | null
+  turnos_abiertos: CierreDiarioTurnoPreview[]
+  turnos: CierreDiarioTurnoPreview[]
+  medios: CierreDiarioMedio[]
+  monto_esperado_total: number
+  monto_declarado_total: number
+  diferencia_total: number
+  puede_cerrar: boolean
+  ya_cerrado: boolean
+}
+
+export type CierreDiario = {
+  id: number
+  sucursal_id: number | null
+  numero: number
+  fecha: string
+  usuario_id: number
+  cerrado_por_nombre: string
+  monto_esperado_total: number
+  monto_declarado_total: number
+  diferencia_total: number
+  notas: string
+  created_at: string
 }
 
 // Arqueo del turno: se calcula sobre los movimientos de caja, no sobre las

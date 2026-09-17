@@ -31,7 +31,7 @@ import re
 import zlib
 from datetime import UTC, datetime, timedelta, timezone
 
-from ventas_helpers import hoy
+from ventas_helpers import caja_default, hoy
 
 #: America/Argentina/Buenos_Aires, UTC-3 fijo -- mismo criterio que
 #: `app/services/sales.py`/`app/services/tickets.py`.
@@ -39,7 +39,9 @@ _AR = timezone(timedelta(hours=-3))
 
 
 def _abrir_turno(client):
-    abierto = client.post("/shifts/open", json={"monto_inicial": 0})
+    abierto = client.post(
+        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(client)}
+    )
     assert abierto.status_code == 200, abierto.text
 
 

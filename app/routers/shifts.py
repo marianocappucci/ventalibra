@@ -1,21 +1,62 @@
 """Turno de caja del POS.
 
 El turno es lo que hace que el arqueo cierre: sin uno abierto no se puede
-cobrar (ver sales.confirm_sale), porque una venta fuera de turno es plata que
-queda afuera de todo control de caja.
+cobrar (ver libracommerce.web.ventas_router, `exigir_turno=True` en
+app/main.py), porque una venta fuera de turno es plata que queda afuera de
+todo control de caja.
+
+🔴 **Desde la feature de cajas por sucursal (2026-09-16) el turno es POR
+USUARIO Y POR CAJA, no compartido.** Hasta esa fecha toda la instancia tenía
+un único mostrador y el turno era uno solo para todos (`get_turno_activo_any`,
+ver `app/ganchos.py`): con dos locales vendiendo a la vez eso mezclaba la
+plata de los dos. Ahora cada cajero abre turno en UNA caja, y esa caja no
+admite un segundo turno mientras el primero siga abierto — la valida este
+router, no el motor (ver `app/services/cajas.py::turno_abierto_de`: ni
+siquiera LibraClub, la otra instancia con cajas múltiples, impone esa regla).
 
 Se apoya en `libracore.db.turnos`, pero con la variante que arquea sobre
 `caja_movimientos` (`get_resumen_turno_caja`/`cerrar_turno_caja`, LibraCore
 v0.27.0) en vez de sobre la tabla `ventas` de LibraCore: las ventas de este
 producto viven en LibraCommerce, en OTRA base, asi que el resumen clasico le
 daria siempre cero.
+
+⚠️ **Pendiente de motor: nada valida que `deposito_id` de `POST /api/ventas`
+sea la sucursal de la caja del turno.** Se investigó activamente si había
+forma de agregarlo sin tocar el motor:
+
+- `VentaPayload.deposito_id` (`libracommerce/web/ventas_router.py:114-126`)
+  es un campo del payload que el cliente HTTP declara libremente; el router
+  sólo lo pasa a `crear_venta_directa`, sin cruzarlo contra el turno.
+- `libracommerce.erp.hooks.Hooks` (`libracommerce/erp/hooks.py`) no tiene
+  ningún gancho de validación de la venta ANTES de escribir — el único que
+  corre con la venta ya armada es `al_confirmar_venta`, y a esa altura
+  (`erp/ventas.py::registrar_venta`, línea ~317) el `deposito_id` que se
+  declaró ni siquiera se persiste en el dict de la venta (sólo se usa,
+  transitoriamente, para resolver el `location_id` de `stock_movements`):
+  no hay de dónde leerlo para comparar.
+- Levantar algo desde ese gancho tampoco resolvería un 422 limpio sin
+  reusar `erp.catalogo.DepositoInexistente` con un mensaje que mentiría
+  ("no existe" cuando el depósito SÍ existe, es de otra sucursal).
+
+Por eso la validación es de **frontend**, no de este backend: el POS
+(`frontend/src/pages/Pos.tsx`) fija la sucursal a la de la caja del turno
+apenas hay uno abierto (sin selector) y manda siempre ESE `deposito_id` — ver
+el comentario largo ahí, junto al `useEffect` que sincroniza `locationId`
+con `turno.sucursal`. Queda afuera de esta tarea (y se reporta así) tocar el
+motor para agregar el hook -- lo natural sería una función
+`validar_deposito_de_turno(conn, turno, deposito_id)` invocada al principio
+de `registrar_venta`, junto al `validar_deposito` que ya está ahí.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from libracore.db import caja as db_caja
 from libracore.db import turnos as db_turnos
+from libracore.db.cierre_diario import DiaCerradoError
 from pydantic import BaseModel
 
 from ..auth import get_current_user
+from ..services import cajas as cajas_service
 from ..services.cuenta_corriente import MEDIO_CUENTA_CORRIENTE
+from ..services.locations import LocationService
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -42,10 +83,38 @@ def _sin_fiado(resumen: dict) -> dict:
     return {**resumen, "pagos_por_medio": pagos, "total_ventas": sum(pagos.values())}
 
 
+def _enriquecer(turno: dict, request: Request) -> dict:
+    """El turno con la caja y la sucursal donde está abierto, para que el POS
+    no tenga que resolverlas por su cuenta.
+
+    Turnos viejos sin `caja_id` (los que había antes de esta feature, o
+    turnos de productos sin cajas múltiples) devuelven `caja`/`sucursal` en
+    `None` — no rompen nada, sólo no tienen dónde mostrarlas."""
+    caja = db_caja.get_caja_config(turno["caja_id"]) if turno.get("caja_id") else None
+    sucursal = None
+    if caja and caja.get("sucursal_id") is not None:
+        loc = LocationService(request.app.state.conn).get(caja["sucursal_id"])
+        if loc:
+            sucursal = {"id": loc.id, "nombre": loc.name}
+    return {
+        **turno,
+        "caja": (
+            {"id": caja["id"], "nombre": caja["nombre"], "punto_venta": caja.get("punto_venta")}
+            if caja else None
+        ),
+        "sucursal": sucursal,
+    }
+
+
 class ShiftOpen(BaseModel):
     # Lo que hay en el cajon al empezar: es la base contra la que se arquea.
     monto_inicial: float = 0
     notas: str = ""
+    #: Sobre qué mostrador se abre. Obligatorio: en VentaLibra toda venta
+    #: sale de una caja de una sucursal, así que un turno sin caja no es un
+    #: caso que el POS pueda pedir — sólo puede EXISTIR de antes (ver el
+    #: docstring del módulo).
+    caja_id: int
 
 
 class ShiftClose(BaseModel):
@@ -55,36 +124,68 @@ class ShiftClose(BaseModel):
 
 
 @router.get("/current")
-def turno_actual():
-    """Turno abierto, o null. El POS lo consulta al arrancar para saber si
-    puede vender o tiene que pedir apertura."""
-    turno = db_turnos.get_turno_activo_any()
+def turno_actual(request: Request, user: dict = Depends(get_current_user)):
+    """Turno abierto de QUIEN PIDE, o null. El POS lo consulta al arrancar
+    para saber si puede vender o tiene que pedir apertura.
+
+    🔴 Antes era `get_turno_activo_any()` (el turno de TODA la instancia,
+    compartido). Con varias cajas por sucursal cada cajero tiene el suyo."""
+    turno = db_turnos.get_turno_activo(int(user["id"]))
     if not turno:
         return {"turno": None}
-    return {"turno": turno, "resumen": _sin_fiado(db_turnos.get_resumen_turno_caja(turno["id"]))}
+    return {
+        "turno": _enriquecer(turno, request),
+        "resumen": _sin_fiado(db_turnos.get_resumen_turno_caja(turno["id"])),
+    }
 
 
 @router.post("/open")
-def abrir_turno(data: ShiftOpen, user: dict = Depends(get_current_user)):
-    abierto = db_turnos.get_turno_activo_any()
-    if abierto:
+def abrir_turno(data: ShiftOpen, request: Request, user: dict = Depends(get_current_user)):
+    caja = db_caja.get_caja_config(data.caja_id)
+    if caja is None:
+        raise HTTPException(404, "La caja no existe.")
+    if not caja.get("activo", True):
+        raise HTTPException(422, f"La caja {caja['nombre']!r} está dada de baja.")
+
+    propio = db_turnos.get_turno_activo(int(user["id"]))
+    if propio:
         # No se abre uno nuevo encima de otro: el arqueo del primero quedaria
         # partido y ninguno de los dos cerraria bien.
-        raise HTTPException(409, f"ya hay un turno abierto (#{abierto['id']})")
-    tid = db_turnos.create_turno(int(user["id"]), data.monto_inicial, data.notas)
-    return {"turno": db_turnos.get_turno(tid)}
+        raise HTTPException(409, f"ya tenés un turno abierto (#{propio['id']})")
+
+    ajeno = cajas_service.turno_abierto_de(data.caja_id)
+    if ajeno:
+        raise HTTPException(
+            409,
+            f"la caja {caja['nombre']!r} ya tiene un turno abierto de "
+            f"{ajeno['usuario_nombre']!r} (#{ajeno['id']})",
+        )
+
+    try:
+        tid = db_turnos.create_turno(int(user["id"]), data.monto_inicial, data.notas,
+                                     caja_id=data.caja_id)
+    except DiaCerradoError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"turno": _enriquecer(db_turnos.get_turno(tid), request)}
 
 
 @router.get("/{turno_id}/summary")
-def resumen(turno_id: int):
+def resumen(turno_id: int, request: Request):
     turno = db_turnos.get_turno(turno_id)
     if not turno:
         raise HTTPException(404, "turno no encontrado")
-    return {"turno": turno, "resumen": _sin_fiado(db_turnos.get_resumen_turno_caja(turno_id))}
+    return {
+        "turno": _enriquecer(turno, request),
+        "resumen": _sin_fiado(db_turnos.get_resumen_turno_caja(turno_id)),
+    }
 
 
 @router.post("/{turno_id}/close")
-def cerrar(turno_id: int, data: ShiftClose):
+def cerrar(turno_id: int, data: ShiftClose, request: Request):
+    """Cierra el turno. Quién puede: **sin restricción propia** — así estaba
+    antes de esta feature (cualquiera con sesión de staff/admin podía cerrar
+    cualquier turno, no sólo el suyo) y se conserva tal cual: achicarlo a
+    "dueño o admin" es un cambio de permisos que no pidió esta tarea."""
     turno = db_turnos.get_turno(turno_id)
     if not turno:
         raise HTTPException(404, "turno no encontrado")
@@ -95,9 +196,9 @@ def cerrar(turno_id: int, data: ShiftClose):
     # cerrar ya no puede reconstruirlo en pantalla.
     resumen_final = _sin_fiado(db_turnos.get_resumen_turno_caja(turno_id))
     cerrado = db_turnos.cerrar_turno_caja(turno_id, data.monto_declarado, data.notas)
-    return {"turno": cerrado, "resumen": resumen_final}
+    return {"turno": _enriquecer(cerrado, request), "resumen": resumen_final}
 
 
 @router.get("")
-def listar(limit: int = 30):
-    return db_turnos.get_all_turnos(limit=limit)
+def listar(request: Request, limit: int = 30):
+    return [_enriquecer(t, request) for t in db_turnos.get_all_turnos(limit=limit)]
