@@ -177,6 +177,22 @@ function parseMonto(texto: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
+/** Parsea la cantidad que el cajero tipea a mano para una línea del carrito.
+ *  Mismo criterio que `parseMonto` —`null` antes que un 0 silencioso—, con
+ *  una regla propia: la cantidad puede ser un peso (`1,250` kg), así que la
+ *  coma o el punto son siempre decimales y NO hay separador de miles (nadie
+ *  vende "1.500" unidades tipeándolas; "1.500" kg es un kilo y medio). Tiene
+ *  que ser mayor a 0: para sacar un producto está «Quitar».
+ *
+ *  Devuelve la cantidad normalizada con punto, que es como la guarda
+ *  `CartLine.qty`. */
+function parseCantidad(texto: string): string | null {
+  const t = texto.trim()
+  if (!/^\d+([.,]\d+)?$/.test(t)) return null
+  const normalizada = t.replace(',', '.')
+  return Number(normalizada) > 0 ? normalizada : null
+}
+
 /** `3 * 7790123456` => cantidad 3, codigo 7790123456. Es el gesto que el
  *  cajero ya conoce de cualquier supermercado: multiplicador y despues el
  *  producto, sin tocar un campo aparte. */
@@ -375,6 +391,12 @@ export function Pos() {
     if (!texto) return
     const { cantidad, resto } = parseMultiplicador(texto)
     if (!resto) return
+    // `0 * 7790123456` pasaba el regex y entraba una línea con cantidad 0,
+    // que viajaba así al registrar la venta.
+    if (Number(cantidad) <= 0) {
+      setError('La cantidad tiene que ser mayor a 0.')
+      return
+    }
 
     setBusy(true)
     setError(null)
@@ -803,26 +825,37 @@ function CambiarCantidad({ linea, onAceptar, onCerrar }: {
   onCerrar: () => void
 }) {
   const [valor, setValor] = useState(String(Number(linea.qty)))
+  // 🔴 Antes se aceptaba cualquier texto: «a3» quedaba en el carrito y
+  // `itemsPayload` lo mandaba como `qty: 0` (`Number(x) || 0`), en silencio.
+  // Mismo defecto que el «Efectivo contado» del cierre de turno.
+  const cantidad = parseCantidad(valor)
+  const invalida = valor.trim() !== '' && cantidad === null
   return (
     <Dialog open onOpenChange={(o) => !o && onCerrar()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader><DialogTitle>{linea.nombre}</DialogTitle></DialogHeader>
         <form
-          onSubmit={(e) => { e.preventDefault(); onAceptar(valor) }}
+          onSubmit={(e) => { e.preventDefault(); if (cantidad !== null) onAceptar(cantidad) }}
           className="grid gap-3"
         >
           <div className="grid gap-2">
             <Label htmlFor="cantidad-nueva">Cantidad</Label>
             <Input
               id="cantidad-nueva" value={valor} autoFocus
+              aria-invalid={invalida || undefined}
               onChange={(e) => setValor(e.target.value)}
               onFocus={(e) => e.target.select()}
               className="h-12 text-lg"
             />
+            {invalida && (
+              <p className="text-sm text-destructive" role="alert">
+                Cantidad inválida: tiene que ser un número mayor a 0 (ej. 3 o 1,250).
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCerrar}>Cancelar</Button>
-            <Button type="submit">Aceptar</Button>
+            <Button type="submit" disabled={cantidad === null}>Aceptar</Button>
           </DialogFooter>
         </form>
       </DialogContent>
