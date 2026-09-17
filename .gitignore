@@ -6,6 +6,11 @@ data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
+# `data/` entera: además de las bases SQLite de antes, ahí cae `DATA_DIR` por
+# defecto (`./data`), y con él `data/backups/`, que son ZIP con el dump de la
+# base. Medido: no hay nada versionado en `data/` (`git ls-files data/` vacío).
+# Anclada a la raíz para no esconder una carpeta `data/` de otro lado.
+/data/
 .env
 
 # Datos por cliente (generados por scripts/nuevo_cliente.py, mismo patrón

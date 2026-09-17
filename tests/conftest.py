@@ -41,6 +41,14 @@ def _dev_env(monkeypatch, tmp_path):
     from libracore import config_manager
     monkeypatch.setattr(config_manager, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(config_manager, "LOGO_DIR", str(tmp_path / "logos"))
+    # Con la base en PostgreSQL la carpeta de backups sale de `DATA_DIR`
+    # (`app.main._carpeta_de_backups`), y sin la variable cae en
+    # `./data/backups`, adentro del checkout. Los dos tests de
+    # `test_respaldo_postgres.py` que piden `/api/config/backup-ahora` dejaban
+    # ahí un ZIP por corrida, **con el dump de la base adentro**. Estaba
+    # arreglado sólo en `test_resguardo_externo_addon.py`, con su propio
+    # fixture; va acá para que alcance a todos los tests.
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
 
 
 def https_client(app) -> TestClient:
