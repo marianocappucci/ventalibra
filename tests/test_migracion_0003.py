@@ -231,8 +231,12 @@ def _crear_factura_minima(conn) -> int:
 def _crear_turno_minimo(conn) -> int:
     with get_connection() as c:
         c.execute(
-            "INSERT INTO usuarios (username, nombre, password_hash, role) "
-            "VALUES ('cajera', 'Cajera', 'x', 'admin') ON CONFLICT (username) DO NOTHING"
+            # `email` va aunque la forma de LibraCore lo acepte nulo: desde que la
+            # suite corre la cadena de libraauth (v0.45), `usuarios` nace con la
+            # forma del motor de auth, donde es NOT NULL. Con email anda en las dos.
+            "INSERT INTO usuarios (username, nombre, email, password_hash, role) "
+            "VALUES ('cajera', 'Cajera', 'cajera@ventalibra.test', 'x', 'admin') "
+            "ON CONFLICT (username) DO NOTHING"
         )
         row = c.execute("SELECT id FROM usuarios WHERE username='cajera'").fetchone()
         usuario_id = row[0]
