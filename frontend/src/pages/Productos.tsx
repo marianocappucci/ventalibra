@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { BadgeEstado } from 'libra-ui/badge-estado'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -27,7 +28,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { DataTable, sortableHeader } from '@/components/data-table'
-import { Barcode, Package } from 'lucide-react'
+import { Barcode, Package, Pencil } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
@@ -37,6 +38,93 @@ function describeError(err: unknown): string {
 
 function money(value: string): string {
   return Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** Parsea un precio/costo tipeado a mano. `null` si no es un número válido o
+ *  es negativo -- nunca cae a 0 en silencio, a diferencia de `Number(x) || 0`
+ *  (que el alta tampoco usa hoy: manda el string tal cual escrito, sin
+ *  validar nada -- ver `ItemCreateDialog.handleCreate`, que sólo chequea
+ *  nombre y unidad no vacíos). Misma regla de parseo que `parseMonto` de
+ *  `Pos.tsx` (coma decimal, punto de miles), documentada ahí porque no hay
+ *  un lugar compartido entre pantallas para ponerla -- no se importa de ahí
+ *  porque esa función no está exportada y es específica del turno de caja. */
+function parsePrecio(texto: string): number | null {
+  const t = texto.trim()
+  let normalizado: string
+  if (/^(\d{1,3}(\.\d{3})+|\d+),\d+$/.test(t)) {
+    normalizado = t.replace(/\./g, '').replace(',', '.')
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(t)) {
+    normalizado = t.replace(/\./g, '')
+  } else if (/^\d+(\.\d+)?$/.test(t)) {
+    normalizado = t
+  } else {
+    return null
+  }
+  const n = Number(normalizado)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+/** Los campos que comparten alta y edición: nombre, unidad, categoría,
+ *  precio y costo. Extraído para no duplicar el JSX -- el switch «Activo»
+ *  de la edición y los botones de cada modal quedan afuera, porque no
+ *  existen en el alta. */
+function ItemFormFields({
+  units, categories, name, setName, unitCode, setUnitCode, categoryId, setCategoryId,
+  salePrice, setSalePrice, cost, setCost,
+}: {
+  units: Unit[]
+  categories: Category[]
+  name: string
+  setName: (v: string) => void
+  unitCode: string
+  setUnitCode: (v: string) => void
+  categoryId: string
+  setCategoryId: (v: string) => void
+  salePrice: string
+  setSalePrice: (v: string) => void
+  cost: string
+  setCost: (v: string) => void
+}) {
+  return (
+    <>
+      <div className="grid gap-2">
+        <Label htmlFor="item-name">Nombre</Label>
+        <Input id="item-name" value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="item-unit">Unidad</Label>
+        <Select value={unitCode} onValueChange={setUnitCode}>
+          <SelectTrigger id="item-unit" className="w-full"><SelectValue placeholder="Unidad…" /></SelectTrigger>
+          <SelectContent>
+            {units.map((u) => <SelectItem key={u.code} value={u.code}>{u.code} — {u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid gap-2">
+        <Label>Categoría</Label>
+        <SelectBuscable
+          value={categoryId}
+          onChange={setCategoryId}
+          opciones={opcionesCategoria(categories)}
+          placeholder="Sin categoría"
+          ariaLabel="Categoría"
+          className="w-full"
+        />
+      </div>
+      {/* Precio y costo van a la par: son los dos numéricos y cortos, y
+          apilarlos estiraría el modal por dos campos de 90 px. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-2">
+          <Label htmlFor="item-price">Precio de venta</Label>
+          <Input id="item-price" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="item-cost">Costo</Label>
+          <Input id="item-cost" value={cost} onChange={(e) => setCost(e.target.value)} />
+        </div>
+      </div>
+    </>
+  )
 }
 
 /** El botón "+ Nuevo producto" y su modal. Va junto, y no un botón acá y un
@@ -113,42 +201,14 @@ function ItemCreateDialog({
               `SelectBuscable`. */}
           <div className="grid gap-3">
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <div className="grid gap-2">
-              <Label htmlFor="item-name">Nombre</Label>
-              <Input id="item-name" value={name} autoFocus onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="item-unit">Unidad</Label>
-              <Select value={unitCode} onValueChange={setUnitCode}>
-                <SelectTrigger id="item-unit" className="w-full"><SelectValue placeholder="Unidad…" /></SelectTrigger>
-                <SelectContent>
-                  {units.map((u) => <SelectItem key={u.code} value={u.code}>{u.code} — {u.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Categoría</Label>
-              <SelectBuscable
-                value={categoryId}
-                onChange={setCategoryId}
-                opciones={opcionesCategoria(categories)}
-                placeholder="Sin categoría"
-                ariaLabel="Categoría"
-                className="w-full"
-              />
-            </div>
-            {/* Precio y costo van a la par: son los dos numéricos y cortos, y
-                apilarlos estiraría el modal por dos campos de 90 px. */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label htmlFor="item-price">Precio de venta</Label>
-                <Input id="item-price" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="item-cost">Costo</Label>
-                <Input id="item-cost" value={cost} onChange={(e) => setCost(e.target.value)} />
-              </div>
-            </div>
+            <ItemFormFields
+              units={units} categories={categories}
+              name={name} setName={setName}
+              unitCode={unitCode} setUnitCode={setUnitCode}
+              categoryId={categoryId} setCategoryId={setCategoryId}
+              salePrice={salePrice} setSalePrice={setSalePrice}
+              cost={cost} setCost={setCost}
+            />
           </div>
 
           <DialogFooter>
@@ -158,6 +218,87 @@ function ItemCreateDialog({
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+/** El botón de editar (ícono lápiz) y su modal, mismo criterio de armado que
+ *  `ItemCreateDialog`: reutiliza `ItemFormFields` y agrega lo que el alta no
+ *  tiene -- el switch «Activo» -- y lo que la edición sí necesita: precargar
+ *  todo desde `item` y mandar `PUT` en vez de `POST`. */
+function ItemEditDialog({
+  item, units, categories, onSaved, onClose,
+}: { item: CatalogItem; units: Unit[]; categories: Category[]; onSaved: () => void; onClose: () => void }) {
+  const [name, setName] = useState(item.name)
+  const [unitCode, setUnitCode] = useState(item.unit_code)
+  const [categoryId, setCategoryId] = useState(item.category_id ? String(item.category_id) : '')
+  const [salePrice, setSalePrice] = useState(item.default_sale_price)
+  const [cost, setCost] = useState(item.default_cost)
+  const [active, setActive] = useState(item.active)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    if (!name.trim() || !unitCode) {
+      setError('Nombre y unidad son obligatorios.')
+      return
+    }
+    const precioVenta = parsePrecio(salePrice)
+    const costoValor = parsePrecio(cost)
+    if (precioVenta === null || costoValor === null) {
+      setError('Precio y costo tienen que ser números válidos, no negativos.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await api.put(`/catalog/items/${item.id}`, {
+        name: name.trim(), unit_code: unitCode,
+        category_id: categoryId ? Number(categoryId) : null,
+        description: item.description, active,
+        sellable: item.sellable, purchasable: item.purchasable,
+        default_sale_price: String(precioVenta), default_cost: String(costoValor),
+      })
+      onSaved()
+      onClose()
+    } catch (err) {
+      // Mismo criterio que el alta: el error se queda adentro del modal, que
+      // es donde está lo que se estaba editando. Acá es también donde llega
+      // el 409 de la unidad bloqueada por movimientos (services/catalog.py).
+      setError(describeError(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar producto</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-3">
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <ItemFormFields
+            units={units} categories={categories}
+            name={name} setName={setName}
+            unitCode={unitCode} setUnitCode={setUnitCode}
+            categoryId={categoryId} setCategoryId={setCategoryId}
+            salePrice={salePrice} setSalePrice={setSalePrice}
+            cost={cost} setCost={setCost}
+          />
+          <div className="flex items-center gap-2">
+            <Switch id="item-active" checked={active} onCheckedChange={setActive} />
+            <Label htmlFor="item-active">Activo</Label>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -292,6 +433,7 @@ export function Productos() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [detailItem, setDetailItem] = useState<CatalogItem | null>(null)
+  const [editItem, setEditItem] = useState<CatalogItem | null>(null)
 
   useEffect(() => {
     loadAll()
@@ -363,6 +505,7 @@ export function Productos() {
       header: () => <div className="text-right">Acciones</div>,
       cell: ({ row }) => (
         <div className="flex justify-end gap-1">
+          <Button size="icon" variant="outline" title="Editar producto" aria-label="Editar producto" onClick={() => setEditItem(row.original)}><Pencil /></Button>
           <Button size="icon" variant="outline" title="Gestionar códigos y variantes" aria-label="Gestionar códigos y variantes" onClick={() => setDetailItem(row.original)}><Barcode /></Button>
         </div>
       ),
@@ -401,6 +544,12 @@ export function Productos() {
       </Card>
 
       {detailItem && <ItemDetailDialog item={detailItem} onClose={() => setDetailItem(null)} />}
+      {editItem && (
+        <ItemEditDialog
+          item={editItem} units={units} categories={categories}
+          onSaved={loadAll} onClose={() => setEditItem(null)}
+        />
+      )}
     </div>
   )
 }

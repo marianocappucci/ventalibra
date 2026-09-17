@@ -161,6 +161,104 @@ describe('Productos', () => {
   })
 })
 
+describe('Edición de un producto', () => {
+  it('el lápiz abre el modal con los datos precargados', async () => {
+    const usuario = await montar()
+
+    await usuario.click(screen.getByRole('button', { name: 'Editar producto' }))
+
+    const modal = await screen.findByRole('dialog')
+    expect(modal).toHaveTextContent('Editar producto')
+    expect(screen.getByLabelText('Nombre')).toHaveValue('Yerba Playadito')
+    expect(screen.getByLabelText('Unidad')).toHaveTextContent('kg')
+    expect(screen.getByLabelText('Precio de venta')).toHaveValue('4500.00')
+    expect(screen.getByLabelText('Costo')).toHaveValue('3000.00')
+    expect(screen.getByRole('switch', { name: 'Activo' })).toBeChecked()
+  })
+
+  it('guardar manda un PUT con el nombre, el precio y el estado editados', async () => {
+    const usuario = await montar()
+
+    await usuario.click(screen.getByRole('button', { name: 'Editar producto' }))
+    const nombre = await screen.findByLabelText('Nombre')
+    await usuario.clear(nombre)
+    await usuario.type(nombre, 'Yerba Playadito 1kg')
+    const precio = screen.getByLabelText('Precio de venta')
+    await usuario.clear(precio)
+    // Con coma decimal, como lo tipearía un cajero -- mismo criterio que
+    // `parseMonto` en Pos.tsx.
+    await usuario.type(precio, '5000,50')
+    await usuario.click(screen.getByRole('switch', { name: 'Activo' }))
+    await usuario.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    await waitFor(() => expect(llamadas.some((l) => l.metodo === 'PUT')).toBe(true))
+    const put = llamadas.find((l) => l.metodo === 'PUT')!
+    expect(put.url).toBe('/catalog/items/1')
+    expect(put.cuerpo).toMatchObject({
+      name: 'Yerba Playadito 1kg',
+      unit_code: 'kg',
+      category_id: null,
+      default_sale_price: '5000.5',
+      default_cost: '3000',
+      active: false,
+    })
+    // Un guardado que deja el modal abierto encima de la grilla parece que falló.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('un precio invalido avisa adentro del modal, sin mandar el PUT', async () => {
+    const usuario = await montar()
+
+    await usuario.click(screen.getByRole('button', { name: 'Editar producto' }))
+    const precio = await screen.findByLabelText('Precio de venta')
+    await usuario.clear(precio)
+    await usuario.type(precio, 'no-es-un-numero')
+    await usuario.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(await screen.findByText(/números válidos, no negativos/)).toBeInTheDocument()
+    expect(llamadas.some((l) => l.metodo === 'PUT')).toBe(false)
+  })
+
+  it('un 409 por cambiarle la unidad a un producto con movimientos se muestra en el modal', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const metodo = init?.method ?? 'GET'
+      llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+      if (metodo === 'PUT') {
+        return Promise.resolve(new Response(
+          JSON.stringify({ detail: 'No se puede cambiar la unidad de un producto que ya tiene movimientos.' }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        ))
+      }
+      if (u.startsWith('/catalog/units')) return Promise.resolve(json(UNIDADES))
+      if (u.startsWith('/catalog/items')) return Promise.resolve(json(PRODUCTOS))
+      if (u.startsWith('/catalog/categories')) return Promise.resolve(json([]))
+      return Promise.resolve(json([]))
+    }))
+
+    const usuario = await montar()
+    await usuario.click(screen.getByRole('button', { name: 'Editar producto' }))
+    await usuario.click(await screen.findByLabelText('Unidad'))
+    await usuario.click(await screen.findByRole('option', { name: /^u —/ }))
+    await usuario.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(await screen.findByText(/ya tiene movimientos/)).toBeInTheDocument()
+    // El modal sigue abierto: el 409 no se lleva puesto lo que se estaba editando.
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('cancelar no manda ningún PUT', async () => {
+    const usuario = await montar()
+
+    await usuario.click(screen.getByRole('button', { name: 'Editar producto' }))
+    await usuario.type(await screen.findByLabelText('Nombre'), ' (borrador)')
+    await usuario.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(llamadas.some((l) => l.metodo === 'PUT')).toBe(false)
+  })
+})
+
 describe('La pantalla vieja', () => {
   /** 🔴 Las redirecciones salen de `REDIRECCIONES_DE_CATALOGO`, la MISMA
    *  tabla que monta `App.tsx` -- mismo criterio que
