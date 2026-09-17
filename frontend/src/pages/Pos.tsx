@@ -544,7 +544,15 @@ export function Pos() {
               Un turno viejo sin caja (de antes de esta feature) conserva el
               selector, con un aviso para migrarlo. */}
           {turno?.sucursal ? (
-            <span className="rounded border bg-muted px-2 py-0.5 text-xs">
+            // Sin selector, a propósito (ver el comentario de arriba): el
+            // `title` es la forma más sobria de decir CÓMO se cambia de
+            // sucursal sin agregar un segundo botón que haga lo mismo que
+            // "Cerrar turno" -- ya está ahí arriba, a un click. Pedido del
+            // humano (2026-09-17): "un botón «Cambiar»... o un tooltip".
+            <span
+              className="rounded border bg-muted px-2 py-0.5 text-xs"
+              title="Para trabajar en otra sucursal, cerrá el turno."
+            >
               {conPrefijo('Sucursal', turno.sucursal.nombre)}
               {turno.caja?.nombre && <> · {conPrefijo('Caja', turno.caja.nombre)}</>}
             </span>
