@@ -145,7 +145,7 @@ dependencies = [
     # base unica, no aplica) y v1.104.0 corrige que `panel_admin.py actualizar`
     # lea las migraciones del commit que construye. Se sube para no quedar mas
     # de un pin atras del resto de la familia mientras se agrega esta feature.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.105.0",
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.106.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
