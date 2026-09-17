@@ -5,6 +5,26 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Fix: el alta de un producto valida lo mismo que la edición.** Cierra el
+  hueco que había quedado documentado como pendiente en la entrada de abajo
+  («editar producto»): `POST /catalog/items` no validaba nada — con una
+  categoría inexistente reventaba la FK de Postgres y salía un 500 sin
+  traducir, y aceptaba nombre vacío y precio/costo negativos. Ahora:
+  - `CatalogService._validar_item` (`app/services/catalog.py`) es el único
+    lugar donde viven las tres reglas (nombre no vacío tras `strip()`,
+    categoría existente, precio/costo ≥ 0); `create_item` y `update_item`
+    lo llaman los dos. Antes la edición las tenía repartidas entre un
+    `KeyError` propio (categoría) y `Field` de Pydantic en `ItemUpdate`
+    (nombre/precio/costo) — dos formatos de error para el mismo 422. La
+    excepción nueva es `ItemInvalido`, que los dos endpoints de
+    `app/routers/catalog.py` traducen a 422 con el mismo `detail`. La
+    unidad sigue igual que antes (`KeyError` en `_get_unit`, ya compartida).
+  - Por eso se sacó el `Field(min_length=1, ge=0)` de `ItemUpdate`: con él
+    ahí, mutar `_validar_item` para no chequear el precio no alcanzaba para
+    poner en rojo la edición (Pydantic lo seguía frenando antes de llegar
+    al servicio) — la regla no estaba realmente compartida, sólo duplicada.
+  - Frontend: no hizo falta tocar nada — `ItemCreateDialog` ya mostraba el
+    `detail` del 422 con el mismo `describeError` que `ItemEditDialog`.
 - **Se puede editar un producto ya cargado.** La pantalla Productos tenía
   alta y un detalle de códigos/variantes, pero ningún camino para corregir
   el nombre, el precio o la categoría de un producto existente. Ahora:
