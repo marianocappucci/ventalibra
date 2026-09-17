@@ -11,8 +11,7 @@ import { useEffect, useState } from 'react'
 import { Ventas as VentasComercio } from 'libra-ui/comercio/Ventas'
 import type { VentaDetalleAccionesExtraCtx } from 'libra-ui/comercio/VentaDetalle'
 import {
-  api, ApiError, type Location, type VentaDevuelto,
-} from '../api'
+  api, ApiError, type Location, type VentaDevuelto,, type ShiftState } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -78,12 +77,17 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
     Promise.all([
       api.get<VentaDevuelto>(`/ventas/${detalle.id}/devuelto`),
       api.get<Location[]>('/locations'),
-    ]).then(([d, ls]) => {
+      api.get<ShiftState>('/shifts/current').catch(() => ({ turno: null }) as ShiftState),
+    ]).then(([d, ls, estado]) => {
       setDevuelto(d)
       setLocations(ls)
-      // Default: el depósito de la venta original si se pudo saber; si no,
-      // el default del sistema (o el primero, si tampoco hay uno marcado).
-      const sugerido = d.deposito_id
+      // Default: la sucursal de la caja del turno de quien devuelve --
+      // el backend rechaza cualquier otra (422, `app/ganchos.py::
+      // validar_deposito`). Sin turno en una caja con sucursal: el depósito
+      // de la venta original si se pudo saber; si no, el default del sistema
+      // (o el primero, si tampoco hay uno marcado).
+      const sugerido = estado.turno?.sucursal?.id
+        ?? d.deposito_id
         ?? ls.find((l) => l.is_default)?.id
         ?? ls[0]?.id
       setLocationId(sugerido ? String(sugerido) : '')
