@@ -9,11 +9,12 @@
 // ruta (`/catalogo` redirige a `/productos`, ver `rutas-viejas.ts`).
 import { useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from 'libra-ui/data-table'
+import { Link } from 'react-router-dom'
 import {
   api, ApiError, ITEM_CODE_TYPE_LABELS, opcionesCategoria,
   type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant, type Unit,
 } from '../api'
-import { SelectBuscable } from 'libra-ui/SelectBuscable'
+import { SelectBuscable, type OpcionSelect } from 'libra-ui/SelectBuscable'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,13 +68,18 @@ function parsePrecio(texto: string): number | null {
 /** Los campos que comparten alta y edición: nombre, unidad, categoría,
  *  precio y costo. Extraído para no duplicar el JSX -- el switch «Activo»
  *  de la edición y los botones de cada modal quedan afuera, porque no
- *  existen en el alta. */
+ *  existen en el alta.
+ *
+ *  `categoryOptions` ya viene armado (ver `opcionesCategoria` en cada
+ *  llamador) y no `categories` crudo: el alta y la edición arman una lista
+ *  distinta -- ver el comentario en `ItemCreateDialog`/`ItemEditDialog`. */
 function ItemFormFields({
-  units, categories, name, setName, unitCode, setUnitCode, categoryId, setCategoryId,
+  units, categoryOptions, sinCategorias, name, setName, unitCode, setUnitCode, categoryId, setCategoryId,
   salePrice, setSalePrice, cost, setCost,
 }: {
   units: Unit[]
-  categories: Category[]
+  categoryOptions: OpcionSelect[]
+  sinCategorias: boolean
   name: string
   setName: (v: string) => void
   unitCode: string
@@ -105,11 +111,23 @@ function ItemFormFields({
         <SelectBuscable
           value={categoryId}
           onChange={setCategoryId}
-          opciones={opcionesCategoria(categories)}
+          opciones={categoryOptions}
           placeholder="Sin categoría"
           ariaLabel="Categoría"
           className="w-full"
         />
+        {/* El programa no tiene de donde sacar categorias si todavia no se
+            cargo ninguna -- sin este enlace el select queda vacio y sin
+            explicacion, y quien carga el primer producto no sabe que
+            Configuracion tiene una pantalla para eso. */}
+        {sinCategorias && (
+          <p className="text-sm text-muted-foreground">
+            Todavía no hay categorías cargadas.{' '}
+            <Link to="/configuracion?seccion=categorias" className="underline">
+              Cargalas en Configuración › Categorías
+            </Link>.
+          </p>
+        )}
       </div>
       {/* Precio y costo van a la par: son los dos numéricos y cortos, y
           apilarlos estiraría el modal por dos campos de 90 px. */}
@@ -138,6 +156,13 @@ function ItemFormFields({
 function ItemCreateDialog({
   units, categories, onCreated,
 }: { units: Unit[]; categories: Category[]; onCreated: () => void }) {
+  // El alta sólo ofrece categorías ACTIVAS: no tiene sentido darle de alta un
+  // producto en una categoría que la propia pantalla de Configuración marcó
+  // como fuera de uso.
+  const categoryOptions = useMemo(
+    () => opcionesCategoria(categories.filter((c) => c.active)),
+    [categories],
+  )
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [unitCode, setUnitCode] = useState('')
@@ -202,7 +227,7 @@ function ItemCreateDialog({
           <div className="grid gap-3">
             {error && <p className="text-sm text-destructive">{error}</p>}
             <ItemFormFields
-              units={units} categories={categories}
+              units={units} categoryOptions={categoryOptions} sinCategorias={categories.length === 0}
               name={name} setName={setName}
               unitCode={unitCode} setUnitCode={setUnitCode}
               categoryId={categoryId} setCategoryId={setCategoryId}
@@ -228,6 +253,18 @@ function ItemCreateDialog({
 function ItemEditDialog({
   item, units, categories, onSaved, onClose,
 }: { item: CatalogItem; units: Unit[]; categories: Category[]; onSaved: () => void; onClose: () => void }) {
+  // Igual que el alta, sólo activas -- salvo la propia categoría del item,
+  // que se agrega igual si quedó inactiva: si no, el select la pierde y la
+  // edición muestra "Sin categoría" para un producto que sí tiene una,
+  // rompiendo lo que se estaba editando.
+  const categoryOptions = useMemo(() => {
+    const activas = categories.filter((c) => c.active)
+    if (item.category_id != null && !activas.some((c) => c.id === item.category_id)) {
+      const propia = categories.find((c) => c.id === item.category_id)
+      if (propia) return opcionesCategoria([...activas, propia])
+    }
+    return opcionesCategoria(activas)
+  }, [categories, item.category_id])
   const [name, setName] = useState(item.name)
   const [unitCode, setUnitCode] = useState(item.unit_code)
   const [categoryId, setCategoryId] = useState(item.category_id ? String(item.category_id) : '')
@@ -280,7 +317,7 @@ function ItemEditDialog({
         <div className="grid gap-3">
           {error && <p className="text-sm text-destructive">{error}</p>}
           <ItemFormFields
-            units={units} categories={categories}
+            units={units} categoryOptions={categoryOptions} sinCategorias={categories.length === 0}
             name={name} setName={setName}
             unitCode={unitCode} setUnitCode={setUnitCode}
             categoryId={categoryId} setCategoryId={setCategoryId}
@@ -480,6 +517,21 @@ export function Productos() {
     { accessorKey: 'name', header: sortableHeader('Nombre'), size: 240, minSize: 140, meta: { stretch: true }, cell: ({ row }) => <span className="block truncate font-medium" title={row.original.name}>{row.original.name}</span> },
     { accessorKey: 'unit_code', header: 'Unidad', size: 100, minSize: 80 },
     {
+      // `id` + `accessorFn` y no `accessorKey`: el dato crudo del item es
+      // `category_id`, no el nombre -- hay que resolverlo contra `categories`
+      // (cargado aparte, ver loadAll) para que se vea y se pueda ordenar por
+      // el nombre, no por el id.
+      id: 'category',
+      header: sortableHeader('Categoría'),
+      size: 160,
+      minSize: 120,
+      accessorFn: (item) => categories.find((c) => c.id === item.category_id)?.name ?? '',
+      cell: ({ row }) => {
+        const nombre = categories.find((c) => c.id === row.original.category_id)?.name
+        return <span className="block truncate" title={nombre}>{nombre ?? '—'}</span>
+      },
+    },
+    {
       accessorKey: 'default_sale_price',
       header: 'Precio',
       size: 120,
@@ -510,7 +562,7 @@ export function Productos() {
         </div>
       ),
     },
-  ], [])
+  ], [categories])
 
   return (
     <div className="grid gap-4">

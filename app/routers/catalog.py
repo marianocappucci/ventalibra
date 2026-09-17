@@ -5,7 +5,14 @@ from fastapi import APIRouter, HTTPException, Request
 from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
 from pydantic import BaseModel
 
-from ..services.catalog import CatalogService, ItemInvalido, ItemNotFound, ItemUnitLockedError
+from ..services.catalog import (
+    CatalogService,
+    CategoryInvalido,
+    CategoryNotFound,
+    ItemInvalido,
+    ItemNotFound,
+    ItemUnitLockedError,
+)
 from ..services.scale import ScaleLabelError, ScaleService
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -14,6 +21,14 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
 class CategoryCreate(BaseModel):
     name: str
     parent_id: int | None = None
+
+
+class CategoryUpdate(BaseModel):
+    """`parent_id` no se edita -- ver el docstring de
+    `CatalogService.update_category`."""
+
+    name: str
+    active: bool = True
 
 
 class CategoryOut(BaseModel):
@@ -155,7 +170,24 @@ def _service(request: Request) -> CatalogService:
 
 @router.post("/categories", response_model=CategoryOut)
 def create_category(data: CategoryCreate, request: Request):
-    category = _service(request).create_category(data.name, data.parent_id)
+    try:
+        category = _service(request).create_category(data.name, data.parent_id)
+    except CategoryInvalido as exc:
+        # nombre vacio o repetido entre categorias activas -- ver
+        # _validar_category_name.
+        raise HTTPException(422, str(exc))
+    return CategoryOut(id=category.id, name=category.name, parent_id=category.parent_id, active=category.active)
+
+
+@router.put("/categories/{category_id}", response_model=CategoryOut)
+def update_category(category_id: int, data: CategoryUpdate, request: Request):
+    try:
+        category = _service(request).update_category(category_id, name=data.name, active=data.active)
+    except CategoryNotFound:
+        raise HTTPException(404, "category not found")
+    except CategoryInvalido as exc:
+        # mismo criterio que create_category.
+        raise HTTPException(422, str(exc))
     return CategoryOut(id=category.id, name=category.name, parent_id=category.parent_id, active=category.active)
 
 

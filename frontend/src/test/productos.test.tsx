@@ -58,10 +58,17 @@ beforeEach(() => {
 
 const posts = (ruta: string) => llamadas.filter((l) => l.metodo === 'POST' && l.url === ruta)
 
-/** Monta y espera a que la carga inicial termine. */
+/** Monta y espera a que la carga inicial termine.
+ *
+ *  Envuelto en `MemoryRouter` desde que el alta/edición de producto puede
+ *  mostrar un `Link` a Configuración › Categorías (cuando no hay ninguna
+ *  categoría cargada -- ver `ItemFormFields` en `Productos.tsx`): sin
+ *  Router, ese `Link` revienta con "useHref() may be used only in the
+ *  context of a <Router>", aunque la pantalla no navegue nunca en este
+ *  archivo. */
 async function montar() {
   const usuario = userEvent.setup()
-  render(<Productos />)
+  render(<MemoryRouter><Productos /></MemoryRouter>)
   await screen.findByText('Yerba Playadito')
   return usuario
 }
@@ -278,5 +285,61 @@ describe('La pantalla vieja', () => {
     )
 
     expect(await screen.findByText('Productos')).toBeInTheDocument()
+  })
+})
+
+describe('Columna Categoría', () => {
+  it('muestra el nombre de la categoría, y "—" para el que no tiene', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const metodo = init?.method ?? 'GET'
+      llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+      if (metodo === 'POST') return Promise.resolve(json({}))
+      if (u.startsWith('/catalog/units')) return Promise.resolve(json(UNIDADES))
+      if (u.startsWith('/catalog/items')) {
+        return Promise.resolve(json([
+          ...PRODUCTOS,
+          {
+            id: 2, item_type: 'product', name: 'Fideos', description: '',
+            category_id: 1, unit_code: 'u', active: true, sellable: true,
+            purchasable: true, default_sale_price: '1500.00', default_cost: '900.00',
+          },
+        ]))
+      }
+      if (u.startsWith('/catalog/categories')) {
+        return Promise.resolve(json([{ id: 1, name: 'Almacén', parent_id: null, active: true }]))
+      }
+      return Promise.resolve(json([]))
+    }))
+
+    await montar()
+    await screen.findByText('Fideos')
+
+    // 🔴 Mutación (b): si la columna mostrara el `category_id` en vez del
+    // nombre, acá se vería "1" y no "Almacén".
+    expect(screen.getByText('Almacén')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+})
+
+describe('Sin categorías cargadas', () => {
+  it('el alta de producto muestra un enlace a Configuración › Categorías', async () => {
+    // El mock por defecto del `beforeEach` ya devuelve `[]` para
+    // `/catalog/categories` -- es el caso "todavía no hay ninguna".
+    const usuario = await montar()
+
+    await usuario.click(screen.getByRole('button', { name: '+ Nuevo producto' }))
+
+    expect(await screen.findByText(/Todavía no hay categorías cargadas/)).toBeInTheDocument()
+    const enlace = screen.getByRole('link', { name: /Configuración › Categorías/ })
+    expect(enlace).toHaveAttribute('href', '/configuracion?seccion=categorias')
+  })
+
+  it('la edición de producto muestra el mismo enlace', async () => {
+    const usuario = await montar()
+
+    await usuario.click(screen.getByRole('button', { name: 'Editar producto' }))
+
+    expect(await screen.findByText(/Todavía no hay categorías cargadas/)).toBeInTheDocument()
   })
 })
