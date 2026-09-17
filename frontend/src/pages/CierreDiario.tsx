@@ -16,14 +16,11 @@ import { CalendarCheck, Printer } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha, fechaHora, hora } from '@/lib/fechas'
 import { abrirTicket } from '@/lib/tickets'
+import { money, pesos } from '@/lib/dinero'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
   return 'Error de conexión.'
-}
-
-function money(value: number): string {
-  return value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function CierreDiario() {
@@ -162,7 +159,9 @@ export function CierreDiario() {
                 </div>
                 <div className="flex justify-between font-medium">
                   <span>Diferencia</span>
-                  <span className="tabular-nums">${money(preview.diferencia_total)}</span>
+                  {/* Puede ser negativa (faltante): el signo va antes del
+                      `$`, no `$-500,00` -- ver `lib/dinero.ts::pesos`. */}
+                  <span className="tabular-nums">{pesos(preview.diferencia_total)}</span>
                 </div>
               </div>
 

@@ -5,6 +5,25 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Fix: tres defectos del POS encontrados en una prueba en pantalla
+  (2026-09-17).**
+  - El cierre de turno guardaba **$0 declarado en silencio** con un texto
+    inválido en «Efectivo contado» (p. ej. «a500»): `Number(x) || 0` tapaba
+    el `NaN`. Ahora se valida con `parseMonto` (acepta coma o punto decimal,
+    `500`/`500.5`/`500,50`/`1.500,50`; nunca negativo) — con un monto
+    inválido el campo muestra el error y el botón queda deshabilitado, sin
+    mandar el POST. Mismo fix en «Efectivo inicial en caja» al abrir el
+    turno, que es dinero declarado por el mismo motivo.
+  - El encabezado del POS mostraba el prefijo duplicado («Sucursal Sucursal
+    Centro · Caja Caja 1») cuando el nombre de la sucursal/caja ya lo traía;
+    ahora sólo se antepone si hace falta. La pantalla se identifica además
+    como «POS (Caja)» en ese mismo renglón, sin agregar un bloque nuevo.
+  - `CierreDiario.tsx` mostraba una diferencia negativa como «$-500,00» en
+    vez de «-$500,00» (el `$` antepuesto a mano en el JSX queda pegado al
+    número, no al signo). Nuevo helper único `pesos()` en `src/lib/dinero.ts`
+    para todo monto que pueda ser negativo — también usado en
+    `CuentasCorrientes.tsx` (reemplaza su `conSigno` local, duplicado) y en
+    `Reportes.tsx` (saldo del período / saldo total de caja).
 - **Las fechas de los listados de Ventas se ven dd-mm-aaaa** y no en el ISO
   crudo de la API (`2026-09-17`). Hallazgo de la prueba en pantalla de cajas
   en dev. El arreglo es del kit (libra-ui v0.73.1) y alcanza a las columnas

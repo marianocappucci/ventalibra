@@ -43,6 +43,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'lucide-react'
 import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
+import { money } from '@/lib/dinero'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -119,10 +120,11 @@ const ATAJOS = [
 // ventas, y preguntarla en cada uno era ruido puro.
 const LOCATION_KEY = 'ventalibra.pos.location'
 
-function money(value: string | number): string {
-  return Number(value).toLocaleString('es-AR', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  })
+/** Antepone la etiqueta salvo que el nombre ya la traiga -- evita "Sucursal
+ *  Sucursal Centro" cuando el nombre del registro ya viene con el prefijo
+ *  (comparación sin distinguir mayúsculas). */
+function conPrefijo(etiqueta: string, nombre: string): string {
+  return nombre.toLowerCase().startsWith(etiqueta.toLowerCase()) ? nombre : `${etiqueta} ${nombre}`
 }
 
 /** Las cantidades enteras se ven como enteros ("3"); las pesadas, con los
@@ -138,6 +140,41 @@ function cantidadLegible(value: string): string {
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
   return 'Error de conexión.'
+}
+
+/** Parsea un monto que el CAJERO tipeó a mano (efectivo inicial de un turno,
+ *  efectivo contado al cerrarlo) -- nunca el de una línea del carrito, que
+ *  sale del catálogo. `null` si no es un monto válido: nunca cae a 0 en
+ *  silencio, a diferencia de `Number(x) || 0`. Quien llama tiene que mostrar
+ *  el error y frenar el envío en vez de mandar `null` al backend.
+ *
+ *  Regla de parseo (la mínima que pide un cajero argentino, documentada acá
+ *  porque no hay otro lugar donde buscarla):
+ *  - Con coma: la coma es decimal y los puntos, si hay, separan miles en
+ *    grupos de a tres -- "500,50", "1.500,50", "1.250.000,5".
+ *  - Sin coma, con puntos en grupos de a tres: son separadores de miles --
+ *    "1.500" es MIL QUINIENTOS. 🔴 Leerlo como decimal (1,5) sería el mismo
+ *    error silencioso que se vino a arreglar, con otra cara: es como se
+ *    escribe un monto en Argentina.
+ *  - Sin coma y con un punto que no forma grupos de a tres: decimal --
+ *    "500.5", "500.25".
+ *  - Nunca negativo (un cajón no tiene "menos plata"): cualquier signo lo
+ *    rechaza, no lo trunca. Cualquier otra forma ("1.5.0,50", "a500") es
+ *    inválida. */
+function parseMonto(texto: string): number | null {
+  const t = texto.trim()
+  let normalizado: string
+  if (/^(\d{1,3}(\.\d{3})+|\d+),\d+$/.test(t)) {
+    normalizado = t.replace(/\./g, '').replace(',', '.')
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(t)) {
+    normalizado = t.replace(/\./g, '')
+  } else if (/^\d+(\.\d+)?$/.test(t)) {
+    normalizado = t
+  } else {
+    return null
+  }
+  const n = Number(normalizado)
+  return Number.isFinite(n) && n >= 0 ? n : null
 }
 
 /** `3 * 7790123456` => cantidad 3, codigo 7790123456. Es el gesto que el
@@ -459,6 +496,12 @@ export function Pos() {
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <span className="flex items-center gap-2">
           <Scan className="size-4 text-primary" />
+          {/* Identificación sobria de la pantalla (pedido del humano,
+              2026-09-17): sin bloque propio -- éste es el único renglón de
+              encabezado que tiene el POS, y robarle alto es justo lo que no
+              hay que hacer acá (ver TituloPantalla, que sí lo haría). */}
+          <span className="font-medium text-foreground">POS (Caja)</span>
+          <span aria-hidden="true">·</span>
           Nueva venta
         </span>
         <div className="flex items-center gap-2">
@@ -480,7 +523,8 @@ export function Pos() {
               selector, con un aviso para migrarlo. */}
           {turno?.sucursal ? (
             <span className="rounded border bg-muted px-2 py-0.5 text-xs">
-              Sucursal {turno.sucursal.nombre} · Caja {turno.caja?.nombre}
+              {conPrefijo('Sucursal', turno.sucursal.nombre)}
+              {turno.caja?.nombre && <> · {conPrefijo('Caja', turno.caja.nombre)}</>}
             </span>
           ) : (
             <>
@@ -1507,6 +1551,13 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Igual que en `CerrarTurno`: "Efectivo inicial" tambien es dinero que
+  // DECLARA el cajero (lo que cuenta en el cajon al abrir), asi que corre la
+  // misma regla -- ver `parseMonto`. `null` sin haber tocado el campo
+  // (arranca en "0", que es valido) no puede pasar, pero se cubre igual.
+  const montoInicial = parseMonto(monto)
+  const montoInvalido = monto !== '' && montoInicial === null
+
   useEffect(() => {
     api.get<Location[]>('/locations').then((items) => {
       setLocations(items)
@@ -1527,12 +1578,15 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
 
   async function abrir(e: FormEvent) {
     e.preventDefault()
-    if (!cajaId) return
+    // Guardia defensiva: el boton ya queda disabled con un monto invalido,
+    // esto es para no mandar el POST si igual llega a dispararse el submit
+    // (Enter en un campo, por ejemplo).
+    if (!cajaId || montoInicial === null) return
     setBusy(true)
     setError(null)
     try {
       const abierto = await api.post<{ turno: Shift }>('/shifts/open', {
-        monto_inicial: Number(monto) || 0, caja_id: Number(cajaId),
+        monto_inicial: montoInicial, caja_id: Number(cajaId),
       })
       onAbierto(abierto.turno)
     } catch (err) {
@@ -1595,12 +1649,19 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
             <Label htmlFor="monto-inicial">Efectivo inicial en caja</Label>
             <Input
               id="monto-inicial" value={monto} className="h-12 text-lg tabular-nums"
+              aria-invalid={montoInvalido || undefined}
               onChange={(e) => setMonto(e.target.value)}
               onFocus={(e) => e.target.select()}
             />
+            {montoInvalido && (
+              <p className="text-sm text-destructive" role="alert">
+                Monto inválido: escribí sólo números, con coma o punto decimal
+                (ej. 500 o 1.500,50).
+              </p>
+            )}
           </div>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-          <Button type="submit" className="h-12 text-base" disabled={busy || !cajaId}>
+          <Button type="submit" className="h-12 text-base" disabled={busy || !cajaId || montoInicial === null}>
             {busy ? 'Abriendo...' : 'Abrir turno'}
           </Button>
         </form>
@@ -1634,18 +1695,27 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
   }, [turno.id])
 
   const esperado = resumen ? turno.monto_inicial + resumen.efectivo_ventas : null
-  const contado = Number(declarado)
-  const diferencia = esperado !== null && declarado !== '' && !isNaN(contado)
-    ? contado - esperado
+  // 🔴 Acá guardaba `Number(declarado) || 0` en silencio: con un texto
+  // inválido ("a500") `Number` da `NaN`, `|| 0` lo tapa, y el cierre se
+  // registraba con $0 declarado sin ningún aviso (hallazgo del humano en la
+  // prueba en pantalla, 2026-09-17). Ahora se parsea con la misma regla que
+  // `AbrirTurno` (`parseMonto`) y, si no es válido, ni se calcula la
+  // diferencia ni se deja enviar -- ver el botón, más abajo.
+  const declaradoParseado = parseMonto(declarado)
+  const declaradoInvalido = declarado !== '' && declaradoParseado === null
+  const diferencia = esperado !== null && declaradoParseado !== null
+    ? declaradoParseado - esperado
     : null
 
   async function cerrar(e: FormEvent) {
     e.preventDefault()
+    // Guardia defensiva: el boton ya queda disabled sin un monto valido.
+    if (declaradoParseado === null) return
     setBusy(true)
     setError(null)
     try {
       await api.post(`/shifts/${turno.id}/close`, {
-        monto_declarado: Number(declarado) || 0, notas,
+        monto_declarado: declaradoParseado, notas,
       })
       setCerrado(true)
     } catch (err) {
@@ -1705,9 +1775,16 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
             <Input
               id="declarado" value={declarado} autoFocus className="h-12 text-lg tabular-nums"
               placeholder="0,00"
+              aria-invalid={declaradoInvalido || undefined}
               onChange={(e) => setDeclarado(e.target.value)}
               onFocus={(e) => e.target.select()}
             />
+            {declaradoInvalido && (
+              <p className="text-sm text-destructive" role="alert">
+                Monto inválido: escribí sólo números, con coma o punto decimal
+                (ej. 500 o 1.500,50).
+              </p>
+            )}
           </div>
 
           {diferencia !== null && (
@@ -1740,7 +1817,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancelar}>Cancelar</Button>
-            <Button type="submit" disabled={busy || declarado === ''}>
+            <Button type="submit" disabled={busy || declaradoParseado === null}>
               {busy ? 'Cerrando...' : 'Cerrar turno'}
             </Button>
           </DialogFooter>
