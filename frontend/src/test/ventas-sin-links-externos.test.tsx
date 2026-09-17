@@ -7,7 +7,8 @@
 // Lo que se prueba: con una venta facturada y con pagos -- el caso que antes
 // ofrecía los tres links -- ninguno de los tres aparece, pero el dato de la
 // factura sigue visible como texto y el ticket sigue con su link de siempre.
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -36,9 +37,14 @@ const VENTA_FACTURADA = {
   mp_order_id: '', mp_payment_id: '',
 }
 
-function montarRed() {
+let pedidos: string[] = []
+
+function montarRed(extra: Record<string, Response> = {}) {
+  pedidos = []
   const fetchMock = vi.fn((url: string) => {
     const u = String(url)
+    pedidos.push(u)
+    if (extra[u]) return Promise.resolve(extra[u])
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json(MEDIOS))
     if (u.match(/\/api\/ventas\/42$/)) return Promise.resolve(json(VENTA_FACTURADA))
     if (u.startsWith('/api/ventas')) return Promise.resolve(json([VENTA_FACTURADA]))
@@ -65,8 +71,31 @@ describe('Sin facturas, remitos ni recibo propios', () => {
     expect(screen.queryByRole('link', { name: /FACTURA C 0001-00000055/ })).toBeNull()
     expect(screen.queryByRole('link', { name: /Ver recibo/i })).toBeNull()
     expect(screen.queryByTitle('Ver recibo')).toBeNull()
-    // El ticket queda con su ruta de siempre, la del backend.
-    expect(screen.getByTitle('Imprimir ticket')).toHaveAttribute('href', '/ventas/42/ticket')
+    // El ticket sigue pidiendo la ruta de siempre, la del backend. Desde
+    // libra-ui v0.73.0 es un botón que la pide con fetch (así puede avisar en
+    // un modal si no hay PDF), no un link. jsdom no tiene blobs de URL ni
+    // ventanas: se simulan para que el camino feliz no tire.
+    Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:ticket'), configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    vi.spyOn(window, 'open').mockImplementation(() => ({}) as Window)
+    await userEvent.setup().click(screen.getByTitle('Imprimir ticket'))
+    await waitFor(() => expect(pedidos).toContain('/ventas/42/ticket'))
+  })
+
+  it('el ticket de un borrador descartado avisa en un modal, no muestra el JSON', async () => {
+    // Lo que devuelve `app/routers/ventas_extra.py::ticket` para una venta
+    // que no está confirmada.
+    montarRed({ '/ventas/42/ticket': json({ detail: 'solo se imprime el ticket de una venta confirmada' }, 409) })
+    const abrir = vi.spyOn(window, 'open').mockImplementation(() => null)
+    render(<MemoryRouter><Ventas /></MemoryRouter>)
+
+    await screen.findByText('POS-000042')
+    await userEvent.setup().click(screen.getByTitle('Imprimir ticket'))
+
+    const dialogo = await screen.findByRole('dialog')
+    expect(dialogo).toHaveTextContent('No se puede imprimir el ticket')
+    expect(dialogo).toHaveTextContent('Solo se imprime el ticket de una venta confirmada.')
+    expect(abrir).not.toHaveBeenCalled()
   })
 
   it('el detalle no linkea a /facturas/ ni a /remitos/ ni ofrece recibo', async () => {
@@ -82,7 +111,7 @@ describe('Sin facturas, remitos ni recibo propios', () => {
     expect(screen.queryByRole('link', { name: /ver remito/i })).toBeNull()
     expect(screen.queryByRole('link', { name: /Generar remito/i })).toBeNull()
     expect(screen.queryByRole('link', { name: /Recibo/i })).toBeNull()
-    // El ticket sigue ahí.
-    expect(screen.getByRole('link', { name: /Ticket/i })).toHaveAttribute('href', '/ventas/42/ticket')
+    // El ticket sigue ahí (botón desde libra-ui v0.73.0).
+    expect(screen.getByRole('button', { name: /Ticket/i })).toBeInTheDocument()
   })
 })
