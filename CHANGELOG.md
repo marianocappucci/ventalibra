@@ -5,6 +5,10 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **El ticket de una venta que no está confirmada avisa en un modal.** En
+  Ventas, la impresora de un borrador descartado abría una pestaña con el JSON
+  del 409. Ahora aparece «Solo se imprime el ticket de una venta confirmada.»
+  (libra-ui v0.73.0). La regla sigue siendo la del backend y no cambia.
 - **La venta y la devolución salen del depósito de la sucursal de la caja del turno**,
   validado en el backend (422) con el gancho `validar_deposito` de libracommerce
   v0.17.0. Hasta ahora lo garantizaba sólo el POS. Pin de libracommerce a v0.17.0.
