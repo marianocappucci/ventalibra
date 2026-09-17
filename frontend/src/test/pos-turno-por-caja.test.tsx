@@ -163,6 +163,29 @@ describe('Encabezado del POS (2026-09-17)', () => {
     await screen.findByText('POS (Caja)')
   })
 
+  it('el botón "Cerrar turno" queda al final del encabezado, después de los badges', async () => {
+    // Pedido del humano (2026-09-17): "Cerrar turno" es la acción y va
+    // último, el más a la derecha -- primero el badge del turno, después el
+    // de sucursal/caja. `compareDocumentPosition` compara nodos del DOM
+    // real, no el orden en el JSX, así que un reordenamiento que se revierta
+    // sin querer se nota acá.
+    montarRedBase({ turno: TURNO_CON_CAJA })
+    montar()
+
+    const badgeTurno = await screen.findByText(/Turno #5/)
+    const badgeSucursal = await screen.findByText(/Sucursal Centro · Caja 1/)
+    const botonCerrar = await screen.findByRole('button', { name: 'Cerrar turno' })
+
+    // DOCUMENT_POSITION_FOLLOWING: el argumento aparece DESPUES del nodo que
+    // llama al método.
+    expect(
+      badgeTurno.compareDocumentPosition(badgeSucursal) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      badgeSucursal.compareDocumentPosition(botonCerrar) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('con nombres que ya traen el prefijo, no lo duplica', async () => {
     // Mismo fixture que el resto del describe de arriba: "Sucursal Centro" /
     // "Caja 1".

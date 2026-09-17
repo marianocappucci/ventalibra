@@ -24,6 +24,41 @@ from libracore.db.core import Conexion
 from ..commerce import repositorio
 from ..conexion import conexion_utilizable
 
+#: Pares (con acento -> sin acento) para la busqueda del POS por nombre.
+#: Las dos formas de cada letra (mayuscula y minuscula) mapean directo a la
+#: forma SIN acento y en minuscula: asi ni `_sin_acentos` (Python) ni
+#: `_columna_sin_acentos` (SQL) dependen de que `LOWER()` sepa bajar una
+#: vocal acentuada -- en SQLite no lo sabe (no tiene ICU), y en PostgreSQL
+#: depende del locale con el que se hizo `initdb`. `REPLACE` no tiene ese
+#: problema: compara bytes/codepoints, no reglas de idioma.
+_QUITAR_ACENTOS = (
+    ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n"),
+    ("Á", "a"), ("É", "e"), ("Í", "i"), ("Ó", "o"), ("Ú", "u"), ("Ü", "u"), ("Ñ", "n"),
+)
+
+
+def _sin_acentos(texto: str) -> str:
+    """Minuscula y sin acentos -- lado Python, para el termino buscado."""
+    for con_acento, sin_acento in _QUITAR_ACENTOS:
+        texto = texto.replace(con_acento, sin_acento)
+    return texto.lower()
+
+
+def _columna_sin_acentos(columna: str) -> str:
+    """Misma normalizacion que `_sin_acentos`, como expresion SQL -- para
+    comparar contra una columna. `columna` es siempre un nombre de columna
+    fijo, nunca un valor de usuario: no hay parametro que escapar aca, y por
+    eso se arma con f-string en vez de placeholders.
+
+    REPLACE y LOWER son SQL estandar (los tiene tanto PostgreSQL como
+    SQLite) -- a diferencia de `translate()`, que PostgreSQL sí tiene pero
+    SQLite no trae de fabrica.
+    """
+    expr = columna
+    for con_acento, sin_acento in _QUITAR_ACENTOS:
+        expr = f"REPLACE({expr}, '{con_acento}', '{sin_acento}')"
+    return f"LOWER({expr})"
+
 
 class ItemNotFound(Exception):
     """404: no existe un CatalogItem con ese id."""
@@ -232,8 +267,21 @@ class CatalogService:
             query += " AND category_id = ?"
             params.append(category_id)
         if search:
-            query += " AND name LIKE ?"
-            params.append(f"%{search}%")
+            # Sin distinguir mayusculas (name LIKE ? era sensible en
+            # PostgreSQL -- en SQLite no, por eso paso desapercibido: el
+            # lector de codigo de barras andaba bien y solo fallaba tipeando
+            # el nombre), sin distinguir acentos ("cafe" encuentra "Café" y
+            # viceversa -- ver `_QUITAR_ACENTOS`; nada de `CREATE EXTENSION
+            # unaccent`, las instancias pueden no tener permiso y seria una
+            # dependencia nueva del despliegue) y con **todos** los terminos
+            # en cualquier orden: un LIKE por palabra, en AND, asi "simple
+            # cono" encuentra "Cono Simple". `.split()` sin argumento parte
+            # por cualquier corrida de espacios e ignora los de sobra al
+            # principio/final/medio.
+            columna = _columna_sin_acentos("name")
+            for termino in search.split():
+                query += f" AND {columna} LIKE ?"
+                params.append(f"%{_sin_acentos(termino)}%")
         query += " ORDER BY name"
         rows = self._conn.execute(query, params).fetchall()
         return [self._repo.get_catalog_item(row[0]) for row in rows]

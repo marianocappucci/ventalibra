@@ -59,6 +59,15 @@ const CUENTA_CORRIENTE = 'cuenta_corriente'
  *  en `app/normalizacion_medios.py` y corre en cada arranque. */
 const MERCADO_PAGO = 'mercadopago'
 
+/** Cuanto esperar sin tipeo antes de pedir sugerencias por nombre. Ni tan
+ *  corto que dispare una request por tecla (el lector tipea rapidisimo, asi
+ *  que cada caracter del codigo dispararia una), ni tan largo que se sienta
+ *  lento para un humano escribiendo a mano. */
+const SUGERENCIAS_DEBOUNCE_MS = 250
+/** Con menos, el LIKE por nombre trae casi todo el catalogo -- no aporta y
+ *  es ruido en pantalla mientras el cajero recien empieza a escribir. */
+const SUGERENCIAS_MIN_CHARS = 2
+
 const QR_POLL_MS = 3000
 /** Cinco minutos: pasado eso el cliente ya se fue del mostrador. Cortar el
  *  poll anula la venta pendiente -- no hay "bajar del QR" sin anular en el
@@ -245,6 +254,19 @@ export function Pos() {
   const [variantes, setVariantes] = useState<ItemVariant[]>([])
   const [pendiente, setPendiente] = useState<{ item: CatalogItem; cantidad: string } | null>(null)
 
+  // Sugerencias mientras se tipea (sin Enter) -- distintas de `candidatos`,
+  // que es el modal que dispara `buscar()` cuando el Enter no matcheo un
+  // codigo exacto y la busqueda por nombre trajo mas de un resultado. Las
+  // dos conviven: esta es la busqueda en vivo, esa sigue andando igual que
+  // siempre.
+  const [sugerencias, setSugerencias] = useState<CatalogItem[]>([])
+  // Guarda por secuencia (no AbortController: `api.get` de libra-ui no
+  // acepta AbortSignal, y no se toca ese paquete desde aca) -- si una
+  // respuesta vieja llega despues de una mas nueva, se descarta en vez de
+  // pisarla. Arranca en 0 y se incrementa recien al DISPARAR el fetch (no en
+  // cada tecla), para que dos pedidos en vuelo a la vez comparen bien.
+  const secuenciaSugerenciasRef = useRef(0)
+
   const [cobroOpen, setCobroOpen] = useState(false)
   const [cantidadOpen, setCantidadOpen] = useState(false)
   const escaneoRef = useRef<HTMLInputElement>(null)
@@ -297,6 +319,39 @@ export function Pos() {
     if (hayDialogo) return
     escaneoRef.current?.focus()
   }, [hayDialogo])
+
+  // Busqueda en vivo mientras se tipea -- sin apretar Enter. El multiplicador
+  // ("3 * cono") se pela antes de buscar, para que "cono" traiga sugerencias
+  // igual que si no hubiera multiplicador delante.
+  //
+  // 🔴 A proposito NO cancela con `busy`/Enter en vuelo: ese flujo
+  // (`buscar()`) limpia `query` apenas resuelve (via `agregar()`) o marca el
+  // error, y eso por si solo vacia `resto` y esconde las sugerencias -- no
+  // hace falta una segunda guarda cruzada, que solo agregaria una carrera
+  // mas para pisar.
+  useEffect(() => {
+    const { resto } = parseMultiplicador(query)
+    if (hayDialogo || resto.length < SUGERENCIAS_MIN_CHARS) {
+      setSugerencias([])
+      return
+    }
+    const temporizador = window.setTimeout(() => {
+      // La secuencia se actualiza recien ACA, al disparar el pedido -- no en
+      // cada tecla -- para que dos fetches realmente en vuelo a la vez (no
+      // dos teclas que el debounce ya absorbio) sean los que se comparan.
+      const secuencia = ++secuenciaSugerenciasRef.current
+      api.get<CatalogItem[]>(`/catalog/items?search=${encodeURIComponent(resto)}`)
+        .then((encontrados) => {
+          // Llego una respuesta mas nueva mientras esta viajaba: la vieja se
+          // descarta en vez de pisarle el resultado a la de recien.
+          if (secuenciaSugerenciasRef.current === secuencia) setSugerencias(encontrados)
+        })
+        .catch(() => {
+          if (secuenciaSugerenciasRef.current === secuencia) setSugerencias([])
+        })
+    }, SUGERENCIAS_DEBOUNCE_MS)
+    return () => window.clearTimeout(temporizador)
+  }, [query, hayDialogo])
 
   useEffect(() => {
     api.get<Location[]>('/locations')
@@ -363,6 +418,7 @@ export function Pos() {
     setCandidatos([])
     setVariantes([])
     setPendiente(null)
+    setSugerencias([])
     enfocarEscaneo()
   }
 
@@ -385,8 +441,26 @@ export function Pos() {
     agregar(item, cantidad, undefined, precioUnitario)
   }
 
+  /** Elegir una sugerencia de la busqueda en vivo -- mismo camino que
+   *  cualquier otra forma de resolver un item (`elegirItem`: respeta
+   *  variantes y termina en `agregar`, que limpia el campo y devuelve el
+   *  foco). El multiplicador tipeado antes del nombre ("3 * cono") se
+   *  respeta igual que en el flujo de Enter. */
+  async function elegirSugerencia(item: CatalogItem) {
+    const { cantidad } = parseMultiplicador(query)
+    // Se esconde ACA, antes del await: `elegirItem` puede tardar (pide las
+    // variantes), y la lista no tiene por que seguir visible mientras tanto.
+    setSugerencias([])
+    await elegirItem(item, cantidad)
+  }
+
   async function buscar(event: FormEvent) {
     event.preventDefault()
+    // Las sugerencias en vivo son de un flujo aparte (ver el useEffect de
+    // arriba) -- el Enter siempre resuelve por su cuenta, codigo exacto
+    // primero, y no tiene por que esperarlas ni convivir con ellas en
+    // pantalla mientras resuelve.
+    setSugerencias([])
     const texto = query.trim()
     if (!texto) return
     const { cantidad, resto } = parseMultiplicador(texto)
@@ -527,15 +601,13 @@ export function Pos() {
           Nueva venta
         </span>
         <div className="flex items-center gap-2">
+          {/* Orden pedido por el humano (2026-09-17): turno, después
+              sucursal/caja, y "Cerrar turno" al final -- el más a la
+              derecha, porque es la acción y no una etiqueta. */}
           {turno && (
-            <>
-              <span className="rounded border px-2 py-0.5 text-xs">
-                Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
-              </span>
-              <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
-                Cerrar turno
-              </Button>
-            </>
+            <span className="rounded border px-2 py-0.5 text-xs">
+              Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
+            </span>
           )}
           {/* Con turno abierto EN UNA CAJA, la sucursal queda fija a la de esa
               caja: la venta tiene que salir del depósito de esa sucursal, y
@@ -547,7 +619,7 @@ export function Pos() {
             // Sin selector, a propósito (ver el comentario de arriba): el
             // `title` es la forma más sobria de decir CÓMO se cambia de
             // sucursal sin agregar un segundo botón que haga lo mismo que
-            // "Cerrar turno" -- ya está ahí arriba, a un click. Pedido del
+            // "Cerrar turno" -- ya está ahí, a un click. Pedido del
             // humano (2026-09-17): "un botón «Cambiar»... o un tooltip".
             <span
               className="rounded border bg-muted px-2 py-0.5 text-xs"
@@ -574,20 +646,61 @@ export function Pos() {
               )}
             </>
           )}
+          {turno && (
+            <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
+              Cerrar turno
+            </Button>
+          )}
         </div>
       </div>
 
       <form onSubmit={buscar} className="flex items-center gap-2">
         <Scan className="size-5 shrink-0 text-primary" aria-hidden="true" />
-        <Input
-          ref={escaneoRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Escaneá o escribí código / nombre…    (3 * código para 3 unidades)"
-          className="h-11 flex-1 text-base"
-          autoFocus
-          aria-label="Código o nombre del producto"
-        />
+        <div className="relative flex-1">
+          <Input
+            ref={escaneoRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Escaneá o escribí código / nombre…    (3 * código para 3 unidades)"
+            className="h-11 w-full text-base"
+            autoFocus
+            autoComplete="off"
+            aria-label="Código o nombre del producto"
+            role="combobox"
+            aria-expanded={sugerencias.length > 0}
+            aria-controls="pos-sugerencias"
+          />
+          {/* Busqueda en vivo (sin Enter). NO es el modal `ElegirCandidato`
+              de mas abajo a proposito: un Dialog de Radix atrapa el foco al
+              abrirse, y el lector de codigo de barras necesita que el foco
+              siga siempre en este input mientras tipea. Un desplegable
+              comun, que solo aparece por estado y nunca llama a `.focus()`,
+              no le roba nada -- y clickear una opcion es un gesto explicito
+              del cajero, no algo que pase mientras tipea. */}
+          {sugerencias.length > 0 && (
+            <ul
+              id="pos-sugerencias"
+              role="listbox"
+              aria-label="Sugerencias"
+              className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+            >
+              {sugerencias.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => elegirSugerencia(item)}
+                    className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  >
+                    <span>{item.name}</span>
+                    <span className="tabular-nums text-muted-foreground">${money(item.default_sale_price)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <Button type="submit" disabled={busy} className="h-11">Agregar</Button>
       </form>
 

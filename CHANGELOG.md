@@ -5,6 +5,38 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **POS: buscar por nombre en la caja no distinguía mayúsculas/acentos, y
+  había que apretar Enter para ver algo.** Reportado por el humano: «Cono
+  Simple» no aparecía escribiendo «CONO SIMPLE» ni «cono simple». El defecto
+  era de PostgreSQL, no del código: `LIKE` es sensible a mayúsculas ahí (en
+  SQLite no, por eso pasó desapercibido hasta correr contra el motor real).
+  - `app/services/catalog.py::CatalogService.list_items` -- la comparación
+    ahora es `LOWER(REPLACE(REPLACE(...(name)...))) LIKE ?`, con el mismo
+    término normalizado del lado Python (`_sin_acentos`/`_columna_sin_acentos`,
+    tabla `_QUITAR_ACENTOS`): sin distinguir mayúsculas NI acentos («cafe»
+    encuentra «Café» y viceversa, decisión del humano), con **todos** los
+    términos en cualquier orden («simple cono» encuentra «Cono Simple») y
+    espacios de sobra que no cuentan. Se usa `REPLACE`+`LOWER` -- no
+    `translate()` de PostgreSQL, que SQLite no trae de fábrica -- y **no** se
+    instaló `unaccent` (nada de `CREATE EXTENSION`, es una dependencia nueva
+    de despliegue que las instancias pueden no poder correr). Se revisaron
+    las demás búsquedas de texto del backend (`grep -rn "LIKE" app/`):
+    clientes y proveedores no filtran por texto en el backend, y el otro
+    `LIKE` que hay (`app/normalizacion_medios.py`) es una migración de datos
+    por columna, no una búsqueda escrita por una persona -- no se tocó.
+  - `frontend/src/pages/Pos.tsx` -- al tipear en el campo de escaneo, un
+    desplegable bajo el campo (no el modal `ElegirCandidato`, que sí se
+    sigue usando cuando el Enter matchea por nombre y hay más de un
+    resultado: un `Dialog` de Radix atrapa el foco, y el lector de código de
+    barras necesita que el foco no se mueva) muestra coincidencias desde 2
+    caracteres, con debounce de 250 ms y guarda por secuencia (no
+    `AbortController`: `api.get` de `libra-ui` no lo acepta) para que una
+    respuesta vieja no pise a una más nueva. El Enter sigue haciendo
+    exactamente lo de siempre -- código exacto primero, después el nombre --
+    y las sugerencias no se lo comen ni le roban el foco al campo. Elegir una
+    agrega el producto por el mismo camino de siempre (`elegirItem`,
+    variantes y multiplicador `3 * …` incluidos), limpia el campo y devuelve
+    el foco.
 - **Reabrir día: un admin puede anular un cierre diario, con motivo.**
   Pedido del humano: en dev, una sucursal con el día cerrado no podía abrir
   turno, y no había forma de destrabarla sin tocar la base a mano.

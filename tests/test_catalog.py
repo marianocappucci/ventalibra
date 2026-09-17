@@ -139,6 +139,67 @@ def test_list_items_filters_by_search(admin_client):
     assert names == ["Arroz 1kg"]
 
 
+def test_list_items_search_sin_distinguir_mayusculas(admin_client):
+    # El defecto original: PostgreSQL es case-sensitive con LIKE (SQLite no
+    # lo es, por eso no se habia notado antes de correr contra el motor
+    # real). Cubre las dos formas que reporto el humano.
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Cono Simple", "unit_code": "u"})
+
+    for termino in ("CONO SIMPLE", "cono simple", "Cono"):
+        response = admin_client.get("/catalog/items", params={"search": termino})
+        assert response.status_code == 200, response.text
+        names = [item["name"] for item in response.json()]
+        assert names == ["Cono Simple"], f"buscando {termino!r}: {names!r}"
+
+
+def test_list_items_search_varios_terminos_en_cualquier_orden(admin_client):
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Cono Simple", "unit_code": "u"})
+    admin_client.post("/catalog/items", json={"name": "Cono Doble", "unit_code": "u"})
+
+    # Orden invertido respecto del nombre, y espacios de sobra que no cuentan.
+    response = admin_client.get("/catalog/items", params={"search": "  simple   cono  "})
+    assert response.status_code == 200
+    names = [item["name"] for item in response.json()]
+    assert names == ["Cono Simple"]
+
+
+def test_list_items_search_termino_inexistente_no_encuentra(admin_client):
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Cono Simple", "unit_code": "u"})
+
+    response = admin_client.get("/catalog/items", params={"search": "chocolate"})
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_items_search_sin_distinguir_acentos(admin_client):
+    # Decision del humano: "cafe" encuentra "Café" y al reves, y la ñ
+    # ("nino" encuentra "Niño"). Sin CREATE EXTENSION unaccent -- ver
+    # `_QUITAR_ACENTOS` en app/services/catalog.py.
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Café", "unit_code": "u"})
+    admin_client.post("/catalog/items", json={"name": "Café con leche", "unit_code": "u"})
+    admin_client.post("/catalog/items", json={"name": "Niño Torta", "unit_code": "u"})
+
+    response = admin_client.get("/catalog/items", params={"search": "cafe"})
+    assert response.status_code == 200
+    assert {i["name"] for i in response.json()} == {"Café", "Café con leche"}
+
+    response = admin_client.get("/catalog/items", params={"search": "café"})
+    assert response.status_code == 200
+    assert {i["name"] for i in response.json()} == {"Café", "Café con leche"}
+
+    response = admin_client.get("/catalog/items", params={"search": "CAFÉ"})
+    assert response.status_code == 200
+    assert {i["name"] for i in response.json()} == {"Café", "Café con leche"}
+
+    response = admin_client.get("/catalog/items", params={"search": "nino"})
+    assert response.status_code == 200
+    assert [i["name"] for i in response.json()] == ["Niño Torta"]
+
+
 def _make_item(client, name="Fideos 500g"):
     _make_unit(client, "u")
     created = client.post("/catalog/items", json={"name": name, "unit_code": "u"})
