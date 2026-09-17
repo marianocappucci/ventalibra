@@ -481,6 +481,10 @@ def create_app(db_path: str) -> FastAPI:
     # (no sobre `conn`, la variable local) para seguir viendo la conexión
     # correcta después de un restore de backup (`_reabrir_conexion` la
     # reemplaza, no la muta).
+    # `autorizar_reabrir` (LibraCore v1.107.0, "Reabrir día") SÍ se pasa:
+    # reabrir un día ya cerrado es más sensible que cerrarlo, así que se le
+    # exige `require_admin` en vez de heredar el `staff_or_admin` del módulo
+    # -- sin este parámetro el endpoint `POST /{id}/reabrir` ni se monta.
     def _resolver_sucursal_nombre(sucursal_id: int | None) -> str:
         if sucursal_id is None:
             return ""
@@ -491,6 +495,7 @@ def create_app(db_path: str) -> FastAPI:
         build_cierre_diario_router(
             usuario_actual=get_current_user,
             resolver_sucursal_nombre=_resolver_sucursal_nombre,
+            autorizar_reabrir=Depends(require_admin),
         ),
         dependencies=staff_or_admin,
     )

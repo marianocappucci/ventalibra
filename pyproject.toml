@@ -145,7 +145,15 @@ dependencies = [
     # base unica, no aplica) y v1.104.0 corrige que `panel_admin.py actualizar`
     # lea las migraciones del commit que construye. Se sube para no quedar mas
     # de un pin atras del resto de la familia mientras se agrega esta feature.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.106.1",
+    # v1.106.1 -> v1.107.0 (2026-09-17, "Reabrir dia"): `libracore.db.cierre_
+    # diario.reabrir_dia(cierre_id, usuario_id, motivo)` y, en `caja_router.
+    # build_cierre_diario_router`, `POST /api/cierre-diario/{cierre_id}/reabrir`
+    # (body `{motivo}`; 404/409 ya anulado o cierre posterior, 422 motivo vacio),
+    # que solo se monta si el producto pasa `autorizar_reabrir=Depends(...)` --
+    # aca queda atado a `require_admin`. `listar_cierres`/`get_cierre` suman
+    # `anulado_en`, `anulado_por`, `motivo_anulacion`, y `preview.ya_cerrado`
+    # ignora los anulados. Migracion `0011_reabrir_cierre_diario`.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.107.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
