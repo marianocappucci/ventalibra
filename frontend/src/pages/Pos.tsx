@@ -957,7 +957,9 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
 }) {
   const { medios } = useMediosPago()
   const [pagos, setPagos] = useState<PagoForm[]>([
-    { medio: 'efectivo', monto: String(total), recibido: '' },
+    // Con dos decimales y no `String(total)`: un total de pesada como 125.125
+    // se leería con `parseMonto` como 125.125 pesos con puntos de miles.
+    { medio: 'efectivo', monto: total.toFixed(2), recibido: '' },
   ])
   const [factura, setFactura] = useState(false)
   const [registrando, setRegistrando] = useState(false)
@@ -990,23 +992,34 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   // pisarse con un tick que ya estaba a mitad de camino de acreditar.
   const pollEnVueloRef = useRef<Promise<void> | null>(null)
 
-  const cubierto = pagos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
+  // Los montos del cobro se leen con `parseMonto`, la misma regla que el
+  // efectivo del turno: «1.500» es mil quinientos y «1.500,50» lleva coma
+  // decimal. Antes era `Number(x) || 0`: «1.500» valía 1,5 y «1500,50» valía
+  // 0, y el cajero quedaba bloqueado en «Falta cubrir» sin saber por qué.
+  // Un monto que no se puede leer no cuenta como 0: se marca en el campo y
+  // frena el cobro.
+  const montos = pagos.map((p) => parseMonto(p.monto))
+  const recibidos = pagos.map((p) => (p.recibido.trim() === '' ? null : parseMonto(p.recibido)))
+  const montoInvalido = pagos.map((p, i) => p.monto.trim() !== '' && montos[i] === null)
+  const recibidoInvalido = pagos.map((p, i) => p.recibido.trim() !== '' && recibidos[i] === null)
+  const hayMontoInvalido = montoInvalido.some(Boolean) || recibidoInvalido.some(Boolean)
+  const cubierto = montos.reduce<number>((acc, m) => acc + (m ?? 0), 0)
   const falta = total - cubierto
-  const vuelto = pagos.reduce((acc, p) => {
-    const recibido = Number(p.recibido)
-    const monto = Number(p.monto) || 0
-    if (!p.recibido || isNaN(recibido) || recibido <= monto) return acc
+  const vuelto = pagos.reduce((acc, _p, i) => {
+    const recibido = recibidos[i]
+    const monto = montos[i] ?? 0
+    if (recibido === null || recibido <= monto) return acc
     return acc + (recibido - monto)
   }, 0)
   const faltaEfectivo = pagos.some(
-    (p) => p.recibido !== '' && Number(p.recibido) < (Number(p.monto) || 0),
+    (_p, i) => recibidos[i] !== null && (recibidos[i] as number) < (montos[i] ?? 0),
   )
   // Fiar sin cliente lo rechaza el backend (422). Se frena antes para que el
   // cajero no descubra el problema recien al apretar Cobrar, con la fila
   // esperando.
-  const fia = pagos.some((p) => p.medio === CUENTA_CORRIENTE && Number(p.monto) > 0)
+  const fia = pagos.some((p, i) => p.medio === CUENTA_CORRIENTE && (montos[i] ?? 0) > 0)
   const fiaSinCliente = fia && !cliente
-  const puedeCobrar = falta <= 0.009 && !faltaEfectivo && !fiaSinCliente && !registrando
+  const puedeCobrar = !hayMontoInvalido && falta <= 0.009 && !faltaEfectivo && !fiaSinCliente && !registrando
 
   function actualizar(i: number, campo: keyof PagoForm, valor: string) {
     setPagos((prev) => prev.map((p, idx) => (idx === i ? { ...p, [campo]: valor } : p)))
@@ -1050,11 +1063,12 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
     setError(null)
     try {
       const pagosPayload = pagos
-        .filter((p) => Number(p.monto) > 0)
-        .map((p) => ({
+        .map((p, i) => ({ p, monto: montos[i], recibido: recibidos[i] }))
+        .filter(({ monto }) => monto !== null && monto > 0)
+        .map(({ p, monto, recibido }) => ({
           medio: p.medio,
-          monto: Number(p.monto),
-          ...(p.medio === 'efectivo' && p.recibido ? { recibido: Number(p.recibido) } : {}),
+          monto: monto as number,
+          ...(p.medio === 'efectivo' && recibido !== null ? { recibido } : {}),
         }))
       const venta = await api.post<Venta>('/api/ventas', {
         fecha: hoyISO(),
@@ -1093,7 +1107,8 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   // pidiendo al cliente la venta entera y no su parte.
   const soloMercadoPago = pagos.length === 1
     && pagos[0].medio === MERCADO_PAGO
-    && Math.abs((Number(pagos[0].monto) || 0) - total) <= 0.009
+    && montos[0] !== null
+    && Math.abs(montos[0] - total) <= 0.009
   const aplicaQr = !!mp?.disponible && soloMercadoPago && total > 0
 
   function frenarPoll() {
@@ -1325,9 +1340,13 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
                   <Label className="text-xs" htmlFor={`monto-${i}`}>Monto</Label>
                   <Input
                     id={`monto-${i}`} value={pago.monto} className="h-10 tabular-nums"
+                    aria-invalid={montoInvalido[i] || undefined}
                     onChange={(e) => actualizar(i, 'monto', e.target.value)}
                     onFocus={(e) => e.target.select()}
                   />
+                  {montoInvalido[i] && (
+                    <p className="text-xs text-destructive" role="alert">Monto inválido (ej. 1.500 o 1.500,50)</p>
+                  )}
                 </div>
                 {pago.medio === 'efectivo' && (
                   <div className="grid gap-1">
@@ -1336,9 +1355,13 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
                       id={`recibido-${i}`} value={pago.recibido} className="h-10 tabular-nums"
                       placeholder="opcional"
                       autoFocus={i === 0}
+                      aria-invalid={recibidoInvalido[i] || undefined}
                       onChange={(e) => actualizar(i, 'recibido', e.target.value)}
                       onFocus={(e) => e.target.select()}
                     />
+                    {recibidoInvalido[i] && (
+                      <p className="text-xs text-destructive" role="alert">Monto inválido</p>
+                    )}
                   </div>
                 )}
               </div>
