@@ -40,6 +40,17 @@ def test_el_backup_trae_la_base_por_la_api(admin_client, tmp_path):
     assert contenido[:5] == b"PGDMP", contenido[:5]
 
 
+def test_el_backup_de_la_api_no_escribe_en_el_checkout(admin_client, tmp_path):
+    """El ZIP que arma `/api/config/backup-ahora` queda en `DATA_DIR`, que la
+    suite apunta a `tmp_path` (`conftest.py::_dev_env`). Sin eso caía en
+    `./data/backups` del repo: un dump de la base a un `git add` de subirse."""
+    r = admin_client.get("/api/config/backup-ahora")
+    assert r.status_code == 200, r.text
+
+    zips = list((tmp_path / "data" / "backups").glob("*.zip"))
+    assert zips, "el ZIP no quedó en el DATA_DIR temporal del test"
+
+
 def test_el_zip_de_la_api_pasa_verificar_backup(admin_client, tmp_path):
     """No alcanza con que la API conteste 200: `verificar_backup` es el
     chequeo que de verdad importa (ver su docstring en `libracore.respaldo`)."""
