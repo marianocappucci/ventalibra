@@ -5,6 +5,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Fix: los montos del cobro se leen como los escribe un cajero.** «Monto» y
+  «Recibe» usaban `Number(x) || 0`: «3.000» valía 3 pesos y «3000,00» valía 0,
+  y el cobro quedaba en «Falta cubrir» sin explicación. Ahora siguen la misma
+  regla que el efectivo del turno («1.500» es mil quinientos, con coma
+  decimal). Un valor ilegible se marca en el campo y no deja cobrar.
 - **Fix: la cantidad de una línea del carrito ya no queda en 0 en silencio.**
   En «Cantidad» (F6) se aceptaba cualquier texto, y con «a3» la línea viajaba
   al registrar la venta con `qty: 0`. Ahora la cantidad se valida (coma o
