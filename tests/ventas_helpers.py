@@ -42,7 +42,14 @@ def caja_default(client) -> int:
     por sucursal (2026-09-16, ver `app/routers/shifts.py`): antes el turno
     era compartido y este helper no hacía falta.
     """
-    cajas = client.get("/api/cajas").json()
+    # De la sucursal DEFAULT, no la primera predeterminada de la lista: hay una
+    # predeterminada por sucursal, y desde el 2026-09-17 el backend rechaza una
+    # venta sin `deposito_id` (que sale del depósito default) abierta en la
+    # caja de otra sucursal (`app/ganchos.py::validar_deposito`).
+    principal = client.app.state.conn.execute(
+        "SELECT id FROM locations WHERE is_default = 1 LIMIT 1"
+    ).fetchone()[0]
+    cajas = client.get(f"/api/cajas?sucursal_id={principal}").json()
     assert cajas, "no hay ninguna caja dada de alta -- ¿se corrió asegurar_cajas_de_todas?"
     default = next((c for c in cajas if c["es_default"]), cajas[0])
     return default["id"]
