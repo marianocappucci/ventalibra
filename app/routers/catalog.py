@@ -3,9 +3,9 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
 from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from ..services.catalog import CatalogService, ItemNotFound, ItemUnitLockedError
+from ..services.catalog import CatalogService, ItemInvalido, ItemNotFound, ItemUnitLockedError
 from ..services.scale import ScaleLabelError, ScaleService
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -51,20 +51,23 @@ class ItemUpdate(BaseModel):
     """`item_type` queda afuera a proposito: producto/servicio es una
     decision del alta, no algo que se edite despues. El resto de los campos
     de `ItemCreate` se editan siempre, salvo `unit_code` con movimientos --
-    ver ItemUnitLockedError en `services/catalog.py`."""
+    ver ItemUnitLockedError en `services/catalog.py`.
 
-    name: str = Field(min_length=1)
+    Nombre no vacio y precio/costo no negativos NO se validan aca con
+    `Field` a proposito -- antes este modelo los validaba (y `ItemCreate`
+    no), asi que el mismo 422 salia con dos formatos distintos segun si era
+    alta o edicion. Ahora los valida `CatalogService._validar_item`, unico
+    lugar para los dos endpoints -- ver create_item/update_item."""
+
+    name: str
     unit_code: str
     category_id: int | None = None
     description: str = ""
     active: bool = True
     sellable: bool = True
     purchasable: bool = True
-    # `create_item`/ItemCreate no valida negativos (hueco del alta, no de
-    # esta edicion -- ver el comentario de update_item). Aca si, con el
-    # mismo `Field` que ya usa `cajas.py` para nombre no vacio.
-    default_sale_price: Decimal = Field(default=Decimal("0"), ge=0)
-    default_cost: Decimal = Field(default=Decimal("0"), ge=0)
+    default_sale_price: Decimal = Decimal("0")
+    default_cost: Decimal = Decimal("0")
 
 
 class ItemOut(BaseModel):
@@ -194,6 +197,11 @@ def create_item(data: ItemCreate, request: Request):
             default_sale_price=data.default_sale_price, default_cost=data.default_cost,
         )
     except KeyError as exc:
+        # unidad desconocida -- ver _get_unit en services/catalog.py.
+        raise HTTPException(422, str(exc))
+    except ItemInvalido as exc:
+        # nombre vacio, categoria desconocida o precio/costo negativo --
+        # mismo criterio que update_item, ver _validar_item.
         raise HTTPException(422, str(exc))
     return _to_item_out(item)
 
@@ -211,7 +219,10 @@ def update_item(item_id: int, data: ItemUpdate, request: Request):
     except ItemNotFound:
         raise HTTPException(404, "item not found")
     except KeyError as exc:
-        # unidad o categoria desconocida -- mismo criterio que create_item.
+        # unidad desconocida -- mismo criterio que create_item.
+        raise HTTPException(422, str(exc))
+    except ItemInvalido as exc:
+        # nombre vacio, categoria desconocida o precio/costo negativo.
         raise HTTPException(422, str(exc))
     except ItemUnitLockedError as exc:
         raise HTTPException(409, str(exc))

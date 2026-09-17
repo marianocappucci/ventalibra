@@ -52,6 +52,43 @@ def test_create_item_with_unknown_unit_fails(admin_client):
     assert response.status_code == 422
 
 
+def test_create_item_with_unknown_category_422(admin_client):
+    # Antes de _validar_item esto reventaba la FK de Postgres y salia un 500
+    # sin traducir -- ver ItemInvalido en services/catalog.py.
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "category_id": 999},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_item_empty_name_422(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items", json={"name": "   ", "unit_code": "u"},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_item_negative_price_422(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "default_sale_price": "-1"},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_item_negative_cost_422(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "default_cost": "-1"},
+    )
+    assert response.status_code == 422, response.text
+
+
 def test_create_and_get_item(admin_client):
     _make_unit(admin_client, "u")
     category = _make_category(admin_client, "Almacen")

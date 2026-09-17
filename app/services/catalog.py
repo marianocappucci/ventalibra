@@ -41,6 +41,14 @@ class ItemUnitLockedError(Exception):
         )
 
 
+class ItemInvalido(Exception):
+    """422: el item no cumple una regla de negocio -- nombre vacio, precio o
+    costo negativo, o categoria inexistente. Separada de KeyError (que sigue
+    siendo la unidad desconocida, en `_get_unit`) porque esa validacion es
+    vieja y ya la traducian los dos endpoints; esta es la que create_item no
+    tenia -- ver `_validar_item`."""
+
+
 class CatalogService:
     def __init__(self, conn: Conexion):
         self._conn = conn
@@ -108,10 +116,14 @@ class CatalogService:
         default_cost: Decimal = Decimal("0"),
     ) -> CatalogItem:
         unit = self._get_unit(unit_code)
+        nombre = self._validar_item(
+            name=name, category_id=category_id,
+            default_sale_price=default_sale_price, default_cost=default_cost,
+        )
         item = CatalogItem(
             id=None,
             item_type=item_type,
-            name=name,
+            name=nombre,
             unit=unit,
             category_id=category_id,
             description=description,
@@ -139,13 +151,18 @@ class CatalogService:
             raise ItemUnitLockedError(item_id)
         changes["unit"] = nueva_unidad
 
-        # Mismo criterio que la unidad: la categoria tiene que existir.
-        # `create_item` no lo valida (queda como hueco pendiente del alta,
-        # no de esta edicion) y confia en la FK de Postgres, que revienta
-        # con un IntegrityError sin traducir a 422.
-        category_id = changes.get("category_id", item.category_id)
-        if category_id is not None and not self._category_exists(category_id):
-            raise KeyError(f"categoria desconocida: {category_id!r}")
+        # Mismo helper que create_item -- nombre no vacio, categoria
+        # existente y precio/costo no negativos. Antes esta edicion validaba
+        # la categoria aca mismo (con KeyError) y el nombre/precio/costo los
+        # validaba ItemUpdate con Field de Pydantic, dos formatos de error
+        # distintos para el mismo 422. Ahora las tres viven en un solo lugar
+        # y responden con el mismo `detail` en los dos endpoints.
+        changes["name"] = self._validar_item(
+            name=changes.get("name", item.name),
+            category_id=changes.get("category_id", item.category_id),
+            default_sale_price=changes.get("default_sale_price", item.default_sale_price),
+            default_cost=changes.get("default_cost", item.default_cost),
+        )
 
         return self._repo.save_catalog_item(replace(item, **changes))
 
@@ -234,3 +251,30 @@ class CatalogService:
             "SELECT 1 FROM categories WHERE id = ?", (category_id,)
         ).fetchone()
         return row is not None
+
+    def _validar_item(
+        self,
+        *,
+        name: str,
+        category_id: int | None,
+        default_sale_price: Decimal,
+        default_cost: Decimal,
+    ) -> str:
+        """Reglas de negocio compartidas por create_item y update_item.
+        Devuelve el nombre ya sin espacios de sobra, para que el llamador lo
+        use tal cual en vez de repetir el `.strip()`.
+
+        La unidad NO esta aca: sigue resolviendose con `_get_unit`, que ya
+        era compartida por los dos metodos y usa KeyError (422) desde antes
+        de este cambio -- no hacia falta tocarla.
+        """
+        nombre = name.strip()
+        if not nombre:
+            raise ItemInvalido("el nombre no puede estar vacio")
+        if category_id is not None and not self._category_exists(category_id):
+            raise ItemInvalido(f"categoria desconocida: {category_id!r}")
+        if default_sale_price < 0:
+            raise ItemInvalido("el precio de venta no puede ser negativo")
+        if default_cost < 0:
+            raise ItemInvalido("el costo no puede ser negativo")
+        return nombre
