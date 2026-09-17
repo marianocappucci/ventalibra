@@ -2,7 +2,7 @@
 // Gestiolibra/MedLibra/VentaLibra salvo NAV_ITEMS/branding -- ver
 // wiki/analyses/auditoria-duplicacion-familia-libra.md).
 import {
-  BarChart3, Building2, Package, ReceiptText, ScrollText, Settings,
+  BarChart3, Building2, CalendarCheck, Landmark, Package, ReceiptText, ScrollText, Settings,
   ShoppingBag, ShoppingCart, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -36,6 +36,9 @@ export const Layout = createLayout({
     { to: '/clientes', label: 'Clientes', icon: Users },
     { to: '/cuentas-corrientes', label: 'Cuentas corrientes', icon: Wallet },
     { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
+    { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },
+    // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
+    { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
     { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
     // Junto a Usuarios: se mira para responder "quién hizo esto".

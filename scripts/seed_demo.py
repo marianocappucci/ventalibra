@@ -247,7 +247,7 @@ def sembrar(api: Api) -> None:
     # quedan creadas pero sin confirmar: no descuentan stock, no mueven caja y
     # ni siquiera aparecen en el listado. Es la primera cosa que rompió al
     # escribir este seed, y es correcta — así funciona un mostrador.
-    _abrir_turno(api, contar)
+    _abrir_turno(api, deposito_ventas, contar)
 
     print("Ventas…")
     _sembrar_ventas(api, articulos, clientes, deposito_ventas, contar)
@@ -267,7 +267,19 @@ def sembrar(api: Api) -> None:
         print(f"  {clave:<12} {creados} creados, {existentes} ya estaban")
 
 
-def _abrir_turno(api: Api, contar) -> None:
+def _caja_default(api: Api, sucursal_id: int) -> int:
+    """La caja predeterminada de esa sucursal.
+
+    🔴 Cajas por sucursal (2026-09-16): `POST /shifts/open` ahora exige
+    `caja_id`. `create_app()` garantiza que la sucursal default tenga al
+    menos una caja al arrancar (`app/services/cajas.py::
+    asegurar_cajas_de_todas`), así que esta consulta nunca da vacía.
+    """
+    cajas = api.get(f"/api/cajas?sucursal_id={sucursal_id}")
+    return next((c["id"] for c in cajas if c.get("es_default")), cajas[0]["id"])
+
+
+def _abrir_turno(api: Api, sucursal_id: int, contar) -> None:
     """Abre el turno de caja, si no hay uno abierto.
 
     El endpoint devuelve 409 si ya hay uno —no se abre uno encima de otro,
@@ -276,7 +288,8 @@ def _abrir_turno(api: Api, contar) -> None:
     """
     try:
         api.post("/shifts/open", {"monto_inicial": 20000,
-                                  "notas": "Apertura de la demo"})
+                                  "notas": "Apertura de la demo",
+                                  "caja_id": _caja_default(api, sucursal_id)})
         contar("turno", True)
     except RuntimeError as e:
         if "409" in str(e):

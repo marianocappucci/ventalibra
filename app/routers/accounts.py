@@ -131,8 +131,13 @@ def cobrar(party_id: int, data: CobranzaIn, request: Request,
 
     A diferencia de fiar, esto SÍ es plata que entra: exige turno abierto y
     genera movimiento de caja, para que el arqueo del cierre lo cuente.
+
+    🔴 El turno es el de QUIEN COBRA (`get_turno_activo`), no el compartido de
+    toda la instancia (`get_turno_activo_any`, retirado el 2026-09-16 con la
+    feature de cajas por sucursal): así el movimiento de esta cobranza cae en
+    el arqueo del cajero correcto, en la caja correcta.
     """
-    turno = db_turnos.get_turno_activo_any()
+    turno = db_turnos.get_turno_activo(int(user["id"])) if user else None
     if turno is None:
         raise HTTPException(409, "no hay un turno de caja abierto")
 

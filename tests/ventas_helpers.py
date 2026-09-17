@@ -31,9 +31,32 @@ def hoy() -> str:
     return datetime.now(_AR).date().isoformat()
 
 
-def abrir_turno(client, monto_inicial=0) -> int:
-    """Sin turno abierto no se vende (`exigir_turno=True`): la mayoría de los tests lo necesita."""
-    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+def caja_default(client) -> int:
+    """La caja que usa un test que no eligió ninguna: la predeterminada (o la
+    única -- casi toda la suite corre con una sola sucursal, ver
+    `app/db.py::connect`, que siembra un Location único, y `app/services/
+    cajas.py::asegurar_cajas_de_todas`, que le crea su primera caja al
+    arrancar `create_app()`).
+
+    `caja_id` es obligatorio en `POST /shifts/open` desde la feature de cajas
+    por sucursal (2026-09-16, ver `app/routers/shifts.py`): antes el turno
+    era compartido y este helper no hacía falta.
+    """
+    cajas = client.get("/api/cajas").json()
+    assert cajas, "no hay ninguna caja dada de alta -- ¿se corrió asegurar_cajas_de_todas?"
+    default = next((c for c in cajas if c["es_default"]), cajas[0])
+    return default["id"]
+
+
+def abrir_turno(client, monto_inicial=0, caja_id=None) -> int:
+    """Sin turno abierto no se vende (`exigir_turno=True`): la mayoría de los tests lo necesita.
+
+    `caja_id=None` (el default) abre sobre `caja_default(client)`."""
+    if caja_id is None:
+        caja_id = caja_default(client)
+    abierto = client.post(
+        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_id}
+    )
     assert abierto.status_code == 200, abierto.text
     return abierto.json()["turno"]["id"]
 

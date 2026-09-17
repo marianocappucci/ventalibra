@@ -34,7 +34,7 @@ import pytest
 from fastapi.testclient import TestClient
 from motor_de_test import destino_dominio
 from pypdf import PdfReader
-from ventas_helpers import hoy
+from ventas_helpers import caja_default, hoy
 
 from app import normalizacion_medios as norm
 from app.main import create_app
@@ -156,7 +156,9 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     assert cliente.status_code == 200, cliente.text
     cliente_id = cliente.json()["id"]
 
-    turno = client.post("/shifts/open", json={"monto_inicial": 0})
+    turno = client.post(
+        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(client)}
+    )
     assert turno.status_code == 200, turno.text
 
     # 1) Venta cobrada por MercadoPago -> ventas_pagos + caja_movimientos +

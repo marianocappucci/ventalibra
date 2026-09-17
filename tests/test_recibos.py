@@ -15,11 +15,13 @@ distingue "anda" de "no explota".
 import io
 
 from pypdf import PdfReader
-from ventas_helpers import hoy
+from ventas_helpers import caja_default, hoy
 
 
 def _abrir_turno(client, monto_inicial=0):
-    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+    abierto = client.post(
+        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+    )
     assert abierto.status_code == 200, abierto.text
     return abierto.json()["turno"]["id"]
 

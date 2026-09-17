@@ -23,6 +23,7 @@ from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
+from libracore.caja_router import build_cierre_diario_router
 from libracore.config_router import (
     build_backup_router,
     build_empresa_admin_router,
@@ -51,6 +52,7 @@ from .ganchos import GANCHOS, nombre_de_cliente
 from .modules_gate import require_module
 from .routers import (
     accounts,
+    cajas,
     catalog,
     customers,
     health,
@@ -69,6 +71,8 @@ from .routers import (
     settings as settings_router,
 )
 from .services import billing
+from .services import cajas as cajas_service
+from .services.locations import LocationService
 from .services.modules import ModuleRepository
 from .services.users import UserRepository, ensure_default_admin
 
@@ -112,6 +116,20 @@ def create_app(db_path: str) -> FastAPI:
         "ventalibra", core=True, default="./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
+    # Cajas por sucursal (2026-09-16): toda sucursal (Location del dominio)
+    # tiene al menos una caja, idempotente. `billing.configure()` (via
+    # `libracore.db.schema.init_core_schema()`) ya garantiza que exista AL
+    # MENOS una caja default en la instancia, sin sucursal, para una base
+    # nueva -- acá se reasigna esa caja huérfana al depósito default y se
+    # completa lo que falte por sucursal. Corre en cada arranque; en el
+    # segundo no crea nada (ver `app/services/cajas.py::
+    # asegurar_cajas_de_todas`).
+    _sucursales_activas = LocationService(conn).list()
+    _sucursal_default = next((s for s in _sucursales_activas if s.is_default), None)
+    cajas_service.asegurar_cajas_de_todas(
+        [s.id for s in _sucursales_activas],
+        _sucursal_default.id if _sucursal_default else None,
+    )
     # La URL de SQLAlchemy salia siempre como `sqlite:///...`, aunque el destino
     # fuera una URL PostgreSQL: la interpolacion la convertia en una ruta
     # relativa sin sentido. `postgresql://` se pasa tal cual (con el driver
@@ -392,6 +410,11 @@ def create_app(db_path: str) -> FastAPI:
         dependencies=staff_or_admin,
     )
     app.include_router(shifts.router, dependencies=staff_or_admin)
+    # Cajas por sucursal: leer es de staff y admin (elige la caja al abrir
+    # turno); el propio router agrega `require_admin` en lo que escribe. Va
+    # ANTES de `medios.router` para que quede claro que no compite con su
+    # `GET /api/cajas/medios-disponibles` -- este router no define esa ruta.
+    app.include_router(cajas.router, dependencies=staff_or_admin)
     app.include_router(suppliers.router, dependencies=staff_or_admin)
     app.include_router(purchasing.router, dependencies=staff_or_admin)
     app.include_router(customers.router, dependencies=staff_or_admin)
@@ -401,6 +424,28 @@ def create_app(db_path: str) -> FastAPI:
     # frontend. Misma ruta que `build_cajas_router` de LibraCore, que es la que
     # pide `libra-ui/comercio/medios-pago`.
     app.include_router(medios.router, dependencies=staff_or_admin)
+    # Cierre diario: acto registrado y numerado por sucursal (LibraCore
+    # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).
+    # `autorizar_cierre` no se pasa: el gate de ESTE producto para "admin o
+    # cajero" es `staff_or_admin`, y ya cubre TODOS los endpoints del router
+    # -- incluido `POST /cerrar` -- por el `dependencies=` de este mismo
+    # `include_router`. `resolver_sucursal_nombre` cierra sobre `app.state`
+    # (no sobre `conn`, la variable local) para seguir viendo la conexión
+    # correcta después de un restore de backup (`_reabrir_conexion` la
+    # reemplaza, no la muta).
+    def _resolver_sucursal_nombre(sucursal_id: int | None) -> str:
+        if sucursal_id is None:
+            return ""
+        loc = LocationService(app.state.conn).get(sucursal_id)
+        return loc.name if loc else ""
+
+    app.include_router(
+        build_cierre_diario_router(
+            usuario_actual=get_current_user,
+            resolver_sucursal_nombre=_resolver_sucursal_nombre,
+        ),
+        dependencies=staff_or_admin,
+    )
     app.include_router(reports.router, dependencies=admin_only)
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.

@@ -24,8 +24,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
+import { hora } from '@/lib/fechas'
 import {
-  api, ApiError, type CatalogItem, type Customer, type ItemVariant, type Location,
+  api, ApiError, type Caja, type CatalogItem, type Customer, type ItemVariant, type Location,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
   type ScanResult, type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
@@ -41,6 +42,7 @@ import {
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'lucide-react'
 import { useMediosPago } from '@/lib/medios-pago'
+import { abrirTicket } from '@/lib/tickets'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -261,6 +263,18 @@ export function Pos() {
       .catch(() => setLocations([]))
   }, [])
 
+  // Con turno abierto EN UNA CAJA, la sucursal de la venta queda atada a la
+  // de esa caja -- no a lo último elegido a mano ni a lo que haya en
+  // localStorage. Esto es lo que garantiza, del lado del POS, que
+  // `deposito_id` viaje siempre igual a la sucursal del turno: el backend NO
+  // lo valida (ver el comentario largo en `app/routers/shifts.py` y el
+  // pendiente de motor documentado ahí -- `libracommerce.web.ventas_router`
+  // no ofrece ningún gancho para cruzar `deposito_id` contra la caja del
+  // turno antes de escribir la venta).
+  useEffect(() => {
+    if (turno?.sucursal) setLocationId(String(turno.sucursal.id))
+  }, [turno])
+
   useEffect(() => {
     if (locationId) localStorage.setItem(LOCATION_KEY, locationId)
   }, [locationId])
@@ -453,22 +467,41 @@ export function Pos() {
           {turno && (
             <>
               <span className="rounded border px-2 py-0.5 text-xs">
-                Turno #{turno.id} · desde {turno.apertura.slice(11, 16)} · inicial ${money(turno.monto_inicial)}
+                Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
               </span>
               <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
                 Cerrar turno
               </Button>
             </>
           )}
-          <span className="text-xs">Sucursal</span>
-          <Select value={locationId} onValueChange={setLocationId}>
-            <SelectTrigger className="h-8 w-48" aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
-            <SelectContent>
-              {locations.map((loc) => (
-                <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Con turno abierto EN UNA CAJA, la sucursal queda fija a la de esa
+              caja: la venta tiene que salir del depósito de esa sucursal, y
+              dejar elegir otra la desalinearía sin que nadie lo note (ver el
+              pendiente de motor documentado en `AbrirTurno` de este archivo).
+              Un turno viejo sin caja (de antes de esta feature) conserva el
+              selector, con un aviso para migrarlo. */}
+          {turno?.sucursal ? (
+            <span className="rounded border bg-muted px-2 py-0.5 text-xs">
+              Sucursal {turno.sucursal.nombre} · Caja {turno.caja?.nombre}
+            </span>
+          ) : (
+            <>
+              <span className="text-xs">Sucursal</span>
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger className="h-8 w-48" aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
+                <SelectContent>
+                  {locations.map((loc) => (
+                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {turno && !turno.caja && (
+                <span className="text-xs text-amber-600 dark:text-amber-500">
+                  Turno sin caja asignada: convendría cerrarlo y abrir uno nuevo en una caja.
+                </span>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -1452,37 +1485,56 @@ function VentaCobrada({ venta, facturaError, aviso, onNueva }: {
   )
 }
 
-/** Abre el PDF del ticket en una ventana aparte y dispara la impresión.
- *
- *  El navegador no puede hablarle a la ticketeadora directamente: imprime a
- *  través del diálogo del sistema, que es el que conoce la impresora térmica.
- *  El PDF ya viene con el ancho de papel configurado, así que sale a la
- *  medida del rollo.
- *
- *  `/ventas/{id}/ticket` (F4, ADR-025) -- antes `/sales/{id}/ticket`, que ya
- *  no existe: `/sales` se retiró entero. */
+/** `/ventas/{id}/ticket` (F4, ADR-025) -- antes `/sales/{id}/ticket`, que ya
+ *  no existe: `/sales` se retiró entero. Ver `lib/tickets.ts::abrirTicket`. */
 function imprimirTicket(saleId: number) {
-  const ventana = window.open(`/ventas/${saleId}/ticket`, '_blank')
-  if (!ventana) return  // bloqueador de popups: el ticket se puede pedir de nuevo
-  ventana.addEventListener('load', () => ventana.print())
+  abrirTicket(`/ventas/${saleId}/ticket`)
 }
 
 
 /** Apertura del turno. Bloquea el POS: sin turno el backend rechaza el cobro
  *  (409), y descubrirlo recien al cobrar significa haber cargado la venta
- *  entera al pedo. */
+ *  entera al pedo.
+ *
+ *  🔴 Desde la feature de cajas por sucursal (2026-09-16) `caja_id` es
+ *  obligatorio: el cajero elige primero la sucursal y después el mostrador
+ *  -- sin las cajas que ya tienen un turno abierto, para no toparse con el
+ *  409 recién al mandar el formulario. */
 function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
+  const [locations, setLocations] = useState<Location[]>([])
+  const [sucursalId, setSucursalId] = useState('')
+  const [cajas, setCajas] = useState<Caja[]>([])
+  const [cajaId, setCajaId] = useState('')
   const [monto, setMonto] = useState('0')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    api.get<Location[]>('/locations').then((items) => {
+      setLocations(items)
+      const porDefecto = items.find((l) => l.is_default)
+      setSucursalId(String((porDefecto ?? items[0])?.id ?? ''))
+    }).catch(() => setLocations([]))
+  }, [])
+
+  useEffect(() => {
+    if (!sucursalId) { setCajas([]); setCajaId(''); return }
+    api.get<Caja[]>(`/api/cajas?sucursal_id=${sucursalId}`).then((items) => {
+      setCajas(items)
+      const libre = items.find((c) => c.es_default && !c.tiene_turno_abierto)
+        ?? items.find((c) => !c.tiene_turno_abierto)
+      setCajaId(libre ? String(libre.id) : '')
+    }).catch(() => setCajas([]))
+  }, [sucursalId])
+
   async function abrir(e: FormEvent) {
     e.preventDefault()
+    if (!cajaId) return
     setBusy(true)
     setError(null)
     try {
       const abierto = await api.post<{ turno: Shift }>('/shifts/open', {
-        monto_inicial: Number(monto) || 0,
+        monto_inicial: Number(monto) || 0, caja_id: Number(cajaId),
       })
       onAbierto(abierto.turno)
     } catch (err) {
@@ -1500,20 +1552,57 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
           <span className="text-sm">No hay ningún turno de caja abierto</span>
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          Para poder cobrar hace falta abrir el turno. Contá lo que hay en el
-          cajón ahora: es la base contra la que se arquea al cerrar.
+          Para poder cobrar hace falta abrir el turno en una caja. Contá lo
+          que hay en el cajón ahora: es la base contra la que se arquea al
+          cerrar.
         </p>
         <form onSubmit={abrir} className="mt-5 grid gap-3">
           <div className="grid gap-2">
+            <Label>Sucursal</Label>
+            {/* `v && ...`: el `<select>` nativo que Radix mantiene en sombra
+                para accesibilidad dispara un `onChange` con valor vacío en
+                cuanto sus `<option>` cambian (acá, cuando `locations` pasa
+                de `[]` a la lista real) -- sin este guard, esa señal
+                espuria pisaba la sucursal recién preseleccionada, antes de
+                que el cajero llegara a tocar nada. Medido con la suite de
+                este archivo (`pos-turno-por-caja.test.tsx`). */}
+            <Select value={sucursalId} onValueChange={(v) => v && setSucursalId(v)}>
+              <SelectTrigger aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
+              <SelectContent>
+                {locations.map((l) => (
+                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>Caja</Label>
+            <Select value={cajaId} onValueChange={(v) => v && setCajaId(v)} disabled={!sucursalId}>
+              <SelectTrigger aria-label="Caja"><SelectValue placeholder="Elegí una caja…" /></SelectTrigger>
+              <SelectContent>
+                {cajas.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)} disabled={c.tiene_turno_abierto}>
+                    {c.nombre}{c.tiene_turno_abierto ? ' (en uso)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {sucursalId && cajas.length > 0 && cajas.every((c) => c.tiene_turno_abierto) && (
+              <p className="text-xs text-muted-foreground">
+                Todas las cajas de esta sucursal tienen un turno abierto.
+              </p>
+            )}
+          </div>
+          <div className="grid gap-2">
             <Label htmlFor="monto-inicial">Efectivo inicial en caja</Label>
             <Input
-              id="monto-inicial" value={monto} autoFocus className="h-12 text-lg tabular-nums"
+              id="monto-inicial" value={monto} className="h-12 text-lg tabular-nums"
               onChange={(e) => setMonto(e.target.value)}
               onFocus={(e) => e.target.select()}
             />
           </div>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-          <Button type="submit" className="h-12 text-base" disabled={busy}>
+          <Button type="submit" className="h-12 text-base" disabled={busy || !cajaId}>
             {busy ? 'Abriendo...' : 'Abrir turno'}
           </Button>
         </form>
@@ -1535,6 +1624,10 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
   const [notas, setNotas] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Turno recién cerrado: se queda en el diálogo un paso más para ofrecer el
+  // ticket -- si `onCerrado()` corriera de una, la pantalla ya volvió al POS
+  // (sin turno) y no hay dónde mostrar el botón.
+  const [cerrado, setCerrado] = useState(false)
 
   useEffect(() => {
     api.get<ShiftState>(`/shifts/${turno.id}/summary`)
@@ -1556,11 +1649,33 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
       await api.post(`/shifts/${turno.id}/close`, {
         monto_declarado: Number(declarado) || 0, notas,
       })
-      onCerrado()
+      setCerrado(true)
     } catch (err) {
       setError(describeError(err))
       setBusy(false)
     }
+  }
+
+  if (cerrado) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onCerrado()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Turno #{turno.id} cerrado</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            El arqueo quedó registrado. Podés imprimir el ticket ahora.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => abrirTicket(`/api/cierre-diario/turno/${turno.id}/ticket`)}
+            >
+              <Printer />Imprimir ticket
+            </Button>
+            <Button onClick={onCerrado}>Listo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (

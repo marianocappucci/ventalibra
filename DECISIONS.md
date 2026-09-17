@@ -1370,3 +1370,77 @@ decisión explícita del humano, y no forman parte de esta ADR.
   detalle de la brecha, las decisiones D1–D6 y los lugares donde el motor,
   tal como está, rompería a VentaLibra en silencio están en
   `plan-ventalibra-a-libracommerce` (wiki).
+
+## ADR-026 — Cajas por sucursal, turno por caja y cierre diario
+
+- Estado: aceptada
+- Fecha: 2026-09-16
+- Contexto: F3 y F4 del plan post-P9 (ADR-025) ya están en `develop`
+  (`feature/f3-capa-erp`, `feat(pos): ... se retira /sales`, ambos del
+  2026-09-15): el POS vende contra `/api/ventas`, la capa ERP de
+  LibraCommerce. Con eso cerrado, esta ADR hace lo que ADR-025 dejó
+  explícitamente para después: **el cliente real tiene dos locales vendiendo
+  a la vez**, y hoy hay una sola caja y un turno compartido para toda la
+  instancia (`get_turno_activo_any`) — dos cajeros en dos locales mezclan su
+  plata en el mismo arqueo.
+- Decisiones del humano:
+
+  | | Decisión |
+  |---|---|
+  | Sucursales | Varias cajas **por sucursal** — la sucursal es el `Location` de LibraCommerce (el mismo id que ya usa el depósito) |
+  | Punto de venta | Por **caja**, como ya resuelve el motor (`resolver_punto_venta`: usuario → turno → caja → punto de venta); nullable = el de la empresa |
+  | QR de MercadoPago | Fuera de alcance — sigue uno por instancia |
+  | Cierre diario | Acto registrado y numerado por sucursal, con ticket de 80 mm de cada turno y del día; lo puede hacer admin **o cajero** |
+  | Anular/devolver | El cajero sigue pudiendo — no se agrega `solo_admin` al router de ventas |
+
+- Decisiones propias (no pedidas explícitamente, resueltas al construir):
+  - **El turno pasa de compartido a por usuario y por caja** (`libracore.db.
+    turnos.get_turno_activo`, el default del motor) en vez de inventar un
+    tercer modelo. Es lo mínimo que separa la plata de dos cajeros: cada uno
+    tiene el suyo, en su caja.
+  - **"Una caja, un turno a la vez" es una regla de este producto, no del
+    motor.** Ni siquiera LibraClub —la otra instancia con cajas múltiples—
+    la impone (sólo evita que un mismo usuario tenga dos turnos). Sin ella,
+    dos cajeros podrían abrir turno en el mismo mostrador y mezclar la plata
+    igual que antes. Se valida en `app/routers/shifts.py` con una consulta
+    propia (`app/services/cajas.py::turno_abierto_de`), compartida con el
+    router de cajas para no ofrecer al abrir una que ya está en uso.
+  - **La caja por defecto es por sucursal, no global.** El motor
+    (`db_caja.set_default_caja`) hace `UPDATE cajas SET es_default=0` sin
+    filtrar — correcto para los productos sin sedes, pero acá le borraría la
+    predeterminada a las demás sucursales. Se reimplementa en
+    `app/services/cajas.py::marcar_predeterminada`, calcado del mismo fix ya
+    hecho en LibraClub para el mismo caso.
+  - **Nada valida que `deposito_id` de `POST /api/ventas` sea la sucursal de
+    la caja del turno — ni se agrega.** Investigado activamente: ni
+    `VentaPayload` ni `Hooks` (`libracommerce/erp/hooks.py`) ofrecen un punto
+    de extensión que llegue a un 422 limpio sin tocar el motor o reusar
+    `DepositoInexistente` con un mensaje que mentiría (el depósito SÍ
+    existe, es de otra sucursal). Se resuelve en el frontend: con turno
+    abierto, el POS fija la sucursal a la de la caja del turno y saca el
+    selector — ver el comentario largo en `app/routers/shifts.py` y en
+    `frontend/src/pages/Pos.tsx`. Pendiente de motor, reportado con archivo y
+    línea en el primero.
+  - **Cerrar un turno sigue sin exigir ser el dueño ni admin** — así estaba
+    antes de esta feature (cualquier staff/admin podía cerrar cualquier
+    turno). Restringirlo a "dueño o admin" habría sido un cambio de permisos
+    que nadie pidió; se documenta la decisión de no tocarlo en
+    `app/routers/shifts.py::cerrar`.
+  - **`libracore` sube a v1.104.0** (de v1.102.0) para no quedar más de un
+    pin atrás del resto de la familia mientras se agrega esta feature. Sin
+    migraciones nuevas para VentaLibra en el camino — v1.103.0 y v1.104.0
+    tocan `libracore-migrar`/`panel_admin.py`, no el schema. La migración
+    `0009_cierre_diario` (cajas, cierres_diarios\*) ya estaba en la cadena
+    desde antes de este pin.
+- Lo que NO cambia: la capa ERP (D1–D6, ADR-025), la numeración `POS-`, el
+  QR por instancia, y el gate de anular/devolver del cajero.
+- Consecuencias: `app/services/cajas.py` y `app/routers/cajas.py` (ABM de
+  cajas), `app/routers/shifts.py` reescrito (turno por usuario y caja, guarda
+  de caja-única), `app/ganchos.py::turno_para` y `app/routers/accounts.py`
+  dejan de usar `get_turno_activo_any`, `libracore.caja_router.
+  build_cierre_diario_router` montado, y `frontend/src/pages/Cajas.tsx` +
+  `CierreDiario.tsx` nuevas. Datos existentes: instancias reales pueden tener
+  turnos abiertos sin caja y cajas sin sucursal — el arranque los reasigna
+  (`app/services/cajas.py::asegurar_cajas_de_todas`) y los turnos viejos
+  siguen viéndose y cerrándose (`app/routers/shifts.py::_enriquecer`
+  tolera `caja=None`).

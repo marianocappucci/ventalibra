@@ -19,7 +19,7 @@ facturaba tipo B con IVA discriminado aunque el emisor fuera monotributista,
 que no es correcto.
 """
 from libracore.db import caja as db_caja
-from ventas_helpers import hoy
+from ventas_helpers import caja_default, hoy
 
 
 def _make_location(client):
@@ -61,7 +61,9 @@ def _confirmed_sale(client, item_id, location_id=None, quantity="1",  # noqa: AR
     si `invoice=True`, factura aparte (D2/D6) -- ver el docstring del módulo.
     """
     if client.get("/shifts/current").json().get("turno") is None:
-        client.post("/shifts/open", json={"monto_inicial": 0})
+        client.post(
+            "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(client)}
+        )
     venta = _registrar_venta(client, item_id, medio=medio_pago, monto=float(quantity) * 1500.0)
     factura = None
     if invoice and venta.status_code == 200:
@@ -73,7 +75,9 @@ def _confirmed_sale(client, item_id, location_id=None, quantity="1",  # noqa: AR
 def _abrir_turno(client, monto_inicial=0):
     """Sin turno abierto, registrar una venta da 409: una venta fuera de
     turno sería plata sin control de caja."""
-    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+    abierto = client.post(
+        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+    )
     assert abierto.status_code == 200, abierto.text
     return abierto.json()["turno"]["id"]
 

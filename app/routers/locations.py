@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from ..services import cajas as cajas_service
 from ..services.locations import LocationService
 
 router = APIRouter(prefix="/locations", tags=["locations"])
@@ -36,6 +37,11 @@ def _service(request: Request) -> LocationService:
 @router.post("", response_model=LocationOut)
 def create_location(data: LocationCreate, request: Request):
     location = _service(request).create(data.name, data.location_type, data.branch_id)
+    # Cajas por sucursal (2026-09-16): una sucursal nueva sin ninguna caja no
+    # tiene dónde abrir turno, y el alta de cajas es de admin -- sin esto,
+    # quien acaba de crear el Location se queda sin poder vender ahí hasta
+    # que alguien entre a la pantalla de Cajas a mano.
+    cajas_service.asegurar_caja_de(location.id)
     return LocationOut(**location.__dict__)
 
 

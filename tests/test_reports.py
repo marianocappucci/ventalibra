@@ -7,13 +7,15 @@ Lo que cambió es CÓMO se registra la venta que el reporte después agrupa:
 import secrets
 from datetime import date, timedelta
 
-from ventas_helpers import hoy
+from ventas_helpers import caja_default, hoy
 
 
 def _abrir_turno(client, monto_inicial=0):
     """Sin turno abierto, registrar una venta da 409: una venta fuera de
     turno sería plata sin control de caja."""
-    abierto = client.post("/shifts/open", json={"monto_inicial": monto_inicial})
+    abierto = client.post(
+        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+    )
     assert abierto.status_code == 200, abierto.text
     return abierto.json()["turno"]["id"]
 
