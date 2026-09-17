@@ -77,7 +77,7 @@ describe('la Configuración de VentaLibra', () => {
 
     const pestanias = (await screen.findAllByRole('tab')).map((t) => t.textContent)
     expect(pestanias).toEqual([
-      'Empresa', 'Integraciones', 'Balanza', 'Ticket', 'Unidades de medida', 'Datos / Backup',
+      'Empresa', 'Integraciones', 'Balanza', 'Ticket', 'Unidades de medida', 'Categorías', 'Datos / Backup',
     ])
   })
 

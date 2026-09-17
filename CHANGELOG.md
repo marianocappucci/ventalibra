@@ -5,6 +5,42 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Categorías: pantalla propia en Configuración, y columna en Productos.**
+  El catálogo tenía alta de categoría (`POST /catalog/categories`) desde
+  antes, pero ningún lugar para editarla ni para verla en el listado de
+  productos — el pedido original: *"el programa no tiene de dónde sacar las
+  categorías"*. Ahora:
+  - `PUT /catalog/categories/{category_id}` (`app/routers/catalog.py`),
+    mismo gateo que el resto del router (`dependencies=staff_or_admin` en
+    `app/main.py`). Edita nombre y activa/inactiva; `parent_id` queda
+    afuera — ninguna pantalla del producto expone jerarquía todavía.
+  - Nombre no vacío y no repetido entre categorías **activas** — mismo
+    criterio en el alta y la edición (`CatalogService._validar_category_name`,
+    nueva excepción `CategoryInvalido` → 422). 🔴 El `UNIQUE(parent_id, name)`
+    de la tabla (`libracommerce/db/schema.py`) no alcanzaba solo: SQL no
+    considera dos `NULL` iguales entre sí, y esta pantalla no expone
+    jerarquía (`parent_id` siempre `None` en el flujo real), así que dos
+    categorías con el mismo nombre pasaban ese `UNIQUE` sin chocar. El
+    chequeo se hizo en el servicio, contra las activas — desactivar una
+    categoría libera su nombre para reusarlo.
+  - Desactivar una categoría con productos activos está permitido: el
+    producto conserva su categoría (no se toca `catalog_items`), sólo deja
+    de ofrecerse para altas/ediciones nuevas.
+  - `CatalogService.list_categories` dejó de filtrar por `active = 1`:
+    devuelve todas — la pantalla de administración necesita ver (y poder
+    reactivar) las inactivas. Que el alta/edición de producto sólo ofrezca
+    las activas pasó a ser un filtro del frontend, no del backend.
+  - Frontend: `ConfigCategorias.tsx`, sección nueva en Configuración
+    (`Configuracion.tsx`, junto a Unidades de medida), mismo patrón que
+    `ConfigUnidades.tsx` con edición agregada (nombre + interruptor
+    Activa/Inactiva, estilo `ItemEditDialog` de `Productos.tsx`).
+  - `Productos.tsx`: columna **Categoría** (nombre, o «—» sin categoría),
+    ordenable. El select de categoría del alta/edición de producto ahora
+    sólo ofrece las **activas** — salvo que se esté editando un producto
+    cuya categoría quedó inactiva, que se sigue mostrando (si no, el select
+    la pierde y la edición rompe lo que ya tenía cargado). Si todavía no hay
+    ninguna categoría cargada, el select muestra un enlace a
+    Configuración › Categorías.
 - **Fix: el alta de un producto valida lo mismo que la edición.** Cierra el
   hueco que había quedado documentado como pendiente en la entrada de abajo
   («editar producto»): `POST /catalog/items` no validaba nada — con una

@@ -49,6 +49,17 @@ class ItemInvalido(Exception):
     tenia -- ver `_validar_item`."""
 
 
+class CategoryNotFound(Exception):
+    """404: no existe una Category con ese id."""
+
+
+class CategoryInvalido(Exception):
+    """422: la categoria no cumple una regla de negocio -- nombre vacio o
+    nombre repetido entre categorias activas. Recurso distinto de
+    ItemInvalido (aunque el router traduzca las dos al mismo 422) -- ver
+    `_validar_category_name`."""
+
+
 class CatalogService:
     def __init__(self, conn: Conexion):
         self._conn = conn
@@ -57,16 +68,39 @@ class CatalogService:
     # categories
 
     def create_category(self, name: str, parent_id: int | None = None) -> Category:
+        nombre = self._validar_category_name(name)
         cur = self._conn.execute(
             "INSERT INTO categories (name, parent_id, active) VALUES (?, ?, 1)",
-            (name, parent_id),
+            (nombre, parent_id),
         )
         self._conn.commit()
-        return Category(id=cur.lastrowid, name=name, parent_id=parent_id)
+        return Category(id=cur.lastrowid, name=nombre, parent_id=parent_id)
+
+    def update_category(self, category_id: int, *, name: str, active: bool) -> Category:
+        """`parent_id` queda afuera a proposito: esta pantalla (Configuracion >
+        Categorias) no expone jerarquia -- nada en el producto arma un select
+        de categoria padre -- asi que agregarlo a la edicion seria un campo
+        sin donde cargarse. Si algun dia se expone, se suma aca."""
+        category = self._get_category(category_id)
+        if category is None:
+            raise CategoryNotFound(category_id)
+        nombre = self._validar_category_name(name, exclude_id=category_id)
+        self._conn.execute(
+            "UPDATE categories SET name = ?, active = ? WHERE id = ?",
+            (nombre, int(active), category_id),
+        )
+        self._conn.commit()
+        return Category(id=category_id, name=nombre, parent_id=category.parent_id, active=active)
 
     def list_categories(self) -> list[Category]:
+        # SIN filtrar por active: a diferencia de list_items/list_units, esta
+        # lista la consume tambien la pantalla de administracion de
+        # categorias (Configuracion > Categorias), que tiene que poder ver
+        # -y reactivar- las inactivas. Que el alta/edicion de producto solo
+        # ofrezca las activas es responsabilidad del frontend (Productos.tsx),
+        # no de este metodo -- ver el comentario ahi.
         rows = self._conn.execute(
-            "SELECT id, name, parent_id, active FROM categories WHERE active = 1 ORDER BY name"
+            "SELECT id, name, parent_id, active FROM categories ORDER BY name"
         ).fetchall()
         return [
             Category(id=row[0], name=row[1], parent_id=row[2], active=bool(row[3]))
@@ -251,6 +285,39 @@ class CatalogService:
             "SELECT 1 FROM categories WHERE id = ?", (category_id,)
         ).fetchone()
         return row is not None
+
+    def _get_category(self, category_id: int) -> Category | None:
+        row = self._conn.execute(
+            "SELECT id, name, parent_id, active FROM categories WHERE id = ?", (category_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Category(id=row[0], name=row[1], parent_id=row[2], active=bool(row[3]))
+
+    def _validar_category_name(self, name: str, *, exclude_id: int | None = None) -> str:
+        """Nombre no vacio y no repetido entre categorias ACTIVAS -- compartida
+        por create_category y update_category, mismo criterio que
+        `_validar_item` con ItemInvalido.
+
+        El UNIQUE(parent_id, name) de la tabla (libracommerce/db/schema.py) no
+        alcanza solo: SQL no considera dos NULL iguales entre si, y esta
+        pantalla no expone jerarquia -- `parent_id` es siempre None en el
+        flujo real -- asi que dos categorias top-level con el mismo nombre
+        pasan ese UNIQUE sin chocar. Por eso el chequeo se hace aca, contra
+        las activas (desactivar libera el nombre para reusarlo), y no
+        delegado al INSERT/UPDATE.
+        """
+        nombre = name.strip()
+        if not nombre:
+            raise CategoryInvalido("el nombre no puede estar vacio")
+        query = "SELECT 1 FROM categories WHERE active = 1 AND name = ?"
+        params: list = [nombre]
+        if exclude_id is not None:
+            query += " AND id != ?"
+            params.append(exclude_id)
+        if self._conn.execute(query, params).fetchone() is not None:
+            raise CategoryInvalido(f"ya existe una categoria activa llamada {nombre!r}")
+        return nombre
 
     def _validar_item(
         self,
