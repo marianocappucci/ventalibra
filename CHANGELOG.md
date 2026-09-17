@@ -5,6 +5,18 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Compras al 100% del ancho, con la recepción de mercadería DENTRO de la
+  orden.** El listado de órdenes de compra dejó la grilla al 50% con el
+  detalle desplegado al costado: ahora es una tabla completa, igual que el
+  resto de las pantallas, con «Nueva compra» arriba a la derecha y el detalle
+  en su propia ruta (`/compras/:id`). El panel suelto de recepciones se retira
+  — «Recibir mercadería» pasa a ser una acción de la orden, con el depósito de
+  destino, un remito opcional y la cantidad/costo de cada línea precargados y
+  editables (topeados contra lo pendiente). Una recepción que quedó en
+  borrador por cualquier motivo sigue viéndose y confirmable desde
+  «Recepciones de esta orden», dentro del mismo detalle. Las recepciones
+  viejas que no estaban atadas a una orden ya no tienen pantalla; el stock que
+  movieron no cambia.
 - **El ticket de una venta que no está confirmada avisa en un modal.** En
   Ventas, la impresora de un borrador descartado abría una pestaña con el JSON
   del 409. Ahora aparece «Solo se imprime el ticket de una venta confirmada.»
