@@ -5,6 +5,31 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Se puede editar un producto ya cargado.** La pantalla Productos tenía
+  alta y un detalle de códigos/variantes, pero ningún camino para corregir
+  el nombre, el precio o la categoría de un producto existente. Ahora:
+  - `PUT /catalog/items/{item_id}` (`app/routers/catalog.py`), gateado igual
+    que el alta (`dependencies=staff_or_admin` en `app/main.py`). Reemplaza
+    el item entero (mismo criterio que el alta): nombre, unidad, categoría,
+    descripción, activo/vendible/comprable y precio/costo.
+  - 🔴 **Cambiarle la unidad a un producto que ya tiene movimientos
+    (stock, venta o compra) da 409** — cambiarla ahí le cambiaría el
+    significado a todo lo que esos movimientos ya registraron con la unidad
+    vieja. El resto de los campos se edita siempre; sólo la unidad queda
+    bloqueada. `CatalogService.update_item`/`has_movements` en
+    `app/services/catalog.py`.
+  - De paso, la edición valida lo que el alta no valida y comparte servicio
+    con ella: categoría inexistente (422, la FK de Postgres la revienta con
+    un 500 sin esto) y nombre vacío/precio-costo negativos (422, vía
+    `Field` en el modelo del router). **El alta tiene el mismo hueco** en
+    los tres casos — queda pendiente, no se tocó para no ampliar esta
+    entrega.
+  - Botón «Editar» (ícono lápiz) por fila en Productos, junto al de
+    códigos/variantes. Abre `ItemEditDialog`, que precarga los mismos
+    campos que el alta más un switch «Activo» — comparten el formulario
+    (`ItemFormFields`) para no duplicar el JSX. Los precios se validan como
+    número no negativo con coma o punto decimal (mismo criterio que
+    `parseMonto` de `Pos.tsx`); el alta no valida esto hoy, y no se lo tocó.
 - **Chore: el pin de libracore pasa a v1.106.1.** Trae el motor de restore único
   (bases temporales, migraciones contra ellas e intercambio por nombre) y el
   backup que ya no sale vacío en silencio (v1.106.0), con sus correcciones: los

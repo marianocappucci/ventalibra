@@ -25,6 +25,22 @@ from ..commerce import repositorio
 from ..conexion import conexion_utilizable
 
 
+class ItemNotFound(Exception):
+    """404: no existe un CatalogItem con ese id."""
+
+
+class ItemUnitLockedError(Exception):
+    """409: el item ya tiene movimientos (stock, venta o compra) y se
+    intento cambiarle la unidad. Cambiarla ahi cambiaria el significado de
+    todo lo que esos movimientos ya registraron con la unidad vieja."""
+
+    def __init__(self, item_id: int):
+        self.item_id = item_id
+        super().__init__(
+            "No se puede cambiar la unidad de un producto que ya tiene movimientos."
+        )
+
+
 class CatalogService:
     def __init__(self, conn: Conexion):
         self._conn = conn
@@ -107,8 +123,53 @@ class CatalogService:
     def update_item(self, item_id: int, **changes) -> CatalogItem:
         item = self.get_item(item_id)
         if item is None:
-            raise KeyError(item_id)
+            raise ItemNotFound(item_id)
+
+        # `unit_code` no es un campo de CatalogItem (el campo es `unit`, un
+        # Unit completo) -- se resuelve aca, igual que en create_item. Se
+        # resuelve SIEMPRE, cambie o no: valida que la unidad exista (422,
+        # mismo criterio que el alta) aunque el pedido no la este cambiando.
+        unit_code = changes.pop("unit_code", item.unit.code)
+        nueva_unidad = self._get_unit(unit_code)
+        if nueva_unidad.code != item.unit.code and self.has_movements(item_id):
+            # Cambiar u -> kg en un item que ya vendio o recibio stock deja
+            # esos movimientos con una unidad que ya no es la del item --
+            # ver ItemUnitLockedError. El resto de los campos se edita
+            # siempre, este es el unico bloqueado.
+            raise ItemUnitLockedError(item_id)
+        changes["unit"] = nueva_unidad
+
+        # Mismo criterio que la unidad: la categoria tiene que existir.
+        # `create_item` no lo valida (queda como hueco pendiente del alta,
+        # no de esta edicion) y confia en la FK de Postgres, que revienta
+        # con un IntegrityError sin traducir a 422.
+        category_id = changes.get("category_id", item.category_id)
+        if category_id is not None and not self._category_exists(category_id):
+            raise KeyError(f"categoria desconocida: {category_id!r}")
+
         return self._repo.save_catalog_item(replace(item, **changes))
+
+    def has_movements(self, item_id: int) -> bool:
+        """True si el item ya aparece en stock, una venta o una compra.
+
+        Las cuatro tablas son las que graban `item_id` con la unidad puesta
+        en el momento del movimiento: `stock_movements` (cualquier alta,
+        ajuste o transferencia), `sale_items` (lo vendido), y las dos de
+        compras -- `purchase_order_items` (lo pedido) y
+        `purchase_receipt_items` (lo recibido), porque una orden sin
+        recepcion todavia registro una cantidad en la unidad vieja.
+        """
+        row = self._conn.execute(
+            """
+            SELECT
+                EXISTS(SELECT 1 FROM stock_movements WHERE item_id = ?)
+                OR EXISTS(SELECT 1 FROM sale_items WHERE item_id = ?)
+                OR EXISTS(SELECT 1 FROM purchase_order_items WHERE item_id = ?)
+                OR EXISTS(SELECT 1 FROM purchase_receipt_items WHERE item_id = ?)
+            """,
+            (item_id, item_id, item_id, item_id),
+        ).fetchone()
+        return bool(row[0])
 
     def get_item(self, item_id: int) -> CatalogItem | None:
         return self._repo.get_catalog_item(item_id)
@@ -167,3 +228,9 @@ class CatalogService:
         if row is None:
             raise KeyError(f"unidad desconocida: {unit_code!r}")
         return Unit(code=row[0], name=row[1], allows_fraction=bool(row[2]), decimal_scale=row[3])
+
+    def _category_exists(self, category_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM categories WHERE id = ?", (category_id,)
+        ).fetchone()
+        return row is not None

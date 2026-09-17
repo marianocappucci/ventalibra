@@ -48,6 +48,23 @@ export type CatalogItem = {
   default_cost: string
 }
 
+/** Body de `PUT /catalog/items/{id}` -- reemplaza el item entero (mismo
+ *  criterio que el alta), asi que no hay version parcial: todos los campos
+ *  van siempre. `item_type` queda afuera porque el backend no lo acepta acá
+ *  (ver `app/routers/catalog.py::ItemUpdate`): producto/servicio se define
+ *  al crear, no al editar. */
+export type ItemUpdate = {
+  name: string
+  unit_code: string
+  category_id: number | null
+  description: string
+  active: boolean
+  sellable: boolean
+  purchasable: boolean
+  default_sale_price: string
+  default_cost: string
+}
+
 /** Un escaneo ya resuelto. Es más que el producto porque la etiqueta de una
  *  balanza trae adentro cuánto se pesó. */
 export type ScanResult = {

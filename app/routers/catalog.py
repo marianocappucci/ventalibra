@@ -3,9 +3,9 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
 from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ..services.catalog import CatalogService
+from ..services.catalog import CatalogService, ItemNotFound, ItemUnitLockedError
 from ..services.scale import ScaleLabelError, ScaleService
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -45,6 +45,26 @@ class ItemCreate(BaseModel):
     description: str = ""
     default_sale_price: Decimal = Decimal("0")
     default_cost: Decimal = Decimal("0")
+
+
+class ItemUpdate(BaseModel):
+    """`item_type` queda afuera a proposito: producto/servicio es una
+    decision del alta, no algo que se edite despues. El resto de los campos
+    de `ItemCreate` se editan siempre, salvo `unit_code` con movimientos --
+    ver ItemUnitLockedError en `services/catalog.py`."""
+
+    name: str = Field(min_length=1)
+    unit_code: str
+    category_id: int | None = None
+    description: str = ""
+    active: bool = True
+    sellable: bool = True
+    purchasable: bool = True
+    # `create_item`/ItemCreate no valida negativos (hueco del alta, no de
+    # esta edicion -- ver el comentario de update_item). Aca si, con el
+    # mismo `Field` que ya usa `cajas.py` para nombre no vacio.
+    default_sale_price: Decimal = Field(default=Decimal("0"), ge=0)
+    default_cost: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 class ItemOut(BaseModel):
@@ -175,6 +195,26 @@ def create_item(data: ItemCreate, request: Request):
         )
     except KeyError as exc:
         raise HTTPException(422, str(exc))
+    return _to_item_out(item)
+
+
+@router.put("/items/{item_id}", response_model=ItemOut)
+def update_item(item_id: int, data: ItemUpdate, request: Request):
+    try:
+        item = _service(request).update_item(
+            item_id,
+            name=data.name, description=data.description, category_id=data.category_id,
+            unit_code=data.unit_code, active=data.active, sellable=data.sellable,
+            purchasable=data.purchasable, default_sale_price=data.default_sale_price,
+            default_cost=data.default_cost,
+        )
+    except ItemNotFound:
+        raise HTTPException(404, "item not found")
+    except KeyError as exc:
+        # unidad o categoria desconocida -- mismo criterio que create_item.
+        raise HTTPException(422, str(exc))
+    except ItemUnitLockedError as exc:
+        raise HTTPException(409, str(exc))
     return _to_item_out(item)
 
 
