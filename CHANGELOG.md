@@ -5,6 +5,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Fix: la cantidad de una línea del carrito ya no queda en 0 en silencio.**
+  En «Cantidad» (F6) se aceptaba cualquier texto, y con «a3» la línea viajaba
+  al registrar la venta con `qty: 0`. Ahora la cantidad se valida (coma o
+  punto decimal, mayor a 0): con un valor inválido se ve el error y «Aceptar»
+  queda deshabilitado. `0 * código` en el campo de escaneo también se rechaza.
 - **Fix: tres defectos del POS encontrados en una prueba en pantalla
   (2026-09-17).**
   - El cierre de turno guardaba **$0 declarado en silencio** con un texto
