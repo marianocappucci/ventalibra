@@ -18,6 +18,7 @@
 export { api, ApiError, type User } from 'libra-ui/api-client'
 
 import type { OpcionSelect } from 'libra-ui/SelectBuscable'
+import type { TonoEstado } from 'libra-ui/badge-estado'
 
 export type Category = {
   id: number
@@ -426,6 +427,18 @@ export type ArcaConfig = {
 
 export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled'
 
+// Etiquetas y tonos de estado de compras: viven acá y no repetidos en
+// Compras.tsx/CompraDetalle.tsx, que son los dos que los necesitan.
+export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  draft: 'Borrador', sent: 'Enviada', partial: 'Recibida parcial',
+  received: 'Recibida', cancelled: 'Cancelada',
+}
+
+export const PURCHASE_ORDER_STATUS_TONO: Record<PurchaseOrderStatus, TonoEstado> = {
+  draft: 'neutro', sent: 'curso', partial: 'atencion',
+  received: 'ok', cancelled: 'negativo',
+}
+
 export type PurchaseOrderItem = {
   item_id: number
   quantity_ordered: string
@@ -446,6 +459,14 @@ export type PurchaseOrder = {
 }
 
 export type PurchaseReceiptStatus = 'draft' | 'confirmed'
+
+export const PURCHASE_RECEIPT_STATUS_LABELS: Record<PurchaseReceiptStatus, string> = {
+  draft: 'Borrador', confirmed: 'Confirmada',
+}
+
+export const PURCHASE_RECEIPT_STATUS_TONO: Record<PurchaseReceiptStatus, TonoEstado> = {
+  draft: 'neutro', confirmed: 'ok',
+}
 
 export type PurchaseReceiptItem = {
   item_id: number

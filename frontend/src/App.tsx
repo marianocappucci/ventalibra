@@ -12,6 +12,7 @@ import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
 import { Proveedores } from './pages/Proveedores'
 import { Compras } from './pages/Compras'
+import { CompraDetalle } from './pages/CompraDetalle'
 import { Clientes } from './pages/Clientes'
 import { Usuarios } from './pages/Usuarios'
 import { Configuracion } from './pages/Configuracion'
@@ -63,6 +64,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Compras />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/compras/:id"
+        element={
+          <ProtectedRoute>
+            <CompraDetalle />
           </ProtectedRoute>
         }
       />
