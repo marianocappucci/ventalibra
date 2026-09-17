@@ -90,6 +90,13 @@ def limpiar_entre_tests() -> None:
     SQLite el problema no existe porque cada app se lleva su propio archivo.
     """
     _vaciar_schema()
+    # Desde libraauth v0.45 el arranque exige la cadena de auth en vez de crear
+    # sus tablas. Se corre acá, sobre la base recién vaciada y antes de que el
+    # test arme la app: es el orden del deploy (libraauth antes que las tablas de
+    # LibraCore, que tienen FK a `usuarios`).
+    from libraauth.testing import crear_schema_de_auth
+
+    crear_schema_de_auth(TEST_DATABASE_URL)
 
 
 def destino_dominio(ruta_sqlite) -> str:  # noqa: ARG001
