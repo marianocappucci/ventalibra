@@ -5,6 +5,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// El rol de la sesión, cambiable por test: alta y edición son sólo de admin.
+const sesion = vi.hoisted(() => ({ rol: 'admin' }))
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', username: 'u', name: 'U', role: sesion.rol }, loading: false }),
+}))
+
 import { Sucursales } from '../pages/Sucursales'
 
 const LOCATIONS = [
@@ -44,6 +50,7 @@ function montarRed(opciones: { putStatus?: number; putBody?: unknown } = {}) {
 }
 
 beforeEach(() => {
+  sesion.rol = 'admin'
   montarRed()
 })
 
@@ -55,6 +62,19 @@ async function montar() {
 }
 
 describe('Sucursales', () => {
+  it('el cajero (staff) ve la lista, sin «Nueva sucursal» ni «Editar»', async () => {
+    sesion.rol = 'staff'
+    await montar()
+    expect(screen.queryByText('Nueva sucursal')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Editar/ })).toBeNull()
+  })
+
+  it('el admin ve «Nueva sucursal» y «Editar»', async () => {
+    await montar()
+    expect(screen.getByText('Nueva sucursal')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Editar/ }).length).toBe(2)
+  })
+
   it('pide la lista con incluir_inactivas: la de edición es la única forma de reactivar una', async () => {
     await montar()
     await waitFor(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from 'libra-ui/data-table'
 import { api, ApiError, type Location } from '../api'
+import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,6 +34,10 @@ function formDe(loc: Location): Form {
 }
 
 export function Sucursales() {
+  // Alta y edición sólo para admin (el backend las rechaza con 403 a staff,
+  // igual que las cajas): al cajero no se le ofrecen, sólo ve la lista.
+  const { user } = useAuth()
+  const esAdmin = user?.role === 'admin'
   const [locations, setLocations] = useState<Location[]>([])
   const [name, setName] = useState('')
   const [locationType, setLocationType] = useState('warehouse')
@@ -132,20 +137,22 @@ export function Sucursales() {
     {
       id: 'acciones',
       header: '',
-      cell: ({ row }) => (
+      cell: ({ row }) => esAdmin ? (
         <div className="flex justify-end">
           <Button size="sm" variant="outline" onClick={() => abrirEdicion(row.original)}>
             <Pencil />Editar
           </Button>
         </div>
-      ),
+      ) : null,
     },
-  ], [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [esAdmin])
 
   return (
     <div className="grid gap-4">
       <TituloPantalla icono={Warehouse}>Sucursales / depósitos</TituloPantalla>
 
+      {esAdmin && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Nueva sucursal</CardTitle>
@@ -165,6 +172,7 @@ export function Sucursales() {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>
+      )}
 
       <Card>
         <CardContent>

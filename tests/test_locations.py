@@ -178,6 +178,24 @@ def test_editar_sin_sesion_da_401(tmp_path):
         assert r.status_code == 401, r.text
 
 
+def test_el_cajero_no_crea_ni_edita_sucursales_pero_las_lista(admin_client, staff_client):
+    """Alta y edición, sólo admin (decisión del humano, 2026-09-17). El listado
+    sigue abierto: el POS lo necesita para abrir turno."""
+    sucursal = _crear_sucursal(admin_client, "Sucursal del admin")
+
+    r = staff_client.post("/locations", json={"name": "Del cajero"})
+    assert r.status_code == 403, r.text
+    r = staff_client.put(f"/locations/{sucursal['id']}", json={
+        "name": "Renombrada", "location_type": sucursal["location_type"],
+        "is_default": False, "active": True,
+    })
+    assert r.status_code == 403, r.text
+
+    assert staff_client.get("/locations").status_code == 200
+    nombres = {loc["name"] for loc in admin_client.get("/locations").json()}
+    assert "Del cajero" not in nombres and "Sucursal del admin" in nombres
+
+
 def test_listar_sin_incluir_inactivas_no_cambia_lo_de_siempre(admin_client):
     """Control: el default de `GET /locations` sigue siendo sólo activas --
     no se rompió nada de lo que ya usaban el POS y el alta de cajas."""

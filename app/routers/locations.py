@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from ..auth import require_admin
 from ..services import cajas as cajas_service
 from ..services.locations import (
     DatosInvalidos,
@@ -46,7 +47,11 @@ def _service(request: Request) -> LocationService:
     return LocationService(request.app.state.conn)
 
 
-@router.post("", response_model=LocationOut)
+# Alta y edición, sólo admin (decisión del humano, 2026-09-17): igual que las
+# cajas (`routers/cajas.py`). El listado queda con el `staff_or_admin` del
+# montaje en `app/main.py`: el POS lo necesita para elegir sucursal al abrir
+# turno.
+@router.post("", response_model=LocationOut, dependencies=[Depends(require_admin)])
 def create_location(data: LocationCreate, request: Request):
     location = _service(request).create(data.name, data.location_type, data.branch_id)
     # Cajas por sucursal (2026-09-16): una sucursal nueva sin ninguna caja no
@@ -68,11 +73,9 @@ def list_locations(request: Request, incluir_inactivas: bool = False):
     ]
 
 
-@router.put("/{location_id}", response_model=LocationOut)
+@router.put("/{location_id}", response_model=LocationOut, dependencies=[Depends(require_admin)])
 def update_location(location_id: int, data: LocationUpdate, request: Request):
-    """Mismo gateo que el alta (`create_location`): ninguno propio, sólo el
-    `staff_or_admin` que pone `app/main.py` al montar `locations.router` --
-    editar una sucursal no es más sensible que crearla."""
+    """Sólo admin, como el alta (ver el comentario de `create_location`)."""
     try:
         location = _service(request).update(
             location_id, data.name, data.location_type, data.is_default, data.active,
