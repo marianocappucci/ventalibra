@@ -5,6 +5,10 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Las fechas de los listados de Ventas se ven dd-mm-aaaa** y no en el ISO
+  crudo de la API (`2026-09-17`). Hallazgo de la prueba en pantalla de cajas
+  en dev. El arreglo es del kit (libra-ui v0.73.1) y alcanza a las columnas
+  Fecha de sus pantallas.
 - **«Catálogo» pasa a llamarse «Productos», y «Unidades» se muda a
   Configuración.** La pestaña «Unidades» que tenía esa pantalla ahora es una
   sección propia de Configuración («Unidades de medida») — el alta de un

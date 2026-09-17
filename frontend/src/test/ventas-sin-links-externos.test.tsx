@@ -66,6 +66,10 @@ describe('Sin facturas, remitos ni recibo propios', () => {
     render(<MemoryRouter><Ventas /></MemoryRouter>)
 
     await screen.findByText('POS-000042')
+    // La fecha con el formateador del producto (libra-ui v0.73.1), no el ISO
+    // crudo de la API.
+    expect(screen.getByText('15-09-2026')).toBeInTheDocument()
+    expect(screen.queryByText('2026-09-15')).toBeNull()
     // La factura sigue visible como dato -- sólo que ya no es un link.
     expect(screen.getByText('FACTURA C 0001-00000055')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /FACTURA C 0001-00000055/ })).toBeNull()
