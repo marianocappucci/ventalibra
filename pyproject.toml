@@ -47,7 +47,7 @@ dependencies = [
     # destino (422); ya no se puede desactivar el deposito default ni
     # marcarlo default a uno inactivo (422 en el PATCH de depositos y en el
     # set-default); `deposito_id=0` ya no cae al default.
-    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.16.4",
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.17.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
