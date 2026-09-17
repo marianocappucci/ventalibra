@@ -266,11 +266,9 @@ export function Pos() {
   // Con turno abierto EN UNA CAJA, la sucursal de la venta queda atada a la
   // de esa caja -- no a lo último elegido a mano ni a lo que haya en
   // localStorage. Esto es lo que garantiza, del lado del POS, que
-  // `deposito_id` viaje siempre igual a la sucursal del turno: el backend NO
-  // lo valida (ver el comentario largo en `app/routers/shifts.py` y el
-  // pendiente de motor documentado ahí -- `libracommerce.web.ventas_router`
-  // no ofrece ningún gancho para cruzar `deposito_id` contra la caja del
-  // turno antes de escribir la venta).
+  // `deposito_id` viaje siempre igual a la sucursal del turno. Desde el
+  // 2026-09-17 el backend además lo valida (`app/ganchos.py::
+  // validar_deposito`, libracommerce v0.17.0): si no coincide, 422.
   useEffect(() => {
     if (turno?.sucursal) setLocationId(String(turno.sucursal.id))
   }, [turno])

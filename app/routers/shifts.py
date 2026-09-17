@@ -20,32 +20,12 @@ v0.27.0) en vez de sobre la tabla `ventas` de LibraCore: las ventas de este
 producto viven en LibraCommerce, en OTRA base, asi que el resumen clasico le
 daria siempre cero.
 
-⚠️ **Pendiente de motor: nada valida que `deposito_id` de `POST /api/ventas`
-sea la sucursal de la caja del turno.** Se investigó activamente si había
-forma de agregarlo sin tocar el motor:
-
-- `VentaPayload.deposito_id` (`libracommerce/web/ventas_router.py:114-126`)
-  es un campo del payload que el cliente HTTP declara libremente; el router
-  sólo lo pasa a `crear_venta_directa`, sin cruzarlo contra el turno.
-- `libracommerce.erp.hooks.Hooks` (`libracommerce/erp/hooks.py`) no tiene
-  ningún gancho de validación de la venta ANTES de escribir — el único que
-  corre con la venta ya armada es `al_confirmar_venta`, y a esa altura
-  (`erp/ventas.py::registrar_venta`, línea ~317) el `deposito_id` que se
-  declaró ni siquiera se persiste en el dict de la venta (sólo se usa,
-  transitoriamente, para resolver el `location_id` de `stock_movements`):
-  no hay de dónde leerlo para comparar.
-- Levantar algo desde ese gancho tampoco resolvería un 422 limpio sin
-  reusar `erp.catalogo.DepositoInexistente` con un mensaje que mentiría
-  ("no existe" cuando el depósito SÍ existe, es de otra sucursal).
-
-Por eso la validación es de **frontend**, no de este backend: el POS
-(`frontend/src/pages/Pos.tsx`) fija la sucursal a la de la caja del turno
-apenas hay uno abierto (sin selector) y manda siempre ESE `deposito_id` — ver
-el comentario largo ahí, junto al `useEffect` que sincroniza `locationId`
-con `turno.sucursal`. Queda afuera de esta tarea (y se reporta así) tocar el
-motor para agregar el hook -- lo natural sería una función
-`validar_deposito_de_turno(conn, turno, deposito_id)` invocada al principio
-de `registrar_venta`, junto al `validar_deposito` que ya está ahí.
+✅ **Que `deposito_id` de `POST /api/ventas` (y de la devolución) sea la
+sucursal de la caja del turno lo valida el backend desde el 2026-09-17**:
+libracommerce v0.17.0 agregó el gancho `Hooks.validar_deposito`, y
+`app/ganchos.py::validar_deposito` lo usa (422 si no corresponde). Hasta esa
+fecha lo garantizaba sólo el POS (`frontend/src/pages/Pos.tsx`, que fija la
+sucursal a la de la caja del turno), y eso sigue igual.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from libracore.db import caja as db_caja

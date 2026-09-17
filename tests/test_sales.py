@@ -441,7 +441,10 @@ def test_deposito_id_descuenta_del_deposito_elegido_no_del_default(admin_client)
     otro = admin_client.post("/locations", json={"name": "Sucursal Once"}).json()
     con_stock(admin_client, item_id, otro["id"], "10")
     con_stock(admin_client, item_id, default_id, "10")
-    abrir_turno(admin_client)
+    # El turno en una caja de ESA sucursal: desde el 2026-09-17 el backend
+    # rechaza vender de un depósito que no es el de la caja del turno.
+    caja_otro = admin_client.get(f"/api/cajas?sucursal_id={otro['id']}").json()[0]["id"]
+    abrir_turno(admin_client, caja_id=caja_otro)
 
     venta = registrar_venta(admin_client, item_id, cantidad="3", deposito_id=otro["id"])
     assert venta["estado"] == "cobrada"

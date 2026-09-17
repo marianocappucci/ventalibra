@@ -5,6 +5,9 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **La venta y la devolución salen del depósito de la sucursal de la caja del turno**,
+  validado en el backend (422) con el gancho `validar_deposito` de libracommerce
+  v0.17.0. Hasta ahora lo garantizaba sólo el POS. Pin de libracommerce a v0.17.0.
 - **Fix: el backup salía sin ninguna base contra PostgreSQL.** La `Instancia`
   del backup pasaba `db_path`/`libracore_db_path` (URLs) por `bases=`, que es
   para rutas de archivo — `_copiar_base` las salteaba en silencio y el ZIP

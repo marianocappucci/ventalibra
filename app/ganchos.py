@@ -15,12 +15,17 @@ comercial, expresado como los puntos de extensión que declara
   LibraCommerce) al `clients.id` de LibraCore por `external_ref = party-<id>`
   -- acá los dos ids NO coinciden (D3, ADR-025), a diferencia de Contalibra
   donde son el mismo id.
+- `validar_deposito`: la venta y la devolución salen del depósito de la
+  sucursal de la caja del turno (libracommerce v0.17.0). Hasta el 2026-09-17
+  lo garantizaba sólo el POS.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from libracommerce.erp import Hooks
+from libracommerce.erp.catalogo import get_default_deposito_id
+from libracommerce.erp.ventas import DepositoNoPermitido
 from libracore.db import clients as db_clients
 from libracore.db import turnos as db_turnos
 
@@ -89,7 +94,56 @@ def cliente_cc_de(conn: Any, venta: Any) -> int | None:
     )
 
 
-GANCHOS = Hooks(numerador=numerador, turno_para=turno_para, cliente_cc_de=cliente_cc_de)
+def validar_deposito(conn: Any, *, operacion: str, turno: Any | None,
+                     deposito_id: int | None) -> None:
+    """La venta o la devolución tiene que mover stock del depósito de la
+    sucursal de la caja donde está abierto el turno de quien opera.
+
+    🔴 **Hasta el 2026-09-17 esto lo garantizaba sólo el POS**, que fija la
+    sucursal a la de la caja apenas hay turno. Un cliente de la API (o un POS
+    viejo en otra pestaña) podía mandar el depósito de otro local y el stock de
+    las dos sucursales quedaba cruzado sin que nadie lo viera.
+
+    Se compara el depósito **efectivo**: el `deposito_id` que llegó o, si no
+    llegó ninguno, el default del motor (`get_default_deposito_id`, el mismo
+    que usa `erp.stock.add_movimiento_stock` para resolverlo). Rechazar todo
+    `None` habría roto a quien no manda depósito y vende justamente en la
+    sucursal default, sin proteger nada más: lo que importa es de DÓNDE sale
+    el stock, no si el campo vino.
+
+    No valida con un turno sin caja o una caja sin sucursal: son datos de
+    antes de las cajas por sucursal (2026-09-16), y ahí no hay contra qué
+    comparar.
+
+    Lee `cajas` y `locations` con la MISMA conexión de la transacción: en
+    VentaLibra LibraCore y LibraCommerce comparten base (`_UNA_SOLA_BASE`).
+    """
+    if not turno or turno.get("caja_id") is None:
+        return
+    fila = conn.execute(
+        "SELECT nombre, sucursal_id FROM cajas WHERE id = ?", (turno["caja_id"],)
+    ).fetchone()
+    if fila is None or fila[1] is None:
+        return
+    caja_nombre, sucursal_id = fila[0], int(fila[1])
+    efectivo = deposito_id if deposito_id is not None else get_default_deposito_id(conn)
+    if efectivo == sucursal_id:
+        return
+    sucursal = conn.execute(
+        "SELECT name FROM locations WHERE id = ?", (sucursal_id,)
+    ).fetchone()
+    nombre_sucursal = sucursal[0] if sucursal else f"#{sucursal_id}"
+    que = "La venta" if operacion == "venta" else "La devolución"
+    raise DepositoNoPermitido(
+        f"{que} tiene que ser del depósito de la sucursal {nombre_sucursal}: "
+        f"el turno está abierto en la caja {caja_nombre}, que es de esa sucursal."
+    )
+
+
+GANCHOS = Hooks(
+    numerador=numerador, turno_para=turno_para, cliente_cc_de=cliente_cc_de,
+    validar_deposito=validar_deposito,
+)
 
 
 def nombre_de_cliente(party_id: int) -> str | None:
