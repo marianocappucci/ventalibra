@@ -140,6 +140,20 @@ describe('Con turno abierto en una caja, la sucursal queda fija', () => {
     await screen.findByText(/Sucursal Centro · Caja 1/)
     expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/open'))).toBe(false)
   })
+
+  it('el badge indica cómo trabajar en otra sucursal sin agregar un botón nuevo', async () => {
+    // Pedido del humano (2026-09-17): con turno abierto tiene que quedar
+    // claro cómo cambiar de sucursal, sin robarle alto a la pantalla. La
+    // solución elegida es un `title` en el badge fijo -- "Cerrar turno" ya
+    // está un click al lado, así que un segundo botón "Cambiar" haría lo
+    // mismo dos veces.
+    montarRedBase({ turno: TURNO_CON_CAJA })
+    montar()
+
+    const badge = await screen.findByText(/Sucursal Centro · Caja 1/)
+    expect(badge).toHaveAttribute('title', 'Para trabajar en otra sucursal, cerrá el turno.')
+    expect(screen.queryByRole('button', { name: /Cambiar/ })).not.toBeInTheDocument()
+  })
 })
 
 describe('Encabezado del POS (2026-09-17)', () => {

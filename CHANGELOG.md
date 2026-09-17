@@ -5,6 +5,34 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Se puede editar una sucursal, y el POS deja claro cómo elegir en cuál
+  trabajar.** Sucursales se podían crear pero no modificar, y no había forma
+  visible de elegir sobre cuál operar -- eso último ya se resolvía al abrir
+  turno en el POS (`AbrirTurno`); lo que faltaba era la edición y hacer visible
+  cómo cambiar.
+  - `PUT /locations/{id}` (`app/routers/locations.py`), gateado igual que el
+    alta: ningún `Depends` propio, sólo el `staff_or_admin` que pone
+    `app/main.py` al montar el router. Edita nombre, tipo, `is_default` y
+    `active`.
+  - 🔑 **No reimplementa las guardas de default.** Las sucursales de
+    VentaLibra SON los `Location` de LibraCommerce, y el motor ya las tiene
+    (`libracommerce.erp.catalogo.update_deposito`/`set_default_deposito`,
+    v0.17.0): "a lo sumo una default" y "no desactivar la default" (409). Lo
+    único propio de acá es el 409 por sucursal con un turno de caja abierto
+    (`SucursalConTurnoAbierto`, `app/services/cajas.py::
+    tiene_turno_abierto_en`) -- el motor no sabe qué es un turno. 422 si el
+    nombre o el tipo quedan vacíos tras `strip()`; 404 si no existe.
+  - `GET /locations` suma el parámetro opcional `incluir_inactivas` (default
+    `false`, no cambia nada para el POS ni el alta de cajas): sin él, una
+    sucursal recién desactivada desaparecía de la pantalla de edición y no
+    había forma de reactivarla.
+  - Botón «Editar» (ícono lápiz) por fila en Sucursales, con diálogo (nombre,
+    tipo, predeterminada, activa) que muestra el `detail` del 409/422 tal
+    cual.
+  - En el POS, el encabezado con turno abierto (`Sucursal X · Caja Y`) suma un
+    `title` -- "Para trabajar en otra sucursal, cerrá el turno." -- en vez de
+    un botón «Cambiar» nuevo: el botón «Cerrar turno» ya hace exactamente eso,
+    a un click de distancia: un segundo control repetiría la misma acción.
 - **Categorías: pantalla propia en Configuración, y columna en Productos.**
   El catálogo tenía alta de categoría (`POST /catalog/categories`) desde
   antes, pero ningún lugar para editarla ni para verla en el listado de

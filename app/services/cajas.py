@@ -137,6 +137,23 @@ def turno_abierto_de(caja_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def tiene_turno_abierto_en(sucursal_id: int) -> bool:
+    """Si alguna caja de esa sucursal tiene un turno abierto, de cualquier
+    usuario. La usa `routers/locations.py` para no dejar desactivar una
+    sucursal mientras se está vendiendo ahí -- guarda propia de VentaLibra,
+    igual que `turno_abierto_de`: el motor (`libracommerce.erp.catalogo`) no
+    sabe nada de turnos."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM turnos_caja t
+                 JOIN cajas c ON c.id = t.caja_id
+                WHERE c.sucursal_id=? AND t.estado='abierto'
+                LIMIT 1""",
+            (sucursal_id,),
+        ).fetchone()
+    return row is not None
+
+
 def asegurar_caja_de(sucursal_id: int) -> dict:
     """La caja de esa sede, creándola —predeterminada— si todavía no tiene
     ninguna. Idempotente: devuelve la primera que ya exista, sin tocar nada.
