@@ -5,6 +5,12 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Fix: el backup salía sin ninguna base contra PostgreSQL.** La `Instancia`
+  del backup pasaba `db_path`/`libracore_db_path` (URLs) por `bases=`, que es
+  para rutas de archivo — `_copiar_base` las salteaba en silencio y el ZIP
+  descargable traía los logos y ninguna base. Ahora usa `postgres_url`/
+  `postgres_extra` de `libracore.respaldo`, con la base de LibraCore sumada
+  aparte sólo cuando es distinta de la del dominio.
 - **Varias cajas por sucursal, turno por cajero y por caja, y cierre diario**
   (ver DECISIONS.md ADR-026). Hasta ahora había una sola caja para toda la
   instancia y el turno era compartido (`get_turno_activo_any`): con dos

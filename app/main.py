@@ -29,6 +29,7 @@ from libracore.config_router import (
     build_empresa_admin_router,
     build_empresa_router,
 )
+from libracore.db.core import es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.mp_config_router import build_mp_config_router
@@ -94,6 +95,46 @@ def _carpeta_de_backups(libracore_db_path: str) -> str:
     if str(libracore_db_path).startswith(("postgresql://", "postgresql+psycopg://")):
         return os.path.join(os.environ.get("DATA_DIR", "./data"), "backups")
     return os.path.join(os.path.dirname(libracore_db_path), "backups")
+
+
+def _instancia_de_respaldo(
+    db_path: str, libracore_db_path: str, logo_dir: str,
+) -> Instancia:
+    """Que se lleva el backup de esta instancia.
+
+    🔴 **`bases=` es para RUTAS de archivo, y en PostgreSQL las dos variables
+    son URLs.** `Instancia.__post_init__` las volvia `Path`, y `_copiar_base`
+    hace `if not origen.exists(): return` -- una URL nunca "existe" como
+    archivo, asi que las salteaba LAS DOS en silencio: el ZIP salia con los
+    logos y ninguna base. `crear_backup()` no fallaba; recien se notaba al
+    restaurar (`verificar_backup` levanta `BackupInvalido`, medido en
+    ventalibra-dev). Mismo defecto que ya se habia encontrado en
+    gestiolibra/medlibra (`app/main.py`) y libradesk (incidente del
+    2026-08-09).
+
+    `billing.configure()` ya rechaza cualquier `libracore_db_path` que no sea
+    PostgreSQL -- VentaLibra retiro el modo SQLite el 2026-08-12 -- asi que no
+    hace falta una rama para archivo, a diferencia de esos tres productos:
+    para esta instancia las dos variables son siempre PostgreSQL. Y a
+    diferencia de gestiolibra/medlibra (dominio y core en bases separadas, sin
+    schema en comun), en VentaLibra son la MISMA base (`_UNA_SOLA_BASE` en
+    `libracore.db.url_de_instancia`) salvo que alguien las separe a mano en el
+    entorno -- por eso `postgres_extra` solo suma `libracore_db_path` cuando
+    de verdad apunta a otra URL: pasarla igual duplicaria el dump de la misma
+    base bajo dos nombres distintos dentro del ZIP.
+    """
+    def _normalizada(url: str) -> str:
+        return str(url).replace("postgresql://", "postgresql+psycopg://", 1)
+
+    core_es_otra_base = es_url_postgres(str(libracore_db_path)) and (
+        _normalizada(libracore_db_path) != _normalizada(db_path)
+    )
+    return Instancia(
+        nombre="ventalibra",
+        postgres_url=db_path,
+        postgres_extra=[libracore_db_path] if core_es_otra_base else [],
+        directorios=[logo_dir],
+    )
 
 
 def create_app(db_path: str) -> FastAPI:
@@ -462,12 +503,10 @@ def create_app(db_path: str) -> FastAPI:
     # 🔴 DOS bases, y las dos tienen que entrar al backup: `usuarios` vive en
     # la de LibraCore, separada de la del dominio (ver el comentario largo
     # arriba). Un backup de una sola no se puede restaurar — o volves el
-    # dominio y te quedan usuarios de otro momento, o al reves.
-    instancia = Instancia(
-        nombre="ventalibra",
-        bases=[db_path, libracore_db_path],
-        directorios=[config_manager.LOGO_DIR],
-    )
+    # dominio y te quedan usuarios de otro momento, o al reves. Ver
+    # `_instancia_de_respaldo` para el porque de `postgres_url`/
+    # `postgres_extra` en vez de `bases=`.
+    instancia = _instancia_de_respaldo(db_path, libracore_db_path, config_manager.LOGO_DIR)
 
     def _cerrar_conexion():
         # El dominio es sqlite3 crudo con UNA conexion compartida por toda la
