@@ -28,9 +28,12 @@ export const Layout = createLayout({
   // 21 = 36 (el alto del logo) menos los 15 de la linea de la empresa.
   wordmarkClassName: `${WORDMARK} text-[15px]/[21px]`,
   navItems: [
-    { to: '/pos', label: 'Venta', icon: ShoppingCart },
+    // "Venta" pasó a "POS (Caja)" y "Catálogo" a "Productos" (2026-09-17,
+    // pedido del humano); las rutas no cambian (`/pos`, `/productos` —
+    // `/catalogo` redirige, ver `rutas-viejas.ts`).
+    { to: '/pos', label: 'POS (Caja)', icon: ShoppingCart },
     { to: '/ventas', label: 'Ventas', icon: ReceiptText },
-    { to: '/catalogo', label: 'Catálogo', icon: Package },
+    { to: '/productos', label: 'Productos', icon: Package },
     { to: '/compras', label: 'Compras', icon: ShoppingBag },
     { to: '/proveedores', label: 'Proveedores', icon: Truck },
     { to: '/clientes', label: 'Clientes', icon: Users },

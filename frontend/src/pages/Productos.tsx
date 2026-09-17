@@ -1,3 +1,12 @@
+// El catálogo de productos. Hasta el 2026-09-17 esta pantalla se llamaba
+// "Catálogo" y tenía una segunda pestaña de Unidades; el humano pidió
+// renombrarla a "Productos" y mover Unidades a Configuración (ver
+// `ConfigUnidades.tsx`, montada como su propia sección) -- el alta de un
+// producto sigue necesitando las unidades, así que esta pantalla las sigue
+// cargando (`/catalog/units`), sólo que ya no las muestra ni las da de alta.
+//
+// Los endpoints `/catalog/*` no cambiaron: sólo el nombre de la pantalla y su
+// ruta (`/catalogo` redirige a `/productos`, ver `rutas-viejas.ts`).
 import { useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from 'libra-ui/data-table'
 import {
@@ -17,11 +26,8 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Tabs, TabsContent, TabsList, TabsTrigger,
-} from '@/components/ui/tabs'
 import { DataTable, sortableHeader } from '@/components/data-table'
-import { Barcode, Package, Ruler } from 'lucide-react'
+import { Barcode, Package } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
@@ -31,94 +37,6 @@ function describeError(err: unknown): string {
 
 function money(value: string): string {
   return Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-/** El botón "+ Nueva unidad" y su modal, misma forma que el de producto de acá
- *  abajo — ver el comentario de aquél para por qué el botón y el `Dialog` van
- *  en el mismo componente.
- *
- *  Las dos altas del catálogo empezaron distintas: la de producto pasó a modal
- *  el 2026-08-23 y ésta se quedó en tarjeta, con el argumento de que son tres
- *  campos que se cargan de a varios seguidos al arrancar. El humano lo decidió
- *  al revés el 2026-08-24, y la pantalla gana en que las dos pestañas se usan
- *  igual: el botón está en el mismo lugar y hace lo mismo. */
-function UnitCreateDialog({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [code, setCode] = useState('')
-  const [name, setName] = useState('')
-  const [allowsFraction, setAllowsFraction] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  /** Abrir SIEMPRE limpia, igual que el alta de producto. */
-  function abrir() {
-    setCode('')
-    setName('')
-    setAllowsFraction(false)
-    setError(null)
-    setOpen(true)
-  }
-
-  async function handleCreate() {
-    if (!code.trim() || !name.trim()) {
-      // 🔴 Antes esto era un `return` mudo. En una tarjeta a la vista se
-      // perdonaba —los dos campos vacíos están ahí, delante—; detrás de un
-      // modal es apretar "Crear" y que no pase nada, sin nada que mirar.
-      setError('Código y nombre son obligatorios.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await api.post('/catalog/units', {
-        code: code.trim(), name: name.trim(), allows_fraction: allowsFraction,
-        decimal_scale: allowsFraction ? 3 : 0,
-      })
-      setOpen(false)
-      onCreated()
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <>
-      <Button onClick={abrir}>+ Nueva unidad</Button>
-
-      <Dialog open={open} onOpenChange={(o) => { if (!o) setOpen(false) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nueva unidad</DialogTitle>
-          </DialogHeader>
-
-          <div className="grid gap-3">
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <div className="grid gap-2">
-              <Label htmlFor="unit-code">Código</Label>
-              <Input id="unit-code" value={code} autoFocus onChange={(e) => setCode(e.target.value)} placeholder="u, kg…" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="unit-name">Nombre</Label>
-              <Input id="unit-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Unidad, Kilogramo…" />
-            </div>
-            {/* El `<label>` envuelve a su casilla, así que no necesita
-                `htmlFor`: la asociación la da el anidado. */}
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={allowsFraction} onChange={(e) => setAllowsFraction(e.target.checked)} />
-              Se vende por fracción (peso/volumen)
-            </label>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? 'Creando…' : 'Crear'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
 }
 
 /** El botón "+ Nuevo producto" y su modal. Va junto, y no un botón acá y un
@@ -189,9 +107,10 @@ function ItemCreateDialog({
 
           {/* Los `htmlFor`/`id` no son decorativos: sin ellos el rótulo no
               queda asociado a su campo y un lector de pantalla anuncia el
-              input sin nombre. Es el mismo par que usan el alta de unidad de
-              acá arriba y las de Pos/CuentasCorrientes. La Categoría no lo
-              necesita: se nombra sola con el `ariaLabel` de `SelectBuscable`. */}
+              input sin nombre. Es el mismo par que usan el alta de unidad
+              (ahora en Configuración) y las de Pos/CuentasCorrientes. La
+              Categoría no lo necesita: se nombra sola con el `ariaLabel` de
+              `SelectBuscable`. */}
           <div className="grid gap-3">
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="grid gap-2">
@@ -365,7 +284,7 @@ function ItemDetailDialog({ item, onClose }: { item: CatalogItem; onClose: () =>
   )
 }
 
-export function Catalogo() {
+export function Productos() {
   const [items, setItems] = useState<CatalogItem[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -384,6 +303,9 @@ export function Catalogo() {
     try {
       const [itemList, unitList, categoryList] = await Promise.all([
         api.get<CatalogItem[]>('/catalog/items'),
+        // Sigue cargándose acá aunque ya no se muestre: el alta de producto
+        // la necesita (el `Select` de Unidad, más abajo). El listado y el
+        // alta de unidades pasaron a Configuración -- ver ConfigUnidades.tsx.
         api.get<Unit[]>('/catalog/units'),
         api.get<Category[]>('/catalog/categories'),
       ])
@@ -408,28 +330,6 @@ export function Catalogo() {
       setLoading(false)
     }
   }
-
-  // Mismo patron de anchos que la tabla de productos: fijos al contenido real
-  // y Nombre elastica.
-  const unitColumns = useMemo<ColumnDef<Unit>[]>(() => [
-    { accessorKey: 'code', header: sortableHeader('Código'), size: 110, minSize: 90, cell: ({ row }) => <span className="font-medium">{row.original.code}</span> },
-    { accessorKey: 'name', header: sortableHeader('Nombre'), size: 240, minSize: 140, meta: { stretch: true }, cell: ({ row }) => <span className="block truncate" title={row.original.name}>{row.original.name}</span> },
-    {
-      accessorKey: 'allows_fraction',
-      // El rotulo largo ("se vende por fraccion") es el de la casilla del
-      // formulario; en la tabla no entra, y la columna de al lado —los
-      // decimales que esa casilla habilita— termina de decir de que se trata.
-      header: 'Fracción',
-      size: 110,
-      minSize: 95,
-      cell: ({ row }) => (
-        <BadgeEstado tono={row.original.allows_fraction ? 'ok' : 'neutro'}>
-          {row.original.allows_fraction ? 'Sí' : 'No'}
-        </BadgeEstado>
-      ),
-    },
-    { accessorKey: 'decimal_scale', header: 'Decimales', size: 110, minSize: 95 },
-  ], [])
 
   // Anchos fijos al contenido real + Nombre elastica, mismo patron que el
   // resto de la familia. La columna de acciones no declara ancho: la mide
@@ -471,85 +371,34 @@ export function Catalogo() {
 
   return (
     <div className="grid gap-4">
-      <TituloPantalla icono={Package}>Catálogo</TituloPantalla>
+      <TituloPantalla icono={Package}>Productos</TituloPantalla>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {/* Las dos mitades del catálogo, cada una con su listado y su alta.
-          Unidades va primero porque un producto no se puede cargar sin una,
-          pero la que abre es Productos: es lo que se mira todos los días, y es
-          lo que esta pantalla mostraba antes de las pestañas.
-
-          Las dos altas son un botón `+ Nueva …` en el encabezado de su tarjeta
-          y un modal detrás: la de producto desde el 2026-08-23, la de unidad
-          desde el 2026-08-24, las dos por pedido del humano. **Que sean iguales
-          es la gracia**: el botón está en el mismo lugar en las dos pestañas y
-          hace lo mismo, así que cambiar de pestaña no cambia cómo se opera.
-
-          El nombre de la pestaña NO se repite en un `CardHeader` adentro —
-          mismo criterio que la pantalla de Logs, que usa este mismo `Tabs`. */}
-      <Tabs defaultValue="productos" className="gap-4">
-        <TabsList>
-          <TabsTrigger value="unidades">
-            <Ruler className="size-4" />Unidades
-          </TabsTrigger>
-          <TabsTrigger value="productos">
-            <Package className="size-4" />Productos
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="unidades" className="grid gap-4">
-          <Card>
-            {/* El botón va a la derecha, en la misma posición que el de
-                Productos —que la tiene porque a su izquierda está el buscador—.
-                Acá no hay buscador y el encabezado queda con el botón solo:
-                eso es preferible a moverlo, porque el ojo lo busca donde
-                estaba al cambiar de pestaña. */}
-            <CardHeader>
-              <div className="flex items-center justify-end">
-                <UnitCreateDialog onCreated={loadAll} />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
-              ) : (
-                <DataTable columns={unitColumns} data={units} emptyMessage="Sin unidades todavía." />
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="productos" className="grid gap-4">
-          <Card>
-            {/* El alta va acá y no arriba del todo, al lado del título de la
-                pantalla: el título es "Catálogo" y el botón es sólo de esta
-                pestaña — en Unidades no tendría nada que hacer. */}
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Buscar por nombre…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                    className="max-w-xs"
-                  />
-                  <Button variant="outline" onClick={runSearch}>Buscar</Button>
-                </div>
-                <ItemCreateDialog units={units} categories={categories} onCreated={loadAll} />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
-              ) : (
-                <DataTable columns={columns} data={items} emptyMessage="Sin productos todavía." />
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Buscar por nombre…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                className="max-w-xs"
+              />
+              <Button variant="outline" onClick={runSearch}>Buscar</Button>
+            </div>
+            <ItemCreateDialog units={units} categories={categories} onCreated={loadAll} />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
+          ) : (
+            <DataTable columns={columns} data={items} emptyMessage="Sin productos todavía." />
+          )}
+        </CardContent>
+      </Card>
 
       {detailItem && <ItemDetailDialog item={detailItem} onClose={() => setDetailItem(null)} />}
     </div>

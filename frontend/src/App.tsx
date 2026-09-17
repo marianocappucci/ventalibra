@@ -1,12 +1,12 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
-import { REDIRECCIONES_DE_CONFIGURACION } from './rutas-viejas'
+import { REDIRECCIONES_DE_CATALOGO, REDIRECCIONES_DE_CONFIGURACION } from './rutas-viejas'
 import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
-import { Catalogo } from './pages/Catalogo'
+import { Productos } from './pages/Productos'
 import { Sucursales } from './pages/Sucursales'
 import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
@@ -52,13 +52,20 @@ export default function App() {
         }
       />
       <Route
-        path="/catalogo"
+        path="/productos"
         element={
           <ProtectedRoute>
-            <Catalogo />
+            <Productos />
           </ProtectedRoute>
         }
       />
+      {/* `/catalogo` era el ítem del menú antes de renombrarse a Productos
+          (2026-09-17). Redirige en vez de borrarse: puede estar en un
+          favorito o en un mensaje -- mismo criterio que
+          REDIRECCIONES_DE_CONFIGURACION, ver el docstring de ese archivo. */}
+      {Object.entries(REDIRECCIONES_DE_CATALOGO).map(([desde, hacia]) => (
+        <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
+      ))}
       <Route
         path="/compras"
         element={
