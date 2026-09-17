@@ -43,6 +43,15 @@ const PREVIEW_LISTO = {
   puede_cerrar: true,
 }
 
+// Un faltante: lo declarado quedó por debajo de lo esperado -- la
+// diferencia es negativa. Es el caso que muestra el defecto de formato
+// (2026-09-17): "$-500,00" en vez de "-$500,00".
+const PREVIEW_CON_FALTANTE = {
+  ...PREVIEW_LISTO,
+  monto_esperado_total: 5000, monto_declarado_total: 4500,
+  diferencia_total: -500,
+}
+
 function montarRed(opciones: { preview?: unknown; cerrarStatus?: number; cerrarBody?: unknown } = {}) {
   const llamadas: { metodo: string; url: string; body: unknown }[] = []
 
@@ -130,5 +139,13 @@ describe('Cierre diario', () => {
     await user.click(await screen.findByRole('button', { name: /Confirmar cierre/ }))
 
     await screen.findByText(/ya está cerrado/)
+  })
+
+  it('con una diferencia negativa (faltante), el signo va antes del $', async () => {
+    montarRed({ preview: PREVIEW_CON_FALTANTE })
+    montar()
+
+    await screen.findByText('-$500,00')
+    expect(screen.queryByText('$-500,00')).not.toBeInTheDocument()
   })
 })

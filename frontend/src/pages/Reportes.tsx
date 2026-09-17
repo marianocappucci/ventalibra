@@ -11,14 +11,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { BarChart3 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { hoyISO, primerDiaDelMesISO } from 'libra-ui/fechas'
+import { money, pesos } from '@/lib/dinero'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
   return 'Error de conexión.'
-}
-
-function money(value: string): string {
-  return Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function Reportes() {
@@ -139,11 +136,13 @@ export function Reportes() {
                   <p className="text-xs text-muted-foreground">Egresos del período</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold">${money(caja?.saldo_periodo ?? '0')}</p>
+                  {/* Puede ser negativo (egresos > ingresos en el período):
+                      el signo va antes del `$` -- ver `lib/dinero.ts::pesos`. */}
+                  <p className="text-2xl font-semibold">{pesos(caja?.saldo_periodo ?? '0')}</p>
                   <p className="text-xs text-muted-foreground">Saldo del período</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold">${money(caja?.saldo_total ?? '0')}</p>
+                  <p className="text-2xl font-semibold">{pesos(caja?.saldo_total ?? '0')}</p>
                   <p className="text-xs text-muted-foreground">Saldo total de caja</p>
                 </div>
               </CardContent>

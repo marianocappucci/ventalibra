@@ -121,7 +121,11 @@ describe('Con turno abierto en una caja, la sucursal queda fija', () => {
     montarRedBase({ turno: TURNO_CON_CAJA })
     montar()
 
-    await screen.findByText(/Sucursal Sucursal Centro · Caja Caja 1/)
+    // Los nombres del fixture ya vienen con el prefijo puesto ("Sucursal
+    // Centro", "Caja 1"): no se duplica ("Sucursal Sucursal Centro"), que
+    // era el defecto encontrado en la prueba en pantalla del 2026-09-17.
+    await screen.findByText(/Sucursal Centro · Caja 1/)
+    expect(screen.queryByText(/Sucursal Sucursal Centro/)).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Sucursal' })).not.toBeInTheDocument()
   })
 
@@ -133,8 +137,37 @@ describe('Con turno abierto en una caja, la sucursal queda fija', () => {
     // apertura de turno ocurre (ya hay uno) y que el badge fijo reemplaza al
     // selector, que es lo que garantiza que no se pueda desalinear a mano.
     montar()
-    await screen.findByText(/Sucursal Sucursal Centro · Caja Caja 1/)
+    await screen.findByText(/Sucursal Centro · Caja 1/)
     expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/open'))).toBe(false)
+  })
+})
+
+describe('Encabezado del POS (2026-09-17)', () => {
+  it('identifica la pantalla como "POS (Caja)"', async () => {
+    montarRedBase({ turno: TURNO_CON_CAJA })
+    montar()
+    await screen.findByText('POS (Caja)')
+  })
+
+  it('con nombres que ya traen el prefijo, no lo duplica', async () => {
+    // Mismo fixture que el resto del describe de arriba: "Sucursal Centro" /
+    // "Caja 1".
+    montarRedBase({ turno: TURNO_CON_CAJA })
+    montar()
+    await screen.findByText(/Sucursal Centro · Caja 1/)
+    expect(screen.queryByText(/Sucursal Sucursal/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Caja Caja/)).not.toBeInTheDocument()
+  })
+
+  it('con nombres pelados (sin el prefijo), lo antepone', async () => {
+    const turnoSinPrefijo = {
+      ...TURNO_CON_CAJA,
+      sucursal: { id: 1, nombre: 'Centro' },
+      caja: { id: 10, nombre: '1' },
+    }
+    montarRedBase({ turno: turnoSinPrefijo })
+    montar()
+    await screen.findByText(/Sucursal Centro · Caja 1/)
   })
 })
 

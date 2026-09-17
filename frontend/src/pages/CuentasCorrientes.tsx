@@ -21,18 +21,7 @@ import { ReceiptText, Wallet } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha } from '@/lib/fechas'
 import { useMediosPago } from '@/lib/medios-pago'
-
-function money(value: string | number): string {
-  return Number(value).toLocaleString('es-AR', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  })
-}
-
-/** El signo va afuera del importe: `-$500,00`, nunca `$-500,00`. */
-function conSigno(value: string | number): string {
-  const n = Number(value)
-  return `${n < 0 ? '-' : ''}$${money(Math.abs(n))}`
-}
+import { money, pesos } from '@/lib/dinero'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
@@ -108,7 +97,7 @@ export function CuentasCorrientes() {
                           Number(d.saldo) < 0 ? 'text-emerald-600 dark:text-emerald-500' : '',
                         ].join(' ')}
                       >
-                        {conSigno(d.saldo)}
+                        {pesos(d.saldo)}
                       </td>
                       <td className="p-2 text-right">
                         <Button size="sm" variant="secondary" onClick={() => setAbierta(d)}>
@@ -218,7 +207,7 @@ function DetalleCuenta({ deudor, onCerrar, onCobrado }: {
           <p className="text-xs text-muted-foreground">
             {saldo < 0 ? 'Saldo a favor' : 'Debe'}
           </p>
-          <p className="text-3xl font-medium tabular-nums">{conSigno(saldo)}</p>
+          <p className="text-3xl font-medium tabular-nums">{pesos(saldo)}</p>
         </div>
 
         <div className="grid gap-2 rounded-md border p-3">
