@@ -5,6 +5,12 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Chore: el pin de libracore pasa a v1.106.1.** Trae el motor de restore único
+  (bases temporales, migraciones contra ellas e intercambio por nombre) y el
+  backup que ya no sale vacío en silencio (v1.106.0), con sus correcciones: los
+  pools descartan las conexiones viejas después del intercambio, una base sin
+  variable de entorno frena el restore antes de tocar nada, y los errores de
+  migración traen la excepción (v1.106.1). Sin migraciones.
 - **Fix: los montos del cobro se leen como los escribe un cajero.** «Monto» y
   «Recibe» usaban `Number(x) || 0`: «3.000» valía 3 pesos y «3000,00» valía 0,
   y el cobro quedaba en «Falta cubrir» sin explicación. Ahora siguen la misma
