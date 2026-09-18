@@ -1,6 +1,7 @@
 """VentaLibra app factory: abre la conexion SQLite unica de Fase 1 y monta
 los routers con gating por rol (mismo patron que gestiolibra/medlibra:
 dependencias en include_router, no por endpoint suelto)."""
+import logging
 import os
 
 from fastapi import Depends, FastAPI
@@ -11,6 +12,7 @@ from libraauth.demo_codigos import DemoCodigoRepository
 from libraauth.migrar import exigir_schema_al_dia
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
+from libraauth.secretos import SecretosRepository
 from libraauth.session_auth import (
     build_demo_codigos_router,
     build_smtp_settings_router,
@@ -138,6 +140,41 @@ def _instancia_de_respaldo(
     )
 
 
+_log = logging.getLogger(__name__)
+
+
+def migrar_secretos() -> dict:
+    """Saca de `config.json` los secretos que quedaron en claro. Idempotente.
+
+    Corre en cada arranque (dentro de `create_app()`, justo despues de
+    enchufar el almacen), asi la migracion de una instancia viva **es su
+    deploy**. Loguea NOMBRES de claves, nunca valores: un log con el secreto
+    lo muda del archivo a una superficie peor, porque los logs se copian y se
+    mandan.
+
+    Si cifrar falla, el `config.json` **no se toca** -la instancia sigue
+    cobrando con la credencial que tiene- y se loguea como error, que es lo
+    que despues ve la sonda `auditar_secretos.py`.
+    """
+    informe = config_manager.migrar_secretos_al_almacen()
+    if informe["migradas"]:
+        _log.warning(
+            "secretos movidos de config.json al almacen cifrado: %s",
+            ", ".join(informe["migradas"]),
+        )
+    if informe["ya_estaban"]:
+        _log.warning(
+            "config.json tenia una copia vieja de %s; se vacio (el almacen manda)",
+            ", ".join(informe["ya_estaban"]),
+        )
+    if informe["fallaron"]:
+        _log.error(
+            "no se pudieron cifrar y QUEDAN EN CLARO en config.json: %s",
+            ", ".join(f"{k} ({v})" for k, v in informe["fallaron"].items()),
+        )
+    return informe
+
+
 def create_app(db_path: str) -> FastAPI:
     conn = db.connect(db_path)
 
@@ -194,6 +231,30 @@ def create_app(db_path: str) -> FastAPI:
 
     # Sin `roles=`: el default ("admin","staff") es el vocabulario de VentaLibra.
     auth_sessions = sessionmaker(bind=auth_engine)
+
+    # 🔴 Los secretos de terceros de `config.json` -el access token y la firma
+    # de webhook de MercadoPago; el camino de `email_smtp_password` esta
+    # muerto en VentaLibra (0 usos de `email_smtp` en `app/`) pero se engancha
+    # igual, por consistencia con el resto de la familia- dejan de vivir en
+    # texto plano (libracore v1.108.0 + libraauth v0.46.0, 2026-09-17). Se
+    # enchufa ACA porque es donde nace `auth_sessions`, que apunta a la base de
+    # LibraCore/libraauth (NO la del dominio: VentaLibra es el caso que la
+    # receta marca aparte). La tabla `secretos_instancia` la crea la revision
+    # `0002` de la cadena de libraauth -no un `create_all`-, y
+    # `exigir_schema_al_dia()` de arriba ya no deja levantar la app si esa
+    # revision no se aplico.
+    #
+    # LibraCore no importa libraauth: recibe el almacen. Por eso el enganche es
+    # del producto, que es el unico que tiene los dos paquetes.
+    #
+    # Desde aca, `config_manager.load()` sigue devolviendo el secreto en claro
+    # a sus consumidores, pero lo trae de la base cifrada y no del archivo. La
+    # migracion de lo que ya estaba en el JSON corre en `migrar_secretos()`,
+    # llamada mas abajo.
+    _secretos = SecretosRepository(auth_sessions)
+    config_manager.usar_almacen_de_secretos(_secretos)
+    migrar_secretos()
+
     user_repository = UserRepository(auth_sessions)
     ensure_default_admin(user_repository)
     # Crea al visitante de la demo, **solo si esta instancia es una demo**: se
@@ -217,6 +278,7 @@ def create_app(db_path: str) -> FastAPI:
     # `max_connections`, y el sintoma son errores de conexion en tests que no
     # tienen nada que ver con el que los causo.
     app.state.auth_engine = auth_engine
+    app.state.secretos = _secretos
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
