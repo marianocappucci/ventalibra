@@ -5,6 +5,247 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **libracore `v1.109.0` y libra-ui `v0.73.2`** (2026-09-17). La copia externa
+  del backup sale cifrada con `rclone crypt`, o no sale —eso corre en el host y
+  ya está desplegado ahí—. Lo que llega con este pin: la pantalla *Datos /
+  Backup* nombra la **clave privada de ARCA** y dice que la copia externa va
+  cifrada; el estado deja de dar "al día" una copia que subió sin cifrar; y el
+  botón de backup arma el mismo ZIP que el cron (todas las carpetas de `data/`,
+  `arca_certs/` incluida).
+
+- **POS: buscar por nombre en la caja no distinguía mayúsculas/acentos, y
+  había que apretar Enter para ver algo.** Reportado por el humano: «Cono
+  Simple» no aparecía escribiendo «CONO SIMPLE» ni «cono simple». El defecto
+  era de PostgreSQL, no del código: `LIKE` es sensible a mayúsculas ahí (en
+  SQLite no, por eso pasó desapercibido hasta correr contra el motor real).
+  - `app/services/catalog.py::CatalogService.list_items` -- la comparación
+    ahora es `LOWER(REPLACE(REPLACE(...(name)...))) LIKE ?`, con el mismo
+    término normalizado del lado Python (`_sin_acentos`/`_columna_sin_acentos`,
+    tabla `_QUITAR_ACENTOS`): sin distinguir mayúsculas NI acentos («cafe»
+    encuentra «Café» y viceversa, decisión del humano), con **todos** los
+    términos en cualquier orden («simple cono» encuentra «Cono Simple») y
+    espacios de sobra que no cuentan. Se usa `REPLACE`+`LOWER` -- no
+    `translate()` de PostgreSQL, que SQLite no trae de fábrica -- y **no** se
+    instaló `unaccent` (nada de `CREATE EXTENSION`, es una dependencia nueva
+    de despliegue que las instancias pueden no poder correr). Se revisaron
+    las demás búsquedas de texto del backend (`grep -rn "LIKE" app/`):
+    clientes y proveedores no filtran por texto en el backend, y el otro
+    `LIKE` que hay (`app/normalizacion_medios.py`) es una migración de datos
+    por columna, no una búsqueda escrita por una persona -- no se tocó.
+  - `frontend/src/pages/Pos.tsx` -- al tipear en el campo de escaneo, un
+    desplegable bajo el campo (no el modal `ElegirCandidato`, que sí se
+    sigue usando cuando el Enter matchea por nombre y hay más de un
+    resultado: un `Dialog` de Radix atrapa el foco, y el lector de código de
+    barras necesita que el foco no se mueva) muestra coincidencias desde 2
+    caracteres, con debounce de 250 ms y guarda por secuencia (no
+    `AbortController`: `api.get` de `libra-ui` no lo acepta) para que una
+    respuesta vieja no pise a una más nueva. El Enter sigue haciendo
+    exactamente lo de siempre -- código exacto primero, después el nombre --
+    y las sugerencias no se lo comen ni le roban el foco al campo. Elegir una
+    agrega el producto por el mismo camino de siempre (`elegirItem`,
+    variantes y multiplicador `3 * …` incluidos), limpia el campo y devuelve
+    el foco.
+- **Reabrir día: un admin puede anular un cierre diario, con motivo.**
+  Pedido del humano: en dev, una sucursal con el día cerrado no podía abrir
+  turno, y no había forma de destrabarla sin tocar la base a mano.
+  - LibraCore `v1.106.1` → `v1.107.0` (`libracore.db.cierre_diario.
+    reabrir_dia`, migración `0011_reabrir_cierre_diario`).
+    `POST /api/cierre-diario/{cierre_id}/reabrir` (body `{motivo}`) sólo se
+    monta porque `app/main.py` pasa `autorizar_reabrir=Depends(require_admin)`
+    -- **sólo admin**, a diferencia de cerrar el día, que sigue siendo
+    "admin o cajero" (`staff_or_admin`). 404 si el cierre no existe, 409 si ya
+    estaba anulado o si hay un cierre posterior activo de la misma sucursal,
+    422 con motivo vacío.
+  - `listar_cierres`/`get_cierre` suman `anulado_en`, `anulado_por`,
+    `motivo_anulacion`; `preview.ya_cerrado` ignora los cierres anulados, así
+    que reabrir el día destraba la apertura de turnos de inmediato.
+  - En Cierre diario, «Cierres anteriores» muestra un cierre anulado con
+    badge «Anulado» y quién/cuándo/por qué lo reabrió; uno activo tiene un
+    botón «Reabrir día» **visible sólo para admin**, con diálogo de motivo
+    obligatorio.
+- **Se puede editar una sucursal, y el POS deja claro cómo elegir en cuál
+  trabajar.** Sucursales se podían crear pero no modificar, y no había forma
+  visible de elegir sobre cuál operar -- eso último ya se resolvía al abrir
+  turno en el POS (`AbrirTurno`); lo que faltaba era la edición y hacer visible
+  cómo cambiar.
+  - `PUT /locations/{id}` (`app/routers/locations.py`), gateado igual que el
+    alta: ningún `Depends` propio, sólo el `staff_or_admin` que pone
+    `app/main.py` al montar el router. Edita nombre, tipo, `is_default` y
+    `active`.
+  - 🔑 **No reimplementa las guardas de default.** Las sucursales de
+    VentaLibra SON los `Location` de LibraCommerce, y el motor ya las tiene
+    (`libracommerce.erp.catalogo.update_deposito`/`set_default_deposito`,
+    v0.17.0): "a lo sumo una default" y "no desactivar la default" (409). Lo
+    único propio de acá es el 409 por sucursal con un turno de caja abierto
+    (`SucursalConTurnoAbierto`, `app/services/cajas.py::
+    tiene_turno_abierto_en`) -- el motor no sabe qué es un turno. 422 si el
+    nombre o el tipo quedan vacíos tras `strip()`; 404 si no existe.
+  - `GET /locations` suma el parámetro opcional `incluir_inactivas` (default
+    `false`, no cambia nada para el POS ni el alta de cajas): sin él, una
+    sucursal recién desactivada desaparecía de la pantalla de edición y no
+    había forma de reactivarla.
+  - Botón «Editar» (ícono lápiz) por fila en Sucursales, con diálogo (nombre,
+    tipo, predeterminada, activa) que muestra el `detail` del 409/422 tal
+    cual.
+  - En el POS, el encabezado con turno abierto (`Sucursal X · Caja Y`) suma un
+    `title` -- "Para trabajar en otra sucursal, cerrá el turno." -- en vez de
+    un botón «Cambiar» nuevo: el botón «Cerrar turno» ya hace exactamente eso,
+    a un click de distancia: un segundo control repetiría la misma acción.
+- **Categorías: pantalla propia en Configuración, y columna en Productos.**
+  El catálogo tenía alta de categoría (`POST /catalog/categories`) desde
+  antes, pero ningún lugar para editarla ni para verla en el listado de
+  productos — el pedido original: *"el programa no tiene de dónde sacar las
+  categorías"*. Ahora:
+  - `PUT /catalog/categories/{category_id}` (`app/routers/catalog.py`),
+    mismo gateo que el resto del router (`dependencies=staff_or_admin` en
+    `app/main.py`). Edita nombre y activa/inactiva; `parent_id` queda
+    afuera — ninguna pantalla del producto expone jerarquía todavía.
+  - Nombre no vacío y no repetido entre categorías **activas** — mismo
+    criterio en el alta y la edición (`CatalogService._validar_category_name`,
+    nueva excepción `CategoryInvalido` → 422). 🔴 El `UNIQUE(parent_id, name)`
+    de la tabla (`libracommerce/db/schema.py`) no alcanzaba solo: SQL no
+    considera dos `NULL` iguales entre sí, y esta pantalla no expone
+    jerarquía (`parent_id` siempre `None` en el flujo real), así que dos
+    categorías con el mismo nombre pasaban ese `UNIQUE` sin chocar. El
+    chequeo se hizo en el servicio, contra las activas — desactivar una
+    categoría libera su nombre para reusarlo.
+  - Desactivar una categoría con productos activos está permitido: el
+    producto conserva su categoría (no se toca `catalog_items`), sólo deja
+    de ofrecerse para altas/ediciones nuevas.
+  - `CatalogService.list_categories` dejó de filtrar por `active = 1`:
+    devuelve todas — la pantalla de administración necesita ver (y poder
+    reactivar) las inactivas. Que el alta/edición de producto sólo ofrezca
+    las activas pasó a ser un filtro del frontend, no del backend.
+  - Frontend: `ConfigCategorias.tsx`, sección nueva en Configuración
+    (`Configuracion.tsx`, junto a Unidades de medida), mismo patrón que
+    `ConfigUnidades.tsx` con edición agregada (nombre + interruptor
+    Activa/Inactiva, estilo `ItemEditDialog` de `Productos.tsx`).
+  - `Productos.tsx`: columna **Categoría** (nombre, o «—» sin categoría),
+    ordenable. El select de categoría del alta/edición de producto ahora
+    sólo ofrece las **activas** — salvo que se esté editando un producto
+    cuya categoría quedó inactiva, que se sigue mostrando (si no, el select
+    la pierde y la edición rompe lo que ya tenía cargado). Si todavía no hay
+    ninguna categoría cargada, el select muestra un enlace a
+    Configuración › Categorías.
+- **Fix: el alta de un producto valida lo mismo que la edición.** Cierra el
+  hueco que había quedado documentado como pendiente en la entrada de abajo
+  («editar producto»): `POST /catalog/items` no validaba nada — con una
+  categoría inexistente reventaba la FK de Postgres y salía un 500 sin
+  traducir, y aceptaba nombre vacío y precio/costo negativos. Ahora:
+  - `CatalogService._validar_item` (`app/services/catalog.py`) es el único
+    lugar donde viven las tres reglas (nombre no vacío tras `strip()`,
+    categoría existente, precio/costo ≥ 0); `create_item` y `update_item`
+    lo llaman los dos. Antes la edición las tenía repartidas entre un
+    `KeyError` propio (categoría) y `Field` de Pydantic en `ItemUpdate`
+    (nombre/precio/costo) — dos formatos de error para el mismo 422. La
+    excepción nueva es `ItemInvalido`, que los dos endpoints de
+    `app/routers/catalog.py` traducen a 422 con el mismo `detail`. La
+    unidad sigue igual que antes (`KeyError` en `_get_unit`, ya compartida).
+  - Por eso se sacó el `Field(min_length=1, ge=0)` de `ItemUpdate`: con él
+    ahí, mutar `_validar_item` para no chequear el precio no alcanzaba para
+    poner en rojo la edición (Pydantic lo seguía frenando antes de llegar
+    al servicio) — la regla no estaba realmente compartida, sólo duplicada.
+  - Frontend: no hizo falta tocar nada — `ItemCreateDialog` ya mostraba el
+    `detail` del 422 con el mismo `describeError` que `ItemEditDialog`.
+- **Se puede editar un producto ya cargado.** La pantalla Productos tenía
+  alta y un detalle de códigos/variantes, pero ningún camino para corregir
+  el nombre, el precio o la categoría de un producto existente. Ahora:
+  - `PUT /catalog/items/{item_id}` (`app/routers/catalog.py`), gateado igual
+    que el alta (`dependencies=staff_or_admin` en `app/main.py`). Reemplaza
+    el item entero (mismo criterio que el alta): nombre, unidad, categoría,
+    descripción, activo/vendible/comprable y precio/costo.
+  - 🔴 **Cambiarle la unidad a un producto que ya tiene movimientos
+    (stock, venta o compra) da 409** — cambiarla ahí le cambiaría el
+    significado a todo lo que esos movimientos ya registraron con la unidad
+    vieja. El resto de los campos se edita siempre; sólo la unidad queda
+    bloqueada. `CatalogService.update_item`/`has_movements` en
+    `app/services/catalog.py`.
+  - De paso, la edición valida lo que el alta no valida y comparte servicio
+    con ella: categoría inexistente (422, la FK de Postgres la revienta con
+    un 500 sin esto) y nombre vacío/precio-costo negativos (422, vía
+    `Field` en el modelo del router). **El alta tiene el mismo hueco** en
+    los tres casos — queda pendiente, no se tocó para no ampliar esta
+    entrega.
+  - Botón «Editar» (ícono lápiz) por fila en Productos, junto al de
+    códigos/variantes. Abre `ItemEditDialog`, que precarga los mismos
+    campos que el alta más un switch «Activo» — comparten el formulario
+    (`ItemFormFields`) para no duplicar el JSX. Los precios se validan como
+    número no negativo con coma o punto decimal (mismo criterio que
+    `parseMonto` de `Pos.tsx`); el alta no valida esto hoy, y no se lo tocó.
+- **Chore: el pin de libracore pasa a v1.106.1.** Trae el motor de restore único
+  (bases temporales, migraciones contra ellas e intercambio por nombre) y el
+  backup que ya no sale vacío en silencio (v1.106.0), con sus correcciones: los
+  pools descartan las conexiones viejas después del intercambio, una base sin
+  variable de entorno frena el restore antes de tocar nada, y los errores de
+  migración traen la excepción (v1.106.1). Sin migraciones.
+- **Fix: los montos del cobro se leen como los escribe un cajero.** «Monto» y
+  «Recibe» usaban `Number(x) || 0`: «3.000» valía 3 pesos y «3000,00» valía 0,
+  y el cobro quedaba en «Falta cubrir» sin explicación. Ahora siguen la misma
+  regla que el efectivo del turno («1.500» es mil quinientos, con coma
+  decimal). Un valor ilegible se marca en el campo y no deja cobrar.
+- **Fix: la cantidad de una línea del carrito ya no queda en 0 en silencio.**
+  En «Cantidad» (F6) se aceptaba cualquier texto, y con «a3» la línea viajaba
+  al registrar la venta con `qty: 0`. Ahora la cantidad se valida (coma o
+  punto decimal, mayor a 0): con un valor inválido se ve el error y «Aceptar»
+  queda deshabilitado. `0 * código` en el campo de escaneo también se rechaza.
+- **Fix: tres defectos del POS encontrados en una prueba en pantalla
+  (2026-09-17).**
+  - El cierre de turno guardaba **$0 declarado en silencio** con un texto
+    inválido en «Efectivo contado» (p. ej. «a500»): `Number(x) || 0` tapaba
+    el `NaN`. Ahora se valida con `parseMonto` (acepta coma o punto decimal,
+    `500`/`500.5`/`500,50`/`1.500,50`; nunca negativo) — con un monto
+    inválido el campo muestra el error y el botón queda deshabilitado, sin
+    mandar el POST. Mismo fix en «Efectivo inicial en caja» al abrir el
+    turno, que es dinero declarado por el mismo motivo.
+  - El encabezado del POS mostraba el prefijo duplicado («Sucursal Sucursal
+    Centro · Caja Caja 1») cuando el nombre de la sucursal/caja ya lo traía;
+    ahora sólo se antepone si hace falta. La pantalla se identifica además
+    como «POS (Caja)» en ese mismo renglón, sin agregar un bloque nuevo.
+  - `CierreDiario.tsx` mostraba una diferencia negativa como «$-500,00» en
+    vez de «-$500,00» (el `$` antepuesto a mano en el JSX queda pegado al
+    número, no al signo). Nuevo helper único `pesos()` en `src/lib/dinero.ts`
+    para todo monto que pueda ser negativo — también usado en
+    `CuentasCorrientes.tsx` (reemplaza su `conSigno` local, duplicado) y en
+    `Reportes.tsx` (saldo del período / saldo total de caja).
+- **Las fechas de los listados de Ventas se ven dd-mm-aaaa** y no en el ISO
+  crudo de la API (`2026-09-17`). Hallazgo de la prueba en pantalla de cajas
+  en dev. El arreglo es del kit (libra-ui v0.73.1) y alcanza a las columnas
+  Fecha de sus pantallas.
+- **«Catálogo» pasa a llamarse «Productos», y «Unidades» se muda a
+  Configuración.** La pestaña «Unidades» que tenía esa pantalla ahora es una
+  sección propia de Configuración («Unidades de medida») — el alta de un
+  producto las sigue necesitando, así que Productos las sigue cargando, sólo
+  que ya no las muestra. `/catalogo` redirige a `/productos` (mismo patrón que
+  las redirecciones de Configuración). Los endpoints `/catalog/*` no cambian.
+  Como Configuración es sólo de admin, la pantalla de unidades deja de verse
+  para el cajero (staff).
+- **La pantalla de venta del mostrador pasa a llamarse «POS (Caja)»** en el
+  menú lateral. La ruta (`/pos`) y la pantalla en sí no cambian.
+- **Compras al 100% del ancho, con la recepción de mercadería DENTRO de la
+  orden.** El listado de órdenes de compra dejó la grilla al 50% con el
+  detalle desplegado al costado: ahora es una tabla completa, igual que el
+  resto de las pantallas, con «Nueva compra» arriba a la derecha y el detalle
+  en su propia ruta (`/compras/:id`). El panel suelto de recepciones se retira
+  — «Recibir mercadería» pasa a ser una acción de la orden, con el depósito de
+  destino, un remito opcional y la cantidad/costo de cada línea precargados y
+  editables (topeados contra lo pendiente). Una recepción que quedó en
+  borrador por cualquier motivo sigue viéndose y confirmable desde
+  «Recepciones de esta orden», dentro del mismo detalle. Las recepciones
+  viejas que no estaban atadas a una orden ya no tienen pantalla; el stock que
+  movieron no cambia.
+- **El ticket de una venta que no está confirmada avisa en un modal.** En
+  Ventas, la impresora de un borrador descartado abría una pestaña con el JSON
+  del 409. Ahora aparece «Solo se imprime el ticket de una venta confirmada.»
+  (libra-ui v0.73.0). La regla sigue siendo la del backend y no cambia.
+- **La venta y la devolución salen del depósito de la sucursal de la caja del turno**,
+  validado en el backend (422) con el gancho `validar_deposito` de libracommerce
+  v0.17.0. Hasta ahora lo garantizaba sólo el POS. Pin de libracommerce a v0.17.0.
+- **Fix: el backup salía sin ninguna base contra PostgreSQL.** La `Instancia`
+  del backup pasaba `db_path`/`libracore_db_path` (URLs) por `bases=`, que es
+  para rutas de archivo — `_copiar_base` las salteaba en silencio y el ZIP
+  descargable traía los logos y ninguna base. Ahora usa `postgres_url`/
+  `postgres_extra` de `libracore.respaldo`, con la base de LibraCore sumada
+  aparte sólo cuando es distinta de la del dominio.
 - **Varias cajas por sucursal, turno por cajero y por caja, y cierre diario**
   (ver DECISIONS.md ADR-026). Hasta ahora había una sola caja para toda la
   instancia y el turno era compartido (`get_turno_activo_any`): con dos

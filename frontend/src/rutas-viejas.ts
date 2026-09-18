@@ -22,3 +22,14 @@ export const REDIRECCIONES_DE_CONFIGURACION: Record<string, string> = {
   '/config-balanza': '/configuracion?seccion=balanza',
   '/config-ticket': '/configuracion?seccion=ticket',
 }
+
+/** El ítem del menú lateral "Catálogo" pasó a llamarse "Productos"
+ *  (2026-09-17, pedido del humano) y su ruta de `/catalogo` a `/productos`.
+ *  Misma razón que la tabla de arriba para no borrarla: puede estar en un
+ *  favorito o en un mensaje, y un 404 en Productos parece que se rompió el
+ *  sistema. Mismo motivo para vivir en este archivo y no en `App.tsx`: que un
+ *  test no pueda medir su propia copia de la redirección en vez de la que usa
+ *  la app -- ver el docstring de arriba. */
+export const REDIRECCIONES_DE_CATALOGO: Record<string, string> = {
+  '/catalogo': '/productos',
+}

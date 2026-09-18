@@ -219,18 +219,19 @@ def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, staff_
     caja2 = _cajas_de(admin_client, sucursal2["id"])[0]["id"]
 
     item_id = crear_item(admin_client)
-    # Las dos ventas de este test descuentan del depósito DEFAULT (no se
-    # declara `deposito_id`): alcanza con stockearlo una vez -- ver el
-    # pendiente de motor documentado en `app/routers/shifts.py` sobre
-    # `deposito_id` vs. la sucursal de la caja del turno.
+    # Cada venta sale del depósito de SU sucursal: desde el 2026-09-17 el
+    # backend rechaza otro (`app/ganchos.py::validar_deposito`).
     con_stock(admin_client, item_id, sucursal1["id"])
+    con_stock(admin_client, item_id, sucursal2["id"])
 
     tid1 = abrir_turno(admin_client, caja_id=caja1)
     tid2 = abrir_turno(staff_client, caja_id=caja2)
     assert tid1 != tid2
 
-    registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1")
-    registrar_venta(staff_client, item_id, precio="1000.00", cantidad="3")
+    registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1",
+                    deposito_id=sucursal1["id"])
+    registrar_venta(staff_client, item_id, precio="1000.00", cantidad="3",
+                    deposito_id=sucursal2["id"])
 
     resumen1 = admin_client.get(f"/shifts/{tid1}/summary").json()["resumen"]
     resumen2 = staff_client.get(f"/shifts/{tid2}/summary").json()["resumen"]

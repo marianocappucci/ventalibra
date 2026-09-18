@@ -231,8 +231,14 @@ def _crear_factura_minima(conn) -> int:
 def _crear_turno_minimo(conn) -> int:
     with get_connection() as c:
         c.execute(
-            "INSERT INTO usuarios (username, nombre, password_hash, role) "
-            "VALUES ('cajera', 'Cajera', 'x', 'admin') ON CONFLICT (username) DO NOTHING"
+            # `email` y `activo` van aunque la forma de LibraCore los acepte nulos:
+            # desde que la suite corre la cadena de libraauth (v0.45), `usuarios` nace
+            # con la forma del motor de auth, donde son NOT NULL.
+            # `activo` como '1': en la forma de LibraCore es entero y en la de
+            # libraauth booleano, y PostgreSQL convierte ese literal a los dos.
+            "INSERT INTO usuarios (username, nombre, email, password_hash, role, activo) "
+            "VALUES ('cajera', 'Cajera', 'cajera@ventalibra.test', 'x', 'admin', '1') "
+            "ON CONFLICT (username) DO NOTHING"
         )
         row = c.execute("SELECT id FROM usuarios WHERE username='cajera'").fetchone()
         usuario_id = row[0]

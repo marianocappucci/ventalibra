@@ -36,10 +36,12 @@
  *  después a buscar por qué "no anda".
  */
 import { createConfiguracion } from 'libra-ui/Configuracion'
-import { Printer, Scale, Settings } from 'lucide-react'
+import { Printer, Ruler, Scale, Settings, Tags } from 'lucide-react'
 
 import { ConfigBalanza } from './ConfigBalanza'
+import { ConfigCategorias } from './ConfigCategorias'
 import { ConfigTicket } from './ConfigTicket'
+import { ConfigUnidades } from './ConfigUnidades'
 
 export const Configuracion = createConfiguracion({
   // El icono que el sidebar de este producto le da a /configuracion.
@@ -56,11 +58,19 @@ export const Configuracion = createConfiguracion({
     arca: { empresa: 'venta' },
     email: true,
   },
-  // Las dos propias. Se quedan en el producto y no suben al kit: la balanza es
-  // de un comercio con mostrador y el formato de etiqueta que parsea es
-  // específico de acá, y el ticket de este producto no es el de Contalibra.
+  // Las cuatro propias. Se quedan en el producto y no suben al kit: la
+  // balanza es de un comercio con mostrador y el formato de etiqueta que
+  // parsea es específico de acá, el ticket de este producto no es el de
+  // Contalibra, y las unidades de medida y las categorías son del catálogo
+  // propio (`/catalog/units`, `/catalog/categories`).
+  // Unidades y Categorías son las más nuevas (2026-09-17): Unidades se movió
+  // desde la pestaña "Unidades" de lo que era Catálogo -- hoy Productos.tsx
+  // -- y Categorías es pantalla nueva, junto a ella, para que el alta y la
+  // edición de producto tengan de dónde sacar las categorías.
   propias: [
     { clave: 'balanza', label: 'Balanza', icono: Scale, contenido: <ConfigBalanza /> },
     { clave: 'ticket', label: 'Ticket', icono: Printer, contenido: <ConfigTicket /> },
+    { clave: 'unidades', label: 'Unidades de medida', icono: Ruler, contenido: <ConfigUnidades /> },
+    { clave: 'categorias', label: 'Categorías', icono: Tags, contenido: <ConfigCategorias /> },
   ],
 })

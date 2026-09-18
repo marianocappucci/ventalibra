@@ -1,6 +1,7 @@
 """VentaLibra app factory: abre la conexion SQLite unica de Fase 1 y monta
 los routers con gating por rol (mismo patron que gestiolibra/medlibra:
 dependencias en include_router, no por endpoint suelto)."""
+import logging
 import os
 
 from fastapi import Depends, FastAPI
@@ -8,8 +9,10 @@ from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
 from libraauth.auth_events import AuthEventRepository
 from libraauth.bootstrap import ensure_demo_user
 from libraauth.demo_codigos import DemoCodigoRepository
+from libraauth.migrar import exigir_schema_al_dia
 from libraauth.models import Base as AuthBase
 from libraauth.password_reset import PasswordResetService
+from libraauth.secretos import SecretosRepository
 from libraauth.session_auth import (
     build_demo_codigos_router,
     build_smtp_settings_router,
@@ -29,6 +32,7 @@ from libracore.config_router import (
     build_empresa_admin_router,
     build_empresa_router,
 )
+from libracore.db.core import es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.mp_config_router import build_mp_config_router
@@ -96,6 +100,81 @@ def _carpeta_de_backups(libracore_db_path: str) -> str:
     return os.path.join(os.path.dirname(libracore_db_path), "backups")
 
 
+def _instancia_de_respaldo(
+    db_path: str, libracore_db_path: str, logo_dir: str,
+) -> Instancia:
+    """Que se lleva el backup de esta instancia.
+
+    🔴 **`bases=` es para RUTAS de archivo, y en PostgreSQL las dos variables
+    son URLs.** `Instancia.__post_init__` las volvia `Path`, y `_copiar_base`
+    hace `if not origen.exists(): return` -- una URL nunca "existe" como
+    archivo, asi que las salteaba LAS DOS en silencio: el ZIP salia con los
+    logos y ninguna base. `crear_backup()` no fallaba; recien se notaba al
+    restaurar (`verificar_backup` levanta `BackupInvalido`, medido en
+    ventalibra-dev). Mismo defecto que ya se habia encontrado en
+    gestiolibra/medlibra (`app/main.py`) y libradesk (incidente del
+    2026-08-09).
+
+    `billing.configure()` ya rechaza cualquier `libracore_db_path` que no sea
+    PostgreSQL -- VentaLibra retiro el modo SQLite el 2026-08-12 -- asi que no
+    hace falta una rama para archivo, a diferencia de esos tres productos:
+    para esta instancia las dos variables son siempre PostgreSQL. Y a
+    diferencia de gestiolibra/medlibra (dominio y core en bases separadas, sin
+    schema en comun), en VentaLibra son la MISMA base (`_UNA_SOLA_BASE` en
+    `libracore.db.url_de_instancia`) salvo que alguien las separe a mano en el
+    entorno -- por eso `postgres_extra` solo suma `libracore_db_path` cuando
+    de verdad apunta a otra URL: pasarla igual duplicaria el dump de la misma
+    base bajo dos nombres distintos dentro del ZIP.
+    """
+    def _normalizada(url: str) -> str:
+        return str(url).replace("postgresql://", "postgresql+psycopg://", 1)
+
+    core_es_otra_base = es_url_postgres(str(libracore_db_path)) and (
+        _normalizada(libracore_db_path) != _normalizada(db_path)
+    )
+    return Instancia(
+        nombre="ventalibra",
+        postgres_url=db_path,
+        postgres_extra=[libracore_db_path] if core_es_otra_base else [],
+        directorios=[logo_dir],
+    )
+
+
+_log = logging.getLogger(__name__)
+
+
+def migrar_secretos() -> dict:
+    """Saca de `config.json` los secretos que quedaron en claro. Idempotente.
+
+    Corre en cada arranque (dentro de `create_app()`, justo despues de
+    enchufar el almacen), asi la migracion de una instancia viva **es su
+    deploy**. Loguea NOMBRES de claves, nunca valores: un log con el secreto
+    lo muda del archivo a una superficie peor, porque los logs se copian y se
+    mandan.
+
+    Si cifrar falla, el `config.json` **no se toca** -la instancia sigue
+    cobrando con la credencial que tiene- y se loguea como error, que es lo
+    que despues ve la sonda `auditar_secretos.py`.
+    """
+    informe = config_manager.migrar_secretos_al_almacen()
+    if informe["migradas"]:
+        _log.warning(
+            "secretos movidos de config.json al almacen cifrado: %s",
+            ", ".join(informe["migradas"]),
+        )
+    if informe["ya_estaban"]:
+        _log.warning(
+            "config.json tenia una copia vieja de %s; se vacio (el almacen manda)",
+            ", ".join(informe["ya_estaban"]),
+        )
+    if informe["fallaron"]:
+        _log.error(
+            "no se pudieron cifrar y QUEDAN EN CLARO en config.json: %s",
+            ", ".join(f"{k} ({v})" for k, v in informe["fallaron"].items()),
+        )
+    return informe
+
+
 def create_app(db_path: str) -> FastAPI:
     conn = db.connect(db_path)
 
@@ -142,10 +221,40 @@ def create_app(db_path: str) -> FastAPI:
         auth_engine = create_engine(
             f"sqlite:///{libracore_db_path}", connect_args={"check_same_thread": False}
         )
-    AuthBase.metadata.create_all(auth_engine)
+    # 🔴 Las tablas de auth las crea la cadena de LibraAuth (`libraauth-migrar
+    # upgrade --prefijo ventalibra --base core`, declarada en
+    # `scripts/panel_admin.py`), no el arranque. Desde libraauth v0.45 (2026-09-17)
+    # el arranque la EXIGE: si no corrió, la app no levanta y el error dice el
+    # comando. Hasta ese día acá había un `AuthBase.metadata.create_all(auth_engine)`
+    # que tapaba cualquier camino que se olvidara de migrar.
+    exigir_schema_al_dia(auth_engine, prefijo="ventalibra", base="core")
 
     # Sin `roles=`: el default ("admin","staff") es el vocabulario de VentaLibra.
     auth_sessions = sessionmaker(bind=auth_engine)
+
+    # 🔴 Los secretos de terceros de `config.json` -el access token y la firma
+    # de webhook de MercadoPago; el camino de `email_smtp_password` esta
+    # muerto en VentaLibra (0 usos de `email_smtp` en `app/`) pero se engancha
+    # igual, por consistencia con el resto de la familia- dejan de vivir en
+    # texto plano (libracore v1.108.0 + libraauth v0.46.0, 2026-09-17). Se
+    # enchufa ACA porque es donde nace `auth_sessions`, que apunta a la base de
+    # LibraCore/libraauth (NO la del dominio: VentaLibra es el caso que la
+    # receta marca aparte). La tabla `secretos_instancia` la crea la revision
+    # `0002` de la cadena de libraauth -no un `create_all`-, y
+    # `exigir_schema_al_dia()` de arriba ya no deja levantar la app si esa
+    # revision no se aplico.
+    #
+    # LibraCore no importa libraauth: recibe el almacen. Por eso el enganche es
+    # del producto, que es el unico que tiene los dos paquetes.
+    #
+    # Desde aca, `config_manager.load()` sigue devolviendo el secreto en claro
+    # a sus consumidores, pero lo trae de la base cifrada y no del archivo. La
+    # migracion de lo que ya estaba en el JSON corre en `migrar_secretos()`,
+    # llamada mas abajo.
+    _secretos = SecretosRepository(auth_sessions)
+    config_manager.usar_almacen_de_secretos(_secretos)
+    migrar_secretos()
+
     user_repository = UserRepository(auth_sessions)
     ensure_default_admin(user_repository)
     # Crea al visitante de la demo, **solo si esta instancia es una demo**: se
@@ -169,6 +278,7 @@ def create_app(db_path: str) -> FastAPI:
     # `max_connections`, y el sintoma son errores de conexion en tests que no
     # tienen nada que ver con el que los causo.
     app.state.auth_engine = auth_engine
+    app.state.secretos = _secretos
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
@@ -433,6 +543,10 @@ def create_app(db_path: str) -> FastAPI:
     # (no sobre `conn`, la variable local) para seguir viendo la conexión
     # correcta después de un restore de backup (`_reabrir_conexion` la
     # reemplaza, no la muta).
+    # `autorizar_reabrir` (LibraCore v1.107.0, "Reabrir día") SÍ se pasa:
+    # reabrir un día ya cerrado es más sensible que cerrarlo, así que se le
+    # exige `require_admin` en vez de heredar el `staff_or_admin` del módulo
+    # -- sin este parámetro el endpoint `POST /{id}/reabrir` ni se monta.
     def _resolver_sucursal_nombre(sucursal_id: int | None) -> str:
         if sucursal_id is None:
             return ""
@@ -443,6 +557,7 @@ def create_app(db_path: str) -> FastAPI:
         build_cierre_diario_router(
             usuario_actual=get_current_user,
             resolver_sucursal_nombre=_resolver_sucursal_nombre,
+            autorizar_reabrir=Depends(require_admin),
         ),
         dependencies=staff_or_admin,
     )
@@ -462,12 +577,10 @@ def create_app(db_path: str) -> FastAPI:
     # 🔴 DOS bases, y las dos tienen que entrar al backup: `usuarios` vive en
     # la de LibraCore, separada de la del dominio (ver el comentario largo
     # arriba). Un backup de una sola no se puede restaurar — o volves el
-    # dominio y te quedan usuarios de otro momento, o al reves.
-    instancia = Instancia(
-        nombre="ventalibra",
-        bases=[db_path, libracore_db_path],
-        directorios=[config_manager.LOGO_DIR],
-    )
+    # dominio y te quedan usuarios de otro momento, o al reves. Ver
+    # `_instancia_de_respaldo` para el porque de `postgres_url`/
+    # `postgres_extra` en vez de `bases=`.
+    instancia = _instancia_de_respaldo(db_path, libracore_db_path, config_manager.LOGO_DIR)
 
     def _cerrar_conexion():
         # El dominio es sqlite3 crudo con UNA conexion compartida por toda la

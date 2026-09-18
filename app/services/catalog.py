@@ -24,6 +24,76 @@ from libracore.db.core import Conexion
 from ..commerce import repositorio
 from ..conexion import conexion_utilizable
 
+#: Pares (con acento -> sin acento) para la busqueda del POS por nombre.
+#: Las dos formas de cada letra (mayuscula y minuscula) mapean directo a la
+#: forma SIN acento y en minuscula: asi ni `_sin_acentos` (Python) ni
+#: `_columna_sin_acentos` (SQL) dependen de que `LOWER()` sepa bajar una
+#: vocal acentuada -- en SQLite no lo sabe (no tiene ICU), y en PostgreSQL
+#: depende del locale con el que se hizo `initdb`. `REPLACE` no tiene ese
+#: problema: compara bytes/codepoints, no reglas de idioma.
+_QUITAR_ACENTOS = (
+    ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n"),
+    ("Á", "a"), ("É", "e"), ("Í", "i"), ("Ó", "o"), ("Ú", "u"), ("Ü", "u"), ("Ñ", "n"),
+)
+
+
+def _sin_acentos(texto: str) -> str:
+    """Minuscula y sin acentos -- lado Python, para el termino buscado."""
+    for con_acento, sin_acento in _QUITAR_ACENTOS:
+        texto = texto.replace(con_acento, sin_acento)
+    return texto.lower()
+
+
+def _columna_sin_acentos(columna: str) -> str:
+    """Misma normalizacion que `_sin_acentos`, como expresion SQL -- para
+    comparar contra una columna. `columna` es siempre un nombre de columna
+    fijo, nunca un valor de usuario: no hay parametro que escapar aca, y por
+    eso se arma con f-string en vez de placeholders.
+
+    REPLACE y LOWER son SQL estandar (los tiene tanto PostgreSQL como
+    SQLite) -- a diferencia de `translate()`, que PostgreSQL sí tiene pero
+    SQLite no trae de fabrica.
+    """
+    expr = columna
+    for con_acento, sin_acento in _QUITAR_ACENTOS:
+        expr = f"REPLACE({expr}, '{con_acento}', '{sin_acento}')"
+    return f"LOWER({expr})"
+
+
+class ItemNotFound(Exception):
+    """404: no existe un CatalogItem con ese id."""
+
+
+class ItemUnitLockedError(Exception):
+    """409: el item ya tiene movimientos (stock, venta o compra) y se
+    intento cambiarle la unidad. Cambiarla ahi cambiaria el significado de
+    todo lo que esos movimientos ya registraron con la unidad vieja."""
+
+    def __init__(self, item_id: int):
+        self.item_id = item_id
+        super().__init__(
+            "No se puede cambiar la unidad de un producto que ya tiene movimientos."
+        )
+
+
+class ItemInvalido(Exception):
+    """422: el item no cumple una regla de negocio -- nombre vacio, precio o
+    costo negativo, o categoria inexistente. Separada de KeyError (que sigue
+    siendo la unidad desconocida, en `_get_unit`) porque esa validacion es
+    vieja y ya la traducian los dos endpoints; esta es la que create_item no
+    tenia -- ver `_validar_item`."""
+
+
+class CategoryNotFound(Exception):
+    """404: no existe una Category con ese id."""
+
+
+class CategoryInvalido(Exception):
+    """422: la categoria no cumple una regla de negocio -- nombre vacio o
+    nombre repetido entre categorias activas. Recurso distinto de
+    ItemInvalido (aunque el router traduzca las dos al mismo 422) -- ver
+    `_validar_category_name`."""
+
 
 class CatalogService:
     def __init__(self, conn: Conexion):
@@ -33,16 +103,39 @@ class CatalogService:
     # categories
 
     def create_category(self, name: str, parent_id: int | None = None) -> Category:
+        nombre = self._validar_category_name(name)
         cur = self._conn.execute(
             "INSERT INTO categories (name, parent_id, active) VALUES (?, ?, 1)",
-            (name, parent_id),
+            (nombre, parent_id),
         )
         self._conn.commit()
-        return Category(id=cur.lastrowid, name=name, parent_id=parent_id)
+        return Category(id=cur.lastrowid, name=nombre, parent_id=parent_id)
+
+    def update_category(self, category_id: int, *, name: str, active: bool) -> Category:
+        """`parent_id` queda afuera a proposito: esta pantalla (Configuracion >
+        Categorias) no expone jerarquia -- nada en el producto arma un select
+        de categoria padre -- asi que agregarlo a la edicion seria un campo
+        sin donde cargarse. Si algun dia se expone, se suma aca."""
+        category = self._get_category(category_id)
+        if category is None:
+            raise CategoryNotFound(category_id)
+        nombre = self._validar_category_name(name, exclude_id=category_id)
+        self._conn.execute(
+            "UPDATE categories SET name = ?, active = ? WHERE id = ?",
+            (nombre, int(active), category_id),
+        )
+        self._conn.commit()
+        return Category(id=category_id, name=nombre, parent_id=category.parent_id, active=active)
 
     def list_categories(self) -> list[Category]:
+        # SIN filtrar por active: a diferencia de list_items/list_units, esta
+        # lista la consume tambien la pantalla de administracion de
+        # categorias (Configuracion > Categorias), que tiene que poder ver
+        # -y reactivar- las inactivas. Que el alta/edicion de producto solo
+        # ofrezca las activas es responsabilidad del frontend (Productos.tsx),
+        # no de este metodo -- ver el comentario ahi.
         rows = self._conn.execute(
-            "SELECT id, name, parent_id, active FROM categories WHERE active = 1 ORDER BY name"
+            "SELECT id, name, parent_id, active FROM categories ORDER BY name"
         ).fetchall()
         return [
             Category(id=row[0], name=row[1], parent_id=row[2], active=bool(row[3]))
@@ -92,10 +185,14 @@ class CatalogService:
         default_cost: Decimal = Decimal("0"),
     ) -> CatalogItem:
         unit = self._get_unit(unit_code)
+        nombre = self._validar_item(
+            name=name, category_id=category_id,
+            default_sale_price=default_sale_price, default_cost=default_cost,
+        )
         item = CatalogItem(
             id=None,
             item_type=item_type,
-            name=name,
+            name=nombre,
             unit=unit,
             category_id=category_id,
             description=description,
@@ -107,8 +204,58 @@ class CatalogService:
     def update_item(self, item_id: int, **changes) -> CatalogItem:
         item = self.get_item(item_id)
         if item is None:
-            raise KeyError(item_id)
+            raise ItemNotFound(item_id)
+
+        # `unit_code` no es un campo de CatalogItem (el campo es `unit`, un
+        # Unit completo) -- se resuelve aca, igual que en create_item. Se
+        # resuelve SIEMPRE, cambie o no: valida que la unidad exista (422,
+        # mismo criterio que el alta) aunque el pedido no la este cambiando.
+        unit_code = changes.pop("unit_code", item.unit.code)
+        nueva_unidad = self._get_unit(unit_code)
+        if nueva_unidad.code != item.unit.code and self.has_movements(item_id):
+            # Cambiar u -> kg en un item que ya vendio o recibio stock deja
+            # esos movimientos con una unidad que ya no es la del item --
+            # ver ItemUnitLockedError. El resto de los campos se edita
+            # siempre, este es el unico bloqueado.
+            raise ItemUnitLockedError(item_id)
+        changes["unit"] = nueva_unidad
+
+        # Mismo helper que create_item -- nombre no vacio, categoria
+        # existente y precio/costo no negativos. Antes esta edicion validaba
+        # la categoria aca mismo (con KeyError) y el nombre/precio/costo los
+        # validaba ItemUpdate con Field de Pydantic, dos formatos de error
+        # distintos para el mismo 422. Ahora las tres viven en un solo lugar
+        # y responden con el mismo `detail` en los dos endpoints.
+        changes["name"] = self._validar_item(
+            name=changes.get("name", item.name),
+            category_id=changes.get("category_id", item.category_id),
+            default_sale_price=changes.get("default_sale_price", item.default_sale_price),
+            default_cost=changes.get("default_cost", item.default_cost),
+        )
+
         return self._repo.save_catalog_item(replace(item, **changes))
+
+    def has_movements(self, item_id: int) -> bool:
+        """True si el item ya aparece en stock, una venta o una compra.
+
+        Las cuatro tablas son las que graban `item_id` con la unidad puesta
+        en el momento del movimiento: `stock_movements` (cualquier alta,
+        ajuste o transferencia), `sale_items` (lo vendido), y las dos de
+        compras -- `purchase_order_items` (lo pedido) y
+        `purchase_receipt_items` (lo recibido), porque una orden sin
+        recepcion todavia registro una cantidad en la unidad vieja.
+        """
+        row = self._conn.execute(
+            """
+            SELECT
+                EXISTS(SELECT 1 FROM stock_movements WHERE item_id = ?)
+                OR EXISTS(SELECT 1 FROM sale_items WHERE item_id = ?)
+                OR EXISTS(SELECT 1 FROM purchase_order_items WHERE item_id = ?)
+                OR EXISTS(SELECT 1 FROM purchase_receipt_items WHERE item_id = ?)
+            """,
+            (item_id, item_id, item_id, item_id),
+        ).fetchone()
+        return bool(row[0])
 
     def get_item(self, item_id: int) -> CatalogItem | None:
         return self._repo.get_catalog_item(item_id)
@@ -120,8 +267,21 @@ class CatalogService:
             query += " AND category_id = ?"
             params.append(category_id)
         if search:
-            query += " AND name LIKE ?"
-            params.append(f"%{search}%")
+            # Sin distinguir mayusculas (name LIKE ? era sensible en
+            # PostgreSQL -- en SQLite no, por eso paso desapercibido: el
+            # lector de codigo de barras andaba bien y solo fallaba tipeando
+            # el nombre), sin distinguir acentos ("cafe" encuentra "Café" y
+            # viceversa -- ver `_QUITAR_ACENTOS`; nada de `CREATE EXTENSION
+            # unaccent`, las instancias pueden no tener permiso y seria una
+            # dependencia nueva del despliegue) y con **todos** los terminos
+            # en cualquier orden: un LIKE por palabra, en AND, asi "simple
+            # cono" encuentra "Cono Simple". `.split()` sin argumento parte
+            # por cualquier corrida de espacios e ignora los de sobra al
+            # principio/final/medio.
+            columna = _columna_sin_acentos("name")
+            for termino in search.split():
+                query += f" AND {columna} LIKE ?"
+                params.append(f"%{_sin_acentos(termino)}%")
         query += " ORDER BY name"
         rows = self._conn.execute(query, params).fetchall()
         return [self._repo.get_catalog_item(row[0]) for row in rows]
@@ -167,3 +327,69 @@ class CatalogService:
         if row is None:
             raise KeyError(f"unidad desconocida: {unit_code!r}")
         return Unit(code=row[0], name=row[1], allows_fraction=bool(row[2]), decimal_scale=row[3])
+
+    def _category_exists(self, category_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM categories WHERE id = ?", (category_id,)
+        ).fetchone()
+        return row is not None
+
+    def _get_category(self, category_id: int) -> Category | None:
+        row = self._conn.execute(
+            "SELECT id, name, parent_id, active FROM categories WHERE id = ?", (category_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Category(id=row[0], name=row[1], parent_id=row[2], active=bool(row[3]))
+
+    def _validar_category_name(self, name: str, *, exclude_id: int | None = None) -> str:
+        """Nombre no vacio y no repetido entre categorias ACTIVAS -- compartida
+        por create_category y update_category, mismo criterio que
+        `_validar_item` con ItemInvalido.
+
+        El UNIQUE(parent_id, name) de la tabla (libracommerce/db/schema.py) no
+        alcanza solo: SQL no considera dos NULL iguales entre si, y esta
+        pantalla no expone jerarquia -- `parent_id` es siempre None en el
+        flujo real -- asi que dos categorias top-level con el mismo nombre
+        pasan ese UNIQUE sin chocar. Por eso el chequeo se hace aca, contra
+        las activas (desactivar libera el nombre para reusarlo), y no
+        delegado al INSERT/UPDATE.
+        """
+        nombre = name.strip()
+        if not nombre:
+            raise CategoryInvalido("el nombre no puede estar vacio")
+        query = "SELECT 1 FROM categories WHERE active = 1 AND name = ?"
+        params: list = [nombre]
+        if exclude_id is not None:
+            query += " AND id != ?"
+            params.append(exclude_id)
+        if self._conn.execute(query, params).fetchone() is not None:
+            raise CategoryInvalido(f"ya existe una categoria activa llamada {nombre!r}")
+        return nombre
+
+    def _validar_item(
+        self,
+        *,
+        name: str,
+        category_id: int | None,
+        default_sale_price: Decimal,
+        default_cost: Decimal,
+    ) -> str:
+        """Reglas de negocio compartidas por create_item y update_item.
+        Devuelve el nombre ya sin espacios de sobra, para que el llamador lo
+        use tal cual en vez de repetir el `.strip()`.
+
+        La unidad NO esta aca: sigue resolviendose con `_get_unit`, que ya
+        era compartida por los dos metodos y usa KeyError (422) desde antes
+        de este cambio -- no hacia falta tocarla.
+        """
+        nombre = name.strip()
+        if not nombre:
+            raise ItemInvalido("el nombre no puede estar vacio")
+        if category_id is not None and not self._category_exists(category_id):
+            raise ItemInvalido(f"categoria desconocida: {category_id!r}")
+        if default_sale_price < 0:
+            raise ItemInvalido("el precio de venta no puede ser negativo")
+        if default_cost < 0:
+            raise ItemInvalido("el costo no puede ser negativo")
+        return nombre

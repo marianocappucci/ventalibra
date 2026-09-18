@@ -18,6 +18,7 @@
 export { api, ApiError, type User } from 'libra-ui/api-client'
 
 import type { OpcionSelect } from 'libra-ui/SelectBuscable'
+import type { TonoEstado } from 'libra-ui/badge-estado'
 
 export type Category = {
   id: number
@@ -40,6 +41,23 @@ export type CatalogItem = {
   description: string
   category_id: number | null
   unit_code: string
+  active: boolean
+  sellable: boolean
+  purchasable: boolean
+  default_sale_price: string
+  default_cost: string
+}
+
+/** Body de `PUT /catalog/items/{id}` -- reemplaza el item entero (mismo
+ *  criterio que el alta), asi que no hay version parcial: todos los campos
+ *  van siempre. `item_type` queda afuera porque el backend no lo acepta acá
+ *  (ver `app/routers/catalog.py::ItemUpdate`): producto/servicio se define
+ *  al crear, no al editar. */
+export type ItemUpdate = {
+  name: string
+  unit_code: string
+  category_id: number | null
+  description: string
   active: boolean
   sellable: boolean
   purchasable: boolean
@@ -277,6 +295,11 @@ export type CierreDiario = {
   diferencia_total: number
   notas: string
   created_at: string
+  // "Reabrir día" (LibraCore v1.107.0): `anulado_en` puesto marca un cierre
+  // anulado -- ver `CierreDiario.tsx`, "Cierres anteriores".
+  anulado_en: string | null
+  anulado_por: number | null
+  motivo_anulacion: string | null
 }
 
 // Arqueo del turno: se calcula sobre los movimientos de caja, no sobre las
@@ -426,6 +449,18 @@ export type ArcaConfig = {
 
 export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled'
 
+// Etiquetas y tonos de estado de compras: viven acá y no repetidos en
+// Compras.tsx/CompraDetalle.tsx, que son los dos que los necesitan.
+export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  draft: 'Borrador', sent: 'Enviada', partial: 'Recibida parcial',
+  received: 'Recibida', cancelled: 'Cancelada',
+}
+
+export const PURCHASE_ORDER_STATUS_TONO: Record<PurchaseOrderStatus, TonoEstado> = {
+  draft: 'neutro', sent: 'curso', partial: 'atencion',
+  received: 'ok', cancelled: 'negativo',
+}
+
 export type PurchaseOrderItem = {
   item_id: number
   quantity_ordered: string
@@ -446,6 +481,14 @@ export type PurchaseOrder = {
 }
 
 export type PurchaseReceiptStatus = 'draft' | 'confirmed'
+
+export const PURCHASE_RECEIPT_STATUS_LABELS: Record<PurchaseReceiptStatus, string> = {
+  draft: 'Borrador', confirmed: 'Confirmada',
+}
+
+export const PURCHASE_RECEIPT_STATUS_TONO: Record<PurchaseReceiptStatus, TonoEstado> = {
+  draft: 'neutro', confirmed: 'ok',
+}
 
 export type PurchaseReceiptItem = {
   item_id: number

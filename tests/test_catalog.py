@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from conftest import https_client
+
 
 def _make_unit(client, code="u"):
     response = client.post("/catalog/units", json={"code": code, "name": "Unidad"})
@@ -19,6 +21,21 @@ def test_create_and_list_category(admin_client):
     assert response.status_code == 200
     names = [c["name"] for c in response.json()]
     assert "Bebidas" in names
+
+
+def test_create_category_empty_name_422(admin_client):
+    response = admin_client.post("/catalog/categories", json={"name": "   "})
+    assert response.status_code == 422, response.text
+
+
+def test_create_duplicate_category_name_fails_422(admin_client):
+    # El UNIQUE(parent_id, name) de la tabla no alcanza: las dos quedan con
+    # parent_id NULL, y SQL no considera dos NULL iguales entre si -- el
+    # chequeo es de _validar_category_name, no del INSERT. Ver su docstring.
+    _make_category(admin_client, "Bebidas")
+    response = admin_client.post("/catalog/categories", json={"name": "Bebidas"})
+    assert response.status_code == 422, response.text
+    assert "Bebidas" in response.json()["detail"]
 
 
 def test_create_and_list_unit(admin_client):
@@ -48,6 +65,43 @@ def test_create_item_with_unknown_unit_fails(admin_client):
         json={"name": "Fideos", "unit_code": "no-existe"},
     )
     assert response.status_code == 422
+
+
+def test_create_item_with_unknown_category_422(admin_client):
+    # Antes de _validar_item esto reventaba la FK de Postgres y salia un 500
+    # sin traducir -- ver ItemInvalido en services/catalog.py.
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "category_id": 999},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_item_empty_name_422(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items", json={"name": "   ", "unit_code": "u"},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_item_negative_price_422(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "default_sale_price": "-1"},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_item_negative_cost_422(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "default_cost": "-1"},
+    )
+    assert response.status_code == 422, response.text
 
 
 def test_create_and_get_item(admin_client):
@@ -83,6 +137,67 @@ def test_list_items_filters_by_search(admin_client):
     assert response.status_code == 200
     names = [item["name"] for item in response.json()]
     assert names == ["Arroz 1kg"]
+
+
+def test_list_items_search_sin_distinguir_mayusculas(admin_client):
+    # El defecto original: PostgreSQL es case-sensitive con LIKE (SQLite no
+    # lo es, por eso no se habia notado antes de correr contra el motor
+    # real). Cubre las dos formas que reporto el humano.
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Cono Simple", "unit_code": "u"})
+
+    for termino in ("CONO SIMPLE", "cono simple", "Cono"):
+        response = admin_client.get("/catalog/items", params={"search": termino})
+        assert response.status_code == 200, response.text
+        names = [item["name"] for item in response.json()]
+        assert names == ["Cono Simple"], f"buscando {termino!r}: {names!r}"
+
+
+def test_list_items_search_varios_terminos_en_cualquier_orden(admin_client):
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Cono Simple", "unit_code": "u"})
+    admin_client.post("/catalog/items", json={"name": "Cono Doble", "unit_code": "u"})
+
+    # Orden invertido respecto del nombre, y espacios de sobra que no cuentan.
+    response = admin_client.get("/catalog/items", params={"search": "  simple   cono  "})
+    assert response.status_code == 200
+    names = [item["name"] for item in response.json()]
+    assert names == ["Cono Simple"]
+
+
+def test_list_items_search_termino_inexistente_no_encuentra(admin_client):
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Cono Simple", "unit_code": "u"})
+
+    response = admin_client.get("/catalog/items", params={"search": "chocolate"})
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_items_search_sin_distinguir_acentos(admin_client):
+    # Decision del humano: "cafe" encuentra "Café" y al reves, y la ñ
+    # ("nino" encuentra "Niño"). Sin CREATE EXTENSION unaccent -- ver
+    # `_QUITAR_ACENTOS` en app/services/catalog.py.
+    _make_unit(admin_client, "u")
+    admin_client.post("/catalog/items", json={"name": "Café", "unit_code": "u"})
+    admin_client.post("/catalog/items", json={"name": "Café con leche", "unit_code": "u"})
+    admin_client.post("/catalog/items", json={"name": "Niño Torta", "unit_code": "u"})
+
+    response = admin_client.get("/catalog/items", params={"search": "cafe"})
+    assert response.status_code == 200
+    assert {i["name"] for i in response.json()} == {"Café", "Café con leche"}
+
+    response = admin_client.get("/catalog/items", params={"search": "café"})
+    assert response.status_code == 200
+    assert {i["name"] for i in response.json()} == {"Café", "Café con leche"}
+
+    response = admin_client.get("/catalog/items", params={"search": "CAFÉ"})
+    assert response.status_code == 200
+    assert {i["name"] for i in response.json()} == {"Café", "Café con leche"}
+
+    response = admin_client.get("/catalog/items", params={"search": "nino"})
+    assert response.status_code == 200
+    assert [i["name"] for i in response.json()] == ["Niño Torta"]
 
 
 def _make_item(client, name="Fideos 500g"):
@@ -162,3 +277,267 @@ def test_add_duplicate_variant_sku_fails(admin_client):
 
     response = admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "REM-M", "name": "M otra vez"})
     assert response.status_code == 409
+
+
+# ── PUT /catalog/items/{item_id} ─────────────────────────────────────────
+
+def _update_payload(**overrides):
+    """Body completo de ItemUpdate -- el PUT reemplaza el item entero (mismo
+    criterio que ItemCreate), asi que cada test parte de esto y pisa lo que
+    le interesa."""
+    payload = {
+        "name": "Fideos 500g", "unit_code": "u", "category_id": None,
+        "description": "", "active": True, "sellable": True, "purchasable": True,
+        "default_sale_price": "1500.00", "default_cost": "900.00",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _make_location(client, name="Deposito"):
+    response = client.post("/locations", json={"name": name})
+    assert response.status_code == 200, response.text
+    return response.json()["id"]
+
+
+def test_update_item_ok(admin_client):
+    item_id = _make_item(admin_client)
+    category = _make_category(admin_client, "Almacen")
+
+    response = admin_client.put(
+        f"/catalog/items/{item_id}",
+        json=_update_payload(
+            name="Fideos 500g (editado)", description="con salsa", category_id=category["id"],
+            default_sale_price="1800.50", default_cost="950.25",
+        ),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["name"] == "Fideos 500g (editado)"
+    assert body["description"] == "con salsa"
+    assert body["category_id"] == category["id"]
+    assert Decimal(body["default_sale_price"]) == Decimal("1800.50")
+    assert Decimal(body["default_cost"]) == Decimal("950.25")
+
+    # El listado (que lee por GET, no lo que devolvio el PUT) tambien lo ve.
+    fetched = admin_client.get(f"/catalog/items/{item_id}")
+    assert fetched.json()["name"] == "Fideos 500g (editado)"
+
+
+def test_update_item_deactivate(admin_client):
+    item_id = _make_item(admin_client, "Descontinuado")
+
+    response = admin_client.put(
+        f"/catalog/items/{item_id}",
+        json=_update_payload(name="Descontinuado", active=False),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["active"] is False
+
+    # list_items filtra por active = 1 -- desactivar lo saca del listado.
+    listado = admin_client.get("/catalog/items", params={"search": "Descontinuado"})
+    assert listado.json() == []
+
+
+def test_update_unknown_item_404(admin_client):
+    _make_unit(admin_client, "u")
+    response = admin_client.put("/catalog/items/999", json=_update_payload())
+    assert response.status_code == 404
+
+
+def test_update_item_unknown_unit_422(admin_client):
+    item_id = _make_item(admin_client)
+    response = admin_client.put(
+        f"/catalog/items/{item_id}", json=_update_payload(unit_code="no-existe"),
+    )
+    assert response.status_code == 422
+
+
+def test_update_item_unknown_category_422(admin_client):
+    item_id = _make_item(admin_client)
+    response = admin_client.put(
+        f"/catalog/items/{item_id}", json=_update_payload(category_id=999),
+    )
+    assert response.status_code == 422
+
+
+def test_update_item_empty_name_422(admin_client):
+    item_id = _make_item(admin_client)
+    response = admin_client.put(
+        f"/catalog/items/{item_id}", json=_update_payload(name=""),
+    )
+    assert response.status_code == 422
+
+
+def test_update_item_negative_price_422(admin_client):
+    item_id = _make_item(admin_client)
+    response = admin_client.put(
+        f"/catalog/items/{item_id}", json=_update_payload(default_sale_price="-1"),
+    )
+    assert response.status_code == 422
+
+
+def test_update_item_change_unit_without_movements_ok(admin_client):
+    item_id = _make_item(admin_client)
+    _make_unit(admin_client, "kg")
+
+    response = admin_client.put(
+        f"/catalog/items/{item_id}", json=_update_payload(unit_code="kg"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["unit_code"] == "kg"
+
+
+def test_update_item_change_unit_with_stock_movement_fails_409(admin_client):
+    item_id = _make_item(admin_client)
+    _make_unit(admin_client, "kg")
+    location_id = _make_location(admin_client)
+    ajuste = admin_client.post(
+        "/stock/adjustments",
+        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "10", "reason": "carga inicial"},
+    )
+    assert ajuste.status_code == 200, ajuste.text
+
+    response = admin_client.put(
+        f"/catalog/items/{item_id}", json=_update_payload(unit_code="kg"),
+    )
+    assert response.status_code == 409, response.text
+    assert "unidad" in response.json()["detail"]
+    assert "movimientos" in response.json()["detail"]
+
+    # El resto de los campos SI se edita, aunque la unidad quede bloqueada:
+    # este PUT solo cambiaba la unidad, asi que el item queda intacto.
+    assert admin_client.get(f"/catalog/items/{item_id}").json()["unit_code"] == "u"
+
+
+def test_update_item_other_fields_edit_even_with_movements(admin_client):
+    """El bloqueo es SOLO de la unidad -- el resto se edita siempre."""
+    item_id = _make_item(admin_client)
+    location_id = _make_location(admin_client)
+    admin_client.post(
+        "/stock/adjustments",
+        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5", "reason": "carga inicial"},
+    )
+
+    response = admin_client.put(
+        f"/catalog/items/{item_id}",
+        json=_update_payload(name="Fideos 500g (con stock)", default_sale_price="2000"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "Fideos 500g (con stock)"
+
+
+def test_update_item_without_session_401(admin_client):
+    # Mismo criterio que test_token_de_servicio.py::sin_sesion: una app ya
+    # armada, un cliente nuevo que nunca hizo login. El router de catalogo se
+    # monta con `dependencies=staff_or_admin` (app/main.py) -- cualquier
+    # sesion valida (staff o admin) entra, asi que no hay un rol "de menos"
+    # que probar aparte: lo que falta acá es la sesion misma.
+    item_id = _make_item(admin_client)
+    with https_client(admin_client.app) as sin_sesion:
+        response = sin_sesion.put(f"/catalog/items/{item_id}", json=_update_payload())
+    assert response.status_code == 401
+
+
+# ── PUT /catalog/categories/{category_id} ────────────────────────────────
+
+def test_update_category_ok(admin_client):
+    category = _make_category(admin_client, "Almacen")
+
+    response = admin_client.put(
+        f"/catalog/categories/{category['id']}",
+        json={"name": "Almacen seco", "active": True},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["name"] == "Almacen seco"
+    assert body["active"] is True
+
+    # El listado (por GET, no lo que devolvio el PUT) tambien lo ve.
+    fetched = admin_client.get("/catalog/categories").json()
+    assert any(c["id"] == category["id"] and c["name"] == "Almacen seco" for c in fetched)
+
+
+def test_update_unknown_category_404(admin_client):
+    response = admin_client.put("/catalog/categories/999", json={"name": "X", "active": True})
+    assert response.status_code == 404
+
+
+def test_update_category_empty_name_422(admin_client):
+    category = _make_category(admin_client, "Almacen")
+    response = admin_client.put(
+        f"/catalog/categories/{category['id']}", json={"name": "   ", "active": True},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_update_category_duplicate_name_422(admin_client):
+    _make_category(admin_client, "Bebidas")
+    otra = _make_category(admin_client, "Almacen")
+
+    response = admin_client.put(
+        f"/catalog/categories/{otra['id']}", json={"name": "Bebidas", "active": True},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_update_category_same_name_ok(admin_client):
+    # Guardar sin cambiar el nombre no debe chocar contra si misma -- el
+    # chequeo de duplicado excluye category_id (exclude_id en
+    # _validar_category_name).
+    category = _make_category(admin_client, "Almacen")
+    response = admin_client.put(
+        f"/catalog/categories/{category['id']}", json={"name": "Almacen", "active": False},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["active"] is False
+
+
+def test_deactivate_category_with_active_product_is_allowed(admin_client):
+    # Desactivar esta permitido aunque un producto activo la use: el
+    # producto conserva la categoria (no se toca catalog_items), solo deja
+    # de ofrecerse para altas/ediciones nuevas -- eso es responsabilidad del
+    # frontend (Productos.tsx), no de este endpoint.
+    _make_unit(admin_client, "u")
+    category = _make_category(admin_client, "Almacen")
+    item = admin_client.post(
+        "/catalog/items",
+        json={"name": "Fideos", "unit_code": "u", "category_id": category["id"]},
+    ).json()
+
+    response = admin_client.put(
+        f"/catalog/categories/{category['id']}", json={"name": "Almacen", "active": False},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["active"] is False
+
+    # El producto sigue apuntando a la categoria, ahora inactiva.
+    fetched_item = admin_client.get(f"/catalog/items/{item['id']}").json()
+    assert fetched_item["category_id"] == category["id"]
+
+    # GET /catalog/categories la sigue listando (con active=False) -- lo
+    # necesita la pantalla de administracion para poder reactivarla, y la
+    # edicion del producto para seguir mostrando su categoria actual.
+    listado = admin_client.get("/catalog/categories").json()
+    inactiva = next(c for c in listado if c["id"] == category["id"])
+    assert inactiva["active"] is False
+
+
+def test_reuse_name_of_a_deactivated_category(admin_client):
+    # El chequeo de duplicado es contra categorias ACTIVAS -- desactivar
+    # libera el nombre para una categoria nueva.
+    vieja = _make_category(admin_client, "Bebidas")
+    admin_client.put(f"/catalog/categories/{vieja['id']}", json={"name": "Bebidas", "active": False})
+
+    response = admin_client.post("/catalog/categories", json={"name": "Bebidas"})
+    assert response.status_code == 200, response.text
+
+
+def test_update_category_without_session_401(admin_client):
+    # Mismo criterio que test_update_item_without_session_401.
+    category = _make_category(admin_client, "Almacen")
+    with https_client(admin_client.app) as sin_sesion:
+        response = sin_sesion.put(
+            f"/catalog/categories/{category['id']}", json={"name": "Almacen", "active": True},
+        )
+    assert response.status_code == 401

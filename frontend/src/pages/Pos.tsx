@@ -43,6 +43,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'lucide-react'
 import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
+import { money } from '@/lib/dinero'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -57,6 +58,15 @@ const CUENTA_CORRIENTE = 'cuenta_corriente'
  *  parte cada reporte en dos lineas para la misma cosa. La normalizacion vive
  *  en `app/normalizacion_medios.py` y corre en cada arranque. */
 const MERCADO_PAGO = 'mercadopago'
+
+/** Cuanto esperar sin tipeo antes de pedir sugerencias por nombre. Ni tan
+ *  corto que dispare una request por tecla (el lector tipea rapidisimo, asi
+ *  que cada caracter del codigo dispararia una), ni tan largo que se sienta
+ *  lento para un humano escribiendo a mano. */
+const SUGERENCIAS_DEBOUNCE_MS = 250
+/** Con menos, el LIKE por nombre trae casi todo el catalogo -- no aporta y
+ *  es ruido en pantalla mientras el cajero recien empieza a escribir. */
+const SUGERENCIAS_MIN_CHARS = 2
 
 const QR_POLL_MS = 3000
 /** Cinco minutos: pasado eso el cliente ya se fue del mostrador. Cortar el
@@ -119,10 +129,11 @@ const ATAJOS = [
 // ventas, y preguntarla en cada uno era ruido puro.
 const LOCATION_KEY = 'ventalibra.pos.location'
 
-function money(value: string | number): string {
-  return Number(value).toLocaleString('es-AR', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  })
+/** Antepone la etiqueta salvo que el nombre ya la traiga -- evita "Sucursal
+ *  Sucursal Centro" cuando el nombre del registro ya viene con el prefijo
+ *  (comparación sin distinguir mayúsculas). */
+function conPrefijo(etiqueta: string, nombre: string): string {
+  return nombre.toLowerCase().startsWith(etiqueta.toLowerCase()) ? nombre : `${etiqueta} ${nombre}`
 }
 
 /** Las cantidades enteras se ven como enteros ("3"); las pesadas, con los
@@ -138,6 +149,57 @@ function cantidadLegible(value: string): string {
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
   return 'Error de conexión.'
+}
+
+/** Parsea un monto que el CAJERO tipeó a mano (efectivo inicial de un turno,
+ *  efectivo contado al cerrarlo) -- nunca el de una línea del carrito, que
+ *  sale del catálogo. `null` si no es un monto válido: nunca cae a 0 en
+ *  silencio, a diferencia de `Number(x) || 0`. Quien llama tiene que mostrar
+ *  el error y frenar el envío en vez de mandar `null` al backend.
+ *
+ *  Regla de parseo (la mínima que pide un cajero argentino, documentada acá
+ *  porque no hay otro lugar donde buscarla):
+ *  - Con coma: la coma es decimal y los puntos, si hay, separan miles en
+ *    grupos de a tres -- "500,50", "1.500,50", "1.250.000,5".
+ *  - Sin coma, con puntos en grupos de a tres: son separadores de miles --
+ *    "1.500" es MIL QUINIENTOS. 🔴 Leerlo como decimal (1,5) sería el mismo
+ *    error silencioso que se vino a arreglar, con otra cara: es como se
+ *    escribe un monto en Argentina.
+ *  - Sin coma y con un punto que no forma grupos de a tres: decimal --
+ *    "500.5", "500.25".
+ *  - Nunca negativo (un cajón no tiene "menos plata"): cualquier signo lo
+ *    rechaza, no lo trunca. Cualquier otra forma ("1.5.0,50", "a500") es
+ *    inválida. */
+function parseMonto(texto: string): number | null {
+  const t = texto.trim()
+  let normalizado: string
+  if (/^(\d{1,3}(\.\d{3})+|\d+),\d+$/.test(t)) {
+    normalizado = t.replace(/\./g, '').replace(',', '.')
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(t)) {
+    normalizado = t.replace(/\./g, '')
+  } else if (/^\d+(\.\d+)?$/.test(t)) {
+    normalizado = t
+  } else {
+    return null
+  }
+  const n = Number(normalizado)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+/** Parsea la cantidad que el cajero tipea a mano para una línea del carrito.
+ *  Mismo criterio que `parseMonto` —`null` antes que un 0 silencioso—, con
+ *  una regla propia: la cantidad puede ser un peso (`1,250` kg), así que la
+ *  coma o el punto son siempre decimales y NO hay separador de miles (nadie
+ *  vende "1.500" unidades tipeándolas; "1.500" kg es un kilo y medio). Tiene
+ *  que ser mayor a 0: para sacar un producto está «Quitar».
+ *
+ *  Devuelve la cantidad normalizada con punto, que es como la guarda
+ *  `CartLine.qty`. */
+function parseCantidad(texto: string): string | null {
+  const t = texto.trim()
+  if (!/^\d+([.,]\d+)?$/.test(t)) return null
+  const normalizada = t.replace(',', '.')
+  return Number(normalizada) > 0 ? normalizada : null
 }
 
 /** `3 * 7790123456` => cantidad 3, codigo 7790123456. Es el gesto que el
@@ -192,6 +254,19 @@ export function Pos() {
   const [variantes, setVariantes] = useState<ItemVariant[]>([])
   const [pendiente, setPendiente] = useState<{ item: CatalogItem; cantidad: string } | null>(null)
 
+  // Sugerencias mientras se tipea (sin Enter) -- distintas de `candidatos`,
+  // que es el modal que dispara `buscar()` cuando el Enter no matcheo un
+  // codigo exacto y la busqueda por nombre trajo mas de un resultado. Las
+  // dos conviven: esta es la busqueda en vivo, esa sigue andando igual que
+  // siempre.
+  const [sugerencias, setSugerencias] = useState<CatalogItem[]>([])
+  // Guarda por secuencia (no AbortController: `api.get` de libra-ui no
+  // acepta AbortSignal, y no se toca ese paquete desde aca) -- si una
+  // respuesta vieja llega despues de una mas nueva, se descarta en vez de
+  // pisarla. Arranca en 0 y se incrementa recien al DISPARAR el fetch (no en
+  // cada tecla), para que dos pedidos en vuelo a la vez comparen bien.
+  const secuenciaSugerenciasRef = useRef(0)
+
   const [cobroOpen, setCobroOpen] = useState(false)
   const [cantidadOpen, setCantidadOpen] = useState(false)
   const escaneoRef = useRef<HTMLInputElement>(null)
@@ -245,6 +320,39 @@ export function Pos() {
     escaneoRef.current?.focus()
   }, [hayDialogo])
 
+  // Busqueda en vivo mientras se tipea -- sin apretar Enter. El multiplicador
+  // ("3 * cono") se pela antes de buscar, para que "cono" traiga sugerencias
+  // igual que si no hubiera multiplicador delante.
+  //
+  // 🔴 A proposito NO cancela con `busy`/Enter en vuelo: ese flujo
+  // (`buscar()`) limpia `query` apenas resuelve (via `agregar()`) o marca el
+  // error, y eso por si solo vacia `resto` y esconde las sugerencias -- no
+  // hace falta una segunda guarda cruzada, que solo agregaria una carrera
+  // mas para pisar.
+  useEffect(() => {
+    const { resto } = parseMultiplicador(query)
+    if (hayDialogo || resto.length < SUGERENCIAS_MIN_CHARS) {
+      setSugerencias([])
+      return
+    }
+    const temporizador = window.setTimeout(() => {
+      // La secuencia se actualiza recien ACA, al disparar el pedido -- no en
+      // cada tecla -- para que dos fetches realmente en vuelo a la vez (no
+      // dos teclas que el debounce ya absorbio) sean los que se comparan.
+      const secuencia = ++secuenciaSugerenciasRef.current
+      api.get<CatalogItem[]>(`/catalog/items?search=${encodeURIComponent(resto)}`)
+        .then((encontrados) => {
+          // Llego una respuesta mas nueva mientras esta viajaba: la vieja se
+          // descarta en vez de pisarle el resultado a la de recien.
+          if (secuenciaSugerenciasRef.current === secuencia) setSugerencias(encontrados)
+        })
+        .catch(() => {
+          if (secuenciaSugerenciasRef.current === secuencia) setSugerencias([])
+        })
+    }, SUGERENCIAS_DEBOUNCE_MS)
+    return () => window.clearTimeout(temporizador)
+  }, [query, hayDialogo])
+
   useEffect(() => {
     api.get<Location[]>('/locations')
       .then((items) => {
@@ -266,11 +374,9 @@ export function Pos() {
   // Con turno abierto EN UNA CAJA, la sucursal de la venta queda atada a la
   // de esa caja -- no a lo último elegido a mano ni a lo que haya en
   // localStorage. Esto es lo que garantiza, del lado del POS, que
-  // `deposito_id` viaje siempre igual a la sucursal del turno: el backend NO
-  // lo valida (ver el comentario largo en `app/routers/shifts.py` y el
-  // pendiente de motor documentado ahí -- `libracommerce.web.ventas_router`
-  // no ofrece ningún gancho para cruzar `deposito_id` contra la caja del
-  // turno antes de escribir la venta).
+  // `deposito_id` viaje siempre igual a la sucursal del turno. Desde el
+  // 2026-09-17 el backend además lo valida (`app/ganchos.py::
+  // validar_deposito`, libracommerce v0.17.0): si no coincide, 422.
   useEffect(() => {
     if (turno?.sucursal) setLocationId(String(turno.sucursal.id))
   }, [turno])
@@ -312,6 +418,7 @@ export function Pos() {
     setCandidatos([])
     setVariantes([])
     setPendiente(null)
+    setSugerencias([])
     enfocarEscaneo()
   }
 
@@ -334,12 +441,36 @@ export function Pos() {
     agregar(item, cantidad, undefined, precioUnitario)
   }
 
+  /** Elegir una sugerencia de la busqueda en vivo -- mismo camino que
+   *  cualquier otra forma de resolver un item (`elegirItem`: respeta
+   *  variantes y termina en `agregar`, que limpia el campo y devuelve el
+   *  foco). El multiplicador tipeado antes del nombre ("3 * cono") se
+   *  respeta igual que en el flujo de Enter. */
+  async function elegirSugerencia(item: CatalogItem) {
+    const { cantidad } = parseMultiplicador(query)
+    // Se esconde ACA, antes del await: `elegirItem` puede tardar (pide las
+    // variantes), y la lista no tiene por que seguir visible mientras tanto.
+    setSugerencias([])
+    await elegirItem(item, cantidad)
+  }
+
   async function buscar(event: FormEvent) {
     event.preventDefault()
+    // Las sugerencias en vivo son de un flujo aparte (ver el useEffect de
+    // arriba) -- el Enter siempre resuelve por su cuenta, codigo exacto
+    // primero, y no tiene por que esperarlas ni convivir con ellas en
+    // pantalla mientras resuelve.
+    setSugerencias([])
     const texto = query.trim()
     if (!texto) return
     const { cantidad, resto } = parseMultiplicador(texto)
     if (!resto) return
+    // `0 * 7790123456` pasaba el regex y entraba una línea con cantidad 0,
+    // que viajaba así al registrar la venta.
+    if (Number(cantidad) <= 0) {
+      setError('La cantidad tiene que ser mayor a 0.')
+      return
+    }
 
     setBusy(true)
     setError(null)
@@ -461,18 +592,22 @@ export function Pos() {
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <span className="flex items-center gap-2">
           <Scan className="size-4 text-primary" />
+          {/* Identificación sobria de la pantalla (pedido del humano,
+              2026-09-17): sin bloque propio -- éste es el único renglón de
+              encabezado que tiene el POS, y robarle alto es justo lo que no
+              hay que hacer acá (ver TituloPantalla, que sí lo haría). */}
+          <span className="font-medium text-foreground">POS (Caja)</span>
+          <span aria-hidden="true">·</span>
           Nueva venta
         </span>
         <div className="flex items-center gap-2">
+          {/* Orden pedido por el humano (2026-09-17): turno, después
+              sucursal/caja, y "Cerrar turno" al final -- el más a la
+              derecha, porque es la acción y no una etiqueta. */}
           {turno && (
-            <>
-              <span className="rounded border px-2 py-0.5 text-xs">
-                Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
-              </span>
-              <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
-                Cerrar turno
-              </Button>
-            </>
+            <span className="rounded border px-2 py-0.5 text-xs">
+              Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
+            </span>
           )}
           {/* Con turno abierto EN UNA CAJA, la sucursal queda fija a la de esa
               caja: la venta tiene que salir del depósito de esa sucursal, y
@@ -481,8 +616,17 @@ export function Pos() {
               Un turno viejo sin caja (de antes de esta feature) conserva el
               selector, con un aviso para migrarlo. */}
           {turno?.sucursal ? (
-            <span className="rounded border bg-muted px-2 py-0.5 text-xs">
-              Sucursal {turno.sucursal.nombre} · Caja {turno.caja?.nombre}
+            // Sin selector, a propósito (ver el comentario de arriba): el
+            // `title` es la forma más sobria de decir CÓMO se cambia de
+            // sucursal sin agregar un segundo botón que haga lo mismo que
+            // "Cerrar turno" -- ya está ahí, a un click. Pedido del
+            // humano (2026-09-17): "un botón «Cambiar»... o un tooltip".
+            <span
+              className="rounded border bg-muted px-2 py-0.5 text-xs"
+              title="Para trabajar en otra sucursal, cerrá el turno."
+            >
+              {conPrefijo('Sucursal', turno.sucursal.nombre)}
+              {turno.caja?.nombre && <> · {conPrefijo('Caja', turno.caja.nombre)}</>}
             </span>
           ) : (
             <>
@@ -502,20 +646,61 @@ export function Pos() {
               )}
             </>
           )}
+          {turno && (
+            <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
+              Cerrar turno
+            </Button>
+          )}
         </div>
       </div>
 
       <form onSubmit={buscar} className="flex items-center gap-2">
         <Scan className="size-5 shrink-0 text-primary" aria-hidden="true" />
-        <Input
-          ref={escaneoRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Escaneá o escribí código / nombre…    (3 * código para 3 unidades)"
-          className="h-11 flex-1 text-base"
-          autoFocus
-          aria-label="Código o nombre del producto"
-        />
+        <div className="relative flex-1">
+          <Input
+            ref={escaneoRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Escaneá o escribí código / nombre…    (3 * código para 3 unidades)"
+            className="h-11 w-full text-base"
+            autoFocus
+            autoComplete="off"
+            aria-label="Código o nombre del producto"
+            role="combobox"
+            aria-expanded={sugerencias.length > 0}
+            aria-controls="pos-sugerencias"
+          />
+          {/* Busqueda en vivo (sin Enter). NO es el modal `ElegirCandidato`
+              de mas abajo a proposito: un Dialog de Radix atrapa el foco al
+              abrirse, y el lector de codigo de barras necesita que el foco
+              siga siempre en este input mientras tipea. Un desplegable
+              comun, que solo aparece por estado y nunca llama a `.focus()`,
+              no le roba nada -- y clickear una opcion es un gesto explicito
+              del cajero, no algo que pase mientras tipea. */}
+          {sugerencias.length > 0 && (
+            <ul
+              id="pos-sugerencias"
+              role="listbox"
+              aria-label="Sugerencias"
+              className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+            >
+              {sugerencias.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => elegirSugerencia(item)}
+                    className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  >
+                    <span>{item.name}</span>
+                    <span className="tabular-nums text-muted-foreground">${money(item.default_sale_price)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <Button type="submit" disabled={busy} className="h-11">Agregar</Button>
       </form>
 
@@ -761,26 +946,37 @@ function CambiarCantidad({ linea, onAceptar, onCerrar }: {
   onCerrar: () => void
 }) {
   const [valor, setValor] = useState(String(Number(linea.qty)))
+  // 🔴 Antes se aceptaba cualquier texto: «a3» quedaba en el carrito y
+  // `itemsPayload` lo mandaba como `qty: 0` (`Number(x) || 0`), en silencio.
+  // Mismo defecto que el «Efectivo contado» del cierre de turno.
+  const cantidad = parseCantidad(valor)
+  const invalida = valor.trim() !== '' && cantidad === null
   return (
     <Dialog open onOpenChange={(o) => !o && onCerrar()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader><DialogTitle>{linea.nombre}</DialogTitle></DialogHeader>
         <form
-          onSubmit={(e) => { e.preventDefault(); onAceptar(valor) }}
+          onSubmit={(e) => { e.preventDefault(); if (cantidad !== null) onAceptar(cantidad) }}
           className="grid gap-3"
         >
           <div className="grid gap-2">
             <Label htmlFor="cantidad-nueva">Cantidad</Label>
             <Input
               id="cantidad-nueva" value={valor} autoFocus
+              aria-invalid={invalida || undefined}
               onChange={(e) => setValor(e.target.value)}
               onFocus={(e) => e.target.select()}
               className="h-12 text-lg"
             />
+            {invalida && (
+              <p className="text-sm text-destructive" role="alert">
+                Cantidad inválida: tiene que ser un número mayor a 0 (ej. 3 o 1,250).
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCerrar}>Cancelar</Button>
-            <Button type="submit">Aceptar</Button>
+            <Button type="submit" disabled={cantidad === null}>Aceptar</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -882,7 +1078,9 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
 }) {
   const { medios } = useMediosPago()
   const [pagos, setPagos] = useState<PagoForm[]>([
-    { medio: 'efectivo', monto: String(total), recibido: '' },
+    // Con dos decimales y no `String(total)`: un total de pesada como 125.125
+    // se leería con `parseMonto` como 125.125 pesos con puntos de miles.
+    { medio: 'efectivo', monto: total.toFixed(2), recibido: '' },
   ])
   const [factura, setFactura] = useState(false)
   const [registrando, setRegistrando] = useState(false)
@@ -915,23 +1113,34 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   // pisarse con un tick que ya estaba a mitad de camino de acreditar.
   const pollEnVueloRef = useRef<Promise<void> | null>(null)
 
-  const cubierto = pagos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
+  // Los montos del cobro se leen con `parseMonto`, la misma regla que el
+  // efectivo del turno: «1.500» es mil quinientos y «1.500,50» lleva coma
+  // decimal. Antes era `Number(x) || 0`: «1.500» valía 1,5 y «1500,50» valía
+  // 0, y el cajero quedaba bloqueado en «Falta cubrir» sin saber por qué.
+  // Un monto que no se puede leer no cuenta como 0: se marca en el campo y
+  // frena el cobro.
+  const montos = pagos.map((p) => parseMonto(p.monto))
+  const recibidos = pagos.map((p) => (p.recibido.trim() === '' ? null : parseMonto(p.recibido)))
+  const montoInvalido = pagos.map((p, i) => p.monto.trim() !== '' && montos[i] === null)
+  const recibidoInvalido = pagos.map((p, i) => p.recibido.trim() !== '' && recibidos[i] === null)
+  const hayMontoInvalido = montoInvalido.some(Boolean) || recibidoInvalido.some(Boolean)
+  const cubierto = montos.reduce<number>((acc, m) => acc + (m ?? 0), 0)
   const falta = total - cubierto
-  const vuelto = pagos.reduce((acc, p) => {
-    const recibido = Number(p.recibido)
-    const monto = Number(p.monto) || 0
-    if (!p.recibido || isNaN(recibido) || recibido <= monto) return acc
+  const vuelto = pagos.reduce((acc, _p, i) => {
+    const recibido = recibidos[i]
+    const monto = montos[i] ?? 0
+    if (recibido === null || recibido <= monto) return acc
     return acc + (recibido - monto)
   }, 0)
   const faltaEfectivo = pagos.some(
-    (p) => p.recibido !== '' && Number(p.recibido) < (Number(p.monto) || 0),
+    (_p, i) => recibidos[i] !== null && (recibidos[i] as number) < (montos[i] ?? 0),
   )
   // Fiar sin cliente lo rechaza el backend (422). Se frena antes para que el
   // cajero no descubra el problema recien al apretar Cobrar, con la fila
   // esperando.
-  const fia = pagos.some((p) => p.medio === CUENTA_CORRIENTE && Number(p.monto) > 0)
+  const fia = pagos.some((p, i) => p.medio === CUENTA_CORRIENTE && (montos[i] ?? 0) > 0)
   const fiaSinCliente = fia && !cliente
-  const puedeCobrar = falta <= 0.009 && !faltaEfectivo && !fiaSinCliente && !registrando
+  const puedeCobrar = !hayMontoInvalido && falta <= 0.009 && !faltaEfectivo && !fiaSinCliente && !registrando
 
   function actualizar(i: number, campo: keyof PagoForm, valor: string) {
     setPagos((prev) => prev.map((p, idx) => (idx === i ? { ...p, [campo]: valor } : p)))
@@ -975,11 +1184,12 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
     setError(null)
     try {
       const pagosPayload = pagos
-        .filter((p) => Number(p.monto) > 0)
-        .map((p) => ({
+        .map((p, i) => ({ p, monto: montos[i], recibido: recibidos[i] }))
+        .filter(({ monto }) => monto !== null && monto > 0)
+        .map(({ p, monto, recibido }) => ({
           medio: p.medio,
-          monto: Number(p.monto),
-          ...(p.medio === 'efectivo' && p.recibido ? { recibido: Number(p.recibido) } : {}),
+          monto: monto as number,
+          ...(p.medio === 'efectivo' && recibido !== null ? { recibido } : {}),
         }))
       const venta = await api.post<Venta>('/api/ventas', {
         fecha: hoyISO(),
@@ -1018,7 +1228,8 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   // pidiendo al cliente la venta entera y no su parte.
   const soloMercadoPago = pagos.length === 1
     && pagos[0].medio === MERCADO_PAGO
-    && Math.abs((Number(pagos[0].monto) || 0) - total) <= 0.009
+    && montos[0] !== null
+    && Math.abs(montos[0] - total) <= 0.009
   const aplicaQr = !!mp?.disponible && soloMercadoPago && total > 0
 
   function frenarPoll() {
@@ -1250,9 +1461,13 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
                   <Label className="text-xs" htmlFor={`monto-${i}`}>Monto</Label>
                   <Input
                     id={`monto-${i}`} value={pago.monto} className="h-10 tabular-nums"
+                    aria-invalid={montoInvalido[i] || undefined}
                     onChange={(e) => actualizar(i, 'monto', e.target.value)}
                     onFocus={(e) => e.target.select()}
                   />
+                  {montoInvalido[i] && (
+                    <p className="text-xs text-destructive" role="alert">Monto inválido (ej. 1.500 o 1.500,50)</p>
+                  )}
                 </div>
                 {pago.medio === 'efectivo' && (
                   <div className="grid gap-1">
@@ -1261,9 +1476,13 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
                       id={`recibido-${i}`} value={pago.recibido} className="h-10 tabular-nums"
                       placeholder="opcional"
                       autoFocus={i === 0}
+                      aria-invalid={recibidoInvalido[i] || undefined}
                       onChange={(e) => actualizar(i, 'recibido', e.target.value)}
                       onFocus={(e) => e.target.select()}
                     />
+                    {recibidoInvalido[i] && (
+                      <p className="text-xs text-destructive" role="alert">Monto inválido</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1509,6 +1728,13 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Igual que en `CerrarTurno`: "Efectivo inicial" tambien es dinero que
+  // DECLARA el cajero (lo que cuenta en el cajon al abrir), asi que corre la
+  // misma regla -- ver `parseMonto`. `null` sin haber tocado el campo
+  // (arranca en "0", que es valido) no puede pasar, pero se cubre igual.
+  const montoInicial = parseMonto(monto)
+  const montoInvalido = monto !== '' && montoInicial === null
+
   useEffect(() => {
     api.get<Location[]>('/locations').then((items) => {
       setLocations(items)
@@ -1529,12 +1755,15 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
 
   async function abrir(e: FormEvent) {
     e.preventDefault()
-    if (!cajaId) return
+    // Guardia defensiva: el boton ya queda disabled con un monto invalido,
+    // esto es para no mandar el POST si igual llega a dispararse el submit
+    // (Enter en un campo, por ejemplo).
+    if (!cajaId || montoInicial === null) return
     setBusy(true)
     setError(null)
     try {
       const abierto = await api.post<{ turno: Shift }>('/shifts/open', {
-        monto_inicial: Number(monto) || 0, caja_id: Number(cajaId),
+        monto_inicial: montoInicial, caja_id: Number(cajaId),
       })
       onAbierto(abierto.turno)
     } catch (err) {
@@ -1597,12 +1826,19 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
             <Label htmlFor="monto-inicial">Efectivo inicial en caja</Label>
             <Input
               id="monto-inicial" value={monto} className="h-12 text-lg tabular-nums"
+              aria-invalid={montoInvalido || undefined}
               onChange={(e) => setMonto(e.target.value)}
               onFocus={(e) => e.target.select()}
             />
+            {montoInvalido && (
+              <p className="text-sm text-destructive" role="alert">
+                Monto inválido: escribí sólo números, con coma o punto decimal
+                (ej. 500 o 1.500,50).
+              </p>
+            )}
           </div>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-          <Button type="submit" className="h-12 text-base" disabled={busy || !cajaId}>
+          <Button type="submit" className="h-12 text-base" disabled={busy || !cajaId || montoInicial === null}>
             {busy ? 'Abriendo...' : 'Abrir turno'}
           </Button>
         </form>
@@ -1636,18 +1872,27 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
   }, [turno.id])
 
   const esperado = resumen ? turno.monto_inicial + resumen.efectivo_ventas : null
-  const contado = Number(declarado)
-  const diferencia = esperado !== null && declarado !== '' && !isNaN(contado)
-    ? contado - esperado
+  // 🔴 Acá guardaba `Number(declarado) || 0` en silencio: con un texto
+  // inválido ("a500") `Number` da `NaN`, `|| 0` lo tapa, y el cierre se
+  // registraba con $0 declarado sin ningún aviso (hallazgo del humano en la
+  // prueba en pantalla, 2026-09-17). Ahora se parsea con la misma regla que
+  // `AbrirTurno` (`parseMonto`) y, si no es válido, ni se calcula la
+  // diferencia ni se deja enviar -- ver el botón, más abajo.
+  const declaradoParseado = parseMonto(declarado)
+  const declaradoInvalido = declarado !== '' && declaradoParseado === null
+  const diferencia = esperado !== null && declaradoParseado !== null
+    ? declaradoParseado - esperado
     : null
 
   async function cerrar(e: FormEvent) {
     e.preventDefault()
+    // Guardia defensiva: el boton ya queda disabled sin un monto valido.
+    if (declaradoParseado === null) return
     setBusy(true)
     setError(null)
     try {
       await api.post(`/shifts/${turno.id}/close`, {
-        monto_declarado: Number(declarado) || 0, notas,
+        monto_declarado: declaradoParseado, notas,
       })
       setCerrado(true)
     } catch (err) {
@@ -1707,9 +1952,16 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
             <Input
               id="declarado" value={declarado} autoFocus className="h-12 text-lg tabular-nums"
               placeholder="0,00"
+              aria-invalid={declaradoInvalido || undefined}
               onChange={(e) => setDeclarado(e.target.value)}
               onFocus={(e) => e.target.select()}
             />
+            {declaradoInvalido && (
+              <p className="text-sm text-destructive" role="alert">
+                Monto inválido: escribí sólo números, con coma o punto decimal
+                (ej. 500 o 1.500,50).
+              </p>
+            )}
           </div>
 
           {diferencia !== null && (
@@ -1742,7 +1994,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancelar}>Cancelar</Button>
-            <Button type="submit" disabled={busy || declarado === ''}>
+            <Button type="submit" disabled={busy || declaradoParseado === null}>
               {busy ? 'Cerrando...' : 'Cerrar turno'}
             </Button>
           </DialogFooter>

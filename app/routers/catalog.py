@@ -5,7 +5,14 @@ from fastapi import APIRouter, HTTPException, Request
 from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
 from pydantic import BaseModel
 
-from ..services.catalog import CatalogService
+from ..services.catalog import (
+    CatalogService,
+    CategoryInvalido,
+    CategoryNotFound,
+    ItemInvalido,
+    ItemNotFound,
+    ItemUnitLockedError,
+)
 from ..services.scale import ScaleLabelError, ScaleService
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -14,6 +21,14 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
 class CategoryCreate(BaseModel):
     name: str
     parent_id: int | None = None
+
+
+class CategoryUpdate(BaseModel):
+    """`parent_id` no se edita -- ver el docstring de
+    `CatalogService.update_category`."""
+
+    name: str
+    active: bool = True
 
 
 class CategoryOut(BaseModel):
@@ -43,6 +58,29 @@ class ItemCreate(BaseModel):
     item_type: str = "product"
     category_id: int | None = None
     description: str = ""
+    default_sale_price: Decimal = Decimal("0")
+    default_cost: Decimal = Decimal("0")
+
+
+class ItemUpdate(BaseModel):
+    """`item_type` queda afuera a proposito: producto/servicio es una
+    decision del alta, no algo que se edite despues. El resto de los campos
+    de `ItemCreate` se editan siempre, salvo `unit_code` con movimientos --
+    ver ItemUnitLockedError en `services/catalog.py`.
+
+    Nombre no vacio y precio/costo no negativos NO se validan aca con
+    `Field` a proposito -- antes este modelo los validaba (y `ItemCreate`
+    no), asi que el mismo 422 salia con dos formatos distintos segun si era
+    alta o edicion. Ahora los valida `CatalogService._validar_item`, unico
+    lugar para los dos endpoints -- ver create_item/update_item."""
+
+    name: str
+    unit_code: str
+    category_id: int | None = None
+    description: str = ""
+    active: bool = True
+    sellable: bool = True
+    purchasable: bool = True
     default_sale_price: Decimal = Decimal("0")
     default_cost: Decimal = Decimal("0")
 
@@ -132,7 +170,24 @@ def _service(request: Request) -> CatalogService:
 
 @router.post("/categories", response_model=CategoryOut)
 def create_category(data: CategoryCreate, request: Request):
-    category = _service(request).create_category(data.name, data.parent_id)
+    try:
+        category = _service(request).create_category(data.name, data.parent_id)
+    except CategoryInvalido as exc:
+        # nombre vacio o repetido entre categorias activas -- ver
+        # _validar_category_name.
+        raise HTTPException(422, str(exc))
+    return CategoryOut(id=category.id, name=category.name, parent_id=category.parent_id, active=category.active)
+
+
+@router.put("/categories/{category_id}", response_model=CategoryOut)
+def update_category(category_id: int, data: CategoryUpdate, request: Request):
+    try:
+        category = _service(request).update_category(category_id, name=data.name, active=data.active)
+    except CategoryNotFound:
+        raise HTTPException(404, "category not found")
+    except CategoryInvalido as exc:
+        # mismo criterio que create_category.
+        raise HTTPException(422, str(exc))
     return CategoryOut(id=category.id, name=category.name, parent_id=category.parent_id, active=category.active)
 
 
@@ -174,7 +229,35 @@ def create_item(data: ItemCreate, request: Request):
             default_sale_price=data.default_sale_price, default_cost=data.default_cost,
         )
     except KeyError as exc:
+        # unidad desconocida -- ver _get_unit en services/catalog.py.
         raise HTTPException(422, str(exc))
+    except ItemInvalido as exc:
+        # nombre vacio, categoria desconocida o precio/costo negativo --
+        # mismo criterio que update_item, ver _validar_item.
+        raise HTTPException(422, str(exc))
+    return _to_item_out(item)
+
+
+@router.put("/items/{item_id}", response_model=ItemOut)
+def update_item(item_id: int, data: ItemUpdate, request: Request):
+    try:
+        item = _service(request).update_item(
+            item_id,
+            name=data.name, description=data.description, category_id=data.category_id,
+            unit_code=data.unit_code, active=data.active, sellable=data.sellable,
+            purchasable=data.purchasable, default_sale_price=data.default_sale_price,
+            default_cost=data.default_cost,
+        )
+    except ItemNotFound:
+        raise HTTPException(404, "item not found")
+    except KeyError as exc:
+        # unidad desconocida -- mismo criterio que create_item.
+        raise HTTPException(422, str(exc))
+    except ItemInvalido as exc:
+        # nombre vacio, categoria desconocida o precio/costo negativo.
+        raise HTTPException(422, str(exc))
+    except ItemUnitLockedError as exc:
+        raise HTTPException(409, str(exc))
     return _to_item_out(item)
 
 

@@ -72,12 +72,12 @@ const montar = (ruta = '/configuracion') =>
   render(<MemoryRouter initialEntries={[ruta]}><Configuracion /></MemoryRouter>)
 
 describe('la Configuración de VentaLibra', () => {
-  it('tiene las pestañas de la familia, con las dos propias del mostrador', async () => {
+  it('tiene las pestañas de la familia, con las tres propias del mostrador', async () => {
     montar()
 
     const pestanias = (await screen.findAllByRole('tab')).map((t) => t.textContent)
     expect(pestanias).toEqual([
-      'Empresa', 'Integraciones', 'Balanza', 'Ticket', 'Datos / Backup',
+      'Empresa', 'Integraciones', 'Balanza', 'Ticket', 'Unidades de medida', 'Categorías', 'Datos / Backup',
     ])
   })
 

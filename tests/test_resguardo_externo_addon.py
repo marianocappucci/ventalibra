@@ -11,20 +11,13 @@ hubiera prendido en ninguna.
 Por eso el caso que importa es el primero (sin fila -> 403), y es el que se
 verifico poniendolo en rojo con la rama de add-ons de `is_enabled` revertida.
 """
-import pytest
-
 import plans
+
+# `DATA_DIR` temporal: lo pone `tests/conftest.py::_dev_env` para toda la
+# suite (antes era un fixture propio de este archivo).
 
 URL = "/api/config/resguardo-externo/enlace"
 ADDON = "resguardo_externo"
-
-
-@pytest.fixture(autouse=True)
-def _data_dir_temporal(monkeypatch, tmp_path):
-    # Con la base en PostgreSQL, la carpeta de backups sale de `DATA_DIR`
-    # (`app.main._carpeta_de_backups`). Sin esto caeria en `./data/backups`,
-    # dentro del checkout. Autouse: corre antes de que `admin_client` arme la app.
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
 
 
 def test_sin_fila_el_addon_esta_apagado_y_da_403(admin_client):

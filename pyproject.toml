@@ -47,7 +47,7 @@ dependencies = [
     # destino (422); ya no se puede desactivar el deposito default ni
     # marcarlo default a uno inactivo (422 en el PATCH de depositos y en el
     # set-default); `deposito_id=0` ya no cae al default.
-    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.16.4",
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.17.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -145,7 +145,20 @@ dependencies = [
     # base unica, no aplica) y v1.104.0 corrige que `panel_admin.py actualizar`
     # lea las migraciones del commit que construye. Se sube para no quedar mas
     # de un pin atras del resto de la familia mientras se agrega esta feature.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.105.0",
+    # v1.106.1 -> v1.107.0 (2026-09-17, "Reabrir dia"): `libracore.db.cierre_
+    # diario.reabrir_dia(cierre_id, usuario_id, motivo)` y, en `caja_router.
+    # build_cierre_diario_router`, `POST /api/cierre-diario/{cierre_id}/reabrir`
+    # (body `{motivo}`; 404/409 ya anulado o cierre posterior, 422 motivo vacio),
+    # que solo se monta si el producto pasa `autorizar_reabrir=Depends(...)` --
+    # aca queda atado a `require_admin`. `listar_cierres`/`get_cierre` suman
+    # `anulado_en`, `anulado_por`, `motivo_anulacion`, y `preview.ya_cerrado`
+    # ignora los anulados. Migracion `0011_reabrir_cierre_diario`.
+    # v1.107.0 -> v1.108.0 (2026-09-17): `config_manager.usar_almacen_de_secretos(
+    # almacen)` y `config_manager.migrar_secretos_al_almacen()` -- los secretos
+    # de terceros (`mp_access_token`, `mp_webhook_secret`, `email_smtp_password`)
+    # dejan de vivir en claro en `config.json`. Ver el enganche en `app/main.py`
+    # (`create_app`), justo despues de `auth_sessions`.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.109.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
@@ -159,7 +172,10 @@ dependencies = [
     # reemplaza a `app/routers/users.py` -- ver ese router. Trae ademas la
     # sesion de 8 h con renovacion deslizante (ADR-017), que llega gratis
     # porque `app/auth.py` reexporta las funciones del paquete sin envolverlas.
-    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.44.0",
+    # v0.45.1 -> v0.46.0 (2026-09-17): tabla `secretos_instancia`
+    # (revision `0002` de la cadena de Alembic) + `libraauth.secretos.
+    # SecretosRepository`, el almacen que engancha `config_manager` de arriba.
+    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.46.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
