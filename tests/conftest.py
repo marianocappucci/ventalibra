@@ -18,6 +18,28 @@ from app.main import create_app
 
 
 @pytest.fixture(autouse=True)
+def _sin_almacen_de_secretos_colgado():
+    """El almacen de secretos de `config_manager` no se filtra entre tests.
+
+    `create_app()` llama a `config_manager.usar_almacen_de_secretos(...)`
+    (libracore v1.108.0) con un repositorio atado a la base de ESE test, y es un
+    global del proceso. Cuando la base se limpia, el almacen queda apuntando a
+    conexiones que el servidor ya cerro, y el primer test posterior que llame a
+    `config_manager.load()` sin levantar su propia app —el ticket lee de ahi el
+    membrete— muere con `AdminShutdown`, lejisimos de su causa. Paso con
+    `test_ticket_fecha_visible.py`, y en el CI de forma determinista.
+
+    Antes y despues: antes por si un test anterior lo dejo puesto, despues para
+    no ensuciar al que viene. Sin almacen, `config_manager` lee el JSON.
+    """
+    from libracore import config_manager
+
+    config_manager.usar_almacen_de_secretos(None)
+    yield
+    config_manager.usar_almacen_de_secretos(None)
+
+
+@pytest.fixture(autouse=True)
 def _dev_env(monkeypatch, tmp_path):
     # Una base vacia por TEST, no por app: varios tests arman dos apps y la
     # segunda le vaciaba el schema por debajo a la primera.
