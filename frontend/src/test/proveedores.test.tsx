@@ -10,7 +10,11 @@ import { Proveedores } from '../pages/Proveedores'
 const SUPPLIERS = [
   {
     id: 1, display_name: 'Trapani', party_type: 'organization',
-    tax_id: '30-11111111-1', email: null, phone: null, active: true,
+    tax_id: '30-11111111-1', email: null, phone: '11-4455-6677', active: true,
+  },
+  {
+    id: 2, display_name: 'Fredo', party_type: 'organization',
+    tax_id: '30-22222222-2', email: null, phone: '2255-4040', active: true,
   },
 ]
 
@@ -131,4 +135,29 @@ it('cancelar cierra el modal y descarta lo escrito', async () => {
 
   await user.click(screen.getByRole('button', { name: /Nuevo proveedor/ }))
   expect(await screen.findByLabelText('Nombre')).toHaveValue('')
+})
+
+it('el buscador de la tabla filtra, y busca tambien por un campo que NO es columna', async () => {
+  // Mismo buscador y mismos campos que Clientes (2026-09-21): las dos
+  // pantallas son la misma cosa con otro nombre. El telefono se busca aunque
+  // aca tambien sea columna; el CUIT es lo que se tiene del papel.
+  const user = userEvent.setup()
+  render(<Proveedores />)
+  await screen.findByText('Trapani')
+
+  await user.type(screen.getByLabelText('Buscar proveedor'), '2255-4040')
+
+  await waitFor(() => expect(screen.queryByText('Trapani')).not.toBeInTheDocument())
+  expect(screen.getByText('Fredo')).toBeInTheDocument()
+})
+
+it('el buscador encuentra por CUIT', async () => {
+  const user = userEvent.setup()
+  render(<Proveedores />)
+  await screen.findByText('Trapani')
+
+  await user.type(screen.getByLabelText('Buscar proveedor'), '30-22222222-2')
+
+  await waitFor(() => expect(screen.queryByText('Trapani')).not.toBeInTheDocument())
+  expect(screen.getByText('Fredo')).toBeInTheDocument()
 })
