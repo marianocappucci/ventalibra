@@ -8,6 +8,7 @@ import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
 import { Productos } from './pages/Productos'
 import { Sucursales } from './pages/Sucursales'
+import { Transferencias } from './pages/Transferencias'
 import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
 import { Proveedores } from './pages/Proveedores'
@@ -119,6 +120,18 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CuentasCorrientes />
+          </ProtectedRoute>
+        }
+      />
+      {/* Sólo admin, como la pantalla de Sucursales: mover mercadería entre
+          locales cambia el stock de dos lados a la vez. El backend lo vuelve
+          a exigir (`require_admin` en `POST /stock/transferir`) -- esto sólo
+          evita mostrar una pantalla que no va a poder usar. */}
+      <Route
+        path="/transferencias"
+        element={
+          <ProtectedRoute adminOnly>
+            <Transferencias />
           </ProtectedRoute>
         }
       />
