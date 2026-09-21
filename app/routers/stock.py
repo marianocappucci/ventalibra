@@ -104,3 +104,17 @@ def listar_transferencias(request: Request, location_id: int | None = None, limi
     lista. Lo mismo vale para cualquier GET que se agregue después.
     """
     return _service(request).transferencias(location_id=location_id, limit=limit)
+
+
+@router.get("/por-deposito/grilla")
+def stock_por_deposito(request: Request, solo_con_stock: bool = False):
+    """Cuánto hay de cada producto y en qué depósito.
+
+    ⚠️ Igual que el historial de transferencias, la ruta lleva un segundo
+    tramo porque `GET /stock/{item_id}` captura cualquier segmento suelto.
+
+    Se diferencia de `GET /reports/stock`, que suma **todo el parque por
+    producto**: con varias sucursales ese total no dice dónde está la
+    mercadería, que es lo que hay que saber para decidir una transferencia.
+    """
+    return _service(request).por_deposito(solo_con_stock=solo_con_stock)

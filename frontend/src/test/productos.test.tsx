@@ -3,7 +3,7 @@
 // Configuración (ver `configuracion-unidades.test.tsx`) -- lo que fija este
 // archivo es que acá ya no queda nada de eso: ni la pestaña, ni el alta de
 // unidad, ni el `Tabs` que las separaba.
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -318,7 +318,14 @@ describe('Columna Categoría', () => {
     // 🔴 Mutación (b): si la columna mostrara el `category_id` en vez del
     // nombre, acá se vería "1" y no "Almacén".
     expect(screen.getByText('Almacén')).toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
+
+    // El "—" se busca POR CELDA y no por texto: desde que existe la columna
+    // "Stock total" (2026-09-21) hay más de un "—" en pantalla, y un
+    // `getByText('—')` encuentra los tres y falla por ambiguo. Las columnas
+    // son: 0 Nombre · 1 Unidad · 2 Categoría · 3 Precio · 4 Stock total ·
+    // 5 Estado · 6 Acciones.
+    const filaSinCategoria = screen.getByText('Yerba Playadito').closest('tr') as HTMLElement
+    expect(within(filaSinCategoria).getAllByRole('cell')[2]).toHaveTextContent('—')
   })
 })
 
@@ -342,4 +349,47 @@ describe('Sin categorías cargadas', () => {
 
     expect(await screen.findByText(/Todavía no hay categorías cargadas/)).toBeInTheDocument()
   })
+})
+
+describe('Columna Stock total', () => {
+  // La columna se llama "Stock total" y no "Stock" a proposito: es la suma de
+  // TODOS los depositos. Con varias sucursales, un "Stock: 10" al lado de un
+  // producto se lee como "hay 10 aca", y puede ser 10 en el otro local.
+  function conStock(grilla: unknown) {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const metodo = init?.method ?? 'GET'
+      llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+      if (metodo === 'POST') return Promise.resolve(json({}))
+      if (u.startsWith('/stock/por-deposito/grilla')) return Promise.resolve(json(grilla))
+      if (u.startsWith('/catalog/units')) return Promise.resolve(json(UNIDADES))
+      if (u.startsWith('/catalog/items')) return Promise.resolve(json(PRODUCTOS))
+      return Promise.resolve(json([]))
+    }))
+  }
+
+  it('muestra el total sumado de todos los depositos', async () => {
+    conStock({
+      depositos: [{ id: 1, nombre: 'Centro', tipo: 'store' }],
+      items: [{ item_id: 1, nombre: 'Yerba Playadito', unit_code: 'kg', por_deposito: { '1': '7' }, total: '7' }],
+    })
+    await montar()
+    await screen.findByText('Yerba Playadito')
+
+    expect(screen.getByRole('columnheader', { name: /Stock total/ })).toBeInTheDocument()
+    const fila = screen.getByText('Yerba Playadito').closest('tr') as HTMLElement
+    expect(within(fila).getAllByRole('cell')[4]).toHaveTextContent('7')
+  })
+
+  // 🔑 NO hay test del aislamiento del pedido de stock, y es a propósito.
+  //
+  // El código lo pide fuera del `Promise.all` y con su propio `.catch`, para
+  // que un 500 en stock no deje a Productos sin catálogo. Escribí un test para
+  // eso y **pasaba con y sin el aislamiento**: mutando el pedido para que
+  // corriera dentro del `try` que corta `loadAll`, el test seguía en verde.
+  // No encontré qué lo sostiene, y un test que pasa bajo toda mutación es peor
+  // que ninguno: da confianza falsa sobre una guarda que nadie verificó.
+  //
+  // Queda anotado como cobertura faltante. Si alguien lo retoma, el camino es
+  // averiguar primero por qué el 500 del stub no llega a `setError`.
 })

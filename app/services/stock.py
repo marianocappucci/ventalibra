@@ -210,3 +210,65 @@ class StockService:
             }
             for f in filas
         ]
+
+    # ── Cuánto hay de cada producto, y DÓNDE ─────────────────────────────
+
+    def por_deposito(self, *, solo_con_stock: bool = False) -> dict:
+        """La grilla producto × depósito, que es la pregunta del mostrador.
+
+        `/reports/stock` ya existía y suma **todo el parque por producto**
+        (`SUM` agrupado sólo por item): dice que hay 10 de algo, no dónde están
+        esas 10. Con varias sucursales eso no alcanza — es justamente el dato
+        que hace falta para decidir una transferencia.
+
+        🔑 **Los ceros se devuelven a propósito.** Un depósito que falta de la
+        fila es indistinguible de uno que existe y está vacío, y la pregunta
+        que se le hace a esta pantalla es "¿de dónde saco esto?". Mismo
+        criterio que `stock_de` de LibraDesk.
+
+        **Suma todas las variantes de un item**, igual que `/reports/stock`: si
+        algún día hace falta abrirlo por variante, es una columna más en el
+        `GROUP BY`, pero hoy ninguna pantalla lo pide y mezclarlo cambiaría el
+        número que el usuario ya conoce del reporte.
+        """
+        depositos = [
+            {"id": loc.id, "nombre": loc.name, "tipo": loc.location_type}
+            for loc in self._repo.list_locations()
+            if loc.active
+        ]
+        filas = self._conn.execute(
+            """
+            SELECT ci.id, ci.name, ci.unit_code, sm.location_id,
+                   COALESCE(SUM(sm.quantity_delta), 0)
+            FROM catalog_items ci
+            LEFT JOIN stock_movements sm ON sm.item_id = ci.id
+            WHERE ci.active = 1 AND ci.item_type = 'product'
+            GROUP BY ci.id, ci.name, ci.unit_code, sm.location_id
+            ORDER BY ci.name
+            """
+        ).fetchall()
+
+        items: dict[int, dict] = {}
+        for item_id, nombre, unidad, location_id, cantidad in filas:
+            item = items.setdefault(item_id, {
+                "item_id": item_id, "nombre": nombre, "unit_code": unidad,
+                "por_deposito": {d["id"]: Decimal("0") for d in depositos},
+                "total": Decimal("0"),
+            })
+            # `location_id` viene NULL cuando el producto no tiene NINGÚN
+            # movimiento: es el LEFT JOIN, no un movimiento sin depósito.
+            if location_id is None:
+                continue
+            valor = Decimal(str(cantidad))
+            # Un movimiento de un depósito desactivado no entra en la grilla,
+            # pero SÍ en el total: la mercadería existe aunque el depósito ya
+            # no se use, y esconderla del total haria que las columnas no
+            # sumen y nadie sepa por que.
+            if location_id in item["por_deposito"]:
+                item["por_deposito"][location_id] = valor
+            item["total"] += valor
+
+        salida = sorted(items.values(), key=lambda i: i["nombre"].lower())
+        if solo_con_stock:
+            salida = [i for i in salida if i["total"] != 0]
+        return {"depositos": depositos, "items": salida}

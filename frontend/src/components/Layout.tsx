@@ -3,6 +3,7 @@
 // wiki/analyses/auditoria-duplicacion-familia-libra.md).
 import {
   ArrowRightLeft,
+  Boxes,
   BarChart3, Building2, CalendarCheck, Landmark, Package, ReceiptText, ScrollText, Settings,
   ShoppingBag, ShoppingCart, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
@@ -40,6 +41,7 @@ export const Layout = createLayout({
     { to: '/clientes', label: 'Clientes', icon: Users },
     { to: '/cuentas-corrientes', label: 'Cuentas corrientes', icon: Wallet },
     { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
+    { to: '/stock', label: 'Stock', icon: Boxes },
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.

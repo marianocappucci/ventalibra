@@ -12,7 +12,8 @@ import type { ColumnDef } from 'libra-ui/data-table'
 import { Link } from 'react-router-dom'
 import {
   api, ApiError, ITEM_CODE_TYPE_LABELS, opcionesCategoria,
-  type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant, type Unit,
+  type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant,
+  type StockPorDeposito, type Unit,
 } from '../api'
 import { SelectBuscable, type OpcionSelect } from 'libra-ui/SelectBuscable'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -476,6 +477,11 @@ export function Productos() {
     loadAll()
   }, [])
 
+  // El stock se pide aparte y NO bloquea la pantalla: si falla, Productos
+  // se sigue viendo con la columna vacía. Es una referencia, no el dato
+  // que esta pantalla existe para mostrar.
+  const [stockPorItem, setStockPorItem] = useState<Record<number, string>>({})
+
   async function loadAll() {
     setLoading(true)
     setError(null)
@@ -488,6 +494,11 @@ export function Productos() {
         api.get<Unit[]>('/catalog/units'),
         api.get<Category[]>('/catalog/categories'),
       ])
+      // Aparte del Promise.all de arriba: un 500 acá no puede dejar la
+      // pantalla sin productos.
+      void api.get<StockPorDeposito>('/stock/por-deposito/grilla')
+        .then((g) => setStockPorItem(Object.fromEntries((g?.items ?? []).map((i) => [i.item_id, i.total]))))
+        .catch(() => setStockPorItem({}))
       setItems(itemList)
       setUnits(unitList)
       setCategories(categoryList)
@@ -537,6 +548,24 @@ export function Productos() {
       size: 120,
       minSize: 100,
       cell: ({ row }) => `$${money(row.original.default_sale_price)}`,
+    },
+    {
+      // 🔑 Se llama "Stock total" y no "Stock" a propósito: es la suma de
+      // TODOS los depósitos. Con varias sucursales, un "Stock: 10" al lado de
+      // un producto se lee como "hay 10 acá", y puede ser 10 en el otro local
+      // y 0 en este. El reparto está en la pantalla de Stock.
+      id: 'stock_total',
+      header: sortableHeader('Stock total'),
+      size: 110,
+      minSize: 90,
+      accessorFn: (item) => Number(stockPorItem[item.id] ?? 0),
+      cell: ({ row }) => {
+        const valor = stockPorItem[row.original.id]
+        if (valor === undefined) return <span className="text-muted-foreground">—</span>
+        const n = Number(valor)
+        const tono = n < 0 ? 'text-destructive font-medium' : n === 0 ? 'text-muted-foreground' : ''
+        return <span className={`tabular-nums ${tono}`}>{valor}</span>
+      },
     },
     {
       accessorKey: 'active',

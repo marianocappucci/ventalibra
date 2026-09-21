@@ -538,6 +538,29 @@ export type StockReport = {
   low_stock: StockReportItem[]
 }
 
+/** La grilla producto x deposito de `GET /stock/por-deposito/grilla`.
+ *
+ *  Se diferencia de `StockReport` (de `/reports/stock`), que suma TODO el
+ *  parque por producto: ese total no dice donde esta la mercaderia, y con
+ *  varias sucursales es justo el dato que hace falta. */
+export type StockDeposito = { id: number; nombre: string; tipo: string }
+
+export type StockPorDepositoItem = {
+  item_id: number
+  nombre: string
+  unit_code: string
+  /** Clave = id del deposito, como string (viaja en JSON). Trae TODOS los
+   *  depositos activos, incluidos los que estan en cero: uno que falta de la
+   *  fila es indistinguible de uno vacio. */
+  por_deposito: Record<string, string>
+  total: string
+}
+
+export type StockPorDeposito = {
+  depositos: StockDeposito[]
+  items: StockPorDepositoItem[]
+}
+
 // --- opciones para los selects con busqueda (libra-ui/SelectBuscable) ------
 //
 // Viven aca, junto a los tipos, para que las pantallas que eligen un
