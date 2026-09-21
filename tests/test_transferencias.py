@@ -167,9 +167,37 @@ def test_el_historial_de_una_sucursal_trae_los_DOS_lados(admin_client):
     assert len(admin_client.get("/stock/transferencias/historial").json()) == 3
 
 
-def test_un_cajero_no_puede_transferir(staff_client):
-    """Sólo admin, como el alta de sucursales y de cajas."""
+def test_un_cajero_SI_puede_transferir(admin_client, staff_client):
+    """Decision del humano (2026-09-21): quien mueve la mercaderia entre
+    locales es el encargado del mostrador, no el dueno.
+
+    Se afirma el camino COMPLETO y no un "no da 403": que el cajero mande la
+    transferencia y que el stock quede movido de verdad. Un test que solo
+    mirara el codigo de estado pasaria igual si el endpoint aceptara el pedido
+    y no escribiera nada.
+
+    La preparacion va por `admin_client` —el alta de sucursales y de productos
+    SI es de admin— y la transferencia por `staff_client`, que es lo que se
+    esta probando. Las dos sesiones son de la misma instancia.
+    """
+    item = _item(admin_client)
+    centro = _sucursal(admin_client, "Centro")
+    costanera = _sucursal(admin_client, "Costanera")
+    _cargar(admin_client, item, centro, 10)
+
     r = staff_client.post("/stock/transferir", json={
-        "item_id": 1, "origen_id": 1, "destino_id": 2, "cantidad": "1",
+        "item_id": item, "origen_id": centro, "destino_id": costanera, "cantidad": "4",
     })
+    assert r.status_code == 200, r.text
+    assert _stock(admin_client, item, centro) == 6.0
+    assert _stock(admin_client, item, costanera) == 4.0
+
+
+def test_el_alta_de_sucursales_sigue_siendo_solo_de_admin(staff_client):
+    """Control de que abrir la transferencia NO aflojo lo de al lado.
+
+    Sin esto, un cambio que sacara `require_admin` de mas —del router de
+    locations, por ejemplo— pasaria sin que ningun test lo note.
+    """
+    r = staff_client.post("/locations", json={"name": "Trucha", "location_type": "store"})
     assert r.status_code == 403, r.text

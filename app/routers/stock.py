@@ -3,7 +3,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..auth import get_current_user, require_admin
+from ..auth import get_current_user
 from ..conexion import conexion_utilizable
 from ..services.stock import (
     DepositoInexistente,
@@ -58,12 +58,20 @@ def current_stock(item_id: int, location_id: int, request: Request, variant_id: 
 
 # ── Transferencia entre sucursales ───────────────────────────────────────
 #
-# Sólo admin, igual que el alta y la edición de sucursales y de cajas
-# (`routers/locations.py`, `routers/cajas.py`): mover mercadería entre locales
-# cambia el stock de dos lados a la vez y no es una operación de mostrador.
+# **Staff o admin**, no sólo admin (decisión del humano, 2026-09-21): quien
+# mueve la mercadería entre locales es el encargado del mostrador, no el
+# dueño. Se apoya en el `staff_or_admin` con el que `app/main.py` monta este
+# router entero, así que acá no va ninguna dependencia extra.
+#
+# Es a propósito distinto del alta de sucursales y de cajas
+# (`routers/locations.py`, `routers/cajas.py`), que sí son admin: esas cambian
+# la ESTRUCTURA de la instancia; esto mueve existencias, que es trabajo de
+# todos los días. Lo que la transferencia no puede hacer es inventar
+# mercadería —el motor verifica disponibilidad en el origen dentro de la misma
+# transacción—, así que el riesgo de abrirla es de registro, no de stock.
 
 
-@router.post("/transferir", dependencies=[Depends(require_admin)])
+@router.post("/transferir")
 def transferir(data: TransferenciaIn, request: Request,
                user: dict = Depends(get_current_user)):
     """Mueve stock de una sucursal o depósito a otro, en una transacción.

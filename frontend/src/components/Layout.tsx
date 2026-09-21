@@ -40,7 +40,7 @@ export const Layout = createLayout({
     { to: '/clientes', label: 'Clientes', icon: Users },
     { to: '/cuentas-corrientes', label: 'Cuentas corrientes', icon: Wallet },
     { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
-    { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft, adminOnly: true },
+    { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
     { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },

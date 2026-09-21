@@ -123,14 +123,14 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* Sólo admin, como la pantalla de Sucursales: mover mercadería entre
-          locales cambia el stock de dos lados a la vez. El backend lo vuelve
-          a exigir (`require_admin` en `POST /stock/transferir`) -- esto sólo
-          evita mostrar una pantalla que no va a poder usar. */}
+      {/* Staff o admin (decisión del humano, 2026-09-21): quien mueve la
+          mercadería entre locales es el encargado, no el dueño. El alta de
+          sucursales sí es admin -- esa cambia la estructura de la instancia,
+          esto mueve existencias. */}
       <Route
         path="/transferencias"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute>
             <Transferencias />
           </ProtectedRoute>
         }
