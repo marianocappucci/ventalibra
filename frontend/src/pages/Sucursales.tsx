@@ -2,21 +2,45 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from 'libra-ui/data-table'
 import { api, ApiError, type Location } from '../api'
 import { useAuth } from '../context/AuthContext'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BadgeEstado } from 'libra-ui/badge-estado'
 import { DataTable, sortableHeader } from '@/components/data-table'
-import { Pencil, Star, Warehouse } from 'lucide-react'
+import { Pencil, Plus, Star, Warehouse } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.detail
   return 'Error de conexión.'
+}
+
+// `location_type` se guarda con el código de siempre (`store`/`warehouse`):
+// es lo que ya tienen las bases de los clientes y lo que siembra el demo. En
+// pantalla nunca se ve el código, sólo la palabra.
+type Tipo = 'store' | 'warehouse'
+const TIPOS: { value: string; label: string }[] = [
+  { value: 'store', label: 'Sucursal' },
+  { value: 'warehouse', label: 'Depósito' },
+]
+
+function etiquetaTipo(tipo: string): string {
+  return TIPOS.find((t) => t.value === tipo)?.label ?? tipo
+}
+
+// Cualquier tipo que no sea `store` cae en "Depósitos": el default del
+// backend es `warehouse`, y un valor viejo escrito a mano no tiene que
+// desaparecer de la pantalla.
+function pestanaDe(tipo: string): Tipo {
+  return tipo === 'store' ? 'store' : 'warehouse'
 }
 
 type Form = {
@@ -39,12 +63,13 @@ export function Sucursales() {
   const { user } = useAuth()
   const esAdmin = user?.role === 'admin'
   const [locations, setLocations] = useState<Location[]>([])
-  const [name, setName] = useState('')
-  const [locationType, setLocationType] = useState('warehouse')
+  const [pestana, setPestana] = useState<Tipo>('store')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Un solo diálogo para alta y edición: abierto con `editando === null` es
+  // un alta.
+  const [abierto, setAbierto] = useState(false)
   const [editando, setEditando] = useState<Location | null>(null)
   const [form, setForm] = useState<Form | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -69,40 +94,45 @@ export function Sucursales() {
     }
   }
 
-  async function handleCreate() {
-    if (!name.trim()) return
-    setSaving(true)
-    setError(null)
-    try {
-      await api.post('/locations', { name: name.trim(), location_type: locationType })
-      setName('')
-      await load()
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setSaving(false)
-    }
+  function abrirAlta() {
+    // El tipo arranca en el de la pestaña que se está mirando.
+    setEditando(null)
+    setForm({ name: '', location_type: pestana, is_default: false, active: true })
+    setFormError(null)
+    setAbierto(true)
   }
 
   function abrirEdicion(loc: Location) {
     setEditando(loc)
     setForm(formDe(loc))
     setFormError(null)
+    setAbierto(true)
   }
 
-  async function guardarEdicion() {
-    if (!editando || !form) return
+  function cerrar() {
+    setAbierto(false)
+    setEditando(null)
+    setForm(null)
+  }
+
+  async function guardar() {
+    if (!form) return
     if (!form.name.trim()) { setFormError('El nombre es obligatorio.'); return }
     if (!form.location_type.trim()) { setFormError('El tipo es obligatorio.'); return }
     setGuardando(true)
     setFormError(null)
     try {
-      await api.put(`/locations/${editando.id}`, {
-        name: form.name.trim(), location_type: form.location_type.trim(),
-        is_default: form.is_default, active: form.active,
-      })
-      setEditando(null)
-      setForm(null)
+      if (editando) {
+        await api.put(`/locations/${editando.id}`, {
+          name: form.name.trim(), location_type: form.location_type.trim(),
+          is_default: form.is_default, active: form.active,
+        })
+      } else {
+        await api.post('/locations', { name: form.name.trim(), location_type: form.location_type })
+      }
+      // Lo recién creado o editado queda a la vista, en su pestaña.
+      setPestana(pestanaDe(form.location_type))
+      cerrar()
       await load()
     } catch (err) {
       // El 409 (default/turno abierto) y el 422 (nombre/tipo vacío) del
@@ -124,7 +154,6 @@ export function Sucursales() {
         </span>
       ),
     },
-    { accessorKey: 'location_type', header: 'Tipo' },
     {
       accessorKey: 'active',
       header: 'Estado',
@@ -148,89 +177,112 @@ export function Sucursales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [esAdmin])
 
-  return (
-    <div className="grid gap-4">
-      <TituloPantalla icono={Warehouse}>Sucursales / depósitos</TituloPantalla>
+  const sucursales = locations.filter((l) => pestanaDe(l.location_type) === 'store')
+  const depositos = locations.filter((l) => pestanaDe(l.location_type) === 'warehouse')
 
-      {esAdmin && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Nueva sucursal</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="grid gap-2">
-              <Label>Nombre</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="w-48" />
-            </div>
-            <div className="grid gap-2">
-              <Label>Tipo</Label>
-              <Input value={locationType} onChange={(e) => setLocationType(e.target.value)} className="w-32" placeholder="warehouse" />
-            </div>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? 'Creando…' : 'Crear'}</Button>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardContent>
-      </Card>
-      )}
+  // Un tipo viejo que no es ni `store` ni `warehouse` se ofrece igual en el
+  // desplegable al editar, para no pisarlo sin querer al guardar otro campo.
+  const opcionesTipo = form && !TIPOS.some((t) => t.value === form.location_type)
+    ? [...TIPOS, { value: form.location_type, label: form.location_type }]
+    : TIPOS
 
+  function tabla(filas: Location[], vacio: string) {
+    return (
       <Card>
         <CardContent>
           {loading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : (
-            <DataTable columns={columns} data={locations} emptyMessage="Sin sucursales todavía." />
+            <DataTable columns={columns} data={filas} emptyMessage={vacio} />
           )}
         </CardContent>
       </Card>
+    )
+  }
 
-      <Dialog open={editando !== null} onOpenChange={(open) => { if (!open) { setEditando(null); setForm(null) } }}>
+  return (
+    <div className="grid gap-4">
+      <div className="flex items-center justify-between">
+        <TituloPantalla icono={Warehouse}>Sucursales / depósitos</TituloPantalla>
+        {esAdmin && (
+          <Button onClick={abrirAlta}>
+            <Plus />{pestana === 'store' ? 'Nueva sucursal' : 'Nuevo depósito'}
+          </Button>
+        )}
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <Tabs value={pestana} onValueChange={(v) => setPestana(v as Tipo)}>
+        <TabsList>
+          <TabsTrigger value="store">Sucursales ({sucursales.length})</TabsTrigger>
+          <TabsTrigger value="warehouse">Depósitos ({depositos.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="store">{tabla(sucursales, 'Sin sucursales todavía.')}</TabsContent>
+        <TabsContent value="warehouse">{tabla(depositos, 'Sin depósitos todavía.')}</TabsContent>
+      </Tabs>
+
+      <Dialog open={abierto} onOpenChange={(open) => { if (!open) cerrar() }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar sucursal</DialogTitle>
+            <DialogTitle>
+              {editando
+                ? `Editar ${etiquetaTipo(editando.location_type).toLowerCase()}`
+                : 'Nueva sucursal / depósito'}
+            </DialogTitle>
           </DialogHeader>
           {form && (
             <div className="grid gap-3">
               <div className="grid gap-2">
-                <Label htmlFor="edit-location-name">Nombre</Label>
+                <Label htmlFor="location-name">Nombre</Label>
                 <Input
-                  id="edit-location-name" value={form.name} autoFocus
+                  id="location-name" value={form.name} autoFocus
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit-location-type">Tipo</Label>
-                <Input
-                  id="edit-location-type"
-                  value={form.location_type}
-                  onChange={(e) => setForm({ ...form, location_type: e.target.value })}
-                  placeholder="warehouse"
-                />
+                <Label htmlFor="location-type">Tipo</Label>
+                <Select value={form.location_type} onValueChange={(v) => setForm({ ...form, location_type: v })}>
+                  <SelectTrigger id="location-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opcionesTipo.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.is_default}
-                  onChange={(e) => setForm({ ...form, is_default: e.target.checked })}
-                  className="size-4"
-                />
-                Predeterminada
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.active}
-                  onChange={(e) => setForm({ ...form, active: e.target.checked })}
-                  className="size-4"
-                />
-                Activa
-              </label>
+              {editando && (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.is_default}
+                      onChange={(e) => setForm({ ...form, is_default: e.target.checked })}
+                      className="size-4"
+                    />
+                    Predeterminada
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.active}
+                      onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                      className="size-4"
+                    />
+                    Activa
+                  </label>
+                </>
+              )}
               {formError && <p className="text-sm text-destructive" role="alert">{formError}</p>}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditando(null); setForm(null) }}>Cancelar</Button>
-            <Button onClick={guardarEdicion} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+            <Button variant="outline" onClick={cerrar}>Cancelar</Button>
+            <Button onClick={guardar} disabled={guardando}>
+              {guardando ? 'Guardando…' : editando ? 'Guardar' : 'Crear'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
