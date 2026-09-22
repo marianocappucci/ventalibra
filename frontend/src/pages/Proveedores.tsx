@@ -128,7 +128,20 @@ export function Proveedores() {
           {loading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : (
-            <DataTable columns={columns} data={suppliers} emptyMessage="Sin proveedores todavía." />
+            <DataTable
+              columns={columns}
+              data={suppliers}
+              emptyMessage="Sin proveedores todavía."
+              // Mismo buscador que Clientes, con los mismos campos: las dos
+              // pantallas son la misma cosa con otro nombre, y quien aprende a
+              // buscar en una aprende en la otra. El teléfono entra aunque
+              // también sea columna acá; el CUIT es lo que se tiene del papel.
+              search={{
+                campos: (s) => [s.display_name, s.tax_id, s.email, s.phone],
+                placeholder: 'Buscar por nombre, CUIT, email o teléfono',
+                ariaLabel: 'Buscar proveedor',
+              }}
+            />
           )}
         </CardContent>
       </Card>
