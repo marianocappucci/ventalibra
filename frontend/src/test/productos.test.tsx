@@ -329,6 +329,57 @@ describe('Columna Categoría', () => {
   })
 })
 
+describe('Buscador', () => {
+  // El botón de alta pasó a estar junto al título (no en el CardHeader de la
+  // tarjeta) y el buscador pasó del `Input`+"Buscar" manual al prop `search`
+  // de `DataTable` -- mismo componente que usan Clientes/Proveedores/Compras.
+  // Este test fija las dos cosas: que el botón sigue estando y que el
+  // buscador filtra sin pegarle de nuevo al servidor.
+  const DOS_PRODUCTOS = [
+    ...PRODUCTOS,
+    {
+      id: 2, item_type: 'product', name: 'Fideos', description: '',
+      category_id: null, unit_code: 'u', active: true, sellable: true,
+      purchasable: true, default_sale_price: '1500.00', default_cost: '900.00',
+    },
+  ]
+
+  function conDosProductos() {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const metodo = init?.method ?? 'GET'
+      llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+      if (metodo === 'POST') return Promise.resolve(json({}))
+      if (u.startsWith('/catalog/units')) return Promise.resolve(json(UNIDADES))
+      if (u.startsWith('/catalog/items')) return Promise.resolve(json(DOS_PRODUCTOS))
+      if (u.startsWith('/catalog/categories')) return Promise.resolve(json([]))
+      return Promise.resolve(json([]))
+    }))
+  }
+
+  it('el botón de alta está junto al título "Productos"', async () => {
+    conDosProductos()
+    await montar()
+
+    expect(screen.getByRole('heading', { name: /Productos/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Nuevo producto' })).toBeInTheDocument()
+  })
+
+  it('el buscador de la tabla filtra por nombre, sin pedir de nuevo al servidor', async () => {
+    conDosProductos()
+    const usuario = await montar()
+    await screen.findByText('Fideos')
+    const pedidosDeItemsAntes = llamadas.filter((l) => l.metodo === 'GET' && l.url.startsWith('/catalog/items')).length
+
+    await usuario.type(screen.getByLabelText('Buscar producto'), 'Fideos')
+
+    await waitFor(() => expect(screen.queryByText('Yerba Playadito')).not.toBeInTheDocument())
+    expect(screen.getByText('Fideos')).toBeInTheDocument()
+    // Filtra lo ya cargado -- no hay un GET nuevo por cada letra tipeada.
+    expect(llamadas.filter((l) => l.metodo === 'GET' && l.url.startsWith('/catalog/items'))).toHaveLength(pedidosDeItemsAntes)
+  })
+})
+
 describe('Sin categorías cargadas', () => {
   it('el alta de producto muestra un enlace a Configuración › Categorías', async () => {
     // El mock por defecto del `beforeEach` ya devuelve `[]` para

@@ -16,7 +16,7 @@ import {
   type StockPorDeposito, type Unit,
 } from '../api'
 import { SelectBuscable, type OpcionSelect } from 'libra-ui/SelectBuscable'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -469,7 +469,6 @@ export function Productos() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
   const [detailItem, setDetailItem] = useState<CatalogItem | null>(null)
   const [editItem, setEditItem] = useState<CatalogItem | null>(null)
 
@@ -502,18 +501,6 @@ export function Productos() {
       setItems(itemList)
       setUnits(unitList)
       setCategories(categoryList)
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function runSearch() {
-    setLoading(true)
-    try {
-      const itemList = await api.get<CatalogItem[]>(`/catalog/items${search ? `?search=${encodeURIComponent(search)}` : ''}`)
-      setItems(itemList)
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -595,31 +582,31 @@ export function Productos() {
 
   return (
     <div className="grid gap-4">
-      <TituloPantalla icono={Package}>Productos</TituloPantalla>
+      <div className="flex items-center justify-between">
+        <TituloPantalla icono={Package}>Productos</TituloPantalla>
+        <ItemCreateDialog units={units} categories={categories} onCreated={loadAll} />
+      </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Buscar por nombre…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                className="max-w-xs"
-              />
-              <Button variant="outline" onClick={runSearch}>Buscar</Button>
-            </div>
-            <ItemCreateDialog units={units} categories={categories} onCreated={loadAll} />
-          </div>
-        </CardHeader>
         <CardContent>
           {loading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : (
-            <DataTable columns={columns} data={items} emptyMessage="Sin productos todavía." />
+            <DataTable
+              columns={columns}
+              data={items}
+              emptyMessage="Sin productos todavía."
+              // Mismo buscador que Clientes/Proveedores/Compras: filtra lo ya
+              // cargado (loadAll trae el catálogo completo), sin ida y vuelta
+              // al servidor por cada tecla.
+              search={{
+                campos: (item) => [item.name],
+                placeholder: 'Buscar por nombre…',
+                ariaLabel: 'Buscar producto',
+              }}
+            />
           )}
         </CardContent>
       </Card>
