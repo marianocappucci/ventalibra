@@ -432,15 +432,53 @@ describe('Columna Stock total', () => {
     expect(within(fila).getAllByRole('cell')[4]).toHaveTextContent('7')
   })
 
-  // 🔑 NO hay test del aislamiento del pedido de stock, y es a propósito.
-  //
-  // El código lo pide fuera del `Promise.all` y con su propio `.catch`, para
-  // que un 500 en stock no deje a Productos sin catálogo. Escribí un test para
-  // eso y **pasaba con y sin el aislamiento**: mutando el pedido para que
-  // corriera dentro del `try` que corta `loadAll`, el test seguía en verde.
-  // No encontré qué lo sostiene, y un test que pasa bajo toda mutación es peor
-  // que ninguno: da confianza falsa sobre una guarda que nadie verificó.
-  //
-  // Queda anotado como cobertura faltante. Si alguien lo retoma, el camino es
-  // averiguar primero por qué el 500 del stub no llega a `setError`.
+  // 🔴 El primer intento de este test (retirado 2026-09-21) PASABA con y sin
+  // el aislamiento, y acá está el por qué: la mutación que se probó fue
+  // "mover el pedido adentro del `try`", pero el `.catch` del pedido viaja
+  // con él — el rechazo del 500 sigue comido por su propio `.catch` y nunca
+  // llega a `setError`, con o sin `try`. La mutación que SÍ rompe el
+  // comportamiento es sacarle el `.catch` (o meter el pedido en el
+  // `Promise.all` a secas): ahí el `ApiError` del 500 cae en el `catch` de
+  // `loadAll`, `setError(describeError(err))` pone el `detail` en pantalla y
+  // `setItems` nunca corre — Productos queda sin catálogo, que es exactamente
+  // lo que el comentario del código promete evitar. Verificado: con esa
+  // mutación este test muere; con el código actual, verde.
+  it('un 500 en stock no deja a Productos sin catálogo: el pedido va aislado', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const metodo = init?.method ?? 'GET'
+      llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+      if (metodo === 'POST') return Promise.resolve(json({}))
+      if (u.startsWith('/stock/por-deposito/grilla')) {
+        // Un 500 con `detail`, que `api-client` convierte en ApiError -- es
+        // el caso real de "se cayó el depósito y el catálogo no".
+        return Promise.resolve(new Response(
+          JSON.stringify({ detail: 'reventó el pedido de stock' }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        ))
+      }
+      if (u.startsWith('/catalog/units')) return Promise.resolve(json(UNIDADES))
+      if (u.startsWith('/catalog/items')) return Promise.resolve(json(PRODUCTOS))
+      if (u.startsWith('/catalog/categories')) return Promise.resolve(json([]))
+      return Promise.resolve(json([]))
+    }))
+
+    await montar()
+
+    // El stub SÍ se ejercitó: si el pedido de stock no saliera nunca, los
+    // asserts de abajo serían verdes sin probar nada (el verde que no prueba).
+    await waitFor(() => {
+      expect(llamadas.some((l) => l.metodo === 'GET' && l.url.startsWith('/stock/por-deposito/grilla'))).toBe(true)
+    })
+
+    // La promesa del stock ya tuvo su 500 y su `.catch`: con el pedido
+    // aislado el catálogo sigue en pie y el error no se coló en la pantalla.
+    expect(screen.getByText('Yerba Playadito')).toBeInTheDocument()
+    expect(screen.queryByText(/reventó el pedido de stock/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Error de conexión.')).not.toBeInTheDocument()
+
+    // Sin dato, la columna queda vacía ("—"), no inventa un 0.
+    const fila = screen.getByText('Yerba Playadito').closest('tr') as HTMLElement
+    expect(within(fila).getAllByRole('cell')[4]).toHaveTextContent('—')
+  })
 })
