@@ -191,6 +191,12 @@ export function Compras() {
               data={orders}
               emptyMessage="Sin órdenes de compra todavía."
               onRowClick={irAlDetalle}
+              // Mismo buscador que Clientes/Proveedores/Productos.
+              search={{
+                campos: (o) => [o.number, supplierName(o.supplier_party_id)],
+                placeholder: 'Buscar por número o proveedor',
+                ariaLabel: 'Buscar orden de compra',
+              }}
             />
           )}
         </CardContent>

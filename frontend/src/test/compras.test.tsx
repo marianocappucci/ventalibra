@@ -119,6 +119,36 @@ describe('El listado de compras', () => {
     expect(await screen.findByText('Yerba')).toBeInTheDocument()
   })
 
+  it('el buscador de la tabla filtra por número o proveedor', async () => {
+    const PROVEEDOR_2 = {
+      id: 2, party_type: 'organization', display_name: 'Almacén Sur',
+      email: null, phone: null, active: true, legal_name: null, tax_id: '30222222223',
+    }
+    const ORDEN_2 = {
+      id: 9, number: 'OC-000009', supplier_party_id: 2, status: 'draft',
+      items: [], is_fully_received: false,
+    }
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const metodo = init?.method ?? 'GET'
+      llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+      if (u === '/purchase-orders') return Promise.resolve(json([ORDENES[0], ORDEN_2]))
+      if (u === '/suppliers') return Promise.resolve(json([...PROVEEDORES, PROVEEDOR_2]))
+      if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+      return Promise.resolve(json([]))
+    }))
+
+    const usuario = userEvent.setup()
+    montarListado()
+    await screen.findByText('OC-000007')
+    await screen.findByText('OC-000009')
+
+    await usuario.type(screen.getByLabelText('Buscar orden de compra'), 'Sur')
+
+    await waitFor(() => expect(screen.queryByText('OC-000007')).not.toBeInTheDocument())
+    expect(screen.getByText('OC-000009')).toBeInTheDocument()
+  })
+
   it('"Nueva compra" elige proveedor, crea la orden y navega a su detalle', async () => {
     const usuario = userEvent.setup()
     montarListado()

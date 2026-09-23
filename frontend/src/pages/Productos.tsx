@@ -12,10 +12,11 @@ import type { ColumnDef } from 'libra-ui/data-table'
 import { Link } from 'react-router-dom'
 import {
   api, ApiError, ITEM_CODE_TYPE_LABELS, opcionesCategoria,
-  type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant, type Unit,
+  type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant,
+  type StockPorDeposito, type Unit,
 } from '../api'
 import { SelectBuscable, type OpcionSelect } from 'libra-ui/SelectBuscable'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -468,13 +469,17 @@ export function Productos() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
   const [detailItem, setDetailItem] = useState<CatalogItem | null>(null)
   const [editItem, setEditItem] = useState<CatalogItem | null>(null)
 
   useEffect(() => {
     loadAll()
   }, [])
+
+  // El stock se pide aparte y NO bloquea la pantalla: si falla, Productos
+  // se sigue viendo con la columna vacía. Es una referencia, no el dato
+  // que esta pantalla existe para mostrar.
+  const [stockPorItem, setStockPorItem] = useState<Record<number, string>>({})
 
   async function loadAll() {
     setLoading(true)
@@ -488,21 +493,14 @@ export function Productos() {
         api.get<Unit[]>('/catalog/units'),
         api.get<Category[]>('/catalog/categories'),
       ])
+      // Aparte del Promise.all de arriba: un 500 acá no puede dejar la
+      // pantalla sin productos.
+      void api.get<StockPorDeposito>('/stock/por-deposito/grilla')
+        .then((g) => setStockPorItem(Object.fromEntries((g?.items ?? []).map((i) => [i.item_id, i.total]))))
+        .catch(() => setStockPorItem({}))
       setItems(itemList)
       setUnits(unitList)
       setCategories(categoryList)
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function runSearch() {
-    setLoading(true)
-    try {
-      const itemList = await api.get<CatalogItem[]>(`/catalog/items${search ? `?search=${encodeURIComponent(search)}` : ''}`)
-      setItems(itemList)
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -539,6 +537,24 @@ export function Productos() {
       cell: ({ row }) => `$${money(row.original.default_sale_price)}`,
     },
     {
+      // 🔑 Se llama "Stock total" y no "Stock" a propósito: es la suma de
+      // TODOS los depósitos. Con varias sucursales, un "Stock: 10" al lado de
+      // un producto se lee como "hay 10 acá", y puede ser 10 en el otro local
+      // y 0 en este. El reparto está en la pantalla de Stock.
+      id: 'stock_total',
+      header: sortableHeader('Stock total'),
+      size: 110,
+      minSize: 90,
+      accessorFn: (item) => Number(stockPorItem[item.id] ?? 0),
+      cell: ({ row }) => {
+        const valor = stockPorItem[row.original.id]
+        if (valor === undefined) return <span className="text-muted-foreground">—</span>
+        const n = Number(valor)
+        const tono = n < 0 ? 'text-destructive font-medium' : n === 0 ? 'text-muted-foreground' : ''
+        return <span className={`tabular-nums ${tono}`}>{valor}</span>
+      },
+    },
+    {
       accessorKey: 'active',
       header: 'Estado',
       size: 100,
@@ -566,31 +582,31 @@ export function Productos() {
 
   return (
     <div className="grid gap-4">
-      <TituloPantalla icono={Package}>Productos</TituloPantalla>
+      <div className="flex items-center justify-between">
+        <TituloPantalla icono={Package}>Productos</TituloPantalla>
+        <ItemCreateDialog units={units} categories={categories} onCreated={loadAll} />
+      </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Buscar por nombre…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                className="max-w-xs"
-              />
-              <Button variant="outline" onClick={runSearch}>Buscar</Button>
-            </div>
-            <ItemCreateDialog units={units} categories={categories} onCreated={loadAll} />
-          </div>
-        </CardHeader>
         <CardContent>
           {loading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : (
-            <DataTable columns={columns} data={items} emptyMessage="Sin productos todavía." />
+            <DataTable
+              columns={columns}
+              data={items}
+              emptyMessage="Sin productos todavía."
+              // Mismo buscador que Clientes/Proveedores/Compras: filtra lo ya
+              // cargado (loadAll trae el catálogo completo), sin ida y vuelta
+              // al servidor por cada tecla.
+              search={{
+                campos: (item) => [item.name],
+                placeholder: 'Buscar por nombre…',
+                ariaLabel: 'Buscar producto',
+              }}
+            />
           )}
         </CardContent>
       </Card>
