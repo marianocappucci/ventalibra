@@ -69,9 +69,27 @@ def _vaciar_schema() -> None:
         TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1),
         autocommit=True,
     ) as conexion:
+        # 🔴 **Sólo `client backend` de ESTE rol.** El terminate de antes no
+        # filtraba nada más allá de la base, y un rol sin superuser no puede
+        # matar procesos de un rol con superuser: el worker de autovacuum de
+        # los CATÁLOGOS (dueño `postgres`, que se despierta con el DDL constante
+        # de la suite) hacía estallar el setup con
+        # `InsufficientPrivilege: permission denied to terminate process`,
+        # y el error caído en un test ensuciaba los siguientes
+        # (medido el 2026-09-23: 108 tests en ERROR en una corrida local).
+        # Lo que hay que terminar son las conexiones VIEJAS de la app del test
+        # anterior, que corren con este mismo rol: `usename = session_user`
+        # las mata a ellas y sólo a ellas, sin privilegios especiales.
+        #
+        # Y hay que escribirlo con `=` y no con `<>`: para un rol sin superuser
+        # `usename`/`backend_type` de las sesiones ajenas se ven NULL en
+        # `pg_stat_activity`, y `usename <> 'x'` sobre NULL da NULL — la fila
+        # ajena quedaría FUERA del filtro igual, pero un `=` nunca va a
+        # apuntar a ella por aritmética de tres valores.
         conexion.execute(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            "WHERE datname = current_database() AND pid <> pg_backend_pid() "
+            "AND usename = session_user AND backend_type = 'client backend'"
         )
         # `IF EXISTS`: una corrida interrumpida a mitad de este bloque deja la
         # base SIN schema `public`, y entonces todas las corridas siguientes
