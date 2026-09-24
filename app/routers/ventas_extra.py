@@ -44,9 +44,10 @@ Una lectura nueva de F4 (no reemplaza nada de `/sales`, que nunca la tuvo):
   verdad sigue siendo `POST /api/ventas/{vid}/devolver`, que aplica la MISMA
   cuenta server-side.
 """
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from ..auth import get_current_user
 from ..modules_gate import get_module_repository
 from ..services import mp_qr
 from ..services.customers import CustomerService
@@ -98,11 +99,11 @@ class MpDisponible(BaseModel):
 
 
 @router.get("/pos/mp-estado", response_model=MpDisponible)
-def mp_disponible(request: Request):
+def mp_disponible(request: Request, user: dict = Depends(get_current_user)):
     """Si este mostrador puede cobrar por QR, y si eso factura solo. Lo
     pregunta el POS al abrir la pantalla, una sola vez."""
     return MpDisponible(
-        disponible=mp_qr.esta_configurado(),
+        disponible=mp_qr.esta_configurado(user.get("id")),
         auto_facturar=mp_qr.auto_facturar_prendida()
         and get_module_repository(request).is_enabled("facturacion"),
     )
