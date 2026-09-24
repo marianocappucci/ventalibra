@@ -158,7 +158,12 @@ dependencies = [
     # de terceros (`mp_access_token`, `mp_webhook_secret`, `email_smtp_password`)
     # dejan de vivir en claro en `config.json`. Ver el enganche en `app/main.py`
     # (`create_app`), justo despues de `auth_sessions`.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.109.0",
+    # v1.109.0 -> v1.110.0 (2026-09-24): el POS de MercadoPago (`mp_pos_id`) pasa a
+# vivir en cada caja (`cajas.mp_pos_id`, migracion `0012` que no baja). El cobro
+# QR resuelve usuario -> turno -> caja con `mp_pos_id_con_fallback()`: con
+# exactamente una caja cae al de config (las de una sola caja no tocan nada);
+# con mas de una, 422 accionable si la caja activa no tiene POS.
+"libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.110.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
