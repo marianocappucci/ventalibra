@@ -26,6 +26,7 @@ from typing import NamedTuple
 from libracore.db import caja as db_caja
 from libracore.db import clients as db_clients
 from libracore.db import cuenta_corriente as db_cc
+from libracore.db import recibos as db_recibos
 from libracore.db.core import Conexion
 from libracore.recibos import emitir_recibo_cobranza
 
@@ -43,6 +44,14 @@ _ORIGEN = db_cc.VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF
 
 class SinCliente(Exception):
     """No se puede fiar a nadie: hace falta saber a quién."""
+
+
+class SinPago(Exception):
+    """No hay pago a cuenta con ese id."""
+
+
+class SinMovimientoDeCaja(Exception):
+    """El pago no tiene un movimiento de caja identificable por su tag."""
 
 
 class Cobranza(NamedTuple):
@@ -88,7 +97,9 @@ class CuentaCorrienteService:
     def registrar_cobranza(self, party_id: int, monto: Decimal, medio_pago: str,
                            concepto: str = "", referencia: str = "",
                            turno_id: int | None = None,
-                           usuario_id: int | None = None) -> Cobranza:
+                           usuario_id: int | None = None,
+                           fecha: str | None = None,
+                           caja_id: int | None = None) -> Cobranza:
         """Cobra deuda vieja. Esto SÍ es plata que entra: genera el
         movimiento de caja y queda dentro del turno abierto.
 
@@ -97,21 +108,35 @@ class CuentaCorrienteService:
         el comprobante es molesto, perder el pago es un problema de plata.
         `recibo_id` vuelve en `None` y el botón de la pantalla lo reintenta,
         que es idempotente.
+
+        `fecha` y `caja_id` son para el router del kit
+        (`/api/cuenta-corriente`), que las trae del formulario; el router
+        `/accounts/{party_id}/payments` no las pasa y queda el comportamiento
+        de siempre: hoy, y la caja que `create_caja_movimiento` deduce del
+        `turno_id` -- que es el arqueo de este producto.
         """
         if monto <= 0:
             raise ValueError("el monto a cobrar debe ser mayor que cero")
         cliente_id = self._cliente_cc(party_id)
-        caja_id = db_caja.get_default_caja_id()
+        dia = fecha or date.today().isoformat()
         pago_id = db_cc.create_cc_pago(
-            cliente_id, float(monto), date.today().isoformat(),
+            cliente_id, float(monto), dia,
             concepto or "Pago a cuenta", referencia, medio_pago,
-            caja_id, usuario_id,
+            caja_id or db_caja.get_default_caja_id(), usuario_id,
         )
         db_caja.create_caja_movimiento(
-            date.today().isoformat(), "ingreso",
+            dia, "ingreso",
             concepto or "Cobranza cuenta corriente", Decimal(str(monto)),
-            referencia=referencia or f"cc-pago-{pago_id}",
-            medio_pago=medio_pago, turno_id=turno_id,
+            # 🔴 La referencia del movimiento es SIEMPRE el tag
+            # `cc-pago-<id>`, no la que escribió el usuario (esa vive en
+            # `cc_pagos`, visible en la cuenta y en el recibo). Es lo que
+            # permite darle de baja al pago después: se busca el ingreso por
+            # esta referencia y se ANULA (un movimiento de caja no se borra,
+            # pedido del humano 2026-08-28). Si acá se colara la referencia
+            # del usuario, la baja no encontraría el ingreso y el arqueo
+            # quedaría contando plata que ya no existe.
+            referencia=f"cc-pago-{pago_id}",
+            medio_pago=medio_pago, turno_id=turno_id, caja_id=caja_id,
         )
 
         recibo_id = None
@@ -150,6 +175,103 @@ class CuentaCorrienteService:
                 "saldo": Decimal(str(fila["saldo"])),
             })
         return salida
+
+    # ── contrato del kit (`/api/cuenta-corriente`) ────────────────────────
+    #
+    # Las pantallas del kit (`libra-ui/comercio/CuentaCorriente*`, las mismas
+    # que montan Contalibra y Restolibra) consumen NÚMEROS: comparan
+    # `saldo > 0` y suman montos en el navegador. Así que acá todo sale como
+    # `float`, no como `Decimal`-string como en el router `/accounts`, donde
+    # la pantalla propia convertía con `Number()` al mostrar.
+
+    def listado_kit(self) -> dict:
+        """Lo que `GET /api/cuenta-corriente` del kit espera: `clientes` con
+        el mismo formato que `get_clientes_con_saldo_cc` del motor (`id`,
+        `name`, `cuit_dni`, `saldo`) y `total_deuda` para el cartel. La clave
+        `id` es el `party_id`, que es lo que el kit manda a la pantalla
+        detalle."""
+        clientes = []
+        total_deuda = 0.0
+        for fila in db_cc.get_clientes_con_saldo_cc(origen=_ORIGEN):
+            party_id = _party_id_de(fila.get("external_ref"))
+            if party_id is None:
+                # Mismo criterio que `deudores()`: no vino de VentaLibra.
+                continue
+            saldo = float(fila["saldo"])
+            clientes.append({
+                "id": party_id,
+                "name": fila["name"],
+                "cuit_dni": fila.get("cuit_dni") or "",
+                "saldo": saldo,
+            })
+            if saldo > 0:
+                total_deuda += saldo
+        return {"clientes": clientes, "total_deuda": total_deuda}
+
+    def detalle_kit(self, party_id: int) -> dict:
+        """Lo que `GET /api/cuenta-corriente/{id}` del kit espera: el cliente
+        con los campos que muestra la pantalla, los movimientos crudos del
+        motor (que ya traen `usuario_nombre`, `venta_id`, `factura_id`...) y
+        el saldo."""
+        fila = self._conn.execute(
+            "SELECT display_name, tax_id FROM parties WHERE id = ?", (party_id,),
+        ).fetchone()
+        if fila is None:
+            raise SinCliente(f"no existe el cliente {party_id}")
+        cliente_id = self._cliente_cc(party_id)
+        return {
+            "cliente": {
+                "id": party_id,
+                "name": fila["display_name"],
+                "cuit_dni": fila["tax_id"] or "",
+            },
+            "movimientos": db_cc.get_cc_movimientos(cliente_id, origen=_ORIGEN),
+            "saldo": float(db_cc.get_cc_saldo(cliente_id, origen=_ORIGEN)),
+        }
+
+    def eliminar_pago(self, pago_id: int, usuario_id: int | None = None) -> None:
+        """Da de baja un pago a cuenta (el kit lo ofrece sólo a un admin).
+
+        🔴 Tres pasos, en este orden:
+        1. se **anulan** los recibos del pago (no se borran: el número quedó
+           consumido y el papel pudo haber salido);
+        2. se **anula** el movimiento de caja del ingreso, buscándolo por la
+           referencia `cc-pago-<id>` que `registrar_cobranza` graba siempre.
+           En este producto un movimiento de caja no se borra (pedido del
+           humano, 2026-08-28): anulado, la fila queda para auditar y sale de
+           los totales del arqueo;
+        3. recién entonces se borra el pago.
+
+        Los pagos creados antes del tag (los que colocaban la referencia del
+        usuario en el movimiento) no se pueden identificar: se rechazan con
+        `SinMovimientoDeCaja` en vez de dejar un ingreso huérfano en el
+        arqueo.
+        """
+        pago = db_cc.get_cc_pago(pago_id)
+        if pago is None:
+            raise SinPago(f"no existe el pago {pago_id}")
+
+        for recibo in db_recibos.get_recibos_de_origen(db_recibos.ORIGEN_CC_PAGO, pago_id):
+            db_recibos.anular_recibo(
+                recibo["id"], motivo="Se elimino el pago que lo origino",
+                usuario_id=usuario_id,
+            )
+
+        tag = f"cc-pago-{pago_id}"
+        movimientos = [
+            m for m in db_caja.get_caja_movimientos(
+                desde=pago["fecha"], hasta=pago["fecha"], limit=500)
+            if m["referencia"] == tag
+        ]
+        if not movimientos:
+            raise SinMovimientoDeCaja(
+                f"el pago {pago_id} no tiene un movimiento de caja "
+                "identificable: no se da de baja automáticamente"
+            )
+        for mov in movimientos:
+            db_caja.anular_caja_movimiento(mov["id"])
+
+        db_cc.delete_cc_pago(pago_id)
 
 
 def _party_id_de(external_ref: str | None) -> int | None:
