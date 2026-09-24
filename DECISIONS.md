@@ -1444,3 +1444,63 @@ decisión explícita del humano, y no forman parte de esta ADR.
   (`app/services/cajas.py::asegurar_cajas_de_todas`) y los turnos viejos
   siguen viéndose y cerrándose (`app/routers/shifts.py::_enriquecer`
   tolera `caja=None`).
+
+## ADR-027 — La cuenta corriente adopta la pantalla del kit (P9-M4)
+
+- Estado: aceptada
+- Fecha: 2026-09-24
+- Contexto: desde P9-M4 (2026-09-07) Contalibra y Restolibra montan las
+  pantallas del kit (`libra-ui/comercio/CuentaCorriente` +
+  `CuentaCorrienteDetalle`). VentaLibra quedó como el único producto de la
+  familia con una pantalla propia, sin detalle por cliente, sin pagar desde
+  la pantalla y sin baja de pago. Con ADR-026 (turno por caja) y P9-M3 (QR
+  por caja) cerrados, el port era lo que faltaba para que las cuentas
+  corrientes quedaran normalizadas en toda la familia.
+- Decisiones del humano: adoptar el modelo de Contalibra — las pantallas del
+  kit, con las reglas de VentaLibra intactas.
+- Decisiones propias (no pedidas explícitamente, resueltas al construir):
+  - **El negocio no se copió: se expone.** El motor ya estaba
+    (`CuentaCorrienteService` + `/accounts`); el nuevo
+    `app/routers/cuenta_corriente_api.py` traduce el contrato que el kit
+    llama a fuego (`/api/cuenta-corriente*`, `/api/recibos/*`) a ese mismo
+    servicio. `/accounts` queda como está — lo que cambia es la pantalla, no
+    la API vieja.
+  - **Las reglas de este producto van en el backend, no en la pantalla.** El
+    kit lo usa igual Contalibra (que ofrece todas las cajas para cobrar);
+    acá el cobro exige turno abierto (409), cae en la **caja del turno** de
+    quien cobra, `GET /api/cuenta-corriente/cajas` devuelve sólo esa caja —
+    ofrecer las demás sería ofrecer algo que el arqueo no cuenta — y si
+    `caja_id` viene con otra es 422. `cuenta_corriente` no es un medio de
+    cobro (422), igual que `CobranzaIn`.
+  - **Los montos del contrato del kit viajan como números.** El kit compara
+    `saldo > 0` y suma montos en el navegador; un `Decimal`-string los
+    concatenaría. (El router `/accounts` sigue serializando Decimal: su
+    pantalla propia se fue con este cambio.)
+  - **La referencia del movimiento de caja es siempre `cc-pago-<id>`.** La
+    que escribe el usuario vive en `cc_pagos` (visible en la cuenta y en el
+    recibo). Sin el tag fijo, la baja de pago no puede encontrar el ingreso:
+    hoy todo pago nuevo es bajable; los viejos (referencia a mano) se
+    rechazan con 409 — mejor un error que un ingreso huérfano contando plata
+    en el arqueo.
+  - **La baja de pago (admin) anula recibo y movimiento, después borra el
+    pago** — en este orden. El recibo no se borra (el número se consumió y
+    el papel pudo haber salido) y el movimiento de caja no se borra (pedido
+    del humano, 2026-08-28): anulado queda la fila para auditar y sale de los
+    totales.
+  - **Los links fijos del kit que este producto no tiene, redirigen.** El
+    "Volver" del detalle va a `/cuenta-corriente` y la "Ficha cliente" a
+    `/clientes/:id`: sin ruta, ambos caerían al catch-all y parecería que se
+    rompió el sistema (mismo criterio que las redirecciones de
+    Configuración). Quedan pendientes: la ficha (este producto no la tiene) y
+    `/facturas/:id` — que no ocurre acá porque las deudas nacen de ventas
+    fiadas, no de facturas.
+- Lo que NO cambia: `/accounts` (endpoints y serialización), el listado en la
+  navegación (`/cuentas-corrientes`), `libra-ui` (el kit ya traía todo) ni
+  las reglas de fiado de ADR-024/025.
+- Consecuencias: `app/routers/cuenta_corriente_api.py` (nuevo) y
+  `app/services/cuenta_corriente.py` (`fecha`/`caja_id` en
+  `registrar_cobranza`, `listado_kit`/`detalle_kit`/`eliminar_pago` +
+  `SinPago`/`SinMovimientoDeCaja`), `frontend/src/pages/CuentasCorrientes.tsx`
+  reescrita como montaje del kit, `CuentaCorrienteDetalle.tsx` (nueva) y tres
+  rutas en `App.tsx`. Tests: `tests/test_cuenta_corriente_kit.py` y
+  `frontend/src/test/cuenta-corriente-kit.test.tsx`.

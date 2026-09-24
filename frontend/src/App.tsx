@@ -19,6 +19,7 @@ import { Clientes } from './pages/Clientes'
 import { Usuarios } from './pages/Usuarios'
 import { Configuracion } from './pages/Configuracion'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
+import { CuentaCorrienteDetalle } from './pages/CuentaCorrienteDetalle'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
@@ -124,6 +125,22 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* La lista del kit linkea `/cuenta-corriente/:id` (Ver cuenta) y su
+          pantalla detalle vuelve a `/cuenta-corriente`; también linkea
+          `/clientes/:id` (Ficha cliente). Esas rutas existen en Contalibra
+          y Restolibra; acá redirigen a lo que VentaLibra sí tiene, con el
+          mismo criterio de las redirecciones de Configuración: un link que
+          manda al POS por el catch-all parece que se rompió el sistema. */}
+      <Route
+        path="/cuenta-corriente/:id"
+        element={
+          <ProtectedRoute>
+            <CuentaCorrienteDetalle />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/cuenta-corriente" element={<Navigate to="/cuentas-corrientes" replace />} />
+      <Route path="/clientes/:id" element={<Navigate to="/clientes" replace />} />
       {/* Staff o admin (decisión del humano, 2026-09-21): quien mueve la
           mercadería entre locales es el encargado, no el dueño. El alta de
           sucursales sí es admin -- esa cambia la estructura de la instancia,
