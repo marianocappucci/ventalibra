@@ -292,3 +292,50 @@ def test_venta_sale_con_el_punto_de_venta_de_la_caja(admin_client):
     abrir_turno(admin_client, caja_id=caja["id"])
 
     assert resolver_punto_venta(admin_id) == 5
+
+
+def test_el_movimiento_de_caja_de_la_venta_toma_la_caja_del_turno(admin_client):
+    """El ingreso de la venta cae en la caja del TURNO, no en la default.
+
+    `registrar_venta` (libracommerce v0.17.0) llama a
+    `create_caja_movimiento(..., turno_id=...)` **sin `caja_id` explícito**:
+    hasta libracore #277 eso caía siempre a `get_default_caja_id()`, y en una
+    instancia con dos cajas toda venta quedaba anotada en la default aunque
+    el cajero estuviera parado en otra -- `get_caja_movimientos` y
+    `get_caja_resumen` filtrados por caja mentían (el arqueo y el cierre
+    diario no se veían afectados: van por `turnos_caja.caja_id`).
+
+    El fix vive en `libracore.db.caja` y viaja desde v1.105.0; VentaLibra
+    está en v1.109.0 (`uv.lock`). Cierra el pendiente "caja_movimientos.
+    caja_id cae en la caja default" de wiki/analyses/pendientes-ventalibra.md
+    con una medición, no sólo con el pin.
+    """
+    from libracore.db.core import get_connection
+
+    sucursal = admin_client.get("/locations").json()[0]
+    default = caja_default(admin_client)
+    caja = admin_client.post("/api/cajas", json={
+        "nombre": "Mostrador 2", "sucursal_id": sucursal["id"],
+    }).json()
+    # Sin esto el resto del test probaría nada: la caja del turno tiene que
+    # ser DISTINTA de la default para que la mutación se note.
+    assert caja["id"] != default
+
+    item_id = crear_item(admin_client)
+    con_stock(admin_client, item_id, sucursal["id"])
+    tid = abrir_turno(admin_client, caja_id=caja["id"])
+
+    registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1")
+
+    with get_connection() as conn:
+        filas = conn.execute(
+            "SELECT caja_id, turno_id FROM caja_movimientos "
+            "WHERE turno_id=? AND tipo='ingreso'",
+            (tid,),
+        ).fetchall()
+
+    # La venta de un solo pago en efectivo es un único ingreso atado al turno.
+    assert len(filas) == 1, f"esperaba 1 movimiento del turno, vinieron {len(filas)}"
+    assert filas[0]["turno_id"] == tid
+    # 🔴 Con libracore sin #277 esto devuelve la caja DEFAULT y el test muere.
+    assert filas[0]["caja_id"] == caja["id"]

@@ -152,17 +152,16 @@ def test_mp_estado_no_se_cae_sin_el_modulo_de_facturacion(admin_client):
     assert estado.json() == {"disponible": True, "auto_facturar": False}
 
 
-def test_falta_uno_solo_de_los_tres_y_sigue_sin_estar_configurado(admin_client):
-    """El token solo no alcanza: el user id y el pos id van en la URL.
+def test_falta_user_id_o_pos_id_y_sigue_sin_estar_configurado(admin_client):
+    """El token solo no alcanza: el user id va en la URL y el pos id en la caja.
 
     Sin esta comprobación, una instancia a medio configurar pasaría el chequeo
     y MercadoPago devolvería un 404 que no dice qué falta.
 
-    🔴 Se afirma sobre `mp_qr.esta_configurado()` y no sobre la respuesta del
-    endpoint. El router del motor no devuelve un `configurado`: ese calculo es
-    del POS, y la pantalla lo repite del lado del cliente. Preguntarle al
-    servicio es preguntarle a quien de verdad decide si el QR cobra.
+    🔴 Se afirma sobre `mp_qr.esta_configurado()` con el usuario actual, igual
+    que hace `/pos/mp-estado`. Sin usuario no se puede resolver la caja activa.
     """
+    # El admin de bootstrap tiene id 1.
     for faltante in ("mp_user_id", "mp_pos_id"):
         datos = {
             "mp_access_token": "APP_USR-x", "mp_user_id": "1", "mp_pos_id": "CAJA01",
@@ -171,15 +170,15 @@ def test_falta_uno_solo_de_los_tres_y_sigue_sin_estar_configurado(admin_client):
         datos[faltante] = ""
         guardada = admin_client.put(RUTA_MP, json=datos)
         assert guardada.status_code == 200, guardada.text
-        assert mp_qr.esta_configurado() is False, faltante
+        assert mp_qr.esta_configurado(1) is False, faltante
 
-    # Control positivo: con los tres cargados sí queda configurado. Sin esto,
-    # un `esta_configurado()` que devolviera siempre False pasaría el test.
+    # Control positivo: con token, user id y pos id (via config en caja única)
+    # sí queda configurado.
     admin_client.put(RUTA_MP, json={
         "mp_access_token": "APP_USR-x", "mp_user_id": "1", "mp_pos_id": "CAJA01",
         "mp_auto_facturar_ventas": False,
     })
-    assert mp_qr.esta_configurado() is True
+    assert mp_qr.esta_configurado(1) is True
 
 
 def test_el_token_vacio_NO_borra_el_que_estaba(admin_client):
@@ -255,9 +254,9 @@ def test_sin_credenciales_poner_el_monto_en_el_qr_da_400_y_dice_que_falta(admin_
     respuesta = admin_client.post(f"/api/ventas/{vid}/mp-qr")
     assert respuesta.status_code == 400, respuesta.text
     detalle = respuesta.json()["detail"]
-    # El mensaje nombra los tres datos: un 400 que dijera "no configurado" no
-    # le dice al operador dónde ir ni qué cargar.
-    assert "Access Token" in detalle and "User ID" in detalle and "POS ID" in detalle
+    # El mensaje nombra Access Token y User ID (a nivel instancia). El POS ID
+    # vive en la caja y se valida en un paso posterior con 422.
+    assert "Access Token" in detalle and "User ID" in detalle
     assert mp.ordenes == []
 
 
