@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
-import { REDIRECCIONES_DE_CATALOGO, REDIRECCIONES_DE_CONFIGURACION } from './rutas-viejas'
+import { REDIRECCIONES_DE_CATALOGO, REDIRECCIONES_DE_CONFIGURACION, REDIRECCIONES_DEL_KIT } from './rutas-viejas'
 import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
@@ -125,12 +125,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* La lista del kit linkea `/cuenta-corriente/:id` (Ver cuenta) y su
-          pantalla detalle vuelve a `/cuenta-corriente`; también linkea
-          `/clientes/:id` (Ficha cliente). Esas rutas existen en Contalibra
-          y Restolibra; acá redirigen a lo que VentaLibra sí tiene, con el
-          mismo criterio de las redirecciones de Configuración: un link que
-          manda al POS por el catch-all parece que se rompió el sistema. */}
+      {/* La lista del kit linkea `/cuenta-corriente/:id` (Ver cuenta); su
+          detalle vuelve a `/cuenta-corriente` y linkea `/clientes/:id`
+          (Ficha cliente). Esas dos redirigen -- van en la tabla
+          `REDIRECCIONES_DEL_KIT` de `rutas-viejas.ts`, junto a las demás. */}
       <Route
         path="/cuenta-corriente/:id"
         element={
@@ -139,8 +137,6 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="/cuenta-corriente" element={<Navigate to="/cuentas-corrientes" replace />} />
-      <Route path="/clientes/:id" element={<Navigate to="/clientes" replace />} />
       {/* Staff o admin (decisión del humano, 2026-09-21): quien mueve la
           mercadería entre locales es el encargado, no el dueño. El alta de
           sucursales sí es admin -- esa cambia la estructura de la instancia,
@@ -206,14 +202,23 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* Las tres pantallas sueltas pasaron a ser secciones. Se redirigen en
-          vez de borrarse: son links que pueden estar en un favorito o en un
-          mensaje, y un 404 en Configuración parece que se rompió el sistema.
+      {/* Los links fijos del kit (`libra-ui/comercio/CuentaCorriente*`) que
+          este producto no tiene -- "Volver" y "Ficha cliente" -- y las rutas
+          viejas, se redirigen en vez de 404: son links que el kit trae
+          escritos o que pueden estar en un favorito, y el catch-all los
+          mandaría al POS, que parece que se rompió el sistema.
 
-          La tabla vive en `rutas-viejas.ts` para que el test no pueda medir una
-          copia distinta de la que la app usa — ver el docstring de ese
-          archivo. */}
+          Las tablas viven en `rutas-viejas.ts` para que el guard de títulos
+          (y los tests) no midan una copia distinta de la que la app usa --
+          ver el docstring de ese archivo. En particular, un `<Route
+          path="...">` literal con `<Navigate>` adentro hace que el auditor
+          le atribuya al path la PRIMERA pantalla que aparece en la ventana
+          de 500 caracteres siguiente (la del Route vecino): con el detalle
+          de `/stock` después, `/clientes/:id` salía con icono de Stock. */}
       {Object.entries(REDIRECCIONES_DE_CONFIGURACION).map(([desde, hacia]) => (
+        <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
+      ))}
+      {Object.entries(REDIRECCIONES_DEL_KIT).map(([desde, hacia]) => (
         <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
       ))}
       <Route

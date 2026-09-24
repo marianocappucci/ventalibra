@@ -33,3 +33,18 @@ export const REDIRECCIONES_DE_CONFIGURACION: Record<string, string> = {
 export const REDIRECCIONES_DE_CATALOGO: Record<string, string> = {
   '/catalogo': '/productos',
 }
+
+/** Los links que las pantallas del kit traen escritos a fuego y que este
+ *  producto no tiene (2026-09-24, ADR-027).
+ *
+ *  `libra-ui/comercio/CuentaCorriente` linkea `/cuenta-corriente/:id` (Ver
+ *  cuenta) y su detalle vuelve a `/cuenta-corriente` (Volver) y a la "Ficha
+ *  cliente" `/clientes/:id`. El detalle existe acá; el "Volver" y la ficha,
+ *  no: sin ruta, ambos caen al catch-all y mandan al POS, que parece que se
+ *  rompió el sistema. Mismo criterio y mismo motivo para vivir en este
+ *  archivo que las tablas de arriba.
+ */
+export const REDIRECCIONES_DEL_KIT: Record<string, string> = {
+  '/cuenta-corriente': '/cuentas-corrientes',
+  '/clientes/:id': '/clientes',
+}

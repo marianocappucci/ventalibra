@@ -1491,9 +1491,14 @@ decisión explícita del humano, y no forman parte de esta ADR.
     "Volver" del detalle va a `/cuenta-corriente` y la "Ficha cliente" a
     `/clientes/:id`: sin ruta, ambos caerían al catch-all y parecería que se
     rompió el sistema (mismo criterio que las redirecciones de
-    Configuración). Quedan pendientes: la ficha (este producto no la tiene) y
-    `/facturas/:id` — que no ocurre acá porque las deudas nacen de ventas
-    fiadas, no de facturas.
+    Configuración). Viven en `rutas-viejas.ts` (`REDIRECCIONES_DEL_KIT`), no
+    como `<Route path="...">` literales: el guard de títulos
+    (`libra-ui/auditoria-de-titulos`) atribuye a cada `path` literal la
+    primera pantalla que aparece en la ventana de 500 caracteres siguiente,
+    así que un `<Navigate>` en el medio les colgaba a las redirecciones el
+    icono de la pantalla vecina (`/clientes/:id` heredaba el de Stock). Queda
+    pendiente la ficha (este producto no la tiene); `/facturas/:id` no ocurre
+    acá porque las deudas nacen de ventas fiadas, no de facturas.
 - Lo que NO cambia: `/accounts` (endpoints y serialización), el listado en la
   navegación (`/cuentas-corrientes`), `libra-ui` (el kit ya traía todo) ni
   las reglas de fiado de ADR-024/025.
