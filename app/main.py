@@ -58,6 +58,7 @@ from .routers import (
     accounts,
     cajas,
     catalog,
+    cuenta_corriente_api,
     customers,
     health,
     locations,
@@ -530,6 +531,16 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(customers.router, dependencies=staff_or_admin)
     # El cajero cobra fiado en el mostrador, asi que no es admin-only.
     app.include_router(accounts.router, dependencies=staff_or_admin)
+    # Contrato del kit para la cuenta corriente (`libra-ui/comercio/
+    # CuentaCorriente*`, la pantalla que montan Contalibra y Restolibra):
+    # mismas reglas de este producto (turno obligatorio, caja del turno,
+    # baja de pago admin-only con anulacion de recibo y de movimiento),
+    # en las rutas fijas que las pantallas del kit llaman. Ver el docstring
+    # de `app/routers/cuenta_corriente_api.py`.
+    app.include_router(cuenta_corriente_api.router, dependencies=staff_or_admin)
+    app.include_router(
+        cuenta_corriente_api.router_recibos, dependencies=staff_or_admin,
+    )
     # Los medios de pago de los selectores: los del motor, no una copia en el
     # frontend. Misma ruta que `build_cajas_router` de LibraCore, que es la que
     # pide `libra-ui/comercio/medios-pago`.

@@ -5,6 +5,70 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Cuentas corrientes con la pantalla del kit** (2026-09-24). Hasta hoy este
+  producto era el único de la familia sin la normalización P9-M4: su pantalla
+  propia (`/cuentas-corrientes`) era una copia vieja, sin el detalle por
+  cliente, sin el pago desde la pantalla y sin la baja de pago. Ahora monta
+  las mismas pantallas que Contalibra y Restolibra
+  (`libra-ui/comercio/CuentaCorriente` + `CuentaCorrienteDetalle`), con el
+  contrato que el kit llama a fuego:
+  - `app/routers/cuenta_corriente_api.py` (nuevo) -- `GET/POST
+    /api/cuenta-corriente…` + `POST /api/recibos/cobranza/{id}` y
+    `GET /api/recibos/{id}/pdf` (estas delegan en los handlers de
+    `/accounts/receipts/...`: misma operación idempotente, mismo PDF). El
+    negocio no se copió: lo sirven `CuentaCorrienteService` y las reglas de
+    siempre.
+  - Reglas de VentaLibra conservadas, ahora también por el kit: el cobro
+    **exige turno abierto** (409) y cae en la **caja del turno** de quien
+    cobra -- `GET /api/cuenta-corriente/cajas` ofrece sólo esa caja, y si
+    `caja_id` viene con otra es 422, porque el arqueo de otra caja no lo
+    contaría. `cuenta_corriente` no es un medio de cobro (422), igual que en
+    `CobranzaIn`.
+  - `CuentaCorrienteService.registrar_cobranza` acepta `fecha` y `caja_id`
+    (las trae el formulario del kit) y desde acá la referencia del movimiento
+    de caja es **siempre** `cc-pago-<id>` -- la que escribió el usuario queda
+    en `cc_pagos`, visible en la cuenta y en el recibo. Es lo que hace
+    encontrable el ingreso a la hora de dar el pago de baja; los pagos viejos
+    (con referencia escrita a mano) no se pueden identificar y la baja los
+    rechaza con 409 en vez de dejar un ingreso huérfano en el arqueo.
+  - `DELETE /api/cuenta-corriente/pagos/{pago_id}` (admin): anula los recibos
+    del pago, **anula** -- no borra, pedido del humano 2026-08-28 -- el
+    movimiento de caja y recién entonces borra el pago; el arqueo vuelve a
+    dar lo que hay en el cajón y el saldo vuelve a la cuenta.
+  - `frontend/src/pages/CuentasCorrientes.tsx` ahora es el montaje del kit;
+    `CuentaCorrienteDetalle.tsx` (nueva) monta el detalle con `esAdmin` según
+    el rol y `conRecibos`. Rutas: `/cuenta-corriente/:id` (detalle) y dos
+    redirecciones -- `/cuenta-corriente` -> `/cuentas-corrientes` y
+    `/clientes/:id` -> `/clientes` -- para los links fijos del kit ("Volver",
+    "Ficha cliente"; la ficha es un pendiente de este producto). Los
+    endpoints de `/accounts` quedan como estaban: lo que cambia es la
+    pantalla, no la API vieja.
+  - Tests: `tests/test_cuenta_corriente_kit.py` (contrato completo: listado
+    con montos como números -- el kit suma saldos en el navegador--, detalle,
+    pago con turno/caja, baja con anulacion y arqueo, recibos por la ruta del
+    kit) y `frontend/src/test/cuenta-corriente-kit.test.tsx` (rutas y
+    redirecciones).
+
+- **libracore `v1.110.0` y libra-ui `v0.74.0`: el `mp_pos_id` de MercadoPago
+  pasa a ser por caja** (2026-09-24, P9-M3). Antes el QR cobraba con el POS
+  configurado a nivel instancia (un solo QR de mostrador para toda la
+  sucursal, aunque hubiera dos cajeros); ahora cada caja tiene su
+  `mp_pos_id` (`cajas.mp_pos_id`, migración `0012_mp_pos_id_por_caja` de la
+  cadena del pin) y el cobro lo resuelve `libracore.db.caja.
+  mp_pos_id_con_fallback()`: usuario -> turno -> caja, con fallback a la
+  configuración de instancia sólo cuando hay exactamente una caja.
+  - `app/services/mp_qr.py` -- `esta_configurado(usuario_id)` mira la caja
+    activa del usuario; `credenciales()`/`MpNoConfigurado` se retiraron (la
+    URL del QR la arma el router del motor). `GET /api/ventas/pos/mp-estado`
+    pide ahora la sesión (`Depends(get_current_user)`) porque sin usuario no
+    hay caja activa que mirar.
+  - Pendiente conocido: la pantalla de cajas de ESTE producto sigue siendo la
+    propia (`frontend/src/pages/Cajas.tsx`), que aún no tiene el campo
+    `mp_pos_id` -- el editor por caja lo trae `libra-ui/comercio/Cajas`, que
+    este producto todavía no monta. Mientras tanto el dato se carga por API
+    (`PUT /api/cajas/{id}` con `mp_pos_id`; cuidado: omitir el campo en un
+    PUT lo limpia, `CajaUpdatePayload.mp_pos_id` por defecto es `None`).
+
 - **libracore `v1.109.0` y libra-ui `v0.73.2`** (2026-09-17). La copia externa
   del backup sale cifrada con `rclone crypt`, o no sale —eso corre en el host y
   ya está desplegado ahí—. Lo que llega con este pin: la pantalla *Datos /
