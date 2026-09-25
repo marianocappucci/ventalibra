@@ -11,6 +11,7 @@
 // rojo.
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { Clientes } from '../pages/Clientes'
 
@@ -45,7 +46,7 @@ beforeEach(() => {
  *  "Cargando…" y no hay tabla que mirar. */
 async function montar() {
   const usuario = userEvent.setup()
-  render(<Clientes />)
+  render(<MemoryRouter><Clientes /></MemoryRouter>)
   await screen.findByText('Panadería del Sol')
   return usuario
 }

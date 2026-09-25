@@ -6,6 +6,7 @@
 // queden iguales y eso incluye que ninguna lo pierda.
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 
 // Radix Select usa pointer capture, que jsdom no trae.
@@ -56,6 +57,10 @@ function montarRed(opciones: { postStatus?: number; postDetail?: string } = {}) 
 
 beforeEach(() => { montarRed() })
 
+function montar() {
+  render(<MemoryRouter><Clientes /></MemoryRouter>)
+}
+
 // ⚠️ **Este test resistió la mutación y no pude demostrar que custodie algo.**
 // Probé tres formas de simular "el formulario volvió a estar suelto" —dejar el
 // Dialog siempre abierto, reemplazarlo por un `<div>`— y la suite siguió en
@@ -64,8 +69,9 @@ beforeEach(() => { montarRed() })
 // entendí es por qué ésta no. Queda anotado: el assert de abajo parece el
 // correcto, pero **nadie verificó que lo sea**. 2026-09-21.
 it('🔴 el formulario ya NO está suelto en la página: sólo la lista y el botón', async () => {
-  render(<Clientes />)
+  montar()
   await screen.findByText('Bioko Centro')
+  expect(screen.getByRole('link', { name: 'Bioko Centro' })).toHaveAttribute('href', '/clientes/1')
 
   expect(screen.queryByLabelText('Nombre')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Condición de IVA')).not.toBeInTheDocument()
@@ -74,7 +80,7 @@ it('🔴 el formulario ya NO está suelto en la página: sólo la lista y el bot
 
 it('el botón abre el modal con todos los campos, incluida la condición de IVA', async () => {
   const user = userEvent.setup()
-  render(<Clientes />)
+  montar()
   await screen.findByText('Bioko Centro')
 
   await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
@@ -87,7 +93,7 @@ it('el botón abre el modal con todos los campos, incluida la condición de IVA'
 
 it('el alta manda lo escrito, cierra el modal y recarga la lista', async () => {
   const user = userEvent.setup()
-  render(<Clientes />)
+  montar()
   await screen.findByText('Bioko Centro')
 
   await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
@@ -108,7 +114,7 @@ it('el alta manda lo escrito, cierra el modal y recarga la lista', async () => {
 
 it('🔴 sin nombre no se manda nada y el modal queda abierto', async () => {
   const user = userEvent.setup()
-  render(<Clientes />)
+  montar()
   await screen.findByText('Bioko Centro')
 
   await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
@@ -122,7 +128,7 @@ it('🔴 sin nombre no se manda nada y el modal queda abierto', async () => {
 it('🔴 un error del backend se ve DENTRO del modal, que no se cierra', async () => {
   montarRed({ postStatus: 409, postDetail: 'Ya existe un cliente con ese CUIT.' })
   const user = userEvent.setup()
-  render(<Clientes />)
+  montar()
   await screen.findByText('Bioko Centro')
 
   await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
@@ -138,7 +144,7 @@ it('el buscador de la tabla filtra, y busca también por un campo que NO es colu
   // El teléfono no es columna y aun así se busca: es lo que queda anotado del
   // mostrador. Si el buscador mirara sólo lo visible, esto no encontraría nada.
   const user = userEvent.setup()
-  render(<Clientes />)
+  montar()
   await screen.findByText('Bioko Centro')
 
   await user.type(screen.getByLabelText('Buscar cliente'), '2255-4040')

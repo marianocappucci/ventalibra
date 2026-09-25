@@ -16,6 +16,7 @@ import { Proveedores } from './pages/Proveedores'
 import { Compras } from './pages/Compras'
 import { CompraDetalle } from './pages/CompraDetalle'
 import { Clientes } from './pages/Clientes'
+import { ClienteDetalle } from './pages/ClienteDetalle'
 import { Usuarios } from './pages/Usuarios'
 import { Configuracion } from './pages/Configuracion'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
@@ -98,6 +99,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Clientes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/clientes/:id"
+        element={
+          <ProtectedRoute>
+            <ClienteDetalle />
           </ProtectedRoute>
         }
       />
@@ -202,19 +211,15 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* Los links fijos del kit (`libra-ui/comercio/CuentaCorriente*`) que
-          este producto no tiene -- "Volver" y "Ficha cliente" -- y las rutas
-          viejas, se redirigen en vez de 404: son links que el kit trae
-          escritos o que pueden estar en un favorito, y el catch-all los
-          mandaría al POS, que parece que se rompió el sistema.
+      {/* El "Volver" del kit (`libra-ui/comercio/CuentaCorriente*`) apunta
+          a `/cuenta-corriente`; se redirige a la lista. Su link de "Ficha
+          cliente" ahora tiene ruta propia arriba, en `/clientes/:id`.
 
           Las tablas viven en `rutas-viejas.ts` para que el guard de títulos
           (y los tests) no midan una copia distinta de la que la app usa --
           ver el docstring de ese archivo. En particular, un `<Route
           path="...">` literal con `<Navigate>` adentro hace que el auditor
-          le atribuya al path la PRIMERA pantalla que aparece en la ventana
-          de 500 caracteres siguiente (la del Route vecino): con el detalle
-          de `/stock` después, `/clientes/:id` salía con icono de Stock. */}
+          le atribuya al path la PRIMERA pantalla vecina. */}
       {Object.entries(REDIRECCIONES_DE_CONFIGURACION).map(([desde, hacia]) => (
         <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
       ))}
