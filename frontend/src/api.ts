@@ -232,6 +232,7 @@ export type Caja = {
   descripcion: string
   medios_pago: string[]
   punto_venta: number | null
+  mp_pos_id: string | null
   activo: boolean
   es_default: boolean
   sucursal_id: number | null
@@ -245,6 +246,7 @@ export type CajaEntrada = {
   descripcion?: string
   medios_pago: string[]
   punto_venta?: number | null
+  mp_pos_id?: string | null
 }
 
 export type CajaAlta = CajaEntrada & { sucursal_id: number }
