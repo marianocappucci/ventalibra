@@ -24,6 +24,15 @@ from libracore.db.core import Conexion
 from ..commerce import repositorio
 from . import cajas as cajas_service
 
+#: Sólo una sucursal `store` vende (decisión del humano, 2026-09-25): tiene
+#: cajas, se ofrece en el POS y admite turnos. El depósito (`warehouse`) sólo
+#: guarda stock; sus cajas históricas se conservan pero no operan.
+TIPO_QUE_VENDE = "store"
+
+
+def vende(location: Location) -> bool:
+    return location.location_type == TIPO_QUE_VENDE
+
 
 class LocationNotFound(Exception):
     """No existe una sucursal con ese id."""

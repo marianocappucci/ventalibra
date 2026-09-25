@@ -77,7 +77,7 @@ from .routers import (
 )
 from .services import billing
 from .services import cajas as cajas_service
-from .services.locations import LocationService
+from .services.locations import LocationService, vende
 from .services.modules import ModuleRepository
 from .services.users import UserRepository, ensure_default_admin
 
@@ -204,11 +204,13 @@ def create_app(db_path: str) -> FastAPI:
     # completa lo que falte por sucursal. Corre en cada arranque; en el
     # segundo no crea nada (ver `app/services/cajas.py::
     # asegurar_cajas_de_todas`).
-    _sucursales_activas = LocationService(conn).list()
+    # Sólo las que venden (`store`): un depósito no tiene cajas propias.
+    _sucursales_activas = [s for s in LocationService(conn).list() if vende(s)]
     _sucursal_default = next((s for s in _sucursales_activas if s.is_default), None)
     cajas_service.asegurar_cajas_de_todas(
         [s.id for s in _sucursales_activas],
-        _sucursal_default.id if _sucursal_default else None,
+        (_sucursal_default or next(iter(_sucursales_activas), None)).id
+        if _sucursales_activas else None,
     )
     # La URL de SQLAlchemy salia siempre como `sqlite:///...`, aunque el destino
     # fuera una URL PostgreSQL: la interpolacion la convertia en una ruta

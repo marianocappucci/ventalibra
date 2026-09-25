@@ -8,6 +8,7 @@ from ..services.locations import (
     LocationNotFound,
     LocationService,
     SucursalConTurnoAbierto,
+    vende,
 )
 
 router = APIRouter(prefix="/locations", tags=["locations"])
@@ -58,7 +59,9 @@ def create_location(data: LocationCreate, request: Request):
     # tiene dónde abrir turno, y el alta de cajas es de admin -- sin esto,
     # quien acaba de crear el Location se queda sin poder vender ahí hasta
     # que alguien entre a la pantalla de Cajas a mano.
-    cajas_service.asegurar_caja_de(location.id)
+    # Un depósito (`warehouse`) no vende: no recibe caja (2026-09-25).
+    if vende(location):
+        cajas_service.asegurar_caja_de(location.id)
     return LocationOut(**location.__dict__)
 
 
@@ -91,4 +94,7 @@ def update_location(location_id: int, data: LocationUpdate, request: Request):
         # sobre el depósito default) llegan como `ValueError` lisa: es un
         # conflicto con el estado de otra sucursal, no un dato mal formado.
         raise HTTPException(409, str(e)) from e
+    # Un depósito que pasa a `store` empieza a vender: necesita su caja.
+    if vende(location):
+        cajas_service.asegurar_caja_de(location.id)
     return LocationOut(**location.__dict__)
