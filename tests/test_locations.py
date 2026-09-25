@@ -79,7 +79,7 @@ def test_marcar_default_una_inactiva_en_el_mismo_pedido_da_409_sin_escribir(admi
     """`active=false` + `is_default=true` sobre una no-default: antes se
     desactivaba primero y recién después `set_default_deposito` rechazaba,
     dejando la desactivación escrita a pesar del 409."""
-    otra = admin_client.post("/locations", json={"name": "Sucursal Norte"}).json()
+    otra = admin_client.post("/locations", json={"name": "Sucursal Norte", "location_type": "store"}).json()
 
     r = admin_client.put(f"/locations/{otra['id']}", json={
         "name": otra["name"], "location_type": otra["location_type"],

@@ -47,8 +47,8 @@ def connect(db_path: str):
     # que Contalibra/Restolibra en su `init_db()`.
     if not conn.execute("SELECT 1 FROM locations LIMIT 1").fetchone():
         conn.execute(
-            "INSERT INTO locations (name, description, is_default, active)"
-            " VALUES ('Depósito principal', '', 1, 1)"
+            "INSERT INTO locations (name, description, location_type, is_default, active)"
+            " VALUES ('Sucursal 1', '', 'store', 1, 1)"
         )
     # Las tablas propias de este producto, por un punto de entrada único. Antes
     # las seis funciones se enumeraban acá, y la baseline de Alembic

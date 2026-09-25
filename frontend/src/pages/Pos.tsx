@@ -355,7 +355,9 @@ export function Pos() {
 
   useEffect(() => {
     api.get<Location[]>('/locations')
-      .then((items) => {
+      .then((todas) => {
+        // Sólo vende una sucursal `store`; los depósitos no se ofrecen.
+        const items = todas.filter((l) => l.location_type === 'store')
         setLocations(items)
         setLocationId((actual) => {
           if (actual && items.some((l) => String(l.id) === actual)) return actual

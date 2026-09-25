@@ -10,7 +10,7 @@ from ventas_helpers import abrir_turno, caja_default, con_stock, crear_item, hoy
 
 
 def _crear_sucursal(client, nombre="Sucursal Norte") -> dict:
-    r = client.post("/locations", json={"name": nombre})
+    r = client.post("/locations", json={"name": nombre, "location_type": "store"})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -385,3 +385,53 @@ def test_el_movimiento_de_caja_de_la_venta_toma_la_caja_del_turno(admin_client):
     assert filas[0]["turno_id"] == tid
     # 🔴 Con libracore sin #277 esto devuelve la caja DEFAULT y el test muere.
     assert filas[0]["caja_id"] == caja["id"]
+
+
+# ── Sólo vende una sucursal `store` (decisión del humano, 2026-09-25) ───────
+
+
+def _crear_deposito(client, nombre="Depósito Norte") -> dict:
+    r = client.post("/locations", json={"name": nombre, "location_type": "warehouse"})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_una_base_nueva_nace_con_una_sucursal_que_vende(admin_client):
+    """El Location sembrado por `app/db.py::connect()` es `store`: si fuera un
+    depósito, una instancia nueva no tendría ni dónde abrir turno."""
+    sembrada = next(l for l in admin_client.get("/locations").json() if l["is_default"])
+    assert sembrada["location_type"] == "store"
+    assert len(_cajas_de(admin_client, sembrada["id"])) == 1
+
+
+def test_un_deposito_nuevo_no_recibe_caja(admin_client):
+    deposito = _crear_deposito(admin_client)
+    assert _cajas_de(admin_client, deposito["id"]) == []
+
+
+def test_no_se_da_de_alta_una_caja_en_un_deposito(admin_client):
+    deposito = _crear_deposito(admin_client)
+    r = admin_client.post("/api/cajas", json={"nombre": "Mostrador", "sucursal_id": deposito["id"]})
+    assert r.status_code == 422, r.text
+    assert "depósito" in r.json()["detail"]
+    assert _cajas_de(admin_client, deposito["id"]) == []
+
+
+def test_una_caja_historica_de_un_deposito_no_abre_turno(admin_client):
+    """La caja de un depósito (de antes de la regla) se conserva, pero no opera."""
+    from libracore.db import caja as db_caja
+
+    deposito = _crear_deposito(admin_client)
+    caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=deposito["id"])
+    r = admin_client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": caja_id})
+    assert r.status_code == 422, r.text
+    assert "depósito" in r.json()["detail"]
+
+
+def test_un_deposito_que_pasa_a_sucursal_recibe_su_caja(admin_client):
+    deposito = _crear_deposito(admin_client)
+    r = admin_client.put(f"/locations/{deposito['id']}", json={
+        "name": deposito["name"], "location_type": "store", "is_default": False, "active": True,
+    })
+    assert r.status_code == 200, r.text
+    assert len(_cajas_de(admin_client, deposito["id"])) == 1

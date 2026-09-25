@@ -19,7 +19,7 @@ function json(body: unknown, status = 200) {
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
 const LOCATIONS = [
-  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
+  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'store', active: true, is_default: true },
 ]
 
 const TURNO = {

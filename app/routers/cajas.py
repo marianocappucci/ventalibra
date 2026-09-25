@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_admin
 from ..services import cajas as service
-from ..services.locations import LocationService
+from ..services.locations import LocationService, vende
 
 router = APIRouter(prefix="/api/cajas", tags=["cajas"])
 
@@ -85,6 +85,8 @@ def crear(datos: CajaAlta, request: Request):
         raise HTTPException(422, "El nombre es obligatorio.")
     if not _sucursal_activa(request, datos.sucursal_id):
         raise HTTPException(422, f"No existe una sucursal activa con id {datos.sucursal_id}.")
+    if not vende(LocationService(request.app.state.conn).get(datos.sucursal_id)):
+        raise HTTPException(422, "Sólo una sucursal de venta puede tener cajas; un depósito no vende.")
     try:
         caja = service.crear_caja(
             nombre, datos.descripcion.strip(), datos.medios_pago,

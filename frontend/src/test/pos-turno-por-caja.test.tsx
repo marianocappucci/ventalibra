@@ -19,8 +19,8 @@ function json(body: unknown, status = 200) {
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
 const LOCATIONS = [
-  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
-  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'warehouse', active: true, is_default: false },
+  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'store', active: true, is_default: true },
+  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'store', active: true, is_default: false },
 ]
 
 const CAJAS_SUCURSAL_1 = [

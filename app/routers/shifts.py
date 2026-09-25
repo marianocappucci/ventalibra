@@ -36,7 +36,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..services import cajas as cajas_service
 from ..services.cuenta_corriente import MEDIO_CUENTA_CORRIENTE
-from ..services.locations import LocationService
+from ..services.locations import LocationService, vende
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -126,6 +126,12 @@ def abrir_turno(data: ShiftOpen, request: Request, user: dict = Depends(get_curr
         raise HTTPException(404, "La caja no existe.")
     if not caja.get("activo", True):
         raise HTTPException(422, f"La caja {caja['nombre']!r} está dada de baja.")
+    # Sólo vende una sucursal `store` (2026-09-25): la caja histórica de un
+    # depósito se conserva con su movimiento, pero ya no abre turnos.
+    sede = (LocationService(request.app.state.conn).get(caja["sucursal_id"])
+            if caja.get("sucursal_id") else None)
+    if sede is not None and not vende(sede):
+        raise HTTPException(422, f"La caja {caja['nombre']!r} es de un depósito, que no vende.")
 
     propio = db_turnos.get_turno_activo(int(user["id"]))
     if propio:

@@ -92,7 +92,16 @@ def test_preflight_postgres_real_es_de_solo_lectura(admin_client):
     """Ejercita el driver de producción sobre la base local EXCLUSIVA de tests."""
     import psycopg
 
-    origen = next(l for l in admin_client.get("/locations").json() if l["is_default"])
+    origen_r = admin_client.post("/locations", json={
+        "name": "Depósito test", "location_type": "warehouse",
+    })
+    assert origen_r.status_code == 200, origen_r.text
+    # El escenario previo a la transición: el depósito es el predeterminado.
+    hecho = admin_client.put(f"/locations/{origen_r.json()['id']}", json={
+        "name": "Depósito test", "location_type": "warehouse", "is_default": True, "active": True,
+    })
+    assert hecho.status_code == 200, hecho.text
+    origen = hecho.json()
     destino_r = admin_client.post("/locations", json={
         "name": "Salón test", "location_type": "store",
     })
@@ -102,4 +111,4 @@ def test_preflight_postgres_real_es_de_solo_lectura(admin_client):
         assert informe["apto_para_planificar"] is True
         with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
             conn.execute("DELETE FROM locations")
-    assert len(admin_client.get("/locations").json()) == 2
+    assert len(admin_client.get("/locations").json()) == 3
