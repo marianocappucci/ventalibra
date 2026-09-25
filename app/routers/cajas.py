@@ -13,7 +13,7 @@ para no competir con ella.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from libracore.db.caja import PuntoDeVentaRepetido
+from libracore.db.caja import ExternalIdMercadoPagoInvalido, PuntoDeVentaRepetido
 from pydantic import BaseModel, Field
 
 from ..auth import require_admin
@@ -30,6 +30,8 @@ class CajaEntrada(BaseModel):
     #: El punto de venta de ARCA de ESTE mostrador. `None` deja la caja
     #: usando el de la empresa — el caso de toda instancia con un solo POS.
     punto_venta: int | None = None
+    #: ID del POS de MercadoPago de esta caja (no el punto de venta ARCA).
+    mp_pos_id: str | None = None
 
 
 class CajaAlta(CajaEntrada):
@@ -46,6 +48,7 @@ class CajaSalida(BaseModel):
     descripcion: str = ""
     medios_pago: list[str] = []
     punto_venta: int | None = None
+    mp_pos_id: str | None = None
     activo: bool = True
     es_default: bool = False
     sucursal_id: int | None = None
@@ -58,6 +61,7 @@ def _salida(c: dict) -> CajaSalida:
     return CajaSalida(
         id=c["id"], nombre=c["nombre"], descripcion=c.get("descripcion") or "",
         medios_pago=c.get("medios_pago") or [], punto_venta=c.get("punto_venta"),
+        mp_pos_id=c.get("mp_pos_id"),
         activo=bool(c.get("activo", 1)), es_default=bool(c.get("es_default", 0)),
         sucursal_id=c.get("sucursal_id"),
         tiene_turno_abierto=service.turno_abierto_de(c["id"]) is not None,
@@ -85,17 +89,21 @@ def crear(datos: CajaAlta, request: Request):
         caja = service.crear_caja(
             nombre, datos.descripcion.strip(), datos.medios_pago,
             datos.sucursal_id, punto_venta=datos.punto_venta,
+            mp_pos_id=datos.mp_pos_id,
         )
     except service.MedioDePagoInvalido as e:
         raise HTTPException(422, str(e)) from e
     except PuntoDeVentaRepetido as e:
         raise HTTPException(409, str(e)) from e
+    except ExternalIdMercadoPagoInvalido as e:
+        raise HTTPException(422, str(e)) from e
     return _salida(caja)
 
 
 @router.put("/{caja_id}", response_model=CajaSalida, dependencies=[Depends(require_admin)])
 def editar(caja_id: int, datos: CajaEdicion):
-    if service.obtener_caja(caja_id) is None:
+    actual = service.obtener_caja(caja_id)
+    if actual is None:
         raise HTTPException(404, "Caja no encontrada")
     nombre = datos.nombre.strip()
     if not nombre:
@@ -104,11 +112,15 @@ def editar(caja_id: int, datos: CajaEdicion):
         caja = service.actualizar_caja(
             caja_id, nombre, datos.descripcion.strip(), datos.medios_pago,
             datos.activo, punto_venta=datos.punto_venta,
+            mp_pos_id=(datos.mp_pos_id if "mp_pos_id" in datos.model_fields_set
+                       else actual.get("mp_pos_id")),
         )
     except service.MedioDePagoInvalido as e:
         raise HTTPException(422, str(e)) from e
     except PuntoDeVentaRepetido as e:
         raise HTTPException(409, str(e)) from e
+    except ExternalIdMercadoPagoInvalido as e:
+        raise HTTPException(422, str(e)) from e
     return _salida(caja)
 
 

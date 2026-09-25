@@ -30,12 +30,13 @@ type Form = {
   descripcion: string
   medios_pago: string[]
   punto_venta: string
+  mp_pos_id: string
   sucursal_id: string
   activo: boolean
 }
 
 const FORM_VACIO: Form = {
-  nombre: '', descripcion: '', medios_pago: [], punto_venta: '', sucursal_id: '', activo: true,
+  nombre: '', descripcion: '', medios_pago: [], punto_venta: '', mp_pos_id: '', sucursal_id: '', activo: true,
 }
 
 export function Cajas() {
@@ -94,6 +95,7 @@ export function Cajas() {
     setForm({
       nombre: caja.nombre, descripcion: caja.descripcion, medios_pago: caja.medios_pago,
       punto_venta: caja.punto_venta !== null ? String(caja.punto_venta) : '',
+      mp_pos_id: caja.mp_pos_id ?? '',
       sucursal_id: String(caja.sucursal_id ?? ''), activo: caja.activo,
     })
     setFormError(null)
@@ -119,11 +121,13 @@ export function Cajas() {
         await api.put(`/api/cajas/${editando.id}`, {
           nombre: form.nombre.trim(), descripcion: form.descripcion.trim(),
           medios_pago: form.medios_pago, punto_venta: puntoVenta, activo: form.activo,
+          mp_pos_id: form.mp_pos_id.trim() || null,
         })
       } else {
         await api.post('/api/cajas', {
           nombre: form.nombre.trim(), descripcion: form.descripcion.trim(),
           medios_pago: form.medios_pago, punto_venta: puntoVenta,
+          mp_pos_id: form.mp_pos_id.trim() || null,
           sucursal_id: Number(form.sucursal_id),
         })
       }
@@ -271,6 +275,15 @@ export function Cajas() {
                 onChange={(e) => setForm((f) => ({ ...f, punto_venta: e.target.value }))}
                 placeholder="Vacío = el de la empresa"
                 inputMode="numeric"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="caja-mp-pos-id">ID del POS de MercadoPago (opcional)</Label>
+              <Input
+                id="caja-mp-pos-id"
+                value={form.mp_pos_id}
+                onChange={(e) => setForm((f) => ({ ...f, mp_pos_id: e.target.value }))}
+                placeholder="Ej.: BIOKOCAJA01"
               />
             </div>
             <div className="grid gap-2">
