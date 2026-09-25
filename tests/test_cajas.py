@@ -128,6 +128,52 @@ def test_editar_caja_no_le_cambia_la_sucursal(admin_client):
     assert editada.json()["sucursal_id"] == sucursal["id"]
 
 
+def test_editar_caja_conserva_pos_mp_si_se_omite_y_permite_borrarlo(admin_client):
+    sucursal = admin_client.get("/locations").json()[0]
+    creada = admin_client.post("/api/cajas", json={
+        "nombre": "Mostrador QR", "sucursal_id": sucursal["id"],
+        "mp_pos_id": "BIOKOCAJA01",
+    })
+    assert creada.status_code == 201, creada.text
+    caja_id = creada.json()["id"]
+    assert creada.json()["mp_pos_id"] == "BIOKOCAJA01"
+
+    editada = admin_client.put(f"/api/cajas/{caja_id}", json={
+        "nombre": "Mostrador QR renombrado", "activo": True,
+    })
+    assert editada.status_code == 200, editada.text
+    assert editada.json()["mp_pos_id"] == "BIOKOCAJA01"
+    assert next(c for c in admin_client.get("/api/cajas").json()
+                if c["id"] == caja_id)["mp_pos_id"] == "BIOKOCAJA01"
+
+    borrada = admin_client.put(f"/api/cajas/{caja_id}", json={
+        "nombre": "Mostrador QR renombrado", "activo": True, "mp_pos_id": None,
+    })
+    assert borrada.status_code == 200, borrada.text
+    assert borrada.json()["mp_pos_id"] is None
+
+
+def test_pos_mp_invalido_responde_422_al_crear_y_editar(admin_client):
+    sucursal = admin_client.get("/locations").json()[0]
+    datos = {"nombre": "Mostrador QR", "sucursal_id": sucursal["id"]}
+    invalida = admin_client.post("/api/cajas", json={
+        **datos, "mp_pos_id": "BIOKO-CAJA01",
+    })
+    assert invalida.status_code == 422, invalida.text
+    assert "alfanumérico" in invalida.json()["detail"]
+
+    creada = admin_client.post("/api/cajas", json={**datos, "mp_pos_id": "BIOKOCAJA01"})
+    assert creada.status_code == 201, creada.text
+    caja_id = creada.json()["id"]
+    invalida = admin_client.put(f"/api/cajas/{caja_id}", json={
+        "nombre": "Mostrador QR", "mp_pos_id": "BIOKO-CAJA01",
+    })
+    assert invalida.status_code == 422, invalida.text
+    assert "alfanumérico" in invalida.json()["detail"]
+    assert next(c for c in admin_client.get("/api/cajas").json()
+                if c["id"] == caja_id)["mp_pos_id"] == "BIOKOCAJA01"
+
+
 def test_borrar_caja_con_movimientos_da_422(admin_client):
     item_id = crear_item(admin_client)
     depo = admin_client.get("/locations").json()[0]["id"]

@@ -47,7 +47,7 @@ def obtener_caja(caja_id: int) -> dict | None:
 
 
 def crear_caja(nombre: str, descripcion: str, medios: list[str], sucursal_id: int,
-               punto_venta: int | None = None) -> dict:
+               punto_venta: int | None = None, mp_pos_id: str | None = None) -> dict:
     """Da de alta una caja en una sucursal. `sucursal_id` es obligatorio acá —
     a diferencia del motor, donde es opcional — porque en VentaLibra toda caja
     pertenece a un mostrador de una sede; la validación de que esa sucursal
@@ -60,18 +60,21 @@ def crear_caja(nombre: str, descripcion: str, medios: list[str], sucursal_id: in
     _validar_medios(medios)
     cid = db_caja.create_caja_config(
         nombre, descripcion, list(medios), sucursal_id=sucursal_id, punto_venta=punto_venta,
+        mp_pos_id=mp_pos_id,
     )
     return db_caja.get_caja_config(cid)
 
 
 def actualizar_caja(caja_id: int, nombre: str, descripcion: str, medios: list[str],
-                    activo: bool, punto_venta: int | None = None) -> dict:
+                    activo: bool, punto_venta: int | None = None,
+                    mp_pos_id: str | None = None) -> dict:
     """No cambia `sucursal_id`: una caja no se muda de sede, se da de baja y se
     crea otra donde corresponda — mismo criterio que el resto de la familia
     con las cuentas y los depósitos."""
     _validar_medios(medios)
     db_caja.update_caja_config(
-        caja_id, nombre, descripcion, list(medios), 1 if activo else 0, punto_venta=punto_venta,
+        caja_id, nombre, descripcion, list(medios), 1 if activo else 0,
+        punto_venta=punto_venta, mp_pos_id=mp_pos_id,
     )
     return db_caja.get_caja_config(caja_id)
 

@@ -3,9 +3,8 @@
 // Desde P9-M4 la pantalla es la del kit (`libra-ui/comercio/CuentaCorriente*`,
 // la misma que montan Contalibra y Restolibra) y el cableado de ESTE producto
 // son tres cosas: la lista montada en `/cuentas-corrientes`, el detalle en
-// `/cuenta-corriente/:id` y dos redirecciones para los links que el kit trae
-// escritos a fuego ("Volver" -> `/cuenta-corriente`, "Ficha cliente" ->
-// `/clientes/:id`). Si una de esas rutas falta, el link manda al POS por el
+// `/cuenta-corriente/:id`, la redirección de "Volver" (`/cuenta-corriente`)
+// y la ficha propia a la que apunta el kit (`/clientes/:id`). Si falta, el link manda al POS por el
 // catch-all y parece que se rompió el sistema.
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -28,6 +27,12 @@ const DETALLE = {
   saldo: 0,
 }
 
+const CLIENTE = {
+  id: 7, party_type: 'person', display_name: 'Vecina del 12',
+  email: 'vecina@ejemplo.com', phone: null, active: true,
+  cuit: null, condicion_iva: 'Consumidor Final',
+}
+
 let fetchMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
@@ -42,7 +47,7 @@ function json(body: unknown, status = 200) {
 }
 
 /** Sesion valida; las rutas del kit responden su forma, el resto, vacio. */
-function conSesion() {
+function conSesion(clienteStatus = 200) {
   fetchMock.mockImplementation((url: string) => {
     const u = String(url)
     // 🔴 `/cajas` antes que `/7`: ambos contienen `/api/cuenta-corriente`.
@@ -50,6 +55,9 @@ function conSesion() {
     if (u.includes('/api/cuenta-corriente/cajas')) return Promise.resolve(json([]))
     if (u.includes('/api/cuenta-corriente/7')) return Promise.resolve(json(DETALLE))
     if (u.includes('/api/cuenta-corriente')) return Promise.resolve(json(LISTA_VACIA))
+    if (u.includes('/customers/7')) return Promise.resolve(json(
+      clienteStatus === 200 ? CLIENTE : { detail: 'Cliente no encontrado' }, clienteStatus,
+    ))
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   })
@@ -87,11 +95,20 @@ describe('rutas del kit de cuenta corriente', () => {
     expect(errores).not.toHaveBeenCalled()
   })
 
-  it('el "Ficha cliente" del kit (/clientes/:id) redirige al listado', async () => {
+  it('el "Ficha cliente" del kit (/clientes/:id) muestra los datos del cliente', async () => {
     const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
     conSesion()
     montar('/clientes/7')
-    await screen.findAllByText('Clientes')
+    expect(await screen.findByText('Vecina del 12')).toBeInTheDocument()
+    expect(screen.getByText('vecina@ejemplo.com')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/customers/7'))).toBe(true)
     expect(errores).not.toHaveBeenCalled()
+  })
+
+  it('si el cliente no existe muestra el 404, no redirige al POS ni inventa datos', async () => {
+    conSesion(404)
+    montar('/clientes/7')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cliente no encontrado')
+    expect(screen.queryByText('Vecina del 12')).not.toBeInTheDocument()
   })
 })

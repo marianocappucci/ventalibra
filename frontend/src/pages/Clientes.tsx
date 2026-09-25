@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { ColumnDef } from 'libra-ui/data-table'
 import { api, ApiError, type Customer } from '../api'
 import { Card, CardContent } from '@/components/ui/card'
@@ -103,7 +104,10 @@ export function Clientes() {
   }
 
   const columns = useMemo<ColumnDef<Customer>[]>(() => [
-    { accessorKey: 'display_name', header: sortableHeader('Nombre'), cell: ({ row }) => <span className="font-medium">{row.original.display_name}</span> },
+    {
+      accessorKey: 'display_name', header: sortableHeader('Nombre'),
+      cell: ({ row }) => <Link className="font-medium underline-offset-4 hover:underline" to={`/clientes/${row.original.id}`}>{row.original.display_name}</Link>,
+    },
     { accessorKey: 'cuit', header: 'CUIT', cell: ({ row }) => row.original.cuit ?? '—' },
     { accessorKey: 'condicion_iva', header: 'Condición IVA', cell: ({ row }) => row.original.condicion_iva ?? '—' },
     { accessorKey: 'email', header: 'Email', cell: ({ row }) => row.original.email ?? '—' },
