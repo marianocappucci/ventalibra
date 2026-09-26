@@ -15,6 +15,12 @@ def _crear_sucursal(client, nombre="Sucursal Norte") -> dict:
     return r.json()
 
 
+def _sembrada(client) -> dict:
+    """La sucursal que siembra `app/db.py::connect()` (`store`, predeterminada).
+    No es `json()[0]`: el listado va por nombre y ahora también hay un depósito."""
+    return next(loc for loc in client.get("/locations").json() if loc["is_default"])
+
+
 def _cajas_de(client, sucursal_id: int) -> list:
     r = client.get(f"/api/cajas?sucursal_id={sucursal_id}")
     assert r.status_code == 200, r.text
@@ -35,7 +41,7 @@ def test_toda_sucursal_arranca_con_al_menos_una_caja(admin_client):
     rama quedó muerta: `get_default_caja_id()` ya no da `None` para cuando se
     la consulta). Lo que importa acá es que quede UNA sola, marcada default y
     reasignada a la sucursal (no huérfana) -- no de dónde salió el nombre."""
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     cajas = _cajas_de(admin_client, sucursal["id"])
     assert len(cajas) == 1
     assert cajas[0]["es_default"] is True
@@ -82,7 +88,7 @@ def test_alta_de_caja_con_sucursal_inexistente_da_422(admin_client):
 
 
 def test_alta_de_caja_con_punto_de_venta_repetido_da_409(admin_client):
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     otra = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"], "punto_venta": 7,
     })
@@ -95,7 +101,7 @@ def test_alta_de_caja_con_punto_de_venta_repetido_da_409(admin_client):
 
 
 def test_staff_no_puede_crear_cajas(staff_client):
-    sucursal = staff_client.get("/locations").json()[0]
+    sucursal = _sembrada(staff_client)
     r = staff_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"],
     })
@@ -117,7 +123,7 @@ def test_medios_disponibles_sigue_sirviendola_medios_py(admin_client):
 
 
 def test_editar_caja_no_le_cambia_la_sucursal(admin_client):
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     caja = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"],
     }).json()
@@ -129,7 +135,7 @@ def test_editar_caja_no_le_cambia_la_sucursal(admin_client):
 
 
 def test_editar_caja_conserva_pos_mp_si_se_omite_y_permite_borrarlo(admin_client):
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     creada = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador QR", "sucursal_id": sucursal["id"],
         "mp_pos_id": "BIOKOCAJA01",
@@ -154,7 +160,7 @@ def test_editar_caja_conserva_pos_mp_si_se_omite_y_permite_borrarlo(admin_client
 
 
 def test_pos_mp_invalido_responde_422_al_crear_y_editar(admin_client):
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     datos = {"nombre": "Mostrador QR", "sucursal_id": sucursal["id"]}
     invalida = admin_client.post("/api/cajas", json={
         **datos, "mp_pos_id": "BIOKO-CAJA01",
@@ -176,7 +182,7 @@ def test_pos_mp_invalido_responde_422_al_crear_y_editar(admin_client):
 
 def test_borrar_caja_con_movimientos_da_422(admin_client):
     item_id = crear_item(admin_client)
-    depo = admin_client.get("/locations").json()[0]["id"]
+    depo = _sembrada(admin_client)["id"]
     con_stock(admin_client, item_id, depo)
     caja_id = caja_default(admin_client)
     abrir_turno(admin_client, caja_id=caja_id)
@@ -190,7 +196,7 @@ def test_borrar_caja_con_movimientos_da_422(admin_client):
 
 
 def test_marcar_predeterminada_es_por_sucursal(admin_client):
-    sucursal1 = admin_client.get("/locations").json()[0]
+    sucursal1 = _sembrada(admin_client)
     caja1_default = _cajas_de(admin_client, sucursal1["id"])[0]
 
     sucursal2 = _crear_sucursal(admin_client)
@@ -234,7 +240,7 @@ def test_abrir_turno_en_caja_inexistente_da_404(admin_client):
 
 
 def test_abrir_turno_en_caja_inactiva_da_422(admin_client):
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     caja = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"],
     }).json()
@@ -245,7 +251,7 @@ def test_abrir_turno_en_caja_inactiva_da_422(admin_client):
 
 
 def test_shifts_current_devuelve_caja_y_sucursal(admin_client):
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     caja_id = caja_default(admin_client)
     abrir_turno(admin_client, caja_id=caja_id)
 
@@ -258,7 +264,7 @@ def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, staff_
     """El caso real: dos locales vendiendo a la vez, cada uno con su cajero,
     cada uno con su caja. La venta de cada uno cae en SU turno, no en el del
     otro -- es lo que rompía el turno compartido."""
-    sucursal1 = admin_client.get("/locations").json()[0]
+    sucursal1 = _sembrada(admin_client)
     caja1 = caja_default(admin_client)
 
     sucursal2 = _crear_sucursal(admin_client)
@@ -329,7 +335,7 @@ def test_venta_sale_con_el_punto_de_venta_de_la_caja(admin_client):
     de venta de la caja donde el cajero está parado."""
     from libracore.db.caja import resolver_punto_venta
 
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     caja = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"], "punto_venta": 5,
     }).json()
@@ -358,7 +364,7 @@ def test_el_movimiento_de_caja_de_la_venta_toma_la_caja_del_turno(admin_client):
     """
     from libracore.db.core import get_connection
 
-    sucursal = admin_client.get("/locations").json()[0]
+    sucursal = _sembrada(admin_client)
     default = caja_default(admin_client)
     caja = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"],

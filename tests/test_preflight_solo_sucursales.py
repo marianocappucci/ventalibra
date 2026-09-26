@@ -111,4 +111,4 @@ def test_preflight_postgres_real_es_de_solo_lectura(admin_client):
         assert informe["apto_para_planificar"] is True
         with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
             conn.execute("DELETE FROM locations")
-    assert len(admin_client.get("/locations").json()) == 3
+    assert len(admin_client.get("/locations").json()) == 4

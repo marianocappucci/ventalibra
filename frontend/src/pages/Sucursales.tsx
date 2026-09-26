@@ -52,7 +52,9 @@ type Form = {
 
 function formDe(loc: Location): Form {
   return {
-    name: loc.name, location_type: loc.location_type,
+    // Un tipo viejo (ni `store` ni `warehouse`) se muestra como depósito, que
+    // es donde la pantalla ya lo lista: se elige entre los dos y se guarda.
+    name: loc.name, location_type: pestanaDe(loc.location_type),
     is_default: loc.is_default, active: loc.active,
   }
 }
@@ -180,11 +182,6 @@ export function Sucursales() {
   const sucursales = locations.filter((l) => pestanaDe(l.location_type) === 'store')
   const depositos = locations.filter((l) => pestanaDe(l.location_type) === 'warehouse')
 
-  // Un tipo viejo que no es ni `store` ni `warehouse` se ofrece igual en el
-  // desplegable al editar, para no pisarlo sin querer al guardar otro campo.
-  const opcionesTipo = form && !TIPOS.some((t) => t.value === form.location_type)
-    ? [...TIPOS, { value: form.location_type, label: form.location_type }]
-    : TIPOS
 
   function tabla(filas: Location[], vacio: string) {
     return (
@@ -247,7 +244,7 @@ export function Sucursales() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {opcionesTipo.map((t) => (
+                    {TIPOS.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>

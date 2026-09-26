@@ -28,6 +28,11 @@ from . import cajas as cajas_service
 #: cajas, se ofrece en el POS y admite turnos. El depósito (`warehouse`) sólo
 #: guarda stock; sus cajas históricas se conservan pero no operan.
 TIPO_QUE_VENDE = "store"
+TIPO_DEPOSITO = "warehouse"
+#: Los dos únicos tipos (decisión del humano, 2026-09-25): un depósito es un
+#: depósito y una sucursal es una sucursal; el nombre es lo que las distingue a
+#: la vista. Toda instancia tiene como mínimo una de cada una.
+TIPOS_VALIDOS = (TIPO_QUE_VENDE, TIPO_DEPOSITO)
 
 
 def vende(location: Location) -> bool:
@@ -36,6 +41,11 @@ def vende(location: Location) -> bool:
 
 class LocationNotFound(Exception):
     """No existe una sucursal con ese id."""
+
+
+class FaltaTipoMinimo(ValueError):
+    """El cambio dejaría a la instancia sin una sucursal o sin un depósito
+    activos -- toda instancia declara como mínimo una de cada tipo."""
 
 
 class SucursalConTurnoAbierto(ValueError):
@@ -52,14 +62,37 @@ class DatosInvalidos(ValueError):
     el estado de otra sucursal, no un dato mal formado del pedido)."""
 
 
+def _validar_tipo(tipo: str) -> None:
+    if tipo not in TIPOS_VALIDOS:
+        raise DatosInvalidos("El tipo tiene que ser «store» (sucursal) o «warehouse» (depósito).")
+
+
 class LocationService:
     def __init__(self, conn: Conexion):
         self._conn = conn
         self._repo = repositorio(conn)
 
     def create(self, name: str, location_type: str = "warehouse", branch_id: int | None = None) -> Location:
+        _validar_tipo(location_type)
         location = Location(id=None, name=name, branch_id=branch_id, location_type=location_type)
         return self._repo.save_location(location)
+
+    def _activas_de_tipo(self, tipo: str, *, sin: int | None = None) -> int:
+        return sum(
+            1 for loc in self.list()
+            if loc.location_type == tipo and loc.id != sin
+        )
+
+    def asegurar_tipos_minimos(self) -> list[str]:
+        """Al arrancar: si la instancia no tiene ninguna sucursal o ningún
+        depósito activos, crea «Sucursal 1» / «Depósito 1». Idempotente: en una
+        instancia que ya tiene las dos no toca nada. No cambia el default."""
+        creadas = []
+        for tipo, nombre in ((TIPO_QUE_VENDE, "Sucursal 1"), (TIPO_DEPOSITO, "Depósito 1")):
+            if self._activas_de_tipo(tipo) == 0:
+                self.create(nombre, tipo)
+                creadas.append(nombre)
+        return creadas
 
     def get(self, location_id: int) -> Location | None:
         return self._repo.get_location(location_id)
@@ -95,7 +128,7 @@ class LocationService:
         tipo = location_type.strip()
         if not tipo:
             raise DatosInvalidos("El tipo de sucursal es obligatorio.")
-
+        _validar_tipo(tipo)
         # Combinaciones que el motor rechazaría a MITAD de camino (después de
         # que `update_deposito` ya escribió): se frenan antes de tocar nada.
         if not is_default and location.is_default:
@@ -107,6 +140,17 @@ class LocationService:
             )
         if is_default and not active:
             raise ValueError("Una sucursal inactiva no puede ser la predeterminada.")
+
+        # Toda instancia declara como mínimo una sucursal y un depósito activos:
+        # se frena antes de tocar nada si este cambio dejaría a alguno en cero.
+        for t, plural in ((TIPO_QUE_VENDE, "sucursales"), (TIPO_DEPOSITO, "depósitos")):
+            deja_de_serlo = (location.location_type == t and location.active
+                             and (tipo != t or not active))
+            if deja_de_serlo and self._activas_de_tipo(t, sin=location_id) == 0:
+                raise FaltaTipoMinimo(
+                    "La instancia necesita como mínimo una sucursal y un depósito "
+                    f"activos: no se puede dejar sin {plural}."
+                )
 
         # Guarda propia de VentaLibra: se mira ANTES de tocar nada, contra el
         # estado de turnos actual (independiente de lo que venga en `active`).

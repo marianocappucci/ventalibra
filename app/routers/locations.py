@@ -5,6 +5,7 @@ from ..auth import require_admin
 from ..services import cajas as cajas_service
 from ..services.locations import (
     DatosInvalidos,
+    FaltaTipoMinimo,
     LocationNotFound,
     LocationService,
     SucursalConTurnoAbierto,
@@ -54,7 +55,10 @@ def _service(request: Request) -> LocationService:
 # turno.
 @router.post("", response_model=LocationOut, dependencies=[Depends(require_admin)])
 def create_location(data: LocationCreate, request: Request):
-    location = _service(request).create(data.name, data.location_type, data.branch_id)
+    try:
+        location = _service(request).create(data.name, data.location_type, data.branch_id)
+    except DatosInvalidos as e:
+        raise HTTPException(422, str(e)) from e
     # Cajas por sucursal (2026-09-16): una sucursal nueva sin ninguna caja no
     # tiene dónde abrir turno, y el alta de cajas es de admin -- sin esto,
     # quien acaba de crear el Location se queda sin poder vender ahí hasta
@@ -87,7 +91,7 @@ def update_location(location_id: int, data: LocationUpdate, request: Request):
         raise HTTPException(404, str(e)) from e
     except DatosInvalidos as e:
         raise HTTPException(422, str(e)) from e
-    except SucursalConTurnoAbierto as e:
+    except (SucursalConTurnoAbierto, FaltaTipoMinimo) as e:
         raise HTTPException(409, str(e)) from e
     except ValueError as e:
         # Las guardas del motor (`update_deposito`/`set_default_deposito`
