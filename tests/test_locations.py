@@ -224,3 +224,61 @@ def test_el_cambio_de_default_lo_ve_otra_conexion(admin_client):
     with psycopg.connect(TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)) as otra:
         defaults = otra.execute("SELECT id FROM locations WHERE is_default = 1").fetchall()
     assert defaults == [(nueva["id"],)]
+
+
+# ── Dos tipos, y como mínimo uno de cada uno (decisión del humano, 2026-09-25) ──
+
+
+def _tipos_activos(client) -> list[str]:
+    return sorted(loc["location_type"] for loc in client.get("/locations").json())
+
+
+def _editar(client, loc: dict, **cambios):
+    cuerpo = {"name": loc["name"], "location_type": loc["location_type"],
+              "is_default": loc["is_default"], "active": True} | cambios
+    return client.put(f"/locations/{loc['id']}", json=cuerpo)
+
+
+def test_una_base_nueva_declara_una_sucursal_y_un_deposito(admin_client):
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+
+
+def test_el_tipo_se_elige_entre_sucursal_y_deposito(admin_client):
+    r = admin_client.post("/locations", json={"name": "Local", "location_type": "Negocio"})
+    assert r.status_code == 422, r.text
+    otra = _crear_sucursal(admin_client, "Otra")
+    r = _editar(admin_client, otra, location_type="Negocio")
+    assert r.status_code == 422, r.text
+
+
+def test_no_se_deja_a_la_instancia_sin_su_unica_sucursal_o_deposito(admin_client):
+    locs = admin_client.get("/locations").json()
+    sucursal = next(loc for loc in locs if loc["location_type"] == "store")
+    deposito = next(loc for loc in locs if loc["location_type"] == "warehouse")
+    assert deposito["is_default"] is False  # el default es la sucursal sembrada
+
+    for loc, cambio in ((deposito, {"active": False}), (deposito, {"location_type": "store"}),
+                        (sucursal, {"location_type": "warehouse"})):
+        r = _editar(admin_client, loc, **cambio)
+        assert r.status_code == 409, (loc["name"], cambio, r.text)
+        assert "como mínimo" in r.json()["detail"]
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+
+
+def test_con_otro_deposito_se_puede_dar_de_baja_el_primero(admin_client):
+    deposito = next(l for l in admin_client.get("/locations").json() if l["location_type"] == "warehouse")
+    otro = admin_client.post("/locations", json={"name": "Depósito 2", "location_type": "warehouse"}).json()
+    assert _editar(admin_client, deposito, active=False).status_code == 200
+    assert otro["location_type"] == "warehouse"
+
+
+def test_el_arranque_completa_el_tipo_que_falta_y_es_idempotente(admin_client):
+    from app.services.locations import LocationService
+
+    conn = admin_client.app.state.conn
+    conn.execute("DELETE FROM locations WHERE location_type = 'warehouse'")
+    conn.commit()
+    servicio = LocationService(conn)
+    assert servicio.asegurar_tipos_minimos() == ["Depósito 1"]
+    assert servicio.asegurar_tipos_minimos() == []
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
