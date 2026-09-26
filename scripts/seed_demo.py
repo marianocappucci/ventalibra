@@ -34,7 +34,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from http.cookiejar import CookieJar
 from urllib.parse import urlparse
 
@@ -514,20 +514,20 @@ def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
     vacía, y el papel que el cliente se lleva.
 
     🔴 **Portado a F3 (2026-09-14, DECISIONS.md ADR-025).** Se sigue pidiendo
-    la cuenta PUNTUAL (`GET /accounts/{party_id}`) y no el listado (`GET
+    la cuenta PUNTUAL (`GET /api/cuenta-corriente/{id}`) y no el listado (`GET
     /accounts`) -- pero ya no por la razón que decía esta nota hasta el
     2026-09-15: esa era la trampa de antes de que el alta de un cliente creara de una la fila
     `clients` (hoy el cliente ES la fila `clients`, `POST /api/clientes`, ADR-029). Medido
-    de nuevo con el código actual: `GET /accounts` justo después de la venta
+    de nuevo con el código actual: `GET /api/cuenta-corriente` justo después de la venta
     fiada de `_sembrar_ventas` YA trae a Kiosco La Esquina -- el listado no
     devuelve `[]`. La razón real para seguir pidiendo la cuenta puntual es
     otra: sólo esa respuesta trae `movimientos` (con `cc_pago_id`), que es lo
     que este chequeo de idempotencia necesita para no cobrar dos veces si el
-    seed corre de nuevo -- el listado (`CuentaCorrienteService.deudores()`)
-    sólo da `party_id`/`nombre`/`saldo`, sin movimientos.
+    seed corre de nuevo -- el listado (`GET /api/cuenta-corriente`) sólo da
+    `id`/`name`/`saldo`, sin movimientos.
     """
-    party_id = clientes["Kiosco La Esquina"]["id"]
-    cuenta = api.get(f"/accounts/{party_id}")
+    cliente_id = clientes["Kiosco La Esquina"]["id"]
+    cuenta = api.get(f"/api/cuenta-corriente/{cliente_id}")
     if not cuenta or not float(cuenta.get("saldo") or 0):
         print("  -- sin saldo: la venta fiada no se confirmó")
         return
@@ -537,8 +537,8 @@ def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
         return
 
     try:
-        api.post(f"/accounts/{party_id}/payments", {
-            "monto": 5000, "medio_pago": "efectivo",
+        api.post(f"/api/cuenta-corriente/{cliente_id}/pagar", {
+            "monto": 5000, "fecha": date.today().isoformat(), "medio_pago": "efectivo",
             "concepto": "Pago a cuenta", "referencia": "Recibo de la demo",
         })
         contar("cobranza", True)

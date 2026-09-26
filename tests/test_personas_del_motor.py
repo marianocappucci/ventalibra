@@ -18,10 +18,10 @@ def test_la_venta_fiada_llega_a_la_cuenta_por_el_mismo_id(admin_client):
     abrir_turno(admin_client)
     cc._venta_fiada(admin_client, cliente_id, item_id)
 
-    cuenta = admin_client.get(f"/accounts/{cliente_id}").json()
+    cuenta = admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()
     assert float(cuenta["saldo"]) == 3000
-    deudores = admin_client.get("/accounts").json()
-    assert [d["party_id"] for d in deudores] == [cliente_id]
+    deudores = admin_client.get("/api/cuenta-corriente").json()["clientes"]
+    assert [d["id"] for d in deudores] == [cliente_id]
     # La venta quedó atada al mismo id, sin pasar por `external_ref`.
     assert _conn(admin_client).execute(
         "SELECT customer_party_id FROM sales WHERE customer_party_id IS NOT NULL"
