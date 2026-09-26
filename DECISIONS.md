@@ -1570,3 +1570,30 @@ decisión explícita del humano, y no forman parte de esta ADR.
     Restolibra. Pendiente: extraerlo a un `build_consultar_cuit_router` en `libracore` y activarlo acá.
   - El alta de un cliente no queda en `actividad_log` (ADR-028).
 - Depende de: `libra-ui` v0.75.0 publicado y el pin de este repo subido a esa versión.
+
+## ADR-030 — Proveedores con el router del motor y la pantalla del kit (fase 3 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-26
+- Contexto: con las personas en el modelo del motor (ADR-028) y Clientes adoptado (ADR-029), Proveedores
+  puede usar lo mismo que Contalibra y Restolibra: `libracore.egresos_router.build_proveedores_router()`
+  (`/api/proveedores`, tabla `proveedores`) y las pantallas `libra-ui/comercio/Proveedores` y
+  `ProveedorDetalle`. VentaLibra tenía `pages/Proveedores.tsx`, `routers/suppliers.py` y
+  `services/suppliers.py` propios, y Compras hablaba en ids de **party** (`proveedores.id + 100.000`).
+- Decisión: montar el router del motor y las pantallas del kit; **retirar `/suppliers`** y su servicio.
+  La ficha del kit trae los egresos del proveedor, un módulo que VentaLibra no tiene: `libra-ui` v0.76.0
+  agrega la variante `conEgresos` (default `true`: Contalibra y Restolibra no cambian) y VentaLibra la apaga.
+- **Compras habla en `proveedor_id`** (el `proveedores.id` del motor): `POST /purchase-orders` y
+  `/purchase-receipts` reciben `proveedor_id`, y las respuestas traen `proveedor_id` además de
+  `supplier_party_id`. La convención de ids del party (`id + 100.000`) queda en **un solo lugar**,
+  `app/services/proveedores.py`, que además crea o refresca el party espejo **al comprarle** (el router del
+  motor no sabe de compras, así que un proveedor puede nacer sin party).
+- **Guarda de baja:** el router del motor sólo impide eliminar un proveedor con egresos; VentaLibra no tiene
+  egresos sino órdenes y recepciones de compra. `app/proveedores_guarda.py` es una dependencia del
+  `include_router` que devuelve 409 al eliminar un proveedor con compras (la factory no ofrece un gancho).
+- Consecuencias:
+  - Un cajero (staff) puede editar y dar de baja proveedores (comportamiento de Contalibra), igual que con
+    los clientes.
+  - Los proveedores ya migrados (ADR-028) siguen valiendo: su party ya tiene el id `proveedores.id + 100.000`.
+  - Sin ficha de compras por proveedor: la ficha del kit no las conoce (queda como mejora).
+- Depende de: `libra-ui` v0.76.0 publicado y el pin de este repo subido a esa versión.

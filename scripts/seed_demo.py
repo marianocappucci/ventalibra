@@ -149,11 +149,10 @@ CLIENTES = [
     {"name": "Comedor San Cayetano", "cuit_dni": "30-71222333-4", "iva_condition": "IVA Exento"},
 ]
 
+#: Con la forma del router de proveedores del motor (`/api/proveedores`, ADR-030).
 PROVEEDORES = [
-    {"display_name": "Distribuidora Sur", "legal_name": "Distribuidora Sur SRL",
-     "tax_id": "30-70111222-3", "phone": "11 4300-1122"},
-    {"display_name": "Lácteos del Valle", "legal_name": "Lácteos del Valle SA",
-     "tax_id": "30-70444555-6", "email": "ventas@example.com.ar"},
+    {"nombre": "Distribuidora Sur", "cuit_dni": "30-70111222-3", "phone": "11 4300-1122"},
+    {"nombre": "Lácteos del Valle", "cuit_dni": "30-70444555-6", "email": "ventas@example.com.ar"},
 ]
 
 DEPOSITOS = [
@@ -219,8 +218,7 @@ def sembrar(api: Api) -> None:
 
     print("Proveedores…")
     for p in PROVEEDORES:
-        _, nuevo = obtener_o_crear(
-            api, "/suppliers", "display_name", p["display_name"], p)
+        _, nuevo = obtener_o_crear(api, "/api/proveedores", "nombre", p["nombre"], p)
         contar("proveedores", nuevo)
 
     print("Depósitos…")
@@ -464,18 +462,17 @@ def _sembrar_compras(api: Api, articulos: dict, deposito: int, contar) -> None:
         print("  (ya hay órdenes de compra)")
         return
 
-    proveedores = _lista(api.get("/suppliers"))
+    proveedores = _lista(api.get("/api/proveedores"))
     if not proveedores:
         print("  -- sin proveedores, no se puede armar la compra")
         return
     proveedor = proveedores[0]
-    # El id de la orden es el del **party**, no el del proveedor: son dos
-    # entidades distintas en este producto.
-    party = proveedor.get("party_id") or proveedor.get("id")
+    # Las compras se piden por el `proveedores.id` del motor; el party espejo lo resuelve el backend.
+    proveedor_id = proveedor["id"]
 
     LINEAS = [("Yerba mate 1 kg", 24, 3200), ("Arroz largo fino 1 kg", 40, 1150)]
     try:
-        orden = api.post("/purchase-orders", {"supplier_party_id": party})
+        orden = api.post("/purchase-orders", {"proveedor_id": proveedor_id})
         for nombre, cantidad, costo in LINEAS:
             if nombre not in articulos:
                 continue
@@ -486,7 +483,7 @@ def _sembrar_compras(api: Api, articulos: dict, deposito: int, contar) -> None:
         contar("orden_compra", True)
 
         recepcion = api.post("/purchase-receipts", {
-            "supplier_party_id": party, "purchase_order_id": orden["id"],
+            "proveedor_id": proveedor_id, "purchase_order_id": orden["id"],
             "document_reference": "Remito 0001-00004512",
         })
         for nombre, cantidad, costo in LINEAS:

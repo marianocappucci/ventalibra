@@ -33,7 +33,7 @@ def test_un_cliente_que_no_existe_da_404(admin_client):
 
 
 def test_la_lista_no_incluye_a_los_proveedores(admin_client):
-    admin_client.post("/suppliers", json={"display_name": "Distribuidora SA"})
+    admin_client.post("/api/proveedores", json={"nombre": "Distribuidora SA"})
     cliente = admin_client.post("/api/clientes", json={"name": "Ana Cliente"}).json()
 
     assert [c["id"] for c in admin_client.get("/api/clientes").json()] == [cliente["id"]]

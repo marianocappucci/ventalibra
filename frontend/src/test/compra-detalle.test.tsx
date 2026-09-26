@@ -23,11 +23,11 @@ if (!Element.prototype.hasPointerCapture) {
 }
 
 const PROVEEDORES = [
-  { id: 1, party_type: 'organization', display_name: 'Distribuidora Norte', email: null, phone: null, active: true, legal_name: null, tax_id: null },
+  { id: 1, nombre: 'Distribuidora Norte', cuit_dni: '', email: '', phone: '', address: '', iva_condition: '' },
 ]
 
 const ORDEN = {
-  id: 7, number: 'OC-000007', supplier_party_id: 1, status: 'sent',
+  id: 7, number: 'OC-000007', supplier_party_id: 100001, proveedor_id: 1, status: 'sent',
   items: [
     { item_id: 1, quantity_ordered: '10', quantity_received: '0', pending_quantity: '10', unit_cost: '100.00', tax_rate: '0', subtotal: '1000.00' },
   ],
@@ -40,7 +40,7 @@ const ITEMS = [
 
 const LOCATIONS = [{ id: 1, name: 'Depósito Central', branch_id: null, location_type: 'warehouse', active: true, is_default: true }]
 
-const RECEIPT_CREADA = { id: 55, supplier_party_id: 1, purchase_order_id: 7, status: 'draft', items: [], received_at: null, document_reference: null }
+const RECEIPT_CREADA = { id: 55, supplier_party_id: 100001, proveedor_id: 1, purchase_order_id: 7, status: 'draft', items: [], received_at: null, document_reference: null }
 
 type Llamada = { url: string; metodo: string; cuerpo: unknown }
 let llamadas: Llamada[]
@@ -67,7 +67,7 @@ beforeEach(() => {
         : ORDEN
       return Promise.resolve(json(orden))
     }
-    if (u === '/suppliers') return Promise.resolve(json(PROVEEDORES))
+    if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
     if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
     if (u === '/locations') return Promise.resolve(json(LOCATIONS))
     if (metodo === 'POST' && u === '/purchase-receipts') return Promise.resolve(json(RECEIPT_CREADA))
@@ -131,7 +131,7 @@ describe('El detalle de una orden de compra', () => {
     expect(posts.map((p) => p.url)).toEqual([
       '/purchase-receipts', '/purchase-receipts/55/items', '/purchase-receipts/55/confirm',
     ])
-    expect(posts[0].cuerpo).toEqual({ supplier_party_id: 1, purchase_order_id: 7, document_reference: null })
+    expect(posts[0].cuerpo).toEqual({ proveedor_id: 1, purchase_order_id: 7, document_reference: null })
     expect(posts[1].cuerpo).toEqual({ item_id: 1, quantity: '5', unit_cost: '100.00' })
     expect(posts[2].cuerpo).toEqual({ location_id: 1 })
 
@@ -173,7 +173,7 @@ describe('El detalle de una orden de compra', () => {
       const cuerpo = init?.body ? JSON.parse(String(init.body)) : null
       llamadas.push({ url: u, metodo, cuerpo })
       if (u === '/purchase-orders/7') return Promise.resolve(json(ORDEN))
-      if (u === '/suppliers') return Promise.resolve(json(PROVEEDORES))
+      if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
       if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
       if (u === '/locations') return Promise.resolve(json(LOCATIONS))
       // Con una línea cargada: un borrador vacío no es confirmable (ver el
@@ -208,7 +208,7 @@ describe('El detalle de una orden de compra', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       const u = String(url)
       if (u === '/purchase-orders/7') return Promise.resolve(json(ORDEN))
-      if (u === '/suppliers') return Promise.resolve(json(PROVEEDORES))
+      if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
       if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
       if (u === '/locations') return Promise.resolve(json(LOCATIONS))
       if (u === '/purchase-receipts') return Promise.resolve(json([RECEIPT_CREADA]))
@@ -226,7 +226,7 @@ describe('El detalle de una orden de compra', () => {
       const u = String(url)
       const metodo = init?.method ?? 'GET'
       if (u === '/purchase-orders/7') return Promise.resolve(json(ORDEN))
-      if (u === '/suppliers') return Promise.resolve(json(PROVEEDORES))
+      if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
       if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
       if (u === '/locations') return Promise.resolve(json(LOCATIONS))
       if (metodo === 'POST' && u === '/purchase-receipts') return Promise.resolve(json(RECEIPT_CREADA))

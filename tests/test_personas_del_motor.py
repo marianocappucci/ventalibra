@@ -5,8 +5,6 @@ de ids de Contalibra -- cliente = party de igual id; proveedor = party con id `p
 import test_cuenta_corriente as cc
 from ventas_helpers import abrir_turno, crear_item
 
-from app.services.suppliers import OFFSET_PROVEEDOR
-
 
 def _conn(client):
     return client.app.state.conn
@@ -28,28 +26,3 @@ def test_la_venta_fiada_llega_a_la_cuenta_por_el_mismo_id(admin_client):
     assert _conn(admin_client).execute(
         "SELECT customer_party_id FROM sales WHERE customer_party_id IS NOT NULL"
     ).fetchone()[0] == cliente_id
-
-
-def test_un_proveedor_nuevo_es_el_proveedor_y_el_party_con_offset(admin_client):
-    r = admin_client.post("/suppliers", json={
-        "display_name": "Distribuidora Sur", "tax_id": "30-70111222-3", "email": "ventas@sur.test",
-    })
-    assert r.status_code == 200, r.text
-    proveedor = r.json()
-    conn = _conn(admin_client)
-    fila = conn.execute("SELECT id, nombre, cuit_dni FROM proveedores").fetchone()
-    assert proveedor["id"] == OFFSET_PROVEEDOR + fila[0]
-    assert (fila[1], fila[2]) == ("Distribuidora Sur", "30-70111222-3")
-    party = conn.execute("SELECT display_name FROM parties WHERE id = ?", (proveedor["id"],)).fetchone()
-    assert party[0] == "Distribuidora Sur"
-    # Se lista y se lee por el id del party (el contrato de `/suppliers` y de Compras).
-    assert [p["id"] for p in admin_client.get("/suppliers").json()] == [proveedor["id"]]
-    assert admin_client.get(f"/suppliers/{proveedor['id']}").json()["display_name"] == "Distribuidora Sur"
-    assert admin_client.get("/suppliers/1").status_code == 404
-
-
-def test_una_orden_de_compra_acepta_al_proveedor_nuevo(admin_client):
-    proveedor = admin_client.post("/suppliers", json={"display_name": "Prov"}).json()
-    r = admin_client.post("/purchase-orders", json={"supplier_party_id": proveedor["id"]})
-    assert r.status_code == 200, r.text
-    assert r.json()["supplier_party_id"] == proveedor["id"]

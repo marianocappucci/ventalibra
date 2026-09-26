@@ -4,6 +4,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ..services.proveedores import ProveedorNoExiste, party_de_proveedor, proveedor_de_party
 from ..services.purchasing import (
     InvalidPurchaseState,
     PurchaseOrderNotFound,
@@ -15,7 +16,8 @@ router = APIRouter(tags=["purchasing"])
 
 
 class PurchaseOrderCreate(BaseModel):
-    supplier_party_id: int
+    #: El `proveedores.id` del motor (no el party: la convención vive en `services/proveedores.py`).
+    proveedor_id: int
     branch_id: int | None = None
 
 
@@ -40,6 +42,8 @@ class PurchaseOrderOut(BaseModel):
     id: int
     number: str
     supplier_party_id: int
+    #: El `proveedores.id` del motor (derivado de `supplier_party_id`).
+    proveedor_id: int
     status: str
     items: list[PurchaseOrderItemOut]
     is_fully_received: bool
@@ -48,6 +52,7 @@ class PurchaseOrderOut(BaseModel):
 def _to_order_out(order) -> PurchaseOrderOut:
     return PurchaseOrderOut(
         id=order.id, number=order.number, supplier_party_id=order.supplier_party_id,
+        proveedor_id=proveedor_de_party(order.supplier_party_id),
         status=order.status,
         items=[
             PurchaseOrderItemOut(
@@ -62,7 +67,8 @@ def _to_order_out(order) -> PurchaseOrderOut:
 
 
 class PurchaseReceiptCreate(BaseModel):
-    supplier_party_id: int
+    #: El `proveedores.id` del motor.
+    proveedor_id: int
     purchase_order_id: int | None = None
     document_reference: str | None = None
 
@@ -86,6 +92,7 @@ class PurchaseReceiptItemOut(BaseModel):
 class PurchaseReceiptOut(BaseModel):
     id: int
     supplier_party_id: int
+    proveedor_id: int
     purchase_order_id: int | None
     status: str
     items: list[PurchaseReceiptItemOut]
@@ -96,6 +103,7 @@ class PurchaseReceiptOut(BaseModel):
 def _to_receipt_out(receipt) -> PurchaseReceiptOut:
     return PurchaseReceiptOut(
         id=receipt.id, supplier_party_id=receipt.supplier_party_id,
+        proveedor_id=proveedor_de_party(receipt.supplier_party_id),
         purchase_order_id=receipt.purchase_order_id, status=receipt.status,
         items=[
             PurchaseReceiptItemOut(
@@ -120,9 +128,11 @@ def _service(request: Request) -> PurchasingService:
 
 @router.post("/purchase-orders", response_model=PurchaseOrderOut)
 def create_order(data: PurchaseOrderCreate, request: Request):
-    order = _service(request).create_order(
-        supplier_party_id=data.supplier_party_id, branch_id=data.branch_id,
-    )
+    try:
+        party_id = party_de_proveedor(request.app.state.conn, data.proveedor_id)
+    except ProveedorNoExiste as exc:
+        raise HTTPException(404, str(exc)) from exc
+    order = _service(request).create_order(supplier_party_id=party_id, branch_id=data.branch_id)
     return _to_order_out(order)
 
 
@@ -156,11 +166,14 @@ def add_order_item(order_id: int, data: PurchaseOrderItemCreate, request: Reques
 @router.post("/purchase-receipts", response_model=PurchaseReceiptOut)
 def create_receipt(data: PurchaseReceiptCreate, request: Request):
     try:
+        party_id = party_de_proveedor(request.app.state.conn, data.proveedor_id)
         receipt = _service(request).create_receipt(
-            supplier_party_id=data.supplier_party_id,
+            supplier_party_id=party_id,
             purchase_order_id=data.purchase_order_id,
             document_reference=data.document_reference,
         )
+    except ProveedorNoExiste as exc:
+        raise HTTPException(404, str(exc)) from exc
     except PurchaseOrderNotFound:
         raise HTTPException(404, "purchase order not found")
     return _to_receipt_out(receipt)

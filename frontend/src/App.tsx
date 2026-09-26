@@ -13,6 +13,7 @@ import { Transferencias } from './pages/Transferencias'
 import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
 import { Proveedores } from './pages/Proveedores'
+import { ProveedorDetalle } from './pages/ProveedorDetalle'
 import { Compras } from './pages/Compras'
 import { CompraDetalle } from './pages/CompraDetalle'
 import { Clientes } from './pages/Clientes'
@@ -91,6 +92,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Proveedores />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/proveedores/:id"
+        element={
+          <ProtectedRoute>
+            <ProveedorDetalle />
           </ProtectedRoute>
         }
       />

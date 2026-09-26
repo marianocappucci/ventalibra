@@ -430,10 +430,8 @@ export type Party = {
   active: boolean
 }
 
-export type Supplier = Party & {
-  legal_name: string | null
-  tax_id: string | null
-}
+/** El proveedor del motor (`/api/proveedores`): el mismo tipo que usan Contalibra y Restolibra. */
+export type { Proveedor } from 'libra-ui/comercio/tipos'
 
 /** El cliente del motor (`/api/clientes`): el mismo tipo que usan Contalibra y Restolibra. */
 export type { Cliente } from 'libra-ui/mp'
@@ -475,6 +473,8 @@ export type PurchaseOrder = {
   id: number
   number: string
   supplier_party_id: number
+  /** El `proveedores.id` del motor: con el que se pide y se nombra al proveedor. */
+  proveedor_id: number
   status: PurchaseOrderStatus
   items: PurchaseOrderItem[]
   is_fully_received: boolean
@@ -501,6 +501,7 @@ export type PurchaseReceiptItem = {
 export type PurchaseReceipt = {
   id: number
   supplier_party_id: number
+  proveedor_id: number
   purchase_order_id: number | null
   status: PurchaseReceiptStatus
   items: PurchaseReceiptItem[]
@@ -572,15 +573,9 @@ export type StockPorDeposito = {
 // cientos de items en el catalogo, y elegirlos a ojo en una lista ordenada
 // era el caso que motivo el componente.
 
-export function opcionesProveedor(proveedores: Supplier[]): OpcionSelect[] {
-  return proveedores.map((s) => ({
-    value: String(s.id),
-    label: s.display_name,
-    // El CUIT es lo que figura en la factura del proveedor, que es el papel
-    // que se tiene a mano al cargar una compra.
-    hint: [s.tax_id, s.active ? null : 'inactivo'].filter(Boolean).join(' · ') || undefined,
-  }))
-}
+// Las opciones de proveedor son las del kit (`libra-ui/comercio/tipos`): el mismo nombre y CUIT como pista
+// que en Contalibra.
+export { opcionesProveedor } from 'libra-ui/comercio/tipos'
 
 export function opcionesItem(items: CatalogItem[]): OpcionSelect[] {
   return items.map((i) => ({
