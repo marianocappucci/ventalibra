@@ -27,10 +27,12 @@ const DETALLE = {
   saldo: 0,
 }
 
+// La ficha del kit sobre el router del motor (`/api/clientes/:id`, ADR-029): el cliente más lo que
+// la ficha espera aunque VentaLibra no muestre esos módulos.
 const CLIENTE = {
-  id: 7, party_type: 'person', display_name: 'Vecina del 12',
-  email: 'vecina@ejemplo.com', phone: null, active: true,
-  cuit: null, condicion_iva: 'Consumidor Final',
+  id: 7, name: 'Vecina del 12', address: '', cuit_dni: '', email: 'vecina@ejemplo.com', phone: '',
+  iva_condition: 'Consumidor Final', auto_facturar: 0, activo: 1,
+  alias_facturacion: [], facturas: [], presupuestos: [], remitos: [],
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -55,7 +57,7 @@ function conSesion(clienteStatus = 200) {
     if (u.includes('/api/cuenta-corriente/cajas')) return Promise.resolve(json([]))
     if (u.includes('/api/cuenta-corriente/7')) return Promise.resolve(json(DETALLE))
     if (u.includes('/api/cuenta-corriente')) return Promise.resolve(json(LISTA_VACIA))
-    if (u.includes('/customers/7')) return Promise.resolve(json(
+    if (u.includes('/api/clientes/7')) return Promise.resolve(json(
       clienteStatus === 200 ? CLIENTE : { detail: 'Cliente no encontrado' }, clienteStatus,
     ))
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([]))
@@ -99,16 +101,16 @@ describe('rutas del kit de cuenta corriente', () => {
     const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
     conSesion()
     montar('/clientes/7')
-    expect(await screen.findByText('Vecina del 12')).toBeInTheDocument()
+    expect((await screen.findAllByText('Vecina del 12')).length).toBeGreaterThan(0)
     expect(screen.getByText('vecina@ejemplo.com')).toBeInTheDocument()
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/customers/7'))).toBe(true)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/clientes/7'))).toBe(true)
     expect(errores).not.toHaveBeenCalled()
   })
 
   it('si el cliente no existe muestra el 404, no redirige al POS ni inventa datos', async () => {
     conSesion(404)
     montar('/clientes/7')
-    expect(await screen.findByRole('alert')).toHaveTextContent('Cliente no encontrado')
+    expect((await screen.findAllByText(/Cliente no encontrado/)).length).toBeGreaterThan(0)
     expect(screen.queryByText('Vecina del 12')).not.toBeInTheDocument()
   })
 })

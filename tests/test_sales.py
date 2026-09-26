@@ -82,7 +82,7 @@ def test_registrar_venta_con_cliente_completa_su_nombre(admin_client):
     quedaba con `cliente_nombre` vacío aunque sí tuviera cliente."""
     item_id = _make_item(admin_client)
     abrir_turno(admin_client)
-    cliente = admin_client.post("/customers", json={"display_name": "Vecina del 12"})
+    cliente = admin_client.post("/api/clientes", json={"name": "Vecina del 12"})
     assert cliente.status_code == 200, cliente.text
 
     venta = registrar_venta(admin_client, item_id, cliente_id=cliente.json()["id"])

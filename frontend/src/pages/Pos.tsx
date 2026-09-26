@@ -26,7 +26,7 @@ import { Link } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
 import {
-  api, ApiError, type Caja, type CatalogItem, type Customer, type ItemVariant, type Location,
+  api, ApiError, type Caja, type CatalogItem, type Cliente, type ItemVariant, type Location,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
   type ScanResult, type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
@@ -273,7 +273,7 @@ export function Pos() {
 
   // Cliente de la venta. La mayoría son a consumidor final y no lo necesitan;
   // fiar sí, porque una deuda tiene que ser de alguien.
-  const [cliente, setCliente] = useState<Customer | null>(null)
+  const [cliente, setCliente] = useState<Cliente | null>(null)
   const [clienteOpen, setClienteOpen] = useState(false)
 
   // Sin turno abierto el backend rechaza el cobro (409), asi que la pantalla
@@ -401,7 +401,7 @@ export function Pos() {
    *  ya cargadas (que es lo habitual: el cajero se entera de que va fiado
    *  recién al cobrar). Ya no hay ningún borrador al que avisarle (D1): el
    *  cliente viaja recién en `POST /api/ventas`. */
-  function elegirCliente(elegido: Customer | null) {
+  function elegirCliente(elegido: Cliente | null) {
     setCliente(elegido)
     setClienteOpen(false)
     enfocarEscaneo()
@@ -732,7 +732,7 @@ export function Pos() {
             disabled={busy}
           >
             <User />
-            <span className="truncate">{cliente ? cliente.display_name : 'Consumidor final'}</span>
+            <span className="truncate">{cliente ? cliente.name : 'Consumidor final'}</span>
             <span className="ml-auto text-xs opacity-70">F7</span>
           </Button>
           <Button
@@ -992,19 +992,20 @@ type PagoForm = { medio: string; monto: string; recibido: string }
 /** Elegir a quién se le vende. Sólo hace falta para fiar y para facturar; el
  *  resto de las ventas son a consumidor final y no pasan por acá. */
 function ElegirCliente({ actual, onElegir, onCerrar }: {
-  actual: Customer | null
-  onElegir: (cliente: Customer | null) => void
+  actual: Cliente | null
+  onElegir: (cliente: Cliente | null) => void
   onCerrar: () => void
 }) {
-  const [clientes, setClientes] = useState<Customer[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [filtro, setFiltro] = useState('')
 
   useEffect(() => {
-    api.get<Customer[]>('/customers').then(setClientes).catch(() => setClientes([]))
+    // El listado del motor trae también a los inactivos (la pantalla los marca): el POS sólo ofrece los activos.
+    api.get<Cliente[]>('/api/clientes').then((todos) => setClientes(todos.filter((c) => c.activo))).catch(() => setClientes([]))
   }, [])
 
   const visibles = filtro
-    ? clientes.filter((c) => c.display_name.toLowerCase().includes(filtro.toLowerCase()))
+    ? clientes.filter((c) => c.name.toLowerCase().includes(filtro.toLowerCase()))
     : clientes
 
   return (
@@ -1033,7 +1034,7 @@ function ElegirCliente({ actual, onElegir, onCerrar }: {
                 actual?.id === c.id ? 'bg-accent' : '',
               ].join(' ')}
             >
-              <span>{c.display_name}</span>
+              <span>{c.name}</span>
               {c.cuit && <span className="text-xs text-muted-foreground">{c.cuit}</span>}
             </button>
           ))}
@@ -1069,7 +1070,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   cart: CartLine[]
   total: number
   depositoId: number | null
-  cliente: Customer | null
+  cliente: Cliente | null
   mp: MpDisponible | null
   onCerrar: () => void
   onPedirCliente: () => void
@@ -1549,7 +1550,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
             <div className="rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
               {cliente ? (
                 <p>
-                  Queda como deuda de <strong>{cliente.display_name}</strong>. No
+                  Queda como deuda de <strong>{cliente.name}</strong>. No
                   entra a la caja: el movimiento aparece cuando venga a pagar.
                 </p>
               ) : (

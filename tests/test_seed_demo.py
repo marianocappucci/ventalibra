@@ -85,7 +85,7 @@ def test_deja_el_catalogo_completo(api):
     assert len(api.get("/catalog/units")) == 2
     assert len(api.get("/catalog/categories")) == 4
     assert len(api.get("/catalog/items")) == 11
-    assert len(api.get("/customers")) == 4
+    assert len(api.get("/api/clientes")) == 4
     assert len(api.get("/suppliers")) == 2
 
 
@@ -194,7 +194,7 @@ def test_correrlo_dos_veces_no_duplica(api, capsys):
     salida = capsys.readouterr().out
     assert "artículos    0 creados, 11 ya estaban" in salida
     assert len(api.get("/catalog/items")) == 11
-    assert len(api.get("/customers")) == 4
+    assert len(api.get("/api/clientes")) == 4
 
 
 def test_la_segunda_corrida_no_agrega_ventas(api):

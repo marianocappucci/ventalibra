@@ -45,7 +45,7 @@ def _deudor(client, nombre="Vecina del 12", cantidad="2"):
     `cliente_id` y un pago `cuenta_corriente` (D3: ese pago ES la deuda, no
     hace falta un `cc_debito` aparte)."""
     item_id = _make_item(client)
-    cliente_id = client.post("/customers", json={"display_name": nombre}).json()["id"]
+    cliente_id = client.post("/api/clientes", json={"name": nombre}).json()["id"]
     _abrir_turno(client)
 
     precio = 1500.0

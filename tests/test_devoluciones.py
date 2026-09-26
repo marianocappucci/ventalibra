@@ -87,7 +87,7 @@ def test_anular_una_venta_fiada_le_baja_la_deuda_al_cliente(admin_client):
     location_id = deposito_default(admin_client)
     con_stock(admin_client, item_id, location_id, "10")
     abrir_turno(admin_client)
-    cliente = admin_client.post("/customers", json={"display_name": "Vecina"}).json()["id"]
+    cliente = admin_client.post("/api/clientes", json={"name": "Vecina"}).json()["id"]
     sale_id = _venta(admin_client, item_id, cantidad="2",
                      pagos=[{"medio": "cuenta_corriente", "monto": 3000}],
                      customer_id=cliente)
@@ -252,7 +252,7 @@ def test_devolver_a_cuenta_corriente_baja_la_deuda(admin_client):
     location_id = deposito_default(admin_client)
     con_stock(admin_client, item_id, location_id, "10")
     turno_id = abrir_turno(admin_client)
-    cliente = admin_client.post("/customers", json={"display_name": "Vecina"}).json()["id"]
+    cliente = admin_client.post("/api/clientes", json={"name": "Vecina"}).json()["id"]
     sale_id = _venta(admin_client, item_id, cantidad="2",
                      pagos=[{"medio": "cuenta_corriente", "monto": 3000}],
                      customer_id=cliente)
