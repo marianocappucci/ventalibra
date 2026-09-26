@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { BadgeEstado } from 'libra-ui/badge-estado'
 import { DataTable, sortableHeader } from '@/components/data-table'
-import { Landmark, Star } from 'lucide-react'
+import { Landmark, Pencil, Power, PowerOff, Star, Trash2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { useMediosPago } from '@/lib/medios-pago'
 
@@ -149,8 +149,23 @@ export function Cajas() {
     }
   }
 
+  // Desactivar y no borrar: una caja con movimientos no se puede eliminar, y
+  // una inactiva deja de ofrecerse en el POS sin perder su historial.
+  async function alternarActiva(caja: Caja) {
+    try {
+      await api.put(`/api/cajas/${caja.id}`, {
+        nombre: caja.nombre, descripcion: caja.descripcion ?? '',
+        medios_pago: caja.medios_pago, punto_venta: caja.punto_venta,
+        activo: !caja.activo,
+      })
+      await load()
+    } catch (err) {
+      setError(describeError(err))
+    }
+  }
+
   async function borrar(caja: Caja) {
-    if (!confirm(`¿Dar de baja la caja "${caja.nombre}"?`)) return
+    if (!confirm(`¿Eliminar la caja "${caja.nombre}"? Si tiene movimientos no se puede: desactivala.`)) return
     try {
       await api.del(`/api/cajas/${caja.id}`)
       await load()
@@ -195,13 +210,27 @@ export function Cajas() {
       cell: ({ row }) => (
         <div className="flex justify-end gap-2">
           {!row.original.es_default && (
-            <Button size="sm" variant="ghost" onClick={() => marcarPredeterminada(row.original)}>
-              Marcar predeterminada
+            <Button size="icon" variant="outline" className="size-8"
+                    title="Marcar predeterminada" aria-label={`Marcar ${row.original.nombre} como predeterminada`}
+                    onClick={() => marcarPredeterminada(row.original)}>
+              <Star />
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => abrirEdicion(row.original)}>Editar</Button>
-          <Button size="sm" variant="outline" className="text-destructive" onClick={() => borrar(row.original)}>
-            Baja
+          <Button size="icon" variant="outline" className="size-8"
+                  title="Editar" aria-label={`Editar ${row.original.nombre}`}
+                  onClick={() => abrirEdicion(row.original)}>
+            <Pencil />
+          </Button>
+          <Button size="icon" variant="outline" className="size-8"
+                  title={row.original.activo ? 'Desactivar' : 'Activar'}
+                  aria-label={`${row.original.activo ? 'Desactivar' : 'Activar'} ${row.original.nombre}`}
+                  onClick={() => alternarActiva(row.original)}>
+            {row.original.activo ? <PowerOff /> : <Power />}
+          </Button>
+          <Button size="icon" variant="outline" className="size-8 text-destructive"
+                  title="Eliminar" aria-label={`Eliminar ${row.original.nombre}`}
+                  onClick={() => borrar(row.original)}>
+            <Trash2 />
           </Button>
         </div>
       ),

@@ -355,7 +355,9 @@ export function Pos() {
 
   useEffect(() => {
     api.get<Location[]>('/locations')
-      .then((items) => {
+      .then((todas) => {
+        // Sólo vende una sucursal `store`; los depósitos no se ofrecen.
+        const items = todas.filter((l) => l.location_type === 'store')
         setLocations(items)
         setLocationId((actual) => {
           if (actual && items.some((l) => String(l.id) === actual)) return actual
@@ -1745,7 +1747,9 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
 
   useEffect(() => {
     if (!sucursalId) { setCajas([]); setCajaId(''); return }
-    api.get<Caja[]>(`/api/cajas?sucursal_id=${sucursalId}`).then((items) => {
+    api.get<Caja[]>(`/api/cajas?sucursal_id=${sucursalId}`).then((todas) => {
+      // Una caja dada de baja (inactiva) no se ofrece para abrir turno.
+      const items = todas.filter((c) => c.activo !== false)
       setCajas(items)
       const libre = items.find((c) => c.es_default && !c.tiene_turno_abierto)
         ?? items.find((c) => !c.tiene_turno_abierto)

@@ -30,7 +30,7 @@ const ITEM = {
 }
 
 const LOCATIONS = [
-  { id: 1, name: 'Salón', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
+  { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
 ]
 
 function montarRed() {

@@ -193,7 +193,7 @@ describe('El detalle de una orden de compra', () => {
 
     const fila = (await screen.findByText('#55')).closest('tr')!
     expect(within(fila).getByText('Borrador')).toBeInTheDocument()
-    await usuario.click(within(fila).getByRole('button', { name: 'Confirmar' }))
+    await usuario.click(within(fila).getByRole('button', { name: 'Confirmar recepción' }))
 
     const dialogo = await screen.findByRole('dialog')
     expect(dialogo).toHaveTextContent('Confirmar recepción #55')

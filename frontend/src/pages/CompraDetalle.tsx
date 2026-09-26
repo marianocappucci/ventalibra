@@ -27,7 +27,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ArrowLeft, PackageCheck, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Check, PackageCheck, ShoppingBag } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 function describeError(err: unknown): string {
@@ -473,7 +473,11 @@ function RecepcionesDeLaOrden({
                       puede confirmar una recepcion sin lineas"): ofrecer el
                       botón sería mandar a un error seguro. */}
                   {receipt.status === 'draft' && receipt.items.length > 0 && (
-                    <Button size="sm" variant="outline" onClick={() => setConfirmando(receipt)}>Confirmar</Button>
+                    <Button size="icon" variant="outline" className="size-8"
+                            title="Confirmar recepción" aria-label="Confirmar recepción"
+                            onClick={() => setConfirmando(receipt)}>
+                      <Check />
+                    </Button>
                   )}
                 </TableCell>
               </TableRow>

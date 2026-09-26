@@ -36,8 +36,8 @@ const ITEM = {
 
 // Dos sucursales: sirve para afirmar que viaja la elegida, no "la primera".
 const LOCATIONS = [
-  { id: 1, name: 'Salón', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
-  { id: 2, name: 'Depósito', branch_id: null, location_type: 'warehouse', active: true, is_default: false },
+  { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
+  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'store', active: true, is_default: false },
 ]
 
 function venta(overrides: Record<string, unknown> = {}) {
@@ -126,7 +126,7 @@ describe('Registrar la venta (D1: una sola llamada)', () => {
     // Elegir la segunda sucursal antes de cobrar -- arranca en "Salón" (la
     // primera de la lista, ver el efecto de `Pos.tsx` que fija el default).
     await user.click(await screen.findByRole('combobox', { name: 'Sucursal' }))
-    await user.click(await screen.findByRole('option', { name: 'Depósito' }))
+    await user.click(await screen.findByRole('option', { name: 'Sucursal Norte' }))
 
     await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
     await user.click(screen.getByRole('button', { name: /Cobrar/ }))
@@ -233,8 +233,8 @@ describe('La sucursal inicial del POS', () => {
     // antes, mostraría "Depósito" en vez de "Salón".
     montarRed({
       locations: [
-        { id: 2, name: 'Depósito', branch_id: null, location_type: 'warehouse', active: true, is_default: false },
-        { id: 1, name: 'Salón', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
+        { id: 2, name: 'Depósito', branch_id: null, location_type: 'store', active: true, is_default: false },
+        { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
       ],
     })
     const user = userEvent.setup()
@@ -249,8 +249,8 @@ describe('La sucursal inicial del POS', () => {
   it('sin ninguna marcada is_default, cae a la primera de la lista', async () => {
     montarRed({
       locations: [
-        { id: 2, name: 'Depósito', branch_id: null, location_type: 'warehouse', active: true, is_default: false },
-        { id: 1, name: 'Salón', branch_id: null, location_type: 'warehouse', active: true, is_default: false },
+        { id: 2, name: 'Depósito', branch_id: null, location_type: 'store', active: true, is_default: false },
+        { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: false },
       ],
     })
     const user = userEvent.setup()
@@ -258,5 +258,23 @@ describe('La sucursal inicial del POS', () => {
     await escanear(user)
 
     expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Depósito')
+  })
+
+  it('no ofrece los depósitos: sólo una sucursal `store` vende', async () => {
+    montarRed({
+      locations: [
+        { id: 3, name: 'Depósito', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
+        { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: false },
+      ],
+    })
+    const user = userEvent.setup()
+    montar()
+    await escanear(user)
+
+    // El depósito es el default del sistema, pero no vende: queda Salón.
+    const combo = await screen.findByRole('combobox', { name: 'Sucursal' })
+    expect(combo).toHaveTextContent('Salón')
+    await user.click(combo)
+    expect(screen.queryByRole('option', { name: 'Depósito' })).not.toBeInTheDocument()
   })
 })

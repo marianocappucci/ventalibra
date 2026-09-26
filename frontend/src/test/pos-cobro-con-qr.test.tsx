@@ -53,7 +53,7 @@ const ITEM = {
   unit_code: 'u', default_sale_price: '3000.00', active: true,
 }
 
-const LOCATION = { id: 1, name: 'Salón', branch_id: null, location_type: 'warehouse', active: true, is_default: true }
+const LOCATION = { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true }
 
 /** La venta ya registrada -- lo que devuelve `POST /api/ventas` (D1: nace
  *  completa, no un borrador vacío). */

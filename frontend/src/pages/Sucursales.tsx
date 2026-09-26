@@ -52,7 +52,9 @@ type Form = {
 
 function formDe(loc: Location): Form {
   return {
-    name: loc.name, location_type: loc.location_type,
+    // Un tipo viejo (ni `store` ni `warehouse`) se muestra como depósito, que
+    // es donde la pantalla ya lo lista: se elige entre los dos y se guarda.
+    name: loc.name, location_type: pestanaDe(loc.location_type),
     is_default: loc.is_default, active: loc.active,
   }
 }
@@ -168,8 +170,10 @@ export function Sucursales() {
       header: '',
       cell: ({ row }) => esAdmin ? (
         <div className="flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => abrirEdicion(row.original)}>
-            <Pencil />Editar
+          <Button size="icon" variant="outline" className="size-8"
+                  title="Editar" aria-label={`Editar ${row.original.name}`}
+                  onClick={() => abrirEdicion(row.original)}>
+            <Pencil />
           </Button>
         </div>
       ) : null,
@@ -177,14 +181,13 @@ export function Sucursales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [esAdmin])
 
+  // Al editar, el tipo no se cambia -- salvo uno viejo (ni `store` ni
+  // `warehouse`), que se elige entre los dos.
+  const tipoFijo = !!editando && TIPOS.some((t) => t.value === editando.location_type)
+
   const sucursales = locations.filter((l) => pestanaDe(l.location_type) === 'store')
   const depositos = locations.filter((l) => pestanaDe(l.location_type) === 'warehouse')
 
-  // Un tipo viejo que no es ni `store` ni `warehouse` se ofrece igual en el
-  // desplegable al editar, para no pisarlo sin querer al guardar otro campo.
-  const opcionesTipo = form && !TIPOS.some((t) => t.value === form.location_type)
-    ? [...TIPOS, { value: form.location_type, label: form.location_type }]
-    : TIPOS
 
   function tabla(filas: Location[], vacio: string) {
     return (
@@ -242,16 +245,22 @@ export function Sucursales() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="location-type">Tipo</Label>
-                <Select value={form.location_type} onValueChange={(v) => setForm({ ...form, location_type: v })}>
-                  <SelectTrigger id="location-type" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {opcionesTipo.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {tipoFijo ? (
+                  // El tipo se elige al crear; después una sucursal sigue siendo
+                  // sucursal y un depósito, depósito.
+                  <p id="location-type" className="text-sm">{etiquetaTipo(form.location_type)}</p>
+                ) : (
+                  <Select value={form.location_type} onValueChange={(v) => setForm({ ...form, location_type: v })}>
+                    <SelectTrigger id="location-type" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIPOS.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               {editando && (
                 <>

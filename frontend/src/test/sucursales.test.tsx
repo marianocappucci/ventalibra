@@ -40,7 +40,8 @@ function json(body: unknown, status = 200) {
   })
 }
 
-function montarRed(opciones: { putStatus?: number; putBody?: unknown } = {}) {
+function montarRed(opciones: { putStatus?: number; putBody?: unknown; locations?: typeof LOCATIONS } = {}) {
+  const lista = opciones.locations ?? LOCATIONS
   llamadas = []
   vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
@@ -60,7 +61,7 @@ function montarRed(opciones: { putStatus?: number; putBody?: unknown } = {}) {
     if (metodo === 'POST' && u === '/locations') {
       return Promise.resolve(json({ id: 3, branch_id: null, active: true, is_default: false, ...(cuerpo as object) }, 201))
     }
-    if (u.startsWith('/locations')) return Promise.resolve(json(LOCATIONS))
+    if (u.startsWith('/locations')) return Promise.resolve(json(lista))
     return Promise.resolve(json({}))
   }))
 }
@@ -179,9 +180,36 @@ describe('Sucursales', () => {
     const modal = await screen.findByRole('dialog')
     expect(modal).toHaveTextContent('Editar depósito')
     expect(screen.getByLabelText('Nombre')).toHaveValue('Depósito principal')
-    expect(screen.getByRole('combobox', { name: 'Tipo' })).toHaveTextContent('Depósito')
+    // El tipo se elige al crear: al editar se ve, pero no es un desplegable.
+    expect(screen.queryByRole('combobox', { name: 'Tipo' })).not.toBeInTheDocument()
+    expect(modal).toHaveTextContent('TipoDepósito')
     expect(screen.getByLabelText('Predeterminada')).toBeChecked()
     expect(screen.getByLabelText('Activa')).toBeChecked()
+  })
+
+  it('un tipo viejo se edita como depósito: se elige entre los dos, no se conserva', async () => {
+    montarRed({
+      locations: [
+        ...LOCATIONS,
+        { id: 3, name: 'Depósito 02', branch_id: null, location_type: 'Negocio', active: true, is_default: false },
+      ],
+    })
+    const usuario = await montar()
+
+    await usuario.click(screen.getAllByRole('button', { name: /Editar/ })[1])
+    await screen.findByRole('dialog')
+
+    const tipo = screen.getByRole('combobox', { name: 'Tipo' })
+    expect(tipo).toHaveTextContent('Depósito')
+    await usuario.click(tipo)
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Sucursal', 'Depósito'])
+    await usuario.keyboard('{Escape}')
+
+    await usuario.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => {
+      const put = llamadas.find((l) => l.metodo === 'PUT' && l.url === '/locations/3')
+      expect(put!.cuerpo).toMatchObject({ location_type: 'warehouse' })
+    })
   })
 
   it('guardar manda el PUT con los cuatro campos y recarga la lista', async () => {

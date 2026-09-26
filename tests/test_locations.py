@@ -79,7 +79,7 @@ def test_marcar_default_una_inactiva_en_el_mismo_pedido_da_409_sin_escribir(admi
     """`active=false` + `is_default=true` sobre una no-default: antes se
     desactivaba primero y recién después `set_default_deposito` rechazaba,
     dejando la desactivación escrita a pesar del 409."""
-    otra = admin_client.post("/locations", json={"name": "Sucursal Norte"}).json()
+    otra = admin_client.post("/locations", json={"name": "Sucursal Norte", "location_type": "store"}).json()
 
     r = admin_client.put(f"/locations/{otra['id']}", json={
         "name": otra["name"], "location_type": otra["location_type"],
@@ -206,3 +206,106 @@ def test_listar_sin_incluir_inactivas_no_cambia_lo_de_siempre(admin_client):
     })
     ids = [l["id"] for l in admin_client.get("/locations").json()]
     assert sucursal["id"] not in ids
+
+
+def test_el_cambio_de_default_lo_ve_otra_conexion(admin_client):
+    """🔴 `PUT /locations/{id}` escribía sin commitear: la respuesta mostraba el
+    default nuevo (misma conexión) pero cada venta, que abre su propia conexión,
+    seguía viendo el viejo y rechazaba con 422. Se lee ACÁ por una conexión
+    distinta de la de la app, que es lo que hace una venta."""
+    import psycopg
+    from motor_de_test import TEST_DATABASE_URL
+
+    nueva = _crear_sucursal(admin_client, "Sucursal Nueva")
+    r = admin_client.put(f"/locations/{nueva['id']}", json={
+        "name": nueva["name"], "location_type": "store", "is_default": True, "active": True,
+    })
+    assert r.status_code == 200, r.text
+    with psycopg.connect(TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)) as otra:
+        defaults = otra.execute("SELECT id FROM locations WHERE is_default = 1").fetchall()
+    assert defaults == [(nueva["id"],)]
+
+
+# ── Dos tipos, y como mínimo uno de cada uno (decisión del humano, 2026-09-25) ──
+
+
+def _tipos_activos(client) -> list[str]:
+    return sorted(loc["location_type"] for loc in client.get("/locations").json())
+
+
+def _editar(client, loc: dict, **cambios):
+    cuerpo = {"name": loc["name"], "location_type": loc["location_type"],
+              "is_default": loc["is_default"], "active": True} | cambios
+    return client.put(f"/locations/{loc['id']}", json=cuerpo)
+
+
+def test_una_base_nueva_declara_una_sucursal_y_un_deposito(admin_client):
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+
+
+def test_el_tipo_se_elige_entre_sucursal_y_deposito(admin_client):
+    r = admin_client.post("/locations", json={"name": "Local", "location_type": "Negocio"})
+    assert r.status_code == 422, r.text
+    otra = _crear_sucursal(admin_client, "Otra")
+    r = _editar(admin_client, otra, location_type="Negocio")
+    assert r.status_code == 422, r.text
+
+
+def test_no_se_deja_a_la_instancia_sin_su_unica_sucursal_o_deposito(admin_client):
+    deposito = next(loc for loc in admin_client.get("/locations").json()
+                    if loc["location_type"] == "warehouse")
+    assert deposito["is_default"] is False  # el default es la sucursal sembrada
+
+    r = _editar(admin_client, deposito, active=False)
+    assert r.status_code == 409, r.text
+    assert "como mínimo" in r.json()["detail"]
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+
+
+def test_el_tipo_no_se_cambia_al_editar(admin_client):
+    """Una sucursal sigue siendo sucursal y un depósito, depósito (decisión del
+    humano, 2026-09-26): el tipo se elige al crear."""
+    locs = admin_client.get("/locations").json()
+    sucursal = next(loc for loc in locs if loc["location_type"] == "store")
+    deposito = next(loc for loc in locs if loc["location_type"] == "warehouse")
+    for loc, nuevo in ((sucursal, "warehouse"), (deposito, "store")):
+        r = _editar(admin_client, loc, location_type=nuevo)
+        assert r.status_code == 409, r.text
+        assert "no se cambia" in r.json()["detail"]
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+    # Editar sin tocar el tipo sigue andando.
+    assert _editar(admin_client, deposito, name="Depósito central").status_code == 200
+
+
+def test_un_tipo_viejo_se_puede_elegir_entre_los_dos(admin_client):
+    """Lo único que se puede retipar es una fila de antes de esta regla (p. ej.
+    `Negocio` en dev): se la pasa a sucursal o depósito una vez."""
+    conn = admin_client.app.state.conn
+    conn.execute(
+        "INSERT INTO locations (name, description, location_type, is_default, active)"
+        " VALUES ('Depósito 02', '', 'Negocio', 0, 1)"
+    )
+    conn.commit()
+    vieja = next(loc for loc in admin_client.get("/locations").json() if loc["location_type"] == "Negocio")
+    r = _editar(admin_client, vieja, location_type="warehouse")
+    assert r.status_code == 200, r.text
+    assert r.json()["location_type"] == "warehouse"
+
+
+def test_con_otro_deposito_se_puede_dar_de_baja_el_primero(admin_client):
+    deposito = next(l for l in admin_client.get("/locations").json() if l["location_type"] == "warehouse")
+    otro = admin_client.post("/locations", json={"name": "Depósito 2", "location_type": "warehouse"}).json()
+    assert _editar(admin_client, deposito, active=False).status_code == 200
+    assert otro["location_type"] == "warehouse"
+
+
+def test_el_arranque_completa_el_tipo_que_falta_y_es_idempotente(admin_client):
+    from app.services.locations import LocationService
+
+    conn = admin_client.app.state.conn
+    conn.execute("DELETE FROM locations WHERE location_type = 'warehouse'")
+    conn.commit()
+    servicio = LocationService(conn)
+    assert servicio.asegurar_tipos_minimos() == ["Depósito 1"]
+    assert servicio.asegurar_tipos_minimos() == []
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]

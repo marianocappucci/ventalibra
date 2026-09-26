@@ -19,8 +19,8 @@ function json(body: unknown, status = 200) {
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
 const LOCATIONS = [
-  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
-  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'warehouse', active: true, is_default: false },
+  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'store', active: true, is_default: true },
+  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'store', active: true, is_default: false },
 ]
 
 const CAJAS_SUCURSAL_1 = [
@@ -98,6 +98,33 @@ describe('Abrir turno pide sucursal y caja', () => {
       return encontrada!
     })
     expect(abrir.body).toMatchObject({ caja_id: 10 })
+  })
+
+  it('no ofrece una caja inactiva, ni la preselecciona aunque sea la predeterminada', async () => {
+    const inactiva = { id: 12, nombre: 'Caja dada de baja', descripcion: '', medios_pago: ['efectivo'],
+      punto_venta: null, activo: false, es_default: true, sucursal_id: 1, tiene_turno_abierto: false }
+    CAJAS_SUCURSAL_1.unshift(inactiva)
+    try {
+      const { llamadas } = montarRedBase()
+      montar()
+
+      await screen.findByText(/No hay ningún turno de caja abierto/)
+      const boton = await screen.findByRole('button', { name: /Abrir turno/ })
+      await waitFor(() => expect(boton).toBeEnabled())
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('combobox', { name: 'Caja' }))
+      expect(screen.queryByRole('option', { name: /dada de baja/ })).not.toBeInTheDocument()
+      await user.keyboard('{Escape}')
+      await user.click(boton)
+      const abrir = await waitFor(() => {
+        const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/open'))
+        expect(encontrada).toBeDefined()
+        return encontrada!
+      })
+      expect(abrir.body).toMatchObject({ caja_id: 10 })
+    } finally {
+      CAJAS_SUCURSAL_1.shift()
+    }
   })
 
   it('no ofrece una caja que ya tiene un turno abierto', async () => {

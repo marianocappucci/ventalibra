@@ -438,7 +438,7 @@ def test_cerrar_un_turno_inexistente_es_404(admin_client):
 def test_deposito_id_descuenta_del_deposito_elegido_no_del_default(admin_client):
     item_id = _make_item(admin_client)
     default_id = deposito_default(admin_client)
-    otro = admin_client.post("/locations", json={"name": "Sucursal Once"}).json()
+    otro = admin_client.post("/locations", json={"name": "Sucursal Once", "location_type": "store"}).json()
     con_stock(admin_client, item_id, otro["id"], "10")
     con_stock(admin_client, item_id, default_id, "10")
     # El turno en una caja de ESA sucursal: desde el 2026-09-17 el backend

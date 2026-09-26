@@ -79,6 +79,41 @@ def actualizar_caja(caja_id: int, nombre: str, descripcion: str, medios: list[st
     return db_caja.get_caja_config(caja_id)
 
 
+class BajaNoPermitida(ValueError):
+    """La caja no se puede desactivar ahora (turno abierto, o es la única
+    activa de una sucursal que vende)."""
+
+
+def validar_baja(caja: dict, *, sucursal_vende: bool) -> None:
+    """Guardas de DESACTIVAR una caja (2026-09-26). Se desactiva en vez de
+    borrar porque una caja con movimientos no se puede eliminar."""
+    turno = turno_abierto_de(caja["id"])
+    if turno:
+        raise BajaNoPermitida(
+            f"La caja {caja['nombre']!r} tiene un turno abierto de "
+            f"{turno['usuario_nombre']!r} (#{turno['id']}): cerralo antes de darla de baja."
+        )
+    if sucursal_vende and caja.get("sucursal_id") is not None:
+        otras = [c for c in listar_cajas(caja["sucursal_id"])
+                 if c["id"] != caja["id"] and c.get("activo", 1)]
+        if not otras:
+            raise BajaNoPermitida(
+                "La sucursal necesita al menos una caja activa: creá otra antes de "
+                "desactivar esta."
+            )
+
+
+def pasar_predeterminada_a_otra_activa(caja: dict) -> None:
+    """Si la caja dada de baja era la predeterminada de su sucursal, la
+    predeterminada pasa a otra activa (si hay)."""
+    if not caja.get("es_default") or caja.get("sucursal_id") is None:
+        return
+    otras = [c for c in listar_cajas(caja["sucursal_id"])
+             if c["id"] != caja["id"] and c.get("activo", 1)]
+    if otras:
+        marcar_predeterminada(otras[0]["id"])
+
+
 def borrar_caja(caja_id: int) -> None:
     """Levanta `ValueError` si tiene movimientos o es la caja por defecto de
     su sucursal — la guarda es del motor (`db_caja.delete_caja_config`), que
