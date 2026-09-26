@@ -103,13 +103,20 @@ def crear(datos: CajaAlta, request: Request):
 
 
 @router.put("/{caja_id}", response_model=CajaSalida, dependencies=[Depends(require_admin)])
-def editar(caja_id: int, datos: CajaEdicion):
+def editar(caja_id: int, datos: CajaEdicion, request: Request):
     actual = service.obtener_caja(caja_id)
     if actual is None:
         raise HTTPException(404, "Caja no encontrada")
     nombre = datos.nombre.strip()
     if not nombre:
         raise HTTPException(422, "El nombre es obligatorio.")
+    baja = not datos.activo and bool(actual.get("activo", 1))
+    if baja:
+        sede = LocationService(request.app.state.conn).get(actual["sucursal_id"]) if actual.get("sucursal_id") else None
+        try:
+            service.validar_baja(actual, sucursal_vende=sede is not None and vende(sede))
+        except service.BajaNoPermitida as e:
+            raise HTTPException(409, str(e)) from e
     try:
         caja = service.actualizar_caja(
             caja_id, nombre, datos.descripcion.strip(), datos.medios_pago,
@@ -123,6 +130,9 @@ def editar(caja_id: int, datos: CajaEdicion):
         raise HTTPException(409, str(e)) from e
     except ExternalIdMercadoPagoInvalido as e:
         raise HTTPException(422, str(e)) from e
+    if baja:
+        service.pasar_predeterminada_a_otra_activa(actual)
+        caja = service.obtener_caja(caja_id)
     return _salida(caja)
 
 

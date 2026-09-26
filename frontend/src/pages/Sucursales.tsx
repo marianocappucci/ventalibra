@@ -170,8 +170,10 @@ export function Sucursales() {
       header: '',
       cell: ({ row }) => esAdmin ? (
         <div className="flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => abrirEdicion(row.original)}>
-            <Pencil />Editar
+          <Button size="icon" variant="outline" className="size-8"
+                  title="Editar" aria-label={`Editar ${row.original.name}`}
+                  onClick={() => abrirEdicion(row.original)}>
+            <Pencil />
           </Button>
         </div>
       ) : null,
