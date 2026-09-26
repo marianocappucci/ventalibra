@@ -48,6 +48,11 @@ Cantidad y totales de ventas; cantidad de órdenes y recepciones de compra por p
 de cuenta corriente de cada cliente (no se toca `cc_*`); `SUM(quantity_delta)` (no se toca).
 Ver `tests/test_migracion_0004.py`.
 
+## Locks
+
+`upgrade()`/`downgrade()` toman locks exclusivos (sueltan y recrean FK), así que **corren con la app
+parada**. Si no lo están, esperan `LOCK_TIMEOUT` (15 s) y se rinden con un mensaje, sin cambiar nada.
+
 ## Reversión
 
 Todo se registra en `_migracion_0004`. `downgrade()` devuelve los ids originales a parties y a
@@ -71,6 +76,11 @@ OFFSET_PROVEEDOR = 100_000
 OFFSET_HUERFANO = 200_000
 #: Espacio temporal para mover ids sin chocar consigo mismo.
 TEMPORAL = 10_000_000
+#: Cuánto espera esta migración un lock antes de rendirse. Suelta y recrea FK (ACCESS
+#: EXCLUSIVE): con la app vieja conectada (`idle in transaction`) esperaría para siempre y, mientras
+#: espera, su pedido encola a todas las demás consultas sobre esas tablas. Pasó en la demo el
+#: 2026-09-26: casi 9 minutos. Mejor fallar rápido y avisar qué hacer.
+LOCK_TIMEOUT = "15s"
 
 #: (tabla, columna, nombre de la FK) de todo lo que apunta a `parties(id)`.
 _FKS = (
@@ -110,6 +120,22 @@ def _renumerar(conn, mapa: dict[int, int]) -> None:
     cambios = {v: n for v, n in mapa.items() if v != n}
     if not cambios:
         return
+    # `SET LOCAL` vale sólo para esta transacción: si vence, se revierte todo.
+    conn.execute(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'")
+    try:
+        _renumerar_con_lock(conn, cambios)
+    except Exception as exc:
+        if "lock timeout" in str(exc).lower() or "locknotavailable" in type(exc).__name__.lower():
+            raise RuntimeError(
+                f"No se consiguió el lock para renumerar las personas en {LOCK_TIMEOUT}: hay conexiones "
+                "abiertas contra `sales`/`parties`/`purchase_*` (la app vieja). Esta migración toma locks "
+                "exclusivos y tiene que correr con la app PARADA: pará el contenedor y repetí. No se "
+                "cambió nada (la transacción se revirtió)."
+            ) from exc
+        raise
+
+
+def _renumerar_con_lock(conn, cambios: dict[int, int]) -> None:
     conn.execute("CREATE TEMP TABLE _mapa_personas (viejo BIGINT PRIMARY KEY, nuevo BIGINT NOT NULL)")
     for viejo, nuevo in cambios.items():
         conn.execute("INSERT INTO _mapa_personas (viejo, nuevo) VALUES (?, ?)", (viejo, nuevo))
