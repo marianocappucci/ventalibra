@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { BadgeEstado } from 'libra-ui/badge-estado'
-import { CalendarCheck, Printer } from 'lucide-react'
+import { CalendarCheck, Printer, Undo2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha, fechaHora, hora } from '@/lib/fechas'
 import { abrirTicket } from '@/lib/tickets'
@@ -235,12 +235,16 @@ export function CierreDiario() {
               </div>
               <div className="flex items-center gap-3">
                 <span className="tabular-nums">${money(c.monto_declarado_total)}</span>
-                <Button size="sm" variant="outline" onClick={() => abrirTicket(`/api/cierre-diario/${c.id}/ticket`)}>
-                  <Printer />Imprimir ticket
+                <Button size="icon" variant="outline" className="size-8"
+                        title="Imprimir ticket" aria-label="Imprimir ticket"
+                        onClick={() => abrirTicket(`/api/cierre-diario/${c.id}/ticket`)}>
+                  <Printer />
                 </Button>
                 {!c.anulado_en && esAdmin && (
-                  <Button size="sm" variant="outline" onClick={() => setReabriendo(c)}>
-                    Reabrir día
+                  <Button size="icon" variant="outline" className="size-8"
+                          title="Reabrir día" aria-label="Reabrir día"
+                          onClick={() => setReabriendo(c)}>
+                    <Undo2 />
                   </Button>
                 )}
               </div>

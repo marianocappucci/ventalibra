@@ -43,6 +43,13 @@ class LocationNotFound(Exception):
     """No existe una sucursal con ese id."""
 
 
+class TipoNoSeCambia(ValueError):
+    """Una sucursal sigue siendo sucursal y un depósito sigue siendo depósito:
+    el tipo se elige al crear y no se edita después (decisión del humano,
+    2026-09-26). Sólo una fila con un tipo viejo (que no es ninguno de los dos)
+    puede pasar a uno de ellos."""
+
+
 class FaltaTipoMinimo(ValueError):
     """El cambio dejaría a la instancia sin una sucursal o sin un depósito
     activos -- toda instancia declara como mínimo una de cada tipo."""
@@ -129,6 +136,11 @@ class LocationService:
         if not tipo:
             raise DatosInvalidos("El tipo de sucursal es obligatorio.")
         _validar_tipo(tipo)
+        if location.location_type in TIPOS_VALIDOS and tipo != location.location_type:
+            raise TipoNoSeCambia(
+                "El tipo no se cambia: se elige al crear, y una sucursal sigue "
+                "siendo sucursal y un depósito, depósito."
+            )
         # Combinaciones que el motor rechazaría a MITAD de camino (después de
         # que `update_deposito` ya escribió): se frenan antes de tocar nada.
         if not is_default and location.is_default:

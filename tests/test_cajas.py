@@ -434,10 +434,67 @@ def test_una_caja_historica_de_un_deposito_no_abre_turno(admin_client):
     assert "depósito" in r.json()["detail"]
 
 
-def test_un_deposito_que_pasa_a_sucursal_recibe_su_caja(admin_client):
-    deposito = _crear_deposito(admin_client)
-    r = admin_client.put(f"/locations/{deposito['id']}", json={
-        "name": deposito["name"], "location_type": "store", "is_default": False, "active": True,
+def test_una_ubicacion_vieja_que_pasa_a_sucursal_recibe_su_caja(admin_client):
+    """El tipo no se cambia entre sucursal y depósito, pero una fila de tipo
+    viejo (p. ej. `Negocio`) sí se elige una vez: si pasa a sucursal, vende."""
+    conn = admin_client.app.state.conn
+    conn.execute(
+        "INSERT INTO locations (name, description, location_type, is_default, active)"
+        " VALUES ('Local viejo', '', 'Negocio', 0, 1)"
+    )
+    conn.commit()
+    vieja = next(l for l in admin_client.get("/locations").json() if l["location_type"] == "Negocio")
+    assert _cajas_de(admin_client, vieja["id"]) == []
+    r = admin_client.put(f"/locations/{vieja['id']}", json={
+        "name": vieja["name"], "location_type": "store", "is_default": False, "active": True,
     })
     assert r.status_code == 200, r.text
-    assert len(_cajas_de(admin_client, deposito["id"])) == 1
+    assert len(_cajas_de(admin_client, vieja["id"])) == 1
+
+
+# ── Desactivar una caja (2026-09-26): con movimientos no se puede eliminar ──
+
+
+def _desactivar(client, caja: dict):
+    return client.put(f"/api/cajas/{caja['id']}", json={"nombre": caja["nombre"], "activo": False})
+
+
+def test_la_unica_caja_activa_de_una_sucursal_no_se_desactiva(admin_client):
+    unica = _cajas_de(admin_client, _sembrada(admin_client)["id"])[0]
+    r = _desactivar(admin_client, unica)
+    assert r.status_code == 409, r.text
+    assert "al menos una caja activa" in r.json()["detail"]
+
+
+def test_no_se_desactiva_una_caja_con_turno_abierto(admin_client):
+    sucursal = _sembrada(admin_client)
+    admin_client.post("/api/cajas", json={"nombre": "Mostrador 2", "sucursal_id": sucursal["id"]})
+    con_turno = _cajas_de(admin_client, sucursal["id"])[0]
+    abrir_turno(admin_client, caja_id=con_turno["id"])
+    r = _desactivar(admin_client, con_turno)
+    assert r.status_code == 409, r.text
+    assert "turno abierto" in r.json()["detail"]
+
+
+def test_al_desactivar_la_predeterminada_pasa_a_otra_activa(admin_client):
+    sucursal = _sembrada(admin_client)
+    otra = admin_client.post("/api/cajas", json={"nombre": "Mostrador 2", "sucursal_id": sucursal["id"]}).json()
+    predeterminada = next(c for c in _cajas_de(admin_client, sucursal["id"]) if c["es_default"])
+    r = _desactivar(admin_client, predeterminada)
+    assert r.status_code == 200, r.text
+    assert r.json()["activo"] is False and r.json()["es_default"] is False
+    cajas = {c["id"]: c for c in _cajas_de(admin_client, sucursal["id"])}
+    assert cajas[otra["id"]]["es_default"] is True
+    assert cajas[otra["id"]]["activo"] is True
+
+
+def test_la_caja_de_un_deposito_se_puede_desactivar(admin_client):
+    """Un depósito no vende: su caja histórica (con movimientos, no se puede
+    borrar) se desactiva sin la guarda de «al menos una activa»."""
+    from libracore.db import caja as db_caja
+
+    deposito = _crear_deposito(admin_client, "Depósito Sur")
+    caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=deposito["id"])
+    r = _desactivar(admin_client, {"id": caja_id, "nombre": "Caja vieja"})
+    assert r.status_code == 200, r.text
+    assert r.json()["activo"] is False

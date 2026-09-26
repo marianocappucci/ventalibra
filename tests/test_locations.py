@@ -252,17 +252,44 @@ def test_el_tipo_se_elige_entre_sucursal_y_deposito(admin_client):
 
 
 def test_no_se_deja_a_la_instancia_sin_su_unica_sucursal_o_deposito(admin_client):
+    deposito = next(loc for loc in admin_client.get("/locations").json()
+                    if loc["location_type"] == "warehouse")
+    assert deposito["is_default"] is False  # el default es la sucursal sembrada
+
+    r = _editar(admin_client, deposito, active=False)
+    assert r.status_code == 409, r.text
+    assert "como mínimo" in r.json()["detail"]
+    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+
+
+def test_el_tipo_no_se_cambia_al_editar(admin_client):
+    """Una sucursal sigue siendo sucursal y un depósito, depósito (decisión del
+    humano, 2026-09-26): el tipo se elige al crear."""
     locs = admin_client.get("/locations").json()
     sucursal = next(loc for loc in locs if loc["location_type"] == "store")
     deposito = next(loc for loc in locs if loc["location_type"] == "warehouse")
-    assert deposito["is_default"] is False  # el default es la sucursal sembrada
-
-    for loc, cambio in ((deposito, {"active": False}), (deposito, {"location_type": "store"}),
-                        (sucursal, {"location_type": "warehouse"})):
-        r = _editar(admin_client, loc, **cambio)
-        assert r.status_code == 409, (loc["name"], cambio, r.text)
-        assert "como mínimo" in r.json()["detail"]
+    for loc, nuevo in ((sucursal, "warehouse"), (deposito, "store")):
+        r = _editar(admin_client, loc, location_type=nuevo)
+        assert r.status_code == 409, r.text
+        assert "no se cambia" in r.json()["detail"]
     assert _tipos_activos(admin_client) == ["store", "warehouse"]
+    # Editar sin tocar el tipo sigue andando.
+    assert _editar(admin_client, deposito, name="Depósito central").status_code == 200
+
+
+def test_un_tipo_viejo_se_puede_elegir_entre_los_dos(admin_client):
+    """Lo único que se puede retipar es una fila de antes de esta regla (p. ej.
+    `Negocio` en dev): se la pasa a sucursal o depósito una vez."""
+    conn = admin_client.app.state.conn
+    conn.execute(
+        "INSERT INTO locations (name, description, location_type, is_default, active)"
+        " VALUES ('Depósito 02', '', 'Negocio', 0, 1)"
+    )
+    conn.commit()
+    vieja = next(loc for loc in admin_client.get("/locations").json() if loc["location_type"] == "Negocio")
+    r = _editar(admin_client, vieja, location_type="warehouse")
+    assert r.status_code == 200, r.text
+    assert r.json()["location_type"] == "warehouse"
 
 
 def test_con_otro_deposito_se_puede_dar_de_baja_el_primero(admin_client):
