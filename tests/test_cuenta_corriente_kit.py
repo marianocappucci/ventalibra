@@ -45,7 +45,7 @@ def _make_item(client, name="Fideos 500g", price="1500.00"):
 
 
 def _make_cliente(client, nombre="Vecina del 12"):
-    creado = client.post("/customers", json={"display_name": nombre})
+    creado = client.post("/api/clientes", json={"name": nombre})
     assert creado.status_code == 200, creado.text
     return creado.json()["id"]
 

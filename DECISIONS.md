@@ -1535,7 +1535,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
     `libracore.db.egresos`; se retiran los puentes; la cuenta corriente cruza con el origen
     `VENTAS_LIBRACOMMERCE` (por id), el mismo de Contalibra.
 - Consecuencias, dichas de frente:
-  - Un CUIT/DNI repetido entre clientes ahora da **409** (regla del motor); antes se permitía.
+  - Un CUIT/DNI repetido entre clientes ahora se rechaza (regla del motor; antes se permitía). El servicio de la fase 1 lo devolvía como 409; con el router del motor (ADR-029) es **422**.
   - El alta de un cliente o de un proveedor **ya no queda en `actividad_log`** (no pasa por el
     repositorio auditado de LibraCommerce); Contalibra tampoco la registra. Auditarla sería un
     cambio del motor.
@@ -1546,3 +1546,27 @@ decisión explícita del humano, y no forman parte de esta ADR.
     **party** (el `supplier_party_id` de las compras) hasta la fase 3.
 - Alternativas descartadas: adaptadores de backend que espejen datos y parametrizar el kit para que se
   acomode al modelo de VentaLibra — ambas mantienen a VentaLibra distinto de Contalibra.
+
+## ADR-029 — Clientes con el router del motor y la pantalla del kit (fase 2 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-26
+- Contexto: con las personas ya en el modelo del motor (ADR-028), Clientes puede adoptar lo mismo que
+  Contalibra y Restolibra: `libracore.clientes_router.build_clientes_router()` (`/api/clientes`) y las
+  pantallas `libra-ui/comercio/Clientes` y `ClienteDetalle`. VentaLibra tenía `pages/Clientes.tsx`,
+  `pages/ClienteDetalle.tsx`, `routers/customers.py` y `services/customers.py` propios.
+- Decisión: montar el router del motor y las pantallas del kit; **retirar `/customers`** y el servicio.
+  Las diferencias de VentaLibra entran como **variantes del kit**, no como código propio:
+  `libra-ui` v0.75.0 agrega a `ClienteDetalle` las props `conMercadoPago`, `conComprobantes` y
+  `conConsultaCuit`, y a `Clientes` la prop `conConsultaCuit` (todas `true` por defecto: Contalibra y
+  Restolibra no cambian). VentaLibra las apaga: no tiene facturas/presupuestos/remitos, ni la bandeja
+  de MercadoPago, ni `/api/consultar-cuit`.
+- Consecuencias:
+  - Los clientes inactivos aparecen en el listado del motor (la pantalla los marca): el POS los filtra.
+  - **Un cajero (staff) ahora puede editar y dar de baja clientes** (antes `/customers` sólo creaba y
+    leía). Es el comportamiento de Contalibra; si hace falta restringirlo, es un cambio del router del
+    motor.
+  - Sin consulta de CUIT en ARCA por ahora: el endpoint es código propio, duplicado, de Contalibra y
+    Restolibra. Pendiente: extraerlo a un `build_consultar_cuit_router` en `libracore` y activarlo acá.
+  - El alta de un cliente no queda en `actividad_log` (ADR-028).
+- Depende de: `libra-ui` v0.75.0 publicado y el pin de este repo subido a esa versión.

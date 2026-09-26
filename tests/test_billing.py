@@ -179,60 +179,25 @@ def test_facturar_sin_cliente_factura_a_consumidor_final(admin_client):
     assert factura["cae"] is not None  # mock de dev, ver arca_facturacion.get_next_numero_with_arca
 
 
-def test_facturar_con_emisor_responsable_inscripto_no_reconoce_al_cliente(admin_client):
-    """🔴 **Gap cerrado en esta fase** (venía documentado como pendiente por
-    el agente anterior; ver `app/venta_facturacion.py`, docstring del módulo).
+def test_facturar_a_un_responsable_inscripto_usa_los_datos_de_ese_cliente(admin_client):
+    """Factura A: el emisor RI factura a un RI con SUS datos y no con los de otro cliente.
 
-    `libracore.venta_facturacion.facturar_venta` resuelve el cliente con
-    `libracore.db.clients.get_client(venta["cliente_id"])`, y `venta[
-    "cliente_id"]` es `sales.customer_party_id` -- el id de PARTY de
-    LibraCommerce, no un `clients.id`. `app/venta_facturacion.py::PUERTO`
-    ahora envuelve `obtener` para traducirlo por `external_ref = 'party-<id>'`
-    (mismo criterio que `app/ganchos.py::cliente_cc_de`, reusada).
-
-    Colisión adversarial, mismo patrón que
-    `tests/test_cuenta_corriente_origen_externo.py`: el `clients.id` real de
-    "Empresa SA" se fuerza a un número que NO es su `party_id` (acá,
-    literalmente el `party_id` de OTRO cliente -- "Cliente Equivocado"), para
-    que un cruce por id directo (el bug) facture con el nombre y el CUIT
-    ajenos, en vez de sólo caer a Consumidor Final por no encontrar nada.
+    `libracore.venta_facturacion.facturar_venta` resuelve el cliente con `db_clients.get_client(
+    venta["cliente_id"])`. Hasta la migración `0004` (2026-09-26) `cliente_id` era un `party_id` que
+    NO coincidía con el `clients.id`, y hacía falta un puente por `external_ref` (este test armaba
+    la colisión a propósito). Con la convención del motor -- cliente = party de igual id -- el id
+    de la venta ES el del cliente; lo que se prueba ahora es que con **dos clientes** se factura
+    al correcto.
     """
     admin_client.put("/api/config/empresa", json={"empresa_iva_condition": "Responsable Inscripto"})
-    otro = admin_client.post("/customers", json={
-        "display_name": "Cliente Equivocado", "party_type": "person",
-    })
+    otro = admin_client.post("/api/clientes", json={"name": "Cliente Equivocado"})
     assert otro.status_code == 200, otro.text
-    otro_party_id = otro.json()["id"]
-
-    customer = admin_client.post("/customers", json={
-        "display_name": "Empresa SA", "party_type": "organization",
-        "cuit": "30-99999999-1", "condicion_iva": "Responsable Inscripto",
+    empresa = admin_client.post("/api/clientes", json={
+        "name": "Empresa SA", "cuit_dni": "30-99999999-1", "iva_condition": "Responsable Inscripto",
     })
-    assert customer.status_code == 200, customer.text
-    customer_id = customer.json()["id"]
-    assert customer_id != otro_party_id
-
-    # El `clients.id` de "Empresa SA" en LibraCore: a propósito el `party_id`
-    # de "Cliente Equivocado", no el suyo. Si `facturar_venta` cruzara por id
-    # directo (el bug), leería esta fila -- que es la de OTRO cliente.
-    #
-    # 🔴 Desde F3 (2026-09-14, ADR-025 D3, punto 1(a) del arreglo) `POST
-    # /customers` ya crea la fila `clients` enlazada al dar de alta
-    # (`CustomerService.create`): no se puede volver a `INSERT`ar una con ese
-    # `id` a mano -- colisiona con la que "Cliente Equivocado" ya tiene
-    # (`clients_pkey`). Se REPURPOSEa esa fila -- mismo `id`, que sigue
-    # siendo el `party_id` de Cliente Equivocado -- para que sea la de
-    # "Empresa SA": primero se borra la propia de Empresa SA, si no el
-    # `external_ref` único de la fila repurpuesta choca con ella.
-    conn = admin_client.app.state.conn
-    conn.execute("DELETE FROM clients WHERE external_ref = ?", (f"party-{customer_id}",))
-    conn.execute(
-        "UPDATE clients SET name = ?, cuit_dni = ?, iva_condition = ?, external_ref = ? "
-        "WHERE external_ref = ?",
-        ("Empresa SA", "30-99999999-1", "Responsable Inscripto", f"party-{customer_id}",
-         f"party-{otro_party_id}"),
-    )
-    conn.commit()
+    assert empresa.status_code == 200, empresa.text
+    customer_id = empresa.json()["id"]
+    assert customer_id != otro.json()["id"]
 
     item_id = _make_item(admin_client)
     _abrir_turno(admin_client)
@@ -246,8 +211,7 @@ def test_facturar_con_emisor_responsable_inscripto_no_reconoce_al_cliente(admin_
     facturada = admin_client.post(f"/api/ventas/{vid}/facturar")
     assert facturada.status_code == 200, facturada.text
     factura = facturada.json()["factura"]
-    # Factura A: RI factura a RI, con los datos de la venta -- no los de
-    # "Cliente Equivocado", pese a compartir id con su `clients.id`.
+    # Factura A: RI factura a RI, con los datos de ese cliente.
     assert factura["tipo"] == 1
     assert factura["cliente_razon"] == "Empresa SA"
     assert factura["cliente_cuit"] == "30-99999999-1"

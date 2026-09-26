@@ -122,7 +122,7 @@ def test_el_ticket_lleva_el_numero_de_la_venta(admin_client):
 
 
 def test_el_ticket_nombra_al_cliente_cuando_lo_hay(admin_client):
-    cliente = admin_client.post("/customers", json={"display_name": "Vecina del 12"})
+    cliente = admin_client.post("/api/clientes", json={"name": "Vecina del 12"})
     sale_id = _venta_confirmada(admin_client, customer_id=cliente.json()["id"])
 
     texto = _texto_del_pdf(admin_client.get(f"/ventas/{sale_id}/ticket").content)

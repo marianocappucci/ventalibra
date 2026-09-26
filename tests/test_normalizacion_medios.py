@@ -152,7 +152,7 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     assert item.status_code == 200, item.text
     item_id = item.json()["id"]
 
-    cliente = client.post("/customers", json={"display_name": "Panaderia Sol"})
+    cliente = client.post("/api/clientes", json={"name": "Panaderia Sol"})
     assert cliente.status_code == 200, cliente.text
     cliente_id = cliente.json()["id"]
 

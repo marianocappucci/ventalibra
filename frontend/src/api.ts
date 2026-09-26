@@ -435,10 +435,8 @@ export type Supplier = Party & {
   tax_id: string | null
 }
 
-export type Customer = Party & {
-  cuit: string | null
-  condicion_iva: string | null
-}
+/** El cliente del motor (`/api/clientes`): el mismo tipo que usan Contalibra y Restolibra. */
+export type { Cliente } from 'libra-ui/mp'
 
 export type ArcaConfig = {
   empresa: string
