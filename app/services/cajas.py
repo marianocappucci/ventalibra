@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from libracore import medios_pago
 from libracore.db import caja as db_caja
+from libracore.db import turnos as db_turnos
 from libracore.db.caja import PuntoDeVentaRepetido  # noqa: F401  (re-exportado)
 from libracore.db.core import get_connection
 
@@ -32,7 +33,7 @@ class MedioDePagoInvalido(ValueError):
     """Un medio de pago que no está en `medios_pago.ELEGIBLES`."""
 
 
-def _validar_medios(medios: list[str]) -> None:
+def validar_medios(medios: list[str]) -> None:
     for m in medios:
         if m not in medios_pago.ELEGIBLES:
             raise MedioDePagoInvalido(f"Medio de pago desconocido: {m!r}")
@@ -40,10 +41,6 @@ def _validar_medios(medios: list[str]) -> None:
 
 def listar_cajas(sucursal_id: int | None = None) -> list[dict]:
     return db_caja.get_all_cajas(sucursal_id=sucursal_id)
-
-
-def obtener_caja(caja_id: int) -> dict | None:
-    return db_caja.get_caja_config(caja_id)
 
 
 def crear_caja(nombre: str, descripcion: str, medios: list[str], sucursal_id: int,
@@ -57,26 +54,12 @@ def crear_caja(nombre: str, descripcion: str, medios: list[str], sucursal_id: in
     Levanta `MedioDePagoInvalido` o `PuntoDeVentaRepetido` (del motor) — el
     router traduce las dos a HTTP.
     """
-    _validar_medios(medios)
+    validar_medios(medios)
     cid = db_caja.create_caja_config(
         nombre, descripcion, list(medios), sucursal_id=sucursal_id, punto_venta=punto_venta,
         mp_pos_id=mp_pos_id,
     )
     return db_caja.get_caja_config(cid)
-
-
-def actualizar_caja(caja_id: int, nombre: str, descripcion: str, medios: list[str],
-                    activo: bool, punto_venta: int | None = None,
-                    mp_pos_id: str | None = None) -> dict:
-    """No cambia `sucursal_id`: una caja no se muda de sede, se da de baja y se
-    crea otra donde corresponda — mismo criterio que el resto de la familia
-    con las cuentas y los depósitos."""
-    _validar_medios(medios)
-    db_caja.update_caja_config(
-        caja_id, nombre, descripcion, list(medios), 1 if activo else 0,
-        punto_venta=punto_venta, mp_pos_id=mp_pos_id,
-    )
-    return db_caja.get_caja_config(caja_id)
 
 
 class BajaNoPermitida(ValueError):
@@ -87,7 +70,7 @@ class BajaNoPermitida(ValueError):
 def validar_baja(caja: dict, *, sucursal_vende: bool) -> None:
     """Guardas de DESACTIVAR una caja (2026-09-26). Se desactiva en vez de
     borrar porque una caja con movimientos no se puede eliminar."""
-    turno = turno_abierto_de(caja["id"])
+    turno = db_turnos.turno_abierto_de_caja(caja["id"])
     if turno:
         raise BajaNoPermitida(
             f"La caja {caja['nombre']!r} tiene un turno abierto de "
@@ -112,14 +95,6 @@ def pasar_predeterminada_a_otra_activa(caja: dict) -> None:
              if c["id"] != caja["id"] and c.get("activo", 1)]
     if otras:
         marcar_predeterminada(otras[0]["id"])
-
-
-def borrar_caja(caja_id: int) -> None:
-    """Levanta `ValueError` si tiene movimientos o es la caja por defecto de
-    su sucursal — la guarda es del motor (`db_caja.delete_caja_config`), que
-    no filtra por sucursal: alcanza igual, porque `es_default` ya lo puso
-    `marcar_predeterminada` en el scope correcto."""
-    db_caja.delete_caja_config(caja_id)
 
 
 def marcar_predeterminada(caja_id: int) -> dict | None:
@@ -150,36 +125,10 @@ def marcar_predeterminada(caja_id: int) -> dict | None:
     return db_caja.get_caja_config(caja_id)
 
 
-def turno_abierto_de(caja_id: int) -> dict | None:
-    """El turno abierto de esa caja (de cualquier usuario), o `None`.
-
-    🔑 **"Una caja, un turno" no es una regla del motor.** Ni siquiera
-    LibraClub —la otra instancia con cajas múltiples— la impone: ahí sólo se
-    evita que UN MISMO usuario tenga dos turnos abiertos a la vez (ver
-    `libraclub/app/servicios/caja.py::abrir_turno`), pero nada impide hoy que
-    dos cajeros distintos abran turno en el MISMO mostrador. Acá sí importa —
-    dos personas cobrando sobre el mismo cajón mezclan la plata que hace un
-    turno, que es justo lo que esta feature vino a separar—, así que se
-    valida en el router de este producto (`shifts.py`) y se comparte esta
-    consulta con `routers/cajas.py`, que la usa para no ofrecer al abrir una
-    caja que ya está en uso.
-    """
-    with get_connection() as conn:
-        row = conn.execute(
-            """SELECT t.*, u.nombre AS usuario_nombre
-                 FROM turnos_caja t JOIN usuarios u ON u.id = t.usuario_id
-                WHERE t.caja_id=? AND t.estado='abierto'
-                ORDER BY t.id DESC LIMIT 1""",
-            (caja_id,),
-        ).fetchone()
-    return dict(row) if row else None
-
-
 def tiene_turno_abierto_en(sucursal_id: int) -> bool:
     """Si alguna caja de esa sucursal tiene un turno abierto, de cualquier
     usuario. La usa `routers/locations.py` para no dejar desactivar una
-    sucursal mientras se está vendiendo ahí -- guarda propia de VentaLibra,
-    igual que `turno_abierto_de`: el motor (`libracommerce.erp.catalogo`) no
+    sucursal mientras se está vendiendo ahí -- guarda propia de este producto: el motor (`libracommerce.erp.catalogo`) no
     sabe nada de turnos."""
     with get_connection() as conn:
         row = conn.execute(

@@ -12,6 +12,9 @@ import { Sucursales } from './pages/Sucursales'
 import { Transferencias } from './pages/Transferencias'
 import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
+import { Turnos } from './pages/Turnos'
+import { TurnoCerrar } from 'libra-ui/comercio/TurnoCerrar'
+import { TurnoDetalle } from 'libra-ui/comercio/TurnoDetalle'
 import { Proveedores } from './pages/Proveedores'
 import { ProveedorDetalle } from './pages/ProveedorDetalle'
 import { Compras } from './pages/Compras'
@@ -192,6 +195,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* Turnos de caja (ADR-032): el cajero ve los suyos, el admin los de todos. */}
+      <Route path="/turnos" element={<ProtectedRoute><Turnos /></ProtectedRoute>} />
+      <Route path="/turnos/:id" element={<ProtectedRoute><TurnoDetalle /></ProtectedRoute>} />
+      <Route path="/turnos/:id/cerrar" element={<ProtectedRoute><TurnoCerrar /></ProtectedRoute>} />
       {/* Admin y cajero (staff): el cierre diario lo puede hacer cualquiera
           de los dos -- ver DECISIONS.md, la feature de cajas por sucursal. */}
       <Route

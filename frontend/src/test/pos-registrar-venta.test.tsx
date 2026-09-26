@@ -86,7 +86,7 @@ function montarRed(opciones: {
       }
       return Promise.resolve(json(venta()))
     }
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: TURNO }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/locations')) return Promise.resolve(json(opciones.locations ?? LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/catalog/items/scan')) {

@@ -25,9 +25,9 @@ const LOCATIONS = [
 
 const CAJAS_SUCURSAL_1 = [
   { id: 10, nombre: 'Caja 1', descripcion: '', medios_pago: ['efectivo'], punto_venta: null,
-    activo: true, es_default: true, sucursal_id: 1, tiene_turno_abierto: false },
+    activo: 1, es_default: 1, sucursal_id: 1, sucursal_nombre: 'Sucursal 1', tiene_turno_abierto: false },
   { id: 11, nombre: 'Caja 2', descripcion: '', medios_pago: ['efectivo'], punto_venta: null,
-    activo: true, es_default: false, sucursal_id: 1, tiene_turno_abierto: true },
+    activo: 1, es_default: 0, sucursal_id: 1, sucursal_nombre: 'Sucursal 1', tiene_turno_abierto: true },
 ]
 
 const TURNO_CON_CAJA = {
@@ -50,11 +50,11 @@ function montarRedBase(opciones: { turno?: unknown; aperturaBody?: unknown; aper
 
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json(MEDIOS))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: opciones.turno ?? null }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: opciones.turno ?? null }))
     if (u.match(/\/api\/cajas\?sucursal_id=1/)) return Promise.resolve(json(CAJAS_SUCURSAL_1))
     if (u.match(/\/api\/cajas\?sucursal_id=2/)) return Promise.resolve(json([]))
-    if (u.endsWith('/shifts/open') && metodo === 'POST') {
-      return Promise.resolve(json(opciones.aperturaBody ?? { turno: TURNO_CON_CAJA }, opciones.aperturaStatus ?? 200))
+    if (u.endsWith('/api/turnos/abrir') && metodo === 'POST') {
+      return Promise.resolve(json(opciones.aperturaBody ?? TURNO_CON_CAJA, opciones.aperturaStatus ?? 200))
     }
     if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
@@ -93,7 +93,7 @@ describe('Abrir turno pide sucursal y caja', () => {
     await user.click(boton)
 
     const abrir = await waitFor(() => {
-      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/open'))
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/abrir'))
       expect(encontrada).toBeDefined()
       return encontrada!
     })
@@ -102,7 +102,7 @@ describe('Abrir turno pide sucursal y caja', () => {
 
   it('no ofrece una caja inactiva, ni la preselecciona aunque sea la predeterminada', async () => {
     const inactiva = { id: 12, nombre: 'Caja dada de baja', descripcion: '', medios_pago: ['efectivo'],
-      punto_venta: null, activo: false, es_default: true, sucursal_id: 1, tiene_turno_abierto: false }
+      punto_venta: null, activo: 0, es_default: 1, sucursal_id: 1, sucursal_nombre: 'Sucursal 1', tiene_turno_abierto: false }
     CAJAS_SUCURSAL_1.unshift(inactiva)
     try {
       const { llamadas } = montarRedBase()
@@ -117,7 +117,7 @@ describe('Abrir turno pide sucursal y caja', () => {
       await user.keyboard('{Escape}')
       await user.click(boton)
       const abrir = await waitFor(() => {
-        const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/open'))
+        const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/abrir'))
         expect(encontrada).toBeDefined()
         return encontrada!
       })
@@ -165,7 +165,7 @@ describe('Con turno abierto en una caja, la sucursal queda fija', () => {
     // selector, que es lo que garantiza que no se pueda desalinear a mano.
     montar()
     await screen.findByText(/Sucursal Centro · Caja 1/)
-    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/open'))).toBe(false)
+    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/abrir'))).toBe(false)
   })
 
   it('el badge indica cómo trabajar en otra sucursal sin agregar un botón nuevo', async () => {

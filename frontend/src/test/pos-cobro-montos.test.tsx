@@ -55,7 +55,7 @@ function montarRed() {
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
     if (u.endsWith('/api/ventas') && metodo === 'POST') return Promise.resolve(json(VENTA))
     if (u.match(/\/api\/ventas\/9$/)) return Promise.resolve(json(VENTA))
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: TURNO }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/catalog/items/scan')) {

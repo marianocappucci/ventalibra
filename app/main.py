@@ -26,7 +26,7 @@ from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
-from libracore.caja_router import build_cierre_diario_router
+from libracore.caja_router import build_cajas_router, build_cierre_diario_router, build_turnos_router
 from libracore.clientes_router import build_clientes_router
 from libracore.config_router import (
     build_backup_router,
@@ -56,22 +56,27 @@ from .auth import (
     require_admin_o_servicio,
     require_staff,
 )
+from .cajas_ganchos import (
+    cerrar_turno,
+    enriquecer_turno_de,
+    opciones_de_cajas,
+    resumen_del_turno,
+    usuario_actual,
+    validar_apertura_de,
+)
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .proveedores_guarda import no_eliminar_con_compras
 from .routers import auth as auth_router
 from .routers import (
-    cajas,
     catalog,
     health,
     locations,
-    medios,
     pricing,
     purchasing,
     recibos,
     reports,
-    shifts,
     stock,
     ventas_extra,
 )
@@ -521,12 +526,22 @@ def create_app(db_path: str) -> FastAPI:
         ),
         dependencies=staff_or_admin,
     )
-    app.include_router(shifts.router, dependencies=staff_or_admin)
-    # Cajas por sucursal: leer es de staff y admin (elige la caja al abrir
-    # turno); el propio router agrega `require_admin` en lo que escribe. Va
-    # ANTES de `medios.router` para que quede claro que no compite con su
-    # `GET /api/cajas/medios-disponibles` -- este router no define esa ruta.
-    app.include_router(cajas.router, dependencies=staff_or_admin)
+    # Cajas y turnos: los routers del motor (`libracore.caja_router`), los mismos de Contalibra y Restolibra,
+    # con las reglas de VentaLibra como ganchos (`app/cajas_ganchos.py`, ADR-032). Reemplazan a `/shifts` y al
+    # ABM propio de `/api/cajas`. Leer es de staff y admin (se elige la caja al abrir turno); escribir en las
+    # cajas es de admin, lo dice `autorizar_escritura`. Las sucursales se leen de `app.state.conn` en cada
+    # pedido: la app la reemplaza al restaurar un respaldo.
+    def _sucursales() -> LocationService:
+        return LocationService(app.state.conn)
+
+    app.include_router(
+        build_turnos_router(
+            usuario_actual=usuario_actual, resumen_turno=resumen_del_turno, cerrar_turno=cerrar_turno,
+            validar_apertura=validar_apertura_de(_sucursales), enriquecer=enriquecer_turno_de(_sucursales),
+        ),
+        dependencies=staff_or_admin,
+    )
+    app.include_router(build_cajas_router(opciones=opciones_de_cajas(_sucursales)), dependencies=staff_or_admin)
     # Proveedores: el router del motor (`libracore.egresos_router`), el mismo de Contalibra y Restolibra
     # sobre la tabla `proveedores` (ADR-030). Reemplaza a `/suppliers`. La baja se guarda: el motor sólo
     # mira los egresos, y acá un proveedor con compras no se elimina (`app/proveedores_guarda.py`).
@@ -552,10 +567,6 @@ def create_app(db_path: str) -> FastAPI:
     )
     # Los recibos que llaman las pantallas de cuenta corriente del kit.
     app.include_router(recibos.router, dependencies=staff_or_admin)
-    # Los medios de pago de los selectores: los del motor, no una copia en el
-    # frontend. Misma ruta que `build_cajas_router` de LibraCore, que es la que
-    # pide `libra-ui/comercio/medios-pago`.
-    app.include_router(medios.router, dependencies=staff_or_admin)
     # Cierre diario: acto registrado y numerado por sucursal (LibraCore
     # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).
     # `autorizar_cierre` no se pasa: el gate de ESTE producto para "admin o

@@ -23,14 +23,14 @@ from ventas_helpers import caja_default, hoy
 
 def _abrir_turno(client, monto_inicial=0):
     abierto = client.post(
-        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+        "/api/turnos/abrir", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
     )
     assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+    return abierto.json()["id"]
 
 
 def _cerrar_turno(client, turno_id):
-    respuesta = client.post(f"/shifts/{turno_id}/close", json={"monto_declarado": 0})
+    respuesta = client.post(f"/api/turnos/{turno_id}/cerrar", json={"monto_declarado": 0})
     assert respuesta.status_code == 200, respuesta.text
 
 
@@ -177,7 +177,7 @@ def test_pagar_por_el_kit_baja_el_saldo_entra_a_la_caja_y_emite_recibo(admin_cli
     assert cuerpo["movimientos"][1]["referencia"] == "TRF-99"
 
     # Cobrar deuda vieja SÍ es plata que entra, en el turno de quien cobró.
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 1000
 
 
@@ -280,7 +280,7 @@ def test_el_selector_de_cajas_sin_turno_viene_vacio(admin_client):
 
 def test_la_baja_del_pago_devuelve_la_plata_y_el_saldo(admin_client):
     cliente_id, pago_id, turno_id = _deudor_con_pago(admin_client)
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 1000
 
     baja = admin_client.delete(f"/api/cuenta-corriente/pagos/{pago_id}")
@@ -291,7 +291,7 @@ def test_la_baja_del_pago_devuelve_la_plata_y_el_saldo(admin_client):
     cuenta = admin_client.get(f"/api/cuenta-corriente/{cliente_id}")
     assert cuenta.json()["saldo"] == 3000.0
     assert "credito" not in [m["tipo"] for m in cuenta.json()["movimientos"]]
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 0
 
 

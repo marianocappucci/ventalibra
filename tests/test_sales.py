@@ -342,15 +342,15 @@ def test_cobrar_sin_turno_abierto_es_rechazado(admin_client):
 def test_no_se_puede_abrir_un_turno_sobre_otro(admin_client):
     abrir_turno(admin_client)
     segundo = admin_client.post(
-        "/shifts/open", json={"monto_inicial": 100, "caja_id": caja_default(admin_client)}
+        "/api/turnos/abrir", json={"monto_inicial": 100, "caja_id": caja_default(admin_client)}
     )
     assert segundo.status_code == 409
 
 
 def test_turno_actual_arranca_vacio_y_despues_reporta_el_abierto(admin_client):
-    assert admin_client.get("/shifts/current").json()["turno"] is None
+    assert admin_client.get("/api/turnos/actual").json()["turno"] is None
     tid = abrir_turno(admin_client, 5000)
-    actual = admin_client.get("/shifts/current").json()
+    actual = admin_client.get("/api/turnos/actual").json()
     assert actual["turno"]["id"] == tid
     assert actual["turno"]["estado"] == "abierto"
     assert actual["resumen"]["total_ventas"] == 0
@@ -368,7 +368,7 @@ def test_el_cobro_queda_dentro_del_turno_y_suma_al_arqueo(admin_client):
         ],
     )
 
-    resumen = admin_client.get(f"/shifts/{tid}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{tid}").json()["resumen"]
     assert resumen["pagos_por_medio"] == {"efectivo": 1000.0, "tarjeta_debito": 2000.0}
     # el vuelto NO entra a la caja: entraron 1000 de efectivo, no 2000
     assert resumen["efectivo_ventas"] == 1000.0
@@ -380,29 +380,31 @@ def test_cierre_calcula_esperado_y_conserva_la_diferencia(admin_client):
     tid = abrir_turno(admin_client)
     registrar_venta(admin_client, item_id, cantidad="2", precio="1500.00")
 
-    cerrado = admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 2900.0})
+    cerrado = admin_client.post(f"/api/turnos/{tid}/cerrar", json={"monto_declarado": 2900.0})
 
     assert cerrado.status_code == 200, cerrado.text
-    turno = cerrado.json()["turno"]
+    turno = cerrado.json()
     assert turno["estado"] == "cerrado"
     assert turno["monto_esperado_cierre"] == 3000.0
     assert turno["monto_declarado_cierre"] == 2900.0
-    # el resumen viene con la respuesta: despues de cerrar ya no se puede
-    # reconstruir en pantalla
-    assert cerrado.json()["resumen"]["efectivo_ventas"] == 3000.0
+    # el turno cerrado sigue con su resumen y su arqueo, y la respuesta trae la caja y la sucursal
+    detalle = admin_client.get(f"/api/turnos/{tid}").json()
+    assert detalle["resumen"]["efectivo_ventas"] == 3000.0
+    assert detalle["turno"]["caja"]["id"] == turno["caja_id"]
+    assert turno["caja"]["id"] == turno["caja_id"] and turno["sucursal"]["id"]
 
 
 def test_no_se_cierra_dos_veces(admin_client):
     tid = abrir_turno(admin_client)
-    assert admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0}).status_code == 200
-    repetido = admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0})
-    assert repetido.status_code == 409
+    assert admin_client.post(f"/api/turnos/{tid}/cerrar", json={"monto_declarado": 0}).status_code == 200
+    repetido = admin_client.post(f"/api/turnos/{tid}/cerrar", json={"monto_declarado": 0})
+    assert repetido.status_code == 422
 
 
 def test_despues_de_cerrar_no_se_puede_cobrar_hasta_abrir_otro(admin_client):
     item_id = _make_item(admin_client)
     tid = abrir_turno(admin_client)
-    admin_client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0})
+    admin_client.post(f"/api/turnos/{tid}/cerrar", json={"monto_declarado": 0})
 
     respuesta = admin_client.post("/api/ventas", json={
         "fecha": hoy(),
@@ -421,7 +423,7 @@ def test_despues_de_cerrar_no_se_puede_cobrar_hasta_abrir_otro(admin_client):
 
 
 def test_cerrar_un_turno_inexistente_es_404(admin_client):
-    assert admin_client.post("/shifts/9999/close", json={"monto_declarado": 0}).status_code == 404
+    assert admin_client.post("/api/turnos/9999/cerrar", json={"monto_declarado": 0}).status_code == 404
 
 
 # --- depósito de la venta (F4, VentaLibra multisucursal, ADR-025) ---------
