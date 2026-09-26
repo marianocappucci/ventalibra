@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from 'libra-ui/data-table'
 import {
   api, ApiError, opcionesProveedor, PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_TONO,
-  type PurchaseOrder, type Supplier,
+  type PurchaseOrder, type Proveedor,
 } from '../api'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { Card, CardContent } from '@/components/ui/card'
@@ -46,7 +46,7 @@ function totalDe(order: PurchaseOrder): number {
  *  apenas se crea (mismo criterio que "Nueva venta" del kit). */
 function NuevaCompraDialog({
   suppliers, onCreada,
-}: { suppliers: Supplier[]; onCreada: (orden: PurchaseOrder) => void }) {
+}: { suppliers: Proveedor[]; onCreada: (orden: PurchaseOrder) => void }) {
   const [open, setOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
   const [saving, setSaving] = useState(false)
@@ -64,7 +64,7 @@ function NuevaCompraDialog({
     setError(null)
     try {
       const creada = await api.post<PurchaseOrder>('/purchase-orders', {
-        supplier_party_id: Number(supplierId),
+        proveedor_id: Number(supplierId),
       })
       setOpen(false)
       onCreada(creada)
@@ -112,7 +112,7 @@ function NuevaCompraDialog({
 export function Compras() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [suppliers, setSuppliers] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,7 +126,7 @@ export function Compras() {
     try {
       const [o, s] = await Promise.all([
         api.get<PurchaseOrder[]>('/purchase-orders'),
-        api.get<Supplier[]>('/suppliers'),
+        api.get<Proveedor[]>('/api/proveedores'),
       ])
       setOrders(o)
       setSuppliers(s)
@@ -138,7 +138,7 @@ export function Compras() {
   }
 
   function supplierName(supplierId: number): string {
-    return suppliers.find((s) => s.id === supplierId)?.display_name ?? `#${supplierId}`
+    return suppliers.find((s) => s.id === supplierId)?.nombre ?? `#${supplierId}`
   }
 
   function irAlDetalle(orden: PurchaseOrder) {
@@ -154,7 +154,7 @@ export function Compras() {
       header: 'Proveedor',
       minSize: 140,
       meta: { stretch: true },
-      cell: ({ row }) => <span className="block truncate">{supplierName(row.original.supplier_party_id)}</span>,
+      cell: ({ row }) => <span className="block truncate">{supplierName(row.original.proveedor_id)}</span>,
     },
     {
       accessorKey: 'status',
@@ -193,7 +193,7 @@ export function Compras() {
               onRowClick={irAlDetalle}
               // Mismo buscador que Clientes/Proveedores/Productos.
               search={{
-                campos: (o) => [o.number, supplierName(o.supplier_party_id)],
+                campos: (o) => [o.number, supplierName(o.proveedor_id)],
                 placeholder: 'Buscar por número o proveedor',
                 ariaLabel: 'Buscar orden de compra',
               }}

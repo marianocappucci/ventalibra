@@ -11,7 +11,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   api, ApiError, opcionesItem, PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_TONO,
   PURCHASE_RECEIPT_STATUS_LABELS, PURCHASE_RECEIPT_STATUS_TONO,
-  type CatalogItem, type Location, type PurchaseOrder, type PurchaseReceipt, type Supplier,
+  type CatalogItem, type Location, type PurchaseOrder, type PurchaseReceipt, type Proveedor,
 } from '../api'
 import { fechaHora } from '@/lib/fechas'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
@@ -45,7 +45,7 @@ export function CompraDetalle() {
 
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
   const [items, setItems] = useState<CatalogItem[]>([])
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [suppliers, setSuppliers] = useState<Proveedor[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [receipts, setReceipts] = useState<PurchaseReceipt[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,7 +70,7 @@ export function CompraDetalle() {
       const [o, i, s, l, r] = await Promise.all([
         api.get<PurchaseOrder>(`/purchase-orders/${orderId}`),
         api.get<CatalogItem[]>('/catalog/items'),
-        api.get<Supplier[]>('/suppliers'),
+        api.get<Proveedor[]>('/api/proveedores'),
         api.get<Location[]>('/locations'),
         api.get<PurchaseReceipt[]>('/purchase-receipts'),
       ])
@@ -99,7 +99,7 @@ export function CompraDetalle() {
   }
 
   function supplierName(supplierId: number): string {
-    return suppliers.find((s) => s.id === supplierId)?.display_name ?? `#${supplierId}`
+    return suppliers.find((s) => s.id === supplierId)?.nombre ?? `#${supplierId}`
   }
 
   async function agregarLinea() {
@@ -175,7 +175,7 @@ export function CompraDetalle() {
           <CardTitle className="text-base">Proveedor</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm">{supplierName(order.supplier_party_id)}</p>
+          <p className="text-sm">{supplierName(order.proveedor_id)}</p>
         </CardContent>
       </Card>
 
@@ -318,7 +318,7 @@ function RecibirMercaderiaDialog({
     setError(null)
     try {
       const receipt = await api.post<PurchaseReceipt>('/purchase-receipts', {
-        supplier_party_id: order.supplier_party_id,
+        proveedor_id: order.proveedor_id,
         purchase_order_id: order.id,
         document_reference: documentReference.trim() || null,
       })

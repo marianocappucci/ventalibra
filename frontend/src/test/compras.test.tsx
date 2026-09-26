@@ -23,14 +23,14 @@ if (!Element.prototype.hasPointerCapture) {
 
 const PROVEEDORES = [
   {
-    id: 1, party_type: 'organization', display_name: 'Distribuidora Norte',
-    email: null, phone: null, active: true, legal_name: null, tax_id: '30111111112',
+    id: 1, nombre: 'Distribuidora Norte', cuit_dni: '30111111112',
+    email: '', phone: '', address: '', iva_condition: '',
   },
 ]
 
 const ORDENES = [
   {
-    id: 7, number: 'OC-000007', supplier_party_id: 1, status: 'sent',
+    id: 7, number: 'OC-000007', supplier_party_id: 100001, proveedor_id: 1, status: 'sent',
     items: [
       { item_id: 1, quantity_ordered: '10', quantity_received: '0', pending_quantity: '10', unit_cost: '100.00', tax_rate: '0', subtotal: '1000.00' },
       { item_id: 2, quantity_ordered: '5', quantity_received: '0', pending_quantity: '5', unit_cost: '50.00', tax_rate: '0', subtotal: '250.00' },
@@ -39,7 +39,7 @@ const ORDENES = [
   },
 ]
 
-const ORDEN_NUEVA = { id: 8, number: 'OC-000008', supplier_party_id: 1, status: 'draft', items: [], is_fully_received: false }
+const ORDEN_NUEVA = { id: 8, number: 'OC-000008', supplier_party_id: 100001, proveedor_id: 1, status: 'draft', items: [], is_fully_received: false }
 
 const ITEMS = [
   { id: 1, item_type: 'product', name: 'Yerba', description: '', category_id: null, unit_code: 'kg', active: true, sellable: true, purchasable: true, default_sale_price: '0', default_cost: '0' },
@@ -67,7 +67,7 @@ beforeEach(() => {
     if (u === '/purchase-orders/7') return Promise.resolve(json(ORDENES[0]))
     if (u === '/purchase-orders/8') return Promise.resolve(json(ORDEN_NUEVA))
     if (u === '/purchase-orders') return Promise.resolve(json(ORDENES))
-    if (u === '/suppliers') return Promise.resolve(json(PROVEEDORES))
+    if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
     if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
     if (u === '/locations') return Promise.resolve(json(LOCATIONS))
     if (u === '/purchase-receipts') return Promise.resolve(json([]))
@@ -121,11 +121,11 @@ describe('El listado de compras', () => {
 
   it('el buscador de la tabla filtra por número o proveedor', async () => {
     const PROVEEDOR_2 = {
-      id: 2, party_type: 'organization', display_name: 'Almacén Sur',
-      email: null, phone: null, active: true, legal_name: null, tax_id: '30222222223',
+      id: 2, nombre: 'Almacén Sur', cuit_dni: '30222222223',
+      email: '', phone: '', address: '', iva_condition: '',
     }
     const ORDEN_2 = {
-      id: 9, number: 'OC-000009', supplier_party_id: 2, status: 'draft',
+      id: 9, number: 'OC-000009', supplier_party_id: 100002, proveedor_id: 2, status: 'draft',
       items: [], is_fully_received: false,
     }
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
@@ -133,7 +133,7 @@ describe('El listado de compras', () => {
       const metodo = init?.method ?? 'GET'
       llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
       if (u === '/purchase-orders') return Promise.resolve(json([ORDENES[0], ORDEN_2]))
-      if (u === '/suppliers') return Promise.resolve(json([...PROVEEDORES, PROVEEDOR_2]))
+      if (u === '/api/proveedores') return Promise.resolve(json([...PROVEEDORES, PROVEEDOR_2]))
       if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
       return Promise.resolve(json([]))
     }))
@@ -162,7 +162,7 @@ describe('El listado de compras', () => {
     await waitFor(() => {
       const post = llamadas.find((l) => l.metodo === 'POST' && l.url === '/purchase-orders')
       expect(post).toBeTruthy()
-      expect(post!.cuerpo).toEqual({ supplier_party_id: 1 })
+      expect(post!.cuerpo).toEqual({ proveedor_id: 1 })
     })
     expect(await screen.findByText(/^Orden OC-000008/)).toBeInTheDocument()
   })
