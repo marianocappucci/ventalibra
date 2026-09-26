@@ -241,3 +241,37 @@ def test_un_party_cliente_y_proveedor_a_la_vez_frena_la_migracion(escenario, sql
     conn.rollback()
     # No se tocó nada.
     assert _ids_de_parties(conn)["Cliente A"] == 2
+
+
+def test_con_la_app_conectada_se_rinde_rapido_y_no_cambia_nada(escenario, sqla_conn):
+    """Pasó en la demo (2026-09-26): la app vieja deja una conexión `idle in transaction` y el
+    `ALTER TABLE` esperó casi 9 minutos, encolando las demás consultas. Ahora se rinde a los
+    `LOCK_TIMEOUT` con un mensaje que dice qué hacer, y la transacción se revierte entera."""
+    import psycopg
+
+    conn = escenario["conn"]
+    rev = _cargar_revision()
+    rev.LOCK_TIMEOUT = "300ms"
+    antes = _ids_de_parties(conn)
+    conn.commit()
+
+    otra_app = psycopg.connect(TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1))
+    try:
+        otra_app.execute("SELECT count(*) FROM sales")  # transacción abierta: lock de lectura
+        with pytest.raises(RuntimeError, match="app PARADA"):
+            rev.upgrade()
+    finally:
+        otra_app.close()
+    # Alembic abortaría el proceso; acá se limpia la transacción fallida de la conexión del bind.
+    sqla_conn.connection.driver_connection.rollback()
+
+    # Nada cambió: ni ids, ni proveedores creados, ni bitácora.
+    assert _ids_de_parties(conn) == antes
+    assert conn.execute("SELECT COUNT(*) FROM proveedores").fetchone()[0] == 0
+    assert conn.execute("SELECT to_regclass('_migracion_0004') IS NULL").fetchone()[0]
+    conn.commit()
+
+    # Con la app parada, la misma migración corre.
+    rev.upgrade()
+    conn.commit()
+    assert _ids_de_parties(conn)["Cliente A"] == escenario["cliente_a"]
