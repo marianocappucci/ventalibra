@@ -91,12 +91,12 @@ def test_anular_una_venta_fiada_le_baja_la_deuda_al_cliente(admin_client):
     sale_id = _venta(admin_client, item_id, cantidad="2",
                      pagos=[{"medio": "cuenta_corriente", "monto": 3000}],
                      customer_id=cliente)
-    assert Decimal(str(admin_client.get(f"/accounts/{cliente}").json()["saldo"])) == 3000
+    assert Decimal(str(admin_client.get(f"/api/cuenta-corriente/{cliente}").json()["saldo"])) == 3000
 
     anulada = admin_client.post(f"/api/ventas/{sale_id}/anular")
     assert anulada.status_code == 200, anulada.text
 
-    assert Decimal(str(admin_client.get(f"/accounts/{cliente}").json()["saldo"])) == 0
+    assert Decimal(str(admin_client.get(f"/api/cuenta-corriente/{cliente}").json()["saldo"])) == 0
 
 
 def test_anular_una_venta_inexistente_es_404(admin_client):
@@ -264,7 +264,7 @@ def test_devolver_a_cuenta_corriente_baja_la_deuda(admin_client):
     })
     assert devuelta.status_code == 200, devuelta.text
 
-    assert Decimal(str(admin_client.get(f"/accounts/{cliente}").json()["saldo"])) == 1500
+    assert Decimal(str(admin_client.get(f"/api/cuenta-corriente/{cliente}").json()["saldo"])) == 1500
     # La caja no se movió.
     resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 0

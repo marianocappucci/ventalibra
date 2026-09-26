@@ -12,8 +12,8 @@ Portado a F3 (2026-09-14, DECISIONS.md ADR-025): `registrar`/`devolver` ya no
 son `POST /sales/{id}/confirm` / `.../returns` (retirados, 410 sin mirar el
 cuerpo) -- son `POST /api/ventas` y `POST /api/ventas/{vid}/devolver`, que
 validan el medio con la MISMA función pero en `libracommerce.web.
-ventas_router.PagoPayload`/`DevolucionPayload`. `/accounts/{id}/payments`
-no cambió: sigue siendo de este producto.
+ventas_router.PagoPayload`/`DevolucionPayload`. `/api/cuenta-corriente/{id}/pagar`
+es el router del motor (ADR-031), con el medio validado en el gancho de VentaLibra.
 
 🔴 **Lo que ya no existe**: el atajo `medio_pago` de un solo string en la
 confirmación. `VentaPayload` sólo acepta `pagos: list[PagoPayload]` -- no hay
@@ -33,7 +33,6 @@ from ventas_helpers import caja_default, hoy
 from tests.test_billing import _confirmed_sale, _make_item, _make_location
 
 VENTA_INEXISTENTE = 999_999
-CLIENTE_INEXISTENTE = 999_999
 
 #: Grafías que se LEEN en filas viejas pero no se escriben en filas nuevas
 #: (`medios_pago.HISTORICOS` y la de VentaLibra que ya se retiró), más una
@@ -61,8 +60,12 @@ def _devolver(client, medio):
 
 
 def _cobrar(client, medio):
+    # Con el router del motor (ADR-031) el medio se valida en el gancho de VentaLibra, DESPUÉS de resolver al
+    # cliente: hace falta uno que exista. Se valida antes que el turno (422 antes que 409).
+    cliente = client.post("/api/clientes", json={"name": "Cliente de control del cobro"})
     return client.post(
-        f"/accounts/{CLIENTE_INEXISTENTE}/payments", json={"monto": "10", "medio_pago": medio},
+        f"/api/cuenta-corriente/{cliente.json()['id']}/pagar",
+        json={"fecha": hoy(), "monto": "10", "medio_pago": medio},
     )
 
 

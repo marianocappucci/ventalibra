@@ -35,8 +35,10 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..services import cajas as cajas_service
-from ..services.cuenta_corriente import MEDIO_CUENTA_CORRIENTE
 from ..services.locations import LocationService, vende
+
+#: El medio de pago que marca una venta a crédito: no es plata que entra en la caja.
+MEDIO_CUENTA_CORRIENTE = "cuenta_corriente"
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 

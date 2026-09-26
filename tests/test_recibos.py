@@ -14,6 +14,7 @@ distingue "anda" de "no explota".
 """
 import io
 
+from libracore.db import recibos as db_recibos
 from pypdf import PdfReader
 from ventas_helpers import caja_default, hoy
 
@@ -71,8 +72,8 @@ def test_el_cobro_emite_el_recibo_solo(admin_client):
     """Sin esta afirmación, un cableado roto pasa desapercibido: la emisión
     está dentro de un `except Exception` que no rompe el cobro."""
     cliente_id = _deudor(admin_client, "Emite solo")
-    resp = admin_client.post(f"/accounts/{cliente_id}/payments",
-                             json={"monto": "1000.00", "medio_pago": "efectivo"})
+    resp = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                             json={"fecha": hoy(), "monto": "1000.00", "medio_pago": "efectivo"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["recibo_id"] is not None
 
@@ -80,22 +81,23 @@ def test_el_cobro_emite_el_recibo_solo(admin_client):
 def test_el_recibo_sale_a_nombre_del_cliente_y_por_el_monto_cobrado(admin_client):
     cliente_id = _deudor(admin_client, "Panaderia Sol")
     recibo_id = admin_client.post(
-        f"/accounts/{cliente_id}/payments",
-        json={"monto": "1200.50", "medio_pago": "transferencia",
+        f"/api/cuenta-corriente/{cliente_id}/pagar",
+        json={"fecha": hoy(), "monto": "1200.50", "medio_pago": "transferencia",
               "referencia": "transf 771"}).json()["recibo_id"]
 
-    recibo = admin_client.post(f"/accounts/receipts/{_pago_de(admin_client, cliente_id)}").json()
-    assert recibo["id"] == recibo_id
-    assert recibo["numero_visible"] == "0001-00000001"
+    # La ruta del kit sólo devuelve el id (idempotente): el contenido se lee del recibo.
+    emitido = admin_client.post(f"/api/recibos/cobranza/{_pago_de(admin_client, cliente_id)}").json()
+    assert emitido["id"] == recibo_id
+    recibo = db_recibos.get_recibo(recibo_id)
+    assert f"{str(recibo['punto_venta']).zfill(4)}-{str(recibo['numero']).zfill(8)}" == "0001-00000001"
     assert recibo["cliente_razon"] == "Panaderia Sol"
-    # Numérico, no textual: el Decimal serializa sin el cero final ("1200.5").
     assert float(recibo["total"]) == 1200.50
-    assert recibo["anulado"] is False
+    assert not recibo["anulado"]
 
 
 def _pago_de(client, party_id):
     """El `cc_pago_id` del último abono de la cuenta."""
-    cuenta = client.get(f"/accounts/{party_id}").json()
+    cuenta = client.get(f"/api/cuenta-corriente/{party_id}").json()
     abonos = [m["cc_pago_id"] for m in cuenta["movimientos"] if m["cc_pago_id"]]
     assert abonos, "la cuenta no tiene abonos con cc_pago_id"
     return abonos[-1]
@@ -105,10 +107,10 @@ def test_los_movimientos_traen_el_id_del_pago_para_poder_ofrecer_el_recibo(admin
     """Los cargos NO lo traen: un cargo no es plata que entró, no hay recibo
     que emitirle."""
     cliente_id = _deudor(admin_client, "Con abonos")
-    admin_client.post(f"/accounts/{cliente_id}/payments",
-                      json={"monto": "500.00", "medio_pago": "efectivo"})
+    admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                      json={"fecha": hoy(), "monto": "500.00", "medio_pago": "efectivo"})
 
-    movimientos = admin_client.get(f"/accounts/{cliente_id}").json()["movimientos"]
+    movimientos = admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()["movimientos"]
     cargos = [m for m in movimientos if m["tipo"] == "debito"]
     abonos = [m for m in movimientos if m["tipo"] == "credito"]
     assert all(m["cc_pago_id"] is None for m in cargos)
@@ -118,26 +120,26 @@ def test_los_movimientos_traen_el_id_del_pago_para_poder_ofrecer_el_recibo(admin
 def test_pedir_el_recibo_dos_veces_no_emite_dos(admin_client):
     """El botón de la pantalla llama sin saber si ya existe."""
     cliente_id = _deudor(admin_client, "Idempotente")
-    admin_client.post(f"/accounts/{cliente_id}/payments",
-                      json={"monto": "800.00", "medio_pago": "efectivo"})
+    admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                      json={"fecha": hoy(), "monto": "800.00", "medio_pago": "efectivo"})
     pago_id = _pago_de(admin_client, cliente_id)
 
-    primero = admin_client.post(f"/accounts/receipts/{pago_id}").json()
-    segundo = admin_client.post(f"/accounts/receipts/{pago_id}").json()
+    primero = admin_client.post(f"/api/recibos/cobranza/{pago_id}").json()
+    segundo = admin_client.post(f"/api/recibos/cobranza/{pago_id}").json()
     assert primero["id"] == segundo["id"]
 
 
 def test_dos_cobros_son_dos_recibos_correlativos(admin_client):
     cliente_id = _deudor(admin_client, "Paga en cuotas", cantidad="4")
-    a = admin_client.post(f"/accounts/{cliente_id}/payments",
-                          json={"monto": "1000.00", "medio_pago": "efectivo"}).json()
-    b = admin_client.post(f"/accounts/{cliente_id}/payments",
-                          json={"monto": "2000.00", "medio_pago": "efectivo"}).json()
+    a = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                          json={"fecha": hoy(), "monto": "1000.00", "medio_pago": "efectivo"}).json()
+    b = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                          json={"fecha": hoy(), "monto": "2000.00", "medio_pago": "efectivo"}).json()
     assert a["recibo_id"] != b["recibo_id"]
 
 
 def test_un_pago_que_no_existe_no_emite_recibo(admin_client):
-    assert admin_client.post("/accounts/receipts/99999").status_code == 404
+    assert admin_client.post("/api/recibos/cobranza/99999").status_code == 404
 
 
 # ── El PDF ───────────────────────────────────────────────────────────────────
@@ -145,11 +147,11 @@ def test_un_pago_que_no_existe_no_emite_recibo(admin_client):
 def test_el_pdf_sale_por_http_con_los_datos_del_cobro(admin_client):
     cliente_id = _deudor(admin_client, "Ferreteria Luna")
     recibo_id = admin_client.post(
-        f"/accounts/{cliente_id}/payments",
-        json={"monto": "1500.00", "medio_pago": "transferencia",
+        f"/api/cuenta-corriente/{cliente_id}/pagar",
+        json={"fecha": hoy(), "monto": "1500.00", "medio_pago": "transferencia",
               "referencia": "transf 991"}).json()["recibo_id"]
 
-    resp = admin_client.get(f"/accounts/receipts/{recibo_id}/pdf")
+    resp = admin_client.get(f"/api/recibos/{recibo_id}/pdf")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"
     texto = _texto_del_pdf(resp.content)
@@ -161,15 +163,15 @@ def test_el_pdf_sale_por_http_con_los_datos_del_cobro(admin_client):
 
 def test_reimprimir_devuelve_el_mismo_papel(admin_client):
     cliente_id = _deudor(admin_client, "Reimprime")
-    recibo_id = admin_client.post(f"/accounts/{cliente_id}/payments",
-                                  json={"monto": "1000.00"}).json()["recibo_id"]
-    primero = admin_client.get(f"/accounts/receipts/{recibo_id}/pdf").content
-    segundo = admin_client.get(f"/accounts/receipts/{recibo_id}/pdf").content
+    recibo_id = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                                  json={"fecha": hoy(), "monto": "1000.00"}).json()["recibo_id"]
+    primero = admin_client.get(f"/api/recibos/{recibo_id}/pdf").content
+    segundo = admin_client.get(f"/api/recibos/{recibo_id}/pdf").content
     assert primero == segundo
 
 
 def test_un_recibo_que_no_existe_da_404(admin_client):
-    assert admin_client.get("/accounts/receipts/99999/pdf").status_code == 404
+    assert admin_client.get("/api/recibos/99999/pdf").status_code == 404
 
 
 # ── El cobro manda sobre el comprobante ──────────────────────────────────────
@@ -178,17 +180,17 @@ def test_si_falla_la_emision_el_cobro_igual_queda_registrado(admin_client, monke
     """La regla: perder el comprobante es molesto, perder el pago es plata.
     Se rompe la emisión a propósito y se verifica que el saldo igual baje."""
     cliente_id = _deudor(admin_client, "Cobro a salvo")
-    saldo_antes = float(admin_client.get(f"/accounts/{cliente_id}").json()["saldo"])
+    saldo_antes = float(admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()["saldo"])
 
-    import app.services.cuenta_corriente as mod
+    import libracore.recibos as mod  # el router del motor importa `emitir_recibo_cobranza` al cobrar
 
     def _explota(*a, **kw):
         raise RuntimeError("la emision se rompio")
 
     monkeypatch.setattr(mod, "emitir_recibo_cobranza", _explota)
 
-    resp = admin_client.post(f"/accounts/{cliente_id}/payments",
-                             json={"monto": "1000.00", "medio_pago": "efectivo"})
+    resp = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                             json={"fecha": hoy(), "monto": "1000.00", "medio_pago": "efectivo"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["recibo_id"] is None
     assert float(resp.json()["saldo"]) == saldo_antes - 1000.0
@@ -197,12 +199,13 @@ def test_si_falla_la_emision_el_cobro_igual_queda_registrado(admin_client, monke
 def test_despues_de_un_fallo_el_boton_puede_emitirlo(admin_client, monkeypatch):
     """Por eso el endpoint de emisión existe aparte del cobro."""
     cliente_id = _deudor(admin_client, "Reintento")
-    import app.services.cuenta_corriente as mod
+    import libracore.recibos as mod
     monkeypatch.setattr(mod, "emitir_recibo_cobranza",
                         lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
-    admin_client.post(f"/accounts/{cliente_id}/payments", json={"monto": "1000.00"})
+    admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar", json={"fecha": hoy(), "monto": "1000.00"})
     monkeypatch.undo()
 
-    recibo = admin_client.post(f"/accounts/receipts/{_pago_de(admin_client, cliente_id)}")
+    recibo = admin_client.post(f"/api/recibos/cobranza/{_pago_de(admin_client, cliente_id)}")
     assert recibo.status_code == 200
-    assert recibo.json()["numero_visible"] == "0001-00000001"
+    reintentado = db_recibos.get_recibo(recibo.json()["id"])
+    assert f"{str(reintentado['punto_venta']).zfill(4)}-{str(reintentado['numero']).zfill(8)}" == "0001-00000001"

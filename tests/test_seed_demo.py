@@ -137,7 +137,7 @@ def test_las_ventas_descontaron_stock(api):
 
 def test_el_deudor_sembrado_aparece_en_el_listado_de_deudores(api):
     """🔴 Hasta que `CustomerService.create` empezó a crear la fila `clients`
-    enlazada al dar de alta un cliente (2026-09-14), `GET /accounts` -- el
+    enlazada al dar de alta un cliente (2026-09-14), `GET /api/cuenta-corriente` -- el
     listado, no la cuenta puntual -- no traía a un cliente que acababa de
     fiar por primera vez (ver el docstring de `_sembrar_cuenta_corriente`).
     Medido de nuevo con el código actual para `tests/test_seed_demo.py`: si
@@ -145,8 +145,8 @@ def test_el_deudor_sembrado_aparece_en_el_listado_de_deudores(api):
     cajero mirando la pantalla de deudores y sin ver a quién cobrarle."""
     sembrar(api)
 
-    deudores = api.get("/accounts")
-    assert any(d["nombre"] == "Kiosco La Esquina" and float(d["saldo"]) > 0 for d in deudores), deudores
+    deudores = api.get("/api/cuenta-corriente")["clientes"]
+    assert any(d["name"] == "Kiosco La Esquina" and float(d["saldo"]) > 0 for d in deudores), deudores
 
 
 def test_hay_ventas_en_mas_de_un_estado(api):
