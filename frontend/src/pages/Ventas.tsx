@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import { Ventas as VentasComercio } from 'libra-ui/comercio/Ventas'
 import type { VentaDetalleAccionesExtraCtx } from 'libra-ui/comercio/VentaDetalle'
 import {
-  api, ApiError, type Location, type ShiftState, type VentaDevuelto,
+  api, ApiError, type Deposito, type ShiftState, type VentaDevuelto,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -63,7 +63,7 @@ export function Ventas() {
 export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExtraCtx) {
   const [open, setOpen] = useState(false)
   const [devuelto, setDevuelto] = useState<VentaDevuelto | null>(null)
-  const [locations, setLocations] = useState<Location[]>([])
+  const [locations, setLocations] = useState<Deposito[]>([])
   const [locationId, setLocationId] = useState('')
   const [medio, setMedio] = useState('efectivo')
   const [cantidades, setCantidades] = useState<Record<number, string>>({})
@@ -77,11 +77,11 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
     setCantidades({})
     Promise.all([
       api.get<VentaDevuelto>(`/ventas/${detalle.id}/devuelto`),
-      api.get<Location[]>('/locations'),
+      api.get<Deposito[]>('/api/depositos'),
       api.get<ShiftState>('/api/turnos/actual').catch(() => ({ turno: null }) as ShiftState),
     ]).then(([d, ls, estado]) => {
       setDevuelto(d)
-      setLocations(ls)
+      setLocations(ls.filter((l) => !!l.activo))
       // Default: la sucursal de la caja del turno de quien devuelve --
       // el backend rechaza cualquier otra (422, `app/ganchos.py::
       // validar_deposito`). Sin turno en una caja con sucursal: el depósito
@@ -89,7 +89,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
       // (o el primero, si tampoco hay uno marcado).
       const sugerido = estado.turno?.sucursal?.id
         ?? d.deposito_id
-        ?? ls.find((l) => l.is_default)?.id
+        ?? ls.find((l) => !!l.es_default)?.id
         ?? ls[0]?.id
       setLocationId(sugerido ? String(sugerido) : '')
     }).catch((err) => setError(describeError(err)))
@@ -196,7 +196,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
                 <SelectTrigger className="w-48" aria-label="Depósito"><SelectValue placeholder="Elegí un depósito…" /></SelectTrigger>
                 <SelectContent>
                   {locations.map((l) => (
-                    <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                    <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

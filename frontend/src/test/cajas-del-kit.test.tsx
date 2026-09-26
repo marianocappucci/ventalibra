@@ -1,7 +1,7 @@
 // Las cajas son la pantalla del kit (`libra-ui/comercio/Cajas`) con las variantes de VentaLibra (ADR-032): la
 // caja es de una sucursal, sólo las que venden admiten cajas nuevas, se activa y desactiva desde la tarjeta y no
 // hay pantalla de movimientos. El detalle de la pantalla lo prueban los tests del kit; acá, que el wrapper
-// arma bien las variantes y que el contrato de la API (`/locations`, `/api/cajas`) es el que el kit espera.
+// arma bien las variantes y que el contrato de la API (`/api/depositos`, `/api/cajas`) es el que el kit espera.
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -16,8 +16,8 @@ const base = {
   descripcion: '', medios_pago: ['efectivo'], punto_venta: 3, mp_pos_id: 'POS1',
   es_default: 0, sucursal_id: 1, sucursal_nombre: 'Sucursal', tiene_turno_abierto: false,
 }
-const SUCURSAL = { id: 1, name: 'Sucursal', location_type: 'store', active: true }
-const DEPOSITO = { id: 2, name: 'Depósito', location_type: 'warehouse', active: true }
+const SUCURSAL = { id: 1, nombre: 'Sucursal', descripcion: '', tipo: 'store', activo: 1, es_default: 1 }
+const DEPOSITO = { id: 2, nombre: 'Depósito', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 0 }
 
 let cajas: Record<string, unknown>[]
 let locations: Record<string, unknown>[]
@@ -44,7 +44,7 @@ beforeEach(() => {
       return putStatus === 200 ? json({}) : json({ detail: 'La sucursal necesita al menos una caja activa.' }, putStatus)
     }
     if (metodo === 'POST') return json({})
-    if (ruta === '/locations') return json(locations)
+    if (ruta === '/api/depositos') return json(locations)
     if (ruta === '/api/cajas/medios-disponibles') return json([{ id: 'efectivo', label: 'Efectivo' }])
     if (ruta === '/api/cajas') return json(cajas)
     return json([])
@@ -105,7 +105,7 @@ it('el alta va a la sucursal que vende (preseleccionada) y manda sucursal_id', a
 })
 
 it('sin ninguna sucursal que venda (sólo depósitos o inactivas) no se puede crear una caja', async () => {
-  locations = [DEPOSITO, { ...SUCURSAL, active: false }]
+  locations = [DEPOSITO, { ...SUCURSAL, activo: 0 }]
   render(<Cajas />)
   await screen.findByText('Mostrador')
   expect(screen.getByRole('button', { name: /Nueva caja/ })).toBeDisabled()

@@ -26,7 +26,7 @@ import { Link } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
 import {
-  api, ApiError, type Caja, type CatalogItem, type Cliente, type ItemVariant, type Location,
+  api, ApiError, type Caja, type CatalogItem, type Cliente, type Deposito, type ItemVariant,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
   type ScanResult, type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
@@ -232,7 +232,7 @@ function lineaVacia(item: CatalogItem, cantidad: string, variante?: ItemVariant,
 }
 
 export function Pos() {
-  const [locations, setLocations] = useState<Location[]>([])
+  const [locations, setLocations] = useState<Deposito[]>([])
   const [locationId, setLocationId] = useState<string>(
     () => localStorage.getItem(LOCATION_KEY) ?? '',
   )
@@ -354,10 +354,10 @@ export function Pos() {
   }, [query, hayDialogo])
 
   useEffect(() => {
-    api.get<Location[]>('/locations')
+    api.get<Deposito[]>('/api/depositos')
       .then((todas) => {
-        // Sólo vende una sucursal `store`; los depósitos no se ofrecen.
-        const items = todas.filter((l) => l.location_type === 'store')
+        // Sólo vende una sucursal `store` y activa; los depósitos no se ofrecen.
+        const items = todas.filter((l) => l.tipo === 'store' && !!l.activo)
         setLocations(items)
         setLocationId((actual) => {
           if (actual && items.some((l) => String(l.id) === actual)) return actual
@@ -365,7 +365,7 @@ export function Pos() {
           // devolución, `Ventas.tsx::DevolucionDeVenta`) -- no "la primera de
           // la lista", que puede no ser la que el motor usa cuando el POS no
           // manda `deposito_id`.
-          const porDefecto = items.find((l) => l.is_default)
+          const porDefecto = items.find((l) => !!l.es_default)
           if (porDefecto) return String(porDefecto.id)
           return items.length > 0 ? String(items[0].id) : ''
         })
@@ -637,7 +637,7 @@ export function Pos() {
                 <SelectTrigger className="h-8 w-48" aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
                 <SelectContent>
                   {locations.map((loc) => (
-                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1723,7 +1723,7 @@ function imprimirTicket(saleId: number) {
  *  -- sin las cajas que ya tienen un turno abierto, para no toparse con el
  *  409 recién al mandar el formulario. */
 function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
-  const [locations, setLocations] = useState<Location[]>([])
+  const [locations, setLocations] = useState<Deposito[]>([])
   const [sucursalId, setSucursalId] = useState('')
   const [cajas, setCajas] = useState<Caja[]>([])
   const [cajaId, setCajaId] = useState('')
@@ -1739,9 +1739,10 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
   const montoInvalido = monto !== '' && montoInicial === null
 
   useEffect(() => {
-    api.get<Location[]>('/locations').then((items) => {
+    api.get<Deposito[]>('/api/depositos').then((todas) => {
+      const items = todas.filter((l) => l.tipo === 'store' && !!l.activo)
       setLocations(items)
-      const porDefecto = items.find((l) => l.is_default)
+      const porDefecto = items.find((l) => !!l.es_default)
       setSucursalId(String((porDefecto ?? items[0])?.id ?? ''))
     }).catch(() => setLocations([]))
   }, [])
@@ -1804,7 +1805,7 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
               <SelectTrigger aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
               <SelectContent>
                 {locations.map((l) => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                  <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -17,7 +17,7 @@ const TURNO = {
   monto_inicial: 0, monto_declarado_cierre: null, monto_esperado_cierre: null, estado: 'abierto', notas: '',
 }
 const LOCATIONS = [
-  { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
+  { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
 ]
 const CLIENTES = [
   { id: 1, name: 'Ana Gomez', address: '', cuit_dni: '27-12345678-9', email: '', phone: '', iva_condition: '', auto_facturar: 0, activo: 1 },
@@ -37,7 +37,7 @@ beforeEach(() => {
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
     if (u === '/api/clientes') return Promise.resolve(json(CLIENTES))
     return Promise.resolve(json([]))
   }))

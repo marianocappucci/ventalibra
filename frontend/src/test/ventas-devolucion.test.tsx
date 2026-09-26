@@ -56,10 +56,10 @@ function montarRed(opciones: { yaDevuelto?: number; depositoId?: number | null }
         deposito_id: opciones.depositoId ?? 1,
       }))
     }
-    if (u.includes('/locations')) {
+    if (u.includes('/api/depositos')) {
       return Promise.resolve(json([
-        { id: 1, name: 'Depósito principal', branch_id: null, location_type: 'warehouse', active: true },
-        { id: 2, name: 'Sucursal Once', branch_id: null, location_type: 'warehouse', active: true },
+        { id: 1, nombre: 'Depósito principal', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 },
+        { id: 2, nombre: 'Sucursal Once', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 0 },
       ]))
     }
     if (u.includes('/api/ventas/42/devolver')) return Promise.resolve(json({ importe: 1500, venta: DETALLE }))
