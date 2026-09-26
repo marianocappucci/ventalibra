@@ -5,13 +5,12 @@ no escribe un `cc_debito` explícito: la venta a cuenta corriente se registra
 como cualquier otra, con un pago `ventas_pagos.medio='cuenta_corriente'`
 (`libracommerce.erp.ventas.registrar_venta`/`crear_venta_directa`, montado en
 `app/main.py`) -- ese pago ES la deuda. Lo que este módulo sigue resolviendo
-es el puente entre las dos bases para LEER: el cliente de la venta es una
-`party` de LibraCommerce y la cuenta corriente vive en LibraCore, así que el
-saldo/movimientos/deudores cruzan por `clients.external_ref = party-<id>`
--- el origen `VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF` (libracore v1.100.0),
-que reemplaza el cruce directo por id que asume `VENTAS_LIBRACOMMERCE`
-(válido para Contalibra/Restolibra, donde `clients.id == parties.id`; NO acá,
-ver ADR-025).
+es leer desde las dos bases: el cliente de la venta es una `party` de
+LibraCommerce y la cuenta corriente vive en LibraCore. Desde la `0004`
+(2026-09-26) VentaLibra sigue la misma convención que Contalibra y
+Restolibra: **`clients.id == parties.id`**, así que el saldo, los movimientos y
+los deudores cruzan por id con el origen `VENTAS_LIBRACOMMERCE` del motor. Antes
+cruzaban por `clients.external_ref = party-<id>` (`..._POR_EXTERNAL_REF`, ADR-025).
 
 `cc_debitos` sigue existiendo y `get_cc_saldo` lo sigue sumando (para lo que
 la migración `0003` no reclasificó como duplicado, y para cualquier deuda
@@ -36,10 +35,9 @@ logger = logging.getLogger("ventalibra.cuenta_corriente")
 #: Contalibra/Restolibra, que es lo que hace que el saldo se calcule igual.
 MEDIO_CUENTA_CORRIENTE = "cuenta_corriente"
 
-#: El cruce venta -> cliente de este producto: por `external_ref`, no por id
-#: (ver docstring del módulo). Se declara acá y no se repite `db_cc.` en cada
-#: llamada de abajo.
-_ORIGEN = db_cc.VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF
+#: El cruce venta -> cliente: por id, igual que Contalibra y Restolibra (ver
+#: docstring del módulo). Se declara acá y no se repite `db_cc.` en cada llamada.
+_ORIGEN = db_cc.VENTAS_LIBRACOMMERCE
 
 
 class SinCliente(Exception):
@@ -70,27 +68,13 @@ class CuentaCorrienteService:
         # abre la suya por su cuenta, contra el otro archivo.
         self._conn = conn
 
-    # ── puente entre las dos bases ───────────────────────────────────────
+    # ── el cliente ───────────────────────────────────────────────────────
 
-    def _cliente_cc(self, party_id: int) -> int:
-        """El `clients.id` de LibraCore que le corresponde a este party.
-
-        Se crea en la primera compra fiada y se reusa siempre. No espeja la
-        cartera: sólo entra quien efectivamente fía.
-        """
-        row = self._conn.execute(
-            "SELECT display_name, tax_id, email, phone FROM parties WHERE id = ?",
-            (party_id,),
-        ).fetchone()
-        if row is None:
-            raise SinCliente(f"no existe el cliente {party_id}")
-        return db_clients.resolver_cliente_externo(
-            f"party-{party_id}",
-            row[0],
-            cuit_dni=row[1] or "",
-            email=row[2] or "",
-            phone=row[3] or "",
-        )
+    def _cliente_cc(self, cliente_id: int) -> int:
+        """El `clients.id` (que es también el id del party). Falla si no existe."""
+        if db_clients.get_client(cliente_id) is None:
+            raise SinCliente(f"no existe el cliente {cliente_id}")
+        return cliente_id
 
     # ── cobrar ───────────────────────────────────────────────────────────
 
@@ -158,19 +142,12 @@ class CuentaCorrienteService:
         return db_cc.get_cc_movimientos(cliente_id, origen=_ORIGEN)
 
     def deudores(self) -> list[dict]:
-        """Quiénes deben, con su saldo. Devuelve el `party_id` del cliente en
-        VentaLibra, no el id interno de LibraCore, para que el consumidor no
-        tenga que saber que hay dos bases."""
+        """Quiénes deben, con su saldo. `party_id` es el id del cliente (el mismo
+        en `clients` y en `parties`)."""
         salida = []
         for fila in db_cc.get_clientes_con_saldo_cc(origen=_ORIGEN):
-            party_id = _party_id_de(fila.get("external_ref"))
-            if party_id is None:
-                # Un cliente sin `external_ref` no vino de VentaLibra: no
-                # debería existir en esta base, pero si aparece no se lo
-                # muestra en vez de romper la pantalla.
-                continue
             salida.append({
-                "party_id": party_id,
+                "party_id": fila["id"],
                 "nombre": fila["name"],
                 "saldo": Decimal(str(fila["saldo"])),
             })
@@ -188,18 +165,14 @@ class CuentaCorrienteService:
         """Lo que `GET /api/cuenta-corriente` del kit espera: `clientes` con
         el mismo formato que `get_clientes_con_saldo_cc` del motor (`id`,
         `name`, `cuit_dni`, `saldo`) y `total_deuda` para el cartel. La clave
-        `id` es el `party_id`, que es lo que el kit manda a la pantalla
+        `id` es el id del cliente, que es lo que el kit manda a la pantalla
         detalle."""
         clientes = []
         total_deuda = 0.0
         for fila in db_cc.get_clientes_con_saldo_cc(origen=_ORIGEN):
-            party_id = _party_id_de(fila.get("external_ref"))
-            if party_id is None:
-                # Mismo criterio que `deudores()`: no vino de VentaLibra.
-                continue
             saldo = float(fila["saldo"])
             clientes.append({
-                "id": party_id,
+                "id": fila["id"],
                 "name": fila["name"],
                 "cuit_dni": fila.get("cuit_dni") or "",
                 "saldo": saldo,
@@ -213,17 +186,13 @@ class CuentaCorrienteService:
         con los campos que muestra la pantalla, los movimientos crudos del
         motor (que ya traen `usuario_nombre`, `venta_id`, `factura_id`...) y
         el saldo."""
-        fila = self._conn.execute(
-            "SELECT display_name, tax_id FROM parties WHERE id = ?", (party_id,),
-        ).fetchone()
-        if fila is None:
-            raise SinCliente(f"no existe el cliente {party_id}")
         cliente_id = self._cliente_cc(party_id)
+        fila = db_clients.get_client(cliente_id)
         return {
             "cliente": {
-                "id": party_id,
-                "name": fila["display_name"],
-                "cuit_dni": fila["tax_id"] or "",
+                "id": cliente_id,
+                "name": fila["name"],
+                "cuit_dni": fila.get("cuit_dni") or "",
             },
             "movimientos": db_cc.get_cc_movimientos(cliente_id, origen=_ORIGEN),
             "saldo": float(db_cc.get_cc_saldo(cliente_id, origen=_ORIGEN)),
@@ -273,11 +242,3 @@ class CuentaCorrienteService:
 
         db_cc.delete_cc_pago(pago_id)
 
-
-def _party_id_de(external_ref: str | None) -> int | None:
-    if not external_ref or not external_ref.startswith("party-"):
-        return None
-    try:
-        return int(external_ref.removeprefix("party-"))
-    except ValueError:
-        return None

@@ -73,7 +73,7 @@ def test_ningun_servicio_usa_el_repositorio_desnudo():
     )
 
 
-def test_los_nueve_servicios_pasan_por_la_fabrica():
+def test_los_siete_servicios_pasan_por_la_fabrica():
     """La contracara del test de arriba: que la fábrica se esté usando de
     verdad y no que simplemente nadie importe nada. Si un servicio dejara de
     construir su repositorio, el test de arriba seguiría en verde.
@@ -85,13 +85,19 @@ def test_los_nueve_servicios_pasan_por_la_fabrica():
     {vid}/anular` y `.../devolver`. No es un servicio que "se saltee la
     fábrica": dejó de ser un servicio propio de este producto. Pendiente
     vencido, no un bug -- el número baja con el archivo que lo justificaba.
+
+    🔴 Y son SIETE desde la migración `0004` (2026-09-26): `customers.py` y `suppliers.py`
+    pasaron a `libracore.db.clients`/`egresos` (el modelo de Contalibra) y ya no construyen un
+    repositorio de LibraCommerce. **Consecuencia conocida:** el alta de un cliente o de un proveedor
+    ya no queda en `actividad_log` por esta vía (tampoco en Contalibra: `build_clientes_router` no
+    la registra); si se quiere auditarla, es un cambio del motor.
     """
     raiz = pathlib.Path(__file__).resolve().parent.parent / "app" / "services"
     usan = [
         f.name for f in raiz.glob("*.py")
         if "from ..commerce import repositorio" in f.read_text(encoding="utf-8")
     ]
-    assert len(usan) == 9, f"esperaba 9 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
+    assert len(usan) == 7, f"esperaba 7 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
 
 
 # ── Que registre, end-to-end ──────────────────────────────────────────────

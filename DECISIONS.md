@@ -1509,3 +1509,40 @@ decisión explícita del humano, y no forman parte de esta ADR.
   reescrita como montaje del kit, `CuentaCorrienteDetalle.tsx` (nueva) y tres
   rutas en `App.tsx`. Tests: `tests/test_cuenta_corriente_kit.py` y
   `frontend/src/test/cuenta-corriente-kit.test.tsx`.
+
+## ADR-028 — Las personas pasan al modelo del motor: cliente = party de igual id, proveedor = party + 100.000
+
+- Estado: aceptada
+- Fecha: 2026-09-26
+- Contexto: el humano fijó el criterio de que **Contalibra es la referencia** (de ahí salen los
+  motores transversales) y que VentaLibra **adopta esos motores y esos módulos**, con sus variantes
+  como extensiones del motor y no como código paralelo (inventario:
+  `wiki/analyses/inventario-adopcion-motores-ventalibra-2026-09-26.md`). Clientes y proveedores no se
+  podían adoptar «montando el router» porque VentaLibra guardaba personas en `parties` (dominio) y
+  **espejaba** cada cliente en `clients` con otro id (`external_ref = party-<id>`), lo que obligó a los
+  puentes `cliente_cc_de`, `nombre_de_cliente`, el `obtener` traducido de `venta_facturacion` y el
+  origen `VENTAS_LIBRACOMMERCE_POR_EXTERNAL_REF` de cuenta corriente (ADR-025, D3).
+- Decisión: adoptar la convención del motor (`libracommerce/scripts/migrate_from_contalibra.py`,
+  `libracore.db.clients._espejar_party`): **el cliente vive en `clients` y su party espejo tiene el
+  MISMO id; el proveedor vive en `proveedores` y su party es `proveedores.id + 100.000`.**
+- Qué cambia:
+  - Migración `0004_personas_del_motor` (sólo PostgreSQL): renumera los parties y todo lo que apunta a
+    ellos (`sales`, `purchase_orders`, `purchase_receipts`, `party_billing`, `party_roles`) por un
+    espacio de ids temporal, crea los `proveedores`, completa `clients` desde `party_billing`, y deja
+    todo registrado en `_migracion_0004` para un `downgrade()` exacto. Ensayada sobre copias de los
+    datos reales de dev y demo (invariantes, idempotencia, reversión).
+  - `CustomerService` y `SupplierService` se reescriben sobre `libracore.db.clients` y
+    `libracore.db.egresos`; se retiran los puentes; la cuenta corriente cruza con el origen
+    `VENTAS_LIBRACOMMERCE` (por id), el mismo de Contalibra.
+- Consecuencias, dichas de frente:
+  - Un CUIT/DNI repetido entre clientes ahora da **409** (regla del motor); antes se permitía.
+  - El alta de un cliente o de un proveedor **ya no queda en `actividad_log`** (no pasa por el
+    repositorio auditado de LibraCommerce); Contalibra tampoco la registra. Auditarla sería un
+    cambio del motor.
+  - `parties`, `party_roles`, `party_billing` y `clients.external_ref` **no se borran**: quedan como
+    espejo y procedencia. Retirarlos es una limpieza posterior.
+  - `GET/POST /customers` y `/suppliers` se conservan como capa fina para el POS, Clientes y Compras;
+    las fases 2 y 3 los reemplazan por los routers del motor. `/suppliers` sigue exponiendo el id del
+    **party** (el `supplier_party_id` de las compras) hasta la fase 3.
+- Alternativas descartadas: adaptadores de backend que espejen datos y parametrizar el kit para que se
+  acomode al modelo de VentaLibra — ambas mantienen a VentaLibra distinto de Contalibra.
