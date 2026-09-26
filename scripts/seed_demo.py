@@ -265,7 +265,7 @@ def sembrar(api: Api) -> None:
 def _caja_default(api: Api, sucursal_id: int) -> int:
     """La caja predeterminada de esa sucursal.
 
-    🔴 Cajas por sucursal (2026-09-16): `POST /shifts/open` ahora exige
+    🔴 Cajas por sucursal (2026-09-16): `POST /api/turnos/abrir` (el router de turnos del motor) ahora exige
     `caja_id`. `create_app()` garantiza que la sucursal default tenga al
     menos una caja al arrancar (`app/services/cajas.py::
     asegurar_cajas_de_todas`), así que esta consulta nunca da vacía.
@@ -282,9 +282,9 @@ def _abrir_turno(api: Api, sucursal_id: int, contar) -> None:
     camino idempotente y no un error.
     """
     try:
-        api.post("/shifts/open", {"monto_inicial": 20000,
-                                  "notas": "Apertura de la demo",
-                                  "caja_id": _caja_default(api, sucursal_id)})
+        api.post("/api/turnos/abrir", {"monto_inicial": 20000,
+                                       "notas": "Apertura de la demo",
+                                       "caja_id": _caja_default(api, sucursal_id)})
         contar("turno", True)
     except RuntimeError as e:
         if "409" in str(e):

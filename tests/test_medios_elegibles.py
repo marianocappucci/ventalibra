@@ -95,7 +95,7 @@ def test_registrar_con_cualquier_elegible_pasa_la_validacion(admin_client, medio
     # ("conflicto con otra venta simultánea" cuando en realidad el ítem no
     # existe).
     admin_client.post(
-        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(admin_client)}
+        "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_default(admin_client)}
     )
     assert _registrar(admin_client, medio).status_code == 422
     # Y confirma que fue POR EL ÍTEM, no por el medio: con un ítem real pasa.

@@ -60,9 +60,9 @@ def _confirmed_sale(client, item_id, location_id=None, quantity="1",  # noqa: AR
     importan de acá. Registra la venta completa en una sola llamada (D1) y,
     si `invoice=True`, factura aparte (D2/D6) -- ver el docstring del módulo.
     """
-    if client.get("/shifts/current").json().get("turno") is None:
+    if client.get("/api/turnos/actual").json().get("turno") is None:
         client.post(
-            "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(client)}
+            "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_default(client)}
         )
     venta = _registrar_venta(client, item_id, medio=medio_pago, monto=float(quantity) * 1500.0)
     factura = None
@@ -76,10 +76,10 @@ def _abrir_turno(client, monto_inicial=0):
     """Sin turno abierto, registrar una venta da 409: una venta fuera de
     turno sería plata sin control de caja."""
     abierto = client.post(
-        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+        "/api/turnos/abrir", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
     )
     assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+    return abierto.json()["id"]
 
 
 def _make_item(client, name="Fideos 500g", price="1500.00"):

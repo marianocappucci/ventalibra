@@ -78,7 +78,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
     Promise.all([
       api.get<VentaDevuelto>(`/ventas/${detalle.id}/devuelto`),
       api.get<Location[]>('/locations'),
-      api.get<ShiftState>('/shifts/current').catch(() => ({ turno: null }) as ShiftState),
+      api.get<ShiftState>('/api/turnos/actual').catch(() => ({ turno: null }) as ShiftState),
     ]).then(([d, ls, estado]) => {
       setDevuelto(d)
       setLocations(ls)

@@ -4,7 +4,7 @@ venta de ARCA, y turno por usuario y por caja (2026-09-16).
 Antes de esta feature había una única caja para toda la instancia y el turno
 era compartido (`get_turno_activo_any`): con dos locales vendiendo a la vez
 eso mezclaba la plata de los dos. Ver `app/services/cajas.py`,
-`app/routers/cajas.py` y `app/routers/shifts.py`.
+`app/cajas_ganchos.py` (los ganchos de los routers del motor).
 """
 from ventas_helpers import abrir_turno, caja_default, con_stock, crear_item, hoy, registrar_venta
 
@@ -44,7 +44,7 @@ def test_toda_sucursal_arranca_con_al_menos_una_caja(admin_client):
     sucursal = _sembrada(admin_client)
     cajas = _cajas_de(admin_client, sucursal["id"])
     assert len(cajas) == 1
-    assert cajas[0]["es_default"] is True
+    assert cajas[0]["es_default"]
 
 
 def test_una_sucursal_nueva_recibe_su_primera_caja_al_crearse(admin_client):
@@ -52,7 +52,7 @@ def test_una_sucursal_nueva_recibe_su_primera_caja_al_crearse(admin_client):
     cajas = _cajas_de(admin_client, sucursal["id"])
     assert len(cajas) == 1
     assert cajas[0]["nombre"] == "Caja 1"
-    assert cajas[0]["es_default"] is True
+    assert cajas[0]["es_default"]
 
 
 def test_el_arranque_de_cajas_es_idempotente(tmp_path):
@@ -92,7 +92,7 @@ def test_alta_de_caja_con_punto_de_venta_repetido_da_409(admin_client):
     otra = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"], "punto_venta": 7,
     })
-    assert otra.status_code == 201, otra.text
+    assert otra.status_code == 200, otra.text
 
     choque = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 3", "sucursal_id": sucursal["id"], "punto_venta": 7,
@@ -113,9 +113,9 @@ def test_staff_puede_listar_cajas(staff_client):
     assert r.status_code == 200, r.text
 
 
-def test_medios_disponibles_sigue_sirviendola_medios_py(admin_client):
+def test_medios_disponibles_lo_sirve_el_motor(admin_client):
     """`GET /api/cajas/medios-disponibles` no choca con `GET /api/cajas/{id}`:
-    la ruta la sigue sirviendo `app/routers/medios.py`."""
+    la ruta la sirve `build_cajas_router` del motor."""
     r = admin_client.get("/api/cajas/medios-disponibles")
     assert r.status_code == 200, r.text
     assert isinstance(r.json(), list)
@@ -134,21 +134,24 @@ def test_editar_caja_no_le_cambia_la_sucursal(admin_client):
     assert editada.json()["sucursal_id"] == sucursal["id"]
 
 
-def test_editar_caja_conserva_pos_mp_si_se_omite_y_permite_borrarlo(admin_client):
+def test_editar_caja_reemplaza_los_campos_y_el_pos_mp_que_no_viene_se_borra(admin_client):
+    """Contrato del motor (el de Contalibra): el PUT guarda la caja tal como llega. Hasta la fase 5 este
+    producto conservaba el POS de MercadoPago si el campo se omitía; el kit (`libra-ui/comercio/Cajas`) manda
+    siempre todos los campos, así que ya no hace falta y no se diferencia del motor."""
     sucursal = _sembrada(admin_client)
     creada = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador QR", "sucursal_id": sucursal["id"],
         "mp_pos_id": "BIOKOCAJA01",
     })
-    assert creada.status_code == 201, creada.text
+    assert creada.status_code == 200, creada.text
     caja_id = creada.json()["id"]
     assert creada.json()["mp_pos_id"] == "BIOKOCAJA01"
 
-    editada = admin_client.put(f"/api/cajas/{caja_id}", json={
-        "nombre": "Mostrador QR renombrado", "activo": True,
+    conservada = admin_client.put(f"/api/cajas/{caja_id}", json={
+        "nombre": "Mostrador QR renombrado", "activo": True, "mp_pos_id": "BIOKOCAJA01",
     })
-    assert editada.status_code == 200, editada.text
-    assert editada.json()["mp_pos_id"] == "BIOKOCAJA01"
+    assert conservada.status_code == 200, conservada.text
+    assert conservada.json()["mp_pos_id"] == "BIOKOCAJA01"
     assert next(c for c in admin_client.get("/api/cajas").json()
                 if c["id"] == caja_id)["mp_pos_id"] == "BIOKOCAJA01"
 
@@ -169,7 +172,7 @@ def test_pos_mp_invalido_responde_422_al_crear_y_editar(admin_client):
     assert "alfanumérico" in invalida.json()["detail"]
 
     creada = admin_client.post("/api/cajas", json={**datos, "mp_pos_id": "BIOKOCAJA01"})
-    assert creada.status_code == 201, creada.text
+    assert creada.status_code == 200, creada.text
     caja_id = creada.json()["id"]
     invalida = admin_client.put(f"/api/cajas/{caja_id}", json={
         "nombre": "Mostrador QR", "mp_pos_id": "BIOKO-CAJA01",
@@ -206,18 +209,18 @@ def test_marcar_predeterminada_es_por_sucursal(admin_client):
     nueva = admin_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal1["id"],
     }).json()
-    r = admin_client.post(f"/api/cajas/{nueva['id']}/predeterminada")
+    r = admin_client.post(f"/api/cajas/{nueva['id']}/set-default")
     assert r.status_code == 200, r.text
-    assert r.json()["es_default"] is True
+    assert bool(r.json()["es_default"]) is True
 
     # La de la sucursal 1 vieja dejó de serlo...
     vieja = admin_client.get("/api/cajas").json()
     vieja_actual = next(c for c in vieja if c["id"] == caja1_default["id"])
-    assert vieja_actual["es_default"] is False
+    assert bool(vieja_actual["es_default"]) is False
 
     # ...pero la predeterminada de la sucursal 2 NO se tocó.
     s2_actual = next(c for c in vieja if c["id"] == caja2_default["id"])
-    assert s2_actual["es_default"] is True
+    assert bool(s2_actual["es_default"]) is True
 
 
 # ── Turno por usuario y por caja ────────────────────────────────────────────
@@ -228,14 +231,14 @@ def test_una_caja_no_admite_dos_turnos_abiertos(admin_client, staff_client):
     abrir_turno(admin_client, caja_id=caja_id)
 
     segundo = staff_client.post(
-        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_id}
+        "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id}
     )
     assert segundo.status_code == 409, segundo.text
     assert "turno abierto" in segundo.json()["detail"]
 
 
 def test_abrir_turno_en_caja_inexistente_da_404(admin_client):
-    r = admin_client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": 999_999})
+    r = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": 999_999})
     assert r.status_code == 404, r.text
 
 
@@ -246,7 +249,7 @@ def test_abrir_turno_en_caja_inactiva_da_422(admin_client):
     }).json()
     admin_client.put(f"/api/cajas/{caja['id']}", json={"nombre": caja["nombre"], "activo": False})
 
-    r = admin_client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": caja["id"]})
+    r = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja["id"]})
     assert r.status_code == 422, r.text
 
 
@@ -255,7 +258,7 @@ def test_shifts_current_devuelve_caja_y_sucursal(admin_client):
     caja_id = caja_default(admin_client)
     abrir_turno(admin_client, caja_id=caja_id)
 
-    actual = admin_client.get("/shifts/current").json()
+    actual = admin_client.get("/api/turnos/actual").json()
     assert actual["turno"]["caja"]["id"] == caja_id
     assert actual["turno"]["sucursal"]["id"] == sucursal["id"]
 
@@ -285,8 +288,8 @@ def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, staff_
     registrar_venta(staff_client, item_id, precio="1000.00", cantidad="3",
                     deposito_id=sucursal2["id"])
 
-    resumen1 = admin_client.get(f"/shifts/{tid1}/summary").json()["resumen"]
-    resumen2 = staff_client.get(f"/shifts/{tid2}/summary").json()["resumen"]
+    resumen1 = admin_client.get(f"/api/turnos/{tid1}").json()["resumen"]
+    resumen2 = staff_client.get(f"/api/turnos/{tid2}").json()["resumen"]
 
     assert resumen1["total_ventas"] == 1000.0
     assert resumen2["total_ventas"] == 3000.0
@@ -429,7 +432,7 @@ def test_una_caja_historica_de_un_deposito_no_abre_turno(admin_client):
 
     deposito = _crear_deposito(admin_client)
     caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=deposito["id"])
-    r = admin_client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": caja_id})
+    r = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id})
     assert r.status_code == 422, r.text
     assert "depósito" in r.json()["detail"]
 
@@ -482,10 +485,10 @@ def test_al_desactivar_la_predeterminada_pasa_a_otra_activa(admin_client):
     predeterminada = next(c for c in _cajas_de(admin_client, sucursal["id"]) if c["es_default"])
     r = _desactivar(admin_client, predeterminada)
     assert r.status_code == 200, r.text
-    assert r.json()["activo"] is False and r.json()["es_default"] is False
+    assert bool(r.json()["activo"]) is False and bool(r.json()["es_default"]) is False
     cajas = {c["id"]: c for c in _cajas_de(admin_client, sucursal["id"])}
-    assert cajas[otra["id"]]["es_default"] is True
-    assert cajas[otra["id"]]["activo"] is True
+    assert bool(cajas[otra["id"]]["es_default"]) is True
+    assert bool(cajas[otra["id"]]["activo"]) is True
 
 
 def test_la_caja_de_un_deposito_se_puede_desactivar(admin_client):
@@ -497,4 +500,68 @@ def test_la_caja_de_un_deposito_se_puede_desactivar(admin_client):
     caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=deposito["id"])
     r = _desactivar(admin_client, {"id": caja_id, "nombre": "Caja vieja"})
     assert r.status_code == 200, r.text
-    assert r.json()["activo"] is False
+    assert bool(r.json()["activo"]) is False
+
+
+# ── Fase 5: los routers del motor con los ganchos de VentaLibra (ADR-032) ──────
+
+
+def test_staff_tampoco_edita_predetermina_ni_borra_cajas(admin_client, staff_client):
+    """Configurar el local es de admin: lo dice `autorizar_escritura`, no cada ruta."""
+    sucursal = _sembrada(admin_client)
+    caja = admin_client.post("/api/cajas", json={"nombre": "Otra", "sucursal_id": sucursal["id"]}).json()
+    assert staff_client.put(f"/api/cajas/{caja['id']}", json={"nombre": "X"}).status_code == 403
+    assert staff_client.post(f"/api/cajas/{caja['id']}/set-default").status_code == 403
+    assert staff_client.delete(f"/api/cajas/{caja['id']}").status_code == 403
+    assert admin_client.get("/api/cajas").json()  # y el listado sigue siendo de staff y admin
+
+
+def test_la_caja_dice_si_tiene_turno_abierto_y_en_que_sucursal_esta(admin_client):
+    sucursal = _sembrada(admin_client)
+    caja_id = caja_default(admin_client)
+    antes = next(c for c in admin_client.get("/api/cajas").json() if c["id"] == caja_id)
+    assert antes["tiene_turno_abierto"] is False and antes["sucursal_nombre"] == sucursal["name"]
+    abrir_turno(admin_client, caja_id=caja_id)
+    durante = next(c for c in admin_client.get(f"/api/cajas?sucursal_id={sucursal['id']}").json()
+                   if c["id"] == caja_id)
+    assert durante["tiene_turno_abierto"] is True
+
+
+def test_cada_cajero_ve_y_cierra_sus_turnos_y_el_admin_los_de_todos(admin_client, staff_client):
+    """Regla del motor (la de Contalibra): dueño o admin. Hasta la fase 5 cualquier sesión de staff podía
+    cerrar cualquier turno (`/shifts/{id}/close`, sin restricción propia)."""
+    sucursal2 = _crear_sucursal(admin_client)
+    caja2 = _cajas_de(admin_client, sucursal2["id"])[0]["id"]
+    del_admin = abrir_turno(admin_client)
+    del_staff = abrir_turno(staff_client, caja_id=caja2)
+
+    assert [t["id"] for t in staff_client.get("/api/turnos").json()["turnos"]] == [del_staff]
+    assert staff_client.get(f"/api/turnos/{del_admin}").status_code == 403
+    assert staff_client.post(f"/api/turnos/{del_admin}/cerrar", json={"monto_declarado": 0}).status_code == 403
+    assert staff_client.get("/api/turnos/actual").json()["turno"]["id"] == del_staff
+    assert staff_client.post(f"/api/turnos/{del_staff}/cerrar", json={"monto_declarado": 0}).status_code == 200
+    assert {t["id"] for t in admin_client.get("/api/turnos").json()["turnos"]} == {del_admin, del_staff}
+    assert admin_client.post(f"/api/turnos/{del_admin}/cerrar", json={"monto_declarado": 0}).status_code == 200
+
+
+def test_el_resumen_del_turno_trae_las_ventas_y_el_arqueo_sin_fiado(admin_client):
+    """La pantalla de turnos del kit lee `resumen.ventas`; el arqueo sale de la caja y sin la cuenta
+    corriente (fiar no es cobrar)."""
+    sucursal = _sembrada(admin_client)
+    item_id = crear_item(admin_client)
+    con_stock(admin_client, item_id, sucursal["id"])
+    tid = abrir_turno(admin_client, monto_inicial=100)
+    registrar_venta(admin_client, item_id, precio="1000.00", cantidad="2", deposito_id=sucursal["id"])
+
+    resumen = admin_client.get(f"/api/turnos/{tid}").json()["resumen"]
+    assert [v["numero"][:4] for v in resumen["ventas"]] == ["POS-"]
+    assert resumen["ventas"][0]["total"] == 2000.0 and resumen["ventas"][0]["estado"] == "cobrada"
+    assert resumen["total_ventas"] == 2000.0 and resumen["efectivo_ventas"] == 2000.0
+    assert "cuenta_corriente" not in resumen["pagos_por_medio"]
+
+
+def test_abrir_sin_caja_da_422_y_con_turno_propio_da_409(admin_client):
+    assert admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0}).status_code == 422
+    tid = abrir_turno(admin_client)
+    segundo = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_default(admin_client)})
+    assert segundo.status_code == 409 and f"#{tid}" in segundo.json()["detail"]

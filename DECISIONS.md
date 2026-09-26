@@ -1622,3 +1622,42 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - La baja del pago corre el gancho **antes** de anular los recibos y de borrarlo: si el movimiento de caja no se
     puede identificar, no se toca nada (antes los recibos quedaban anulados y el pago vivo).
 - Depende de: `libracore` v1.111.0 publicado y el pin de este repo subido a esa versión.
+
+## ADR-032 — Cajas y turnos con los routers del motor y las pantallas del kit (fase 5 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-26
+- Contexto: la feature de cajas por sucursal (2026-09-16) escribió `/shifts` (`app/routers/shifts.py`) y el ABM
+  de `/api/cajas` (`app/routers/cajas.py`) porque el motor (`libracore.caja_router`) no sabía de sucursales. El
+  turno se abría y cerraba **sólo dentro del POS**: VentaLibra no tenía pantalla de turnos. Desde entonces el motor
+  tiene `build_cajas_router` y `build_turnos_router` (los de Contalibra y Restolibra) y el kit tiene `Cajas`,
+  `Turnos`, `TurnoDetalle` y `TurnoCerrar`.
+- Decisión: adoptar los routers y las pantallas y expresar lo propio como **variantes** (criterio del humano:
+  el motor es la referencia y las diferencias entran como opciones con default = Contalibra).
+  - `libracore` v1.112.0: `OpcionesCajas` (`autorizar_escritura`, `validar_alta`, `validar_edicion`,
+    `al_desactivar`, `predeterminar`, `enriquecer`), `sucursal_id` en la caja, `tiene_turno_abierto`,
+    `validar_apertura` y `enriquecer` en los turnos, `GET /api/turnos/actual` y el 409 de un día cerrado (era 500).
+  - `libra-ui` v0.77.0: `Cajas` con `sucursales`, `conActivarDesactivar` y `verMovimientos`; `Turnos` con
+    `conCaja`; el detalle y el cierre muestran la caja y la sucursal si el turno las trae.
+  - VentaLibra declara sus reglas en `app/cajas_ganchos.py` y **retira `/shifts`, el router de cajas y el de medios**
+    (la ruta `/api/cajas/medios-disponibles` la sirve el motor).
+- Consecuencias:
+  - **El POS pasa a los endpoints del motor:** `GET /api/turnos/actual`, `POST /api/turnos/abrir`,
+    `GET /api/turnos/{id}` (turno + resumen) y `POST /api/turnos/{id}/cerrar`. El turno se devuelve pelado, no
+    `{turno}`; cerrar un turno ya cerrado es 422 (antes 409).
+  - **Cambio de permisos:** el cajero ve y cierra **sólo sus turnos**, el admin los de todos (regla del motor).
+    Antes cualquier sesión de staff podía cerrar cualquier turno.
+  - `PUT /api/cajas/{id}` **reemplaza** los campos (contrato del motor): si no manda `mp_pos_id`, se borra. El kit
+    manda siempre todos; ya no se conserva el valor omitido.
+  - `activo` y `es_default` viajan como 1/0 (el motor); el frontend los lee con `!!`.
+  - La sesión de este producto trae el `id` como texto y el router de turnos lo compara con un entero: el montaje
+    usa `usuario_actual` (`app/cajas_ganchos.py`), que lo normaliza. Sin eso un cajero no vería ni su turno.
+  - El arqueo sigue siendo **sobre la caja y sin la cuenta corriente** (ADR-027); la lista de ventas del turno sale
+    de la capa ERP (`resumen.ventas`), que es lo que lee la pantalla del kit.
+  - VentaLibra gana la pantalla de **Turnos** (lista, detalle con recaudación y ventas, arqueo de cierre), con
+    la caja y la sucursal de cada uno. El POS conserva su propio diálogo de apertura y cierre.
+  - **Cajas usa la disposición del kit** (tarjetas con botones de ícono y texto), no la tabla de acciones con sólo
+    íconos que se había armado el 2026-09-26.
+- **Queda afuera:** los movimientos de caja (`build_caja_router` y `libra-ui/comercio/Caja`), que VentaLibra no tiene
+  hoy: entra con la fase de tesorería (9).
+- Depende de: `libracore` v1.112.0 y `libra-ui` v0.77.0 publicados y los pines de este repo subidos.

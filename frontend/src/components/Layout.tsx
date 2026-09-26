@@ -4,7 +4,7 @@
 import {
   ArrowRightLeft,
   Boxes,
-  BarChart3, Building2, CalendarCheck, Landmark, Package, ReceiptText, ScrollText, Settings,
+  BarChart3, Building2, CalendarCheck, Clock, Landmark, Package, ReceiptText, ScrollText, Settings,
   ShoppingBag, ShoppingCart, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -44,6 +44,8 @@ export const Layout = createLayout({
     { to: '/stock', label: 'Stock', icon: Boxes },
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },
+    // Los turnos de caja: cada cajero los suyos, el admin todos.
+    { to: '/turnos', label: 'Turnos', icon: Clock },
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
     { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },

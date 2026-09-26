@@ -301,7 +301,7 @@ export function Pos() {
 
   const cargarTurno = useCallback(async () => {
     try {
-      const estado = await api.get<ShiftState>('/shifts/current')
+      const estado = await api.get<ShiftState>('/api/turnos/actual')
       setTurno(estado.turno)
     } catch {
       setTurno(null)
@@ -1750,7 +1750,7 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
     if (!sucursalId) { setCajas([]); setCajaId(''); return }
     api.get<Caja[]>(`/api/cajas?sucursal_id=${sucursalId}`).then((todas) => {
       // Una caja dada de baja (inactiva) no se ofrece para abrir turno.
-      const items = todas.filter((c) => c.activo !== false)
+      const items = todas.filter((c) => !!c.activo)
       setCajas(items)
       const libre = items.find((c) => c.es_default && !c.tiene_turno_abierto)
         ?? items.find((c) => !c.tiene_turno_abierto)
@@ -1767,10 +1767,10 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
     setBusy(true)
     setError(null)
     try {
-      const abierto = await api.post<{ turno: Shift }>('/shifts/open', {
+      const abierto = await api.post<Shift>('/api/turnos/abrir', {
         monto_inicial: montoInicial, caja_id: Number(cajaId),
       })
-      onAbierto(abierto.turno)
+      onAbierto(abierto)
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -1871,7 +1871,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
   const [cerrado, setCerrado] = useState(false)
 
   useEffect(() => {
-    api.get<ShiftState>(`/shifts/${turno.id}/summary`)
+    api.get<ShiftState>(`/api/turnos/${turno.id}`)
       .then((r) => setResumen(r.resumen ?? null))
       .catch(() => setResumen(null))
   }, [turno.id])
@@ -1896,7 +1896,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
     setBusy(true)
     setError(null)
     try {
-      await api.post(`/shifts/${turno.id}/close`, {
+      await api.post(`/api/turnos/${turno.id}/cerrar`, {
         monto_declarado: declaradoParseado, notas,
       })
       setCerrado(true)

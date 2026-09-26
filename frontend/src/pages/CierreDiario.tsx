@@ -58,7 +58,7 @@ export function CierreDiario() {
       try {
         const [locs, estado] = await Promise.all([
           api.get<Location[]>('/locations'),
-          api.get<ShiftState>('/shifts/current').catch(() => ({ turno: null }) as ShiftState),
+          api.get<ShiftState>('/api/turnos/actual').catch(() => ({ turno: null }) as ShiftState),
         ])
         setLocations(locs)
         const sucursalDelTurno = estado.turno?.sucursal?.id
