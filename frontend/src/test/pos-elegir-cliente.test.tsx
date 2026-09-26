@@ -20,7 +20,7 @@ const LOCATIONS = [
   { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
 ]
 const CLIENTES = [
-  { id: 1, name: 'Ana Gomez', address: '', cuit_dni: '', email: '', phone: '', iva_condition: '', auto_facturar: 0, activo: 1 },
+  { id: 1, name: 'Ana Gomez', address: '', cuit_dni: '27-12345678-9', email: '', phone: '', iva_condition: '', auto_facturar: 0, activo: 1 },
   { id: 2, name: 'Beto Dado de Baja', address: '', cuit_dni: '', email: '', phone: '', iva_condition: '', auto_facturar: 0, activo: 0 },
 ]
 
@@ -50,6 +50,8 @@ describe('Elegir el cliente de la venta', () => {
     fireEvent.keyDown(window, { key: 'F7' })
     const dialogo = await screen.findByRole('dialog')
     expect(await within(dialogo).findByText('Ana Gomez')).toBeInTheDocument()
+    // El CUIT del cliente (`cuit_dni` en el motor) se muestra junto al nombre.
+    expect(within(dialogo).getByText('27-12345678-9')).toBeInTheDocument()
     expect(within(dialogo).queryByText('Beto Dado de Baja')).not.toBeInTheDocument()
     expect(llamadas).toContain('/api/clientes')
     expect(llamadas.some((u) => u.includes('/customers'))).toBe(false)

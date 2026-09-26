@@ -1035,7 +1035,7 @@ function ElegirCliente({ actual, onElegir, onCerrar }: {
               ].join(' ')}
             >
               <span>{c.name}</span>
-              {c.cuit && <span className="text-xs text-muted-foreground">{c.cuit}</span>}
+              {c.cuit_dni && <span className="text-xs text-muted-foreground">{c.cuit_dni}</span>}
             </button>
           ))}
         </div>
