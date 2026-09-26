@@ -37,11 +37,15 @@ def create_customer(data: CustomerCreate, request: Request):
         party_type = PartyType(data.party_type)
     except ValueError:
         raise HTTPException(422, f"invalid party_type: {data.party_type!r}")
-    customer = _service(request).create(
-        display_name=data.display_name, party_type=party_type,
-        email=data.email, phone=data.phone,
-        cuit=data.cuit, condicion_iva=data.condicion_iva,
-    )
+    try:
+        customer = _service(request).create(
+            display_name=data.display_name, party_type=party_type,
+            email=data.email, phone=data.phone,
+            cuit=data.cuit, condicion_iva=data.condicion_iva,
+        )
+    except ValueError as e:
+        # Regla del motor: un CUIT/DNI no se repite entre clientes.
+        raise HTTPException(409, str(e)) from e
     return CustomerOut(**customer)
 
 

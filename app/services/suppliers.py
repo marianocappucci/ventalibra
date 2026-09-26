@@ -1,49 +1,59 @@
-"""Proveedores como Party (rol supplier, ver ROADMAP.md Fase 2).
+"""Proveedores, sobre el modelo del motor: `libracore.db.egresos` (tabla `proveedores`).
 
-PartyRole.SUPPLIER no se persiste -- libracommerce.domain.entities.Party no
-tiene columna de rol (ver libracommerce/db/schema.py); el rol es contextual,
-lo mismo que ya vale para customer_party_id en Sale y supplier_party_id en
-PurchaseOrder/PurchaseReceipt. Este servicio es un wrapper fino sobre
-save_party/get_party mas un listado propio, igual que CatalogService.
+Desde la migración `0004` (2026-09-26) el proveedor vive en `proveedores` y su `parties` espejo
+tiene el id **`proveedores.id + 100_000`** (la convención de
+`libracommerce/scripts/migrate_from_contalibra.py`). El espejo existe porque las órdenes y
+recepciones de compra de LibraCommerce apuntan a `parties` (`supplier_party_id`).
+
+**El `id` que expone este servicio es el del party** (el `supplier_party_id` de las compras), para
+no cambiar el contrato de `/suppliers` y de Compras en esta fase; la fase 3 lo reemplaza por el
+router del motor (`/api/proveedores`, con el id de `proveedores`).
 """
 
 from libracommerce.domain.entities import Party, PartyType
+from libracore.db import egresos as db_egresos
 from libracore.db.core import Conexion
 
-from ..commerce import repositorio
+#: `parties.id = proveedores.id + OFFSET_PROVEEDOR`.
+OFFSET_PROVEEDOR = 100_000
+
+
+def _a_party(proveedor: dict) -> Party:
+    return Party(
+        id=OFFSET_PROVEEDOR + proveedor["id"], party_type=PartyType.ORGANIZATION,
+        display_name=proveedor["nombre"], legal_name=None,
+        tax_id=proveedor.get("cuit_dni") or None, email=proveedor.get("email") or None,
+        phone=proveedor.get("phone") or None, active=True,
+    )
 
 
 class SupplierService:
     def __init__(self, conn: Conexion):
         self._conn = conn
-        self._repo = repositorio(conn)
 
     def create(
         self, *, display_name: str, party_type: PartyType = PartyType.ORGANIZATION,
-        legal_name: str | None = None, tax_id: str | None = None,
+        legal_name: str | None = None, tax_id: str | None = None,  # noqa: ARG002
         email: str | None = None, phone: str | None = None,
     ) -> Party:
-        party = Party(
-            id=None, party_type=party_type, display_name=display_name,
-            legal_name=legal_name, tax_id=tax_id, email=email, phone=phone,
+        proveedor_id = db_egresos.create_proveedor(
+            display_name, cuit_dni=tax_id or "", email=email or "", phone=phone or "",
         )
-        saved = self._repo.save_party(party)
+        party_id = OFFSET_PROVEEDOR + proveedor_id
         self._conn.execute(
-            "INSERT OR IGNORE INTO party_roles (party_id, role) VALUES (?, 'supplier')", (saved.id,)
+            "INSERT INTO parties (id, party_type, display_name, legal_name, tax_id, email, phone, active) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT (id) DO NOTHING",
+            (party_id, party_type.value, display_name, legal_name, tax_id or None,
+             email or None, phone or None),
         )
         self._conn.commit()
-        return saved
+        return _a_party(db_egresos.get_proveedor(proveedor_id))
 
     def get(self, party_id: int) -> Party | None:
-        return self._repo.get_party(party_id)
+        if party_id < OFFSET_PROVEEDOR:
+            return None
+        proveedor = db_egresos.get_proveedor(party_id - OFFSET_PROVEEDOR)
+        return _a_party(proveedor) if proveedor is not None else None
 
     def list_all(self) -> list[Party]:
-        rows = self._conn.execute(
-            """
-            SELECT p.id FROM parties p
-            JOIN party_roles pr ON pr.party_id = p.id AND pr.role = 'supplier'
-            WHERE p.active = 1
-            ORDER BY p.display_name
-            """
-        ).fetchall()
-        return [self._repo.get_party(row[0]) for row in rows]
+        return [_a_party(p) for p in db_egresos.get_all_proveedores()]

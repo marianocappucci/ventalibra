@@ -52,7 +52,7 @@ from .auth import (
     require_admin_o_servicio,
     require_staff,
 )
-from .ganchos import GANCHOS, nombre_de_cliente
+from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .routers import (
     accounts,
@@ -475,12 +475,6 @@ def create_app(db_path: str) -> FastAPI:
             # `require_admin` acá; lo custodia `test_un_staff_puede_anular_y_devolver`.
             opciones=OpcionesVentas(
                 stock_habilitado=lambda: True,
-                # 🔴 El default del motor busca `cliente_id` en `clients`
-                # (LibraCore): acá ese id es un `party_id` de LibraCommerce
-                # (D3, ADR-025), así que sin esto `cliente_nombre` quedaba
-                # vacío en `POST /api/ventas` -- aunque la venta sí tuviera
-                # cliente. Ver `app/ganchos.py::nombre_de_cliente`.
-                nombre_de_cliente=nombre_de_cliente,
                 hooks=GANCHOS,
                 exigir_turno=True,
                 caja_con_turno=True,

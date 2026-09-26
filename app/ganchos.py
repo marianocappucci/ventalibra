@@ -11,10 +11,9 @@ comercial, expresado como los puntos de extensión que declara
   2026-09-16 era compartido (`get_turno_activo_any`, una sola caja para toda
   la instancia); con varias cajas por sucursal cada cajero tiene el suyo
   (ver `app/routers/shifts.py`).
-- `cliente_cc_de`: traduce `customer_party_id` (`parties.id` de
-  LibraCommerce) al `clients.id` de LibraCore por `external_ref = party-<id>`
-  -- acá los dos ids NO coinciden (D3, ADR-025), a diferencia de Contalibra
-  donde son el mismo id.
+- (`cliente_cc_de` y `nombre_de_cliente` se retiraron el 2026-09-26, migración
+  `0004`: desde que `clients.id == parties.id`, como en Contalibra, ya no hay
+  nada que traducir.)
 - `validar_deposito`: la venta y la devolución salen del depósito de la
   sucursal de la caja del turno (libracommerce v0.17.0). Hasta el 2026-09-17
   lo garantizaba sólo el POS.
@@ -26,7 +25,6 @@ from typing import Any
 from libracommerce.erp import Hooks
 from libracommerce.erp.catalogo import get_default_deposito_id
 from libracommerce.erp.ventas import DepositoNoPermitido
-from libracore.db import clients as db_clients
 from libracore.db import turnos as db_turnos
 
 from app.db import next_sequence
@@ -63,35 +61,6 @@ def turno_para(conn: Any, usuario_id: int | None) -> dict | None:
     if not usuario_id:
         return None
     return db_turnos.get_turno_activo(int(usuario_id), conn=conn)
-
-
-def cliente_cc_de(conn: Any, venta: Any) -> int | None:
-    """El `clients.id` de LibraCore para la cuenta corriente de esta venta.
-
-    Mismo criterio que `services/cuenta_corriente.py::CuentaCorrienteService.
-    _cliente_cc`: el cliente de la venta es una `party` de LibraCommerce, y
-    acá se traduce por `external_ref = party-<id>` -- crea el `clients.id` la
-    primera vez que ese party fía y lo reusa siempre. No espeja la cartera:
-    sólo entra quien efectivamente fía.
-
-    🔴 `resolver_cliente_externo` abre su PROPIA conexión (no acepta
-    `conn=`): la creación/actualización del `clients.id` no queda dentro de
-    la transacción de la venta. Es una limitación heredada del motor, no
-    introducida acá -- el código de hoy (`CuentaCorrienteService._cliente_cc`)
-    tiene exactamente la misma característica.
-    """
-    party_id = venta.get("cliente_id")
-    if party_id is None:
-        return None
-    row = conn.execute(
-        "SELECT display_name, tax_id, email, phone FROM parties WHERE id = ?",
-        (party_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    return db_clients.resolver_cliente_externo(
-        f"party-{party_id}", row[0], cuit_dni=row[1] or "", email=row[2] or "", phone=row[3] or "",
-    )
 
 
 def validar_deposito(conn: Any, *, operacion: str, turno: Any | None,
@@ -141,27 +110,5 @@ def validar_deposito(conn: Any, *, operacion: str, turno: Any | None,
 
 
 GANCHOS = Hooks(
-    numerador=numerador, turno_para=turno_para, cliente_cc_de=cliente_cc_de,
-    validar_deposito=validar_deposito,
+    numerador=numerador, turno_para=turno_para, validar_deposito=validar_deposito,
 )
-
-
-def nombre_de_cliente(party_id: int) -> str | None:
-    """El `display_name` del party elegido en `POST /api/ventas`, para el
-    snapshot de `sales.customer_name_snapshot`.
-
-    No es un gancho de `Hooks` -- es `OpcionesVentas.nombre_de_cliente`
-    (`libracommerce.web.ventas_router`), que llama con sólo el id, sin la
-    conexión de la venta (por eso abre la suya, como `cliente_cc_de`). El
-    default del motor busca en `clients` (`libracore.db.clients.get_client`):
-    en VentaLibra `cliente_id` es un `party_id` de LibraCommerce, no un
-    `clients.id`, así que ese default siempre da `None` y la venta queda con
-    `cliente_nombre = ""` aunque sí tenga cliente.
-    """
-    from libracore.db.core import get_connection
-
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT display_name FROM parties WHERE id = ?", (party_id,)
-        ).fetchone()
-    return row[0] if row else None

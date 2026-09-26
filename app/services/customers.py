@@ -1,74 +1,58 @@
-"""Clientes como Party (rol customer, contextual -- ver app/services/suppliers.py)
-con extension opcional de facturacion (party_billing: cuit/condicion_iva),
-mismo patron que `client_billing` de Gestiolibra. La extension es opcional
-porque en retail la mayoria de las ventas son a "Consumidor Final" sin
-cliente registrado -- solo hace falta un Customer si se va a facturar A/B
-con CUIT real.
+"""Clientes, sobre el modelo del motor: `libracore.db.clients` (tabla `clients`).
+
+Desde la migración `0004` (2026-09-26) VentaLibra sigue la misma convención que Contalibra y
+Restolibra: **el cliente vive en `clients` y su `parties` espejo tiene el MISMO id**
+(`libracore.db.clients.create_client` lo crea en la misma transacción). El id que devuelve este
+servicio es, por lo tanto, a la vez el `clients.id` (cuenta corriente, facturas, remitos) y el
+`parties.id` (`sales.customer_party_id`): ya no hay nada que traducir.
+
+Antes el origen era `parties` + `party_billing` y `clients` era un espejo con otro id
+(`external_ref = party-<id>`). `parties`, `party_roles` y `party_billing` quedan como datos
+históricos y espejo; este servicio ya no los lee.
+
+Es una capa fina que conserva el contrato de `GET/POST /customers` que usan hoy el POS y la
+pantalla de Clientes; la fase 2 de la adopción de los motores la reemplaza por el router del motor
+(`/api/clientes`).
 """
 
-from libracommerce.domain.entities import Party, PartyType
+from libracommerce.domain.entities import PartyType
 from libracore.db import clients as db_clients
 from libracore.db.core import Conexion
-
-from ..commerce import repositorio
 
 
 class CustomerService:
     def __init__(self, conn: Conexion):
         self._conn = conn
-        self._repo = repositorio(conn)
 
     def create(
-        self, *, display_name: str, party_type: PartyType = PartyType.PERSON,
+        self, *, display_name: str, party_type: PartyType = PartyType.PERSON,  # noqa: ARG002
         email: str | None = None, phone: str | None = None,
         cuit: str | None = None, condicion_iva: str | None = None,
     ) -> dict:
-        party = self._repo.save_party(
-            Party(id=None, party_type=party_type, display_name=display_name, email=email, phone=phone)
-        )
-        self._conn.execute(
-            "INSERT OR IGNORE INTO party_roles (party_id, role) VALUES (?, 'customer')", (party.id,)
-        )
-        if cuit or condicion_iva:
-            self._conn.execute(
-                "INSERT INTO party_billing (party_id, cuit, condicion_iva) VALUES (?, ?, ?)",
-                (party.id, cuit, condicion_iva),
-            )
-        self._conn.commit()
-        # 🔴 Crea de una el `clients.id` enlazado por `external_ref = party-<id>`
-        # (misma función que usa `CuentaCorrienteService._cliente_cc`/
-        # `app/ganchos.py::cliente_cc_de`, no se duplica la lógica). Sin esto la
-        # fila nacía recién cuando alguien pedía LA CUENTA de este cliente
-        # puntual (`GET /accounts/{party_id}`): un cliente que fía por primera
-        # vez no aparecía en `GET /accounts` (`get_clientes_con_saldo_cc`), que
-        # sólo enumera `clients` ya existentes -- ver F3, ADR-025.
-        db_clients.resolver_cliente_externo(
-            f"party-{party.id}", display_name, cuit_dni=cuit or "", email=email or "", phone=phone or "",
-        )
-        return self._to_out(party)
+        """Levanta `ValueError` si el CUIT/DNI ya lo tiene otro cliente (regla del motor).
 
-    def get(self, party_id: int) -> dict | None:
-        party = self._repo.get_party(party_id)
-        return self._to_out(party) if party is not None else None
+        `party_type` se acepta por compatibilidad del contrato y se ignora: `clients` no lo guarda.
+        """
+        client_id = db_clients.create_client(
+            display_name, cuit_dni=cuit or "", email=email or "", phone=phone or "",
+            iva_condition=condicion_iva or "",
+        )
+        return self._to_out(db_clients.get_client(client_id))
+
+    def get(self, client_id: int) -> dict | None:
+        client = db_clients.get_client(client_id)
+        return self._to_out(client) if client is not None else None
 
     def list_all(self) -> list[dict]:
-        rows = self._conn.execute(
-            """
-            SELECT p.id FROM parties p
-            JOIN party_roles pr ON pr.party_id = p.id AND pr.role = 'customer'
-            WHERE p.active = 1
-            ORDER BY p.display_name
-            """
-        ).fetchall()
-        return [self._to_out(self._repo.get_party(row[0])) for row in rows]
+        return [self._to_out(c) for c in db_clients.get_all_clients()]
 
-    def _to_out(self, party: Party) -> dict:
-        billing = self._conn.execute(
-            "SELECT cuit, condicion_iva FROM party_billing WHERE party_id = ?", (party.id,)
-        ).fetchone()
+    @staticmethod
+    def _to_out(client: dict) -> dict:
         return {
-            "id": party.id, "party_type": party.party_type, "display_name": party.display_name,
-            "email": party.email, "phone": party.phone, "active": party.active,
-            "cuit": billing[0] if billing else None,
-            "condicion_iva": billing[1] if billing else None,
+            "id": client["id"], "party_type": PartyType.PERSON.value,
+            "display_name": client["name"],
+            "email": client.get("email") or None, "phone": client.get("phone") or None,
+            "active": bool(client.get("activo", 1)),
+            "cuit": client.get("cuit_dni") or None,
+            "condicion_iva": client.get("iva_condition") or None,
         }
