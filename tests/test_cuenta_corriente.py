@@ -233,15 +233,13 @@ def test_un_cliente_sin_movimientos_no_figura_como_deudor(admin_client):
     assert admin_client.get("/accounts").json() == []
 
 
-def test_un_cliente_sin_external_ref_no_rompe_el_listado(admin_client):
-    """`deudores()` traduce cada fila de `clients` a un `party_id` por
-    `external_ref = 'party-<id>'` (`app/services/cuenta_corriente.py::
-    _party_id_de`); un cliente sin esa forma "no debería existir en esta
-    base, pero si aparece no se lo muestra en vez de romper la pantalla"
-    (ver el docstring de `deudores()`) -- no viene de VentaLibra."""
+def test_un_cliente_de_clients_con_deuda_aparece_por_su_id(admin_client):
+    """Desde la `0004` (2026-09-26) el listado de deudores cruza por id, como Contalibra: un
+    cliente de `clients` con deuda aparece sin importar su `external_ref` (antes se descartaba
+    todo el que no tuviera la forma `party-<id>`)."""
     conn = admin_client.app.state.conn
     cliente_id = conn.execute(
-        "INSERT INTO clients (name, cuit_dni) VALUES ('Cliente sin party', '')"
+        "INSERT INTO clients (name, cuit_dni) VALUES ('Cliente sin external_ref', '')"
     ).lastrowid
     conn.execute(
         "INSERT INTO cc_debitos (cliente_id, monto, fecha, concepto) VALUES (?, 500, '2026-09-14', 'x')",
@@ -249,24 +247,8 @@ def test_un_cliente_sin_external_ref_no_rompe_el_listado(admin_client):
     )
     conn.commit()
 
-    assert admin_client.get("/accounts").json() == []
-
-
-def test_un_external_ref_mal_formado_no_rompe_el_listado(admin_client):
-    """Mismo caso, con un `external_ref` que empieza como se espera pero
-    cuyo sufijo no es un id numérico -- dato corrupto, no un caso de uso."""
-    conn = admin_client.app.state.conn
-    cliente_id = conn.execute(
-        "INSERT INTO clients (name, cuit_dni, external_ref) "
-        "VALUES ('Cliente con external_ref roto', '', 'party-abc')"
-    ).lastrowid
-    conn.execute(
-        "INSERT INTO cc_debitos (cliente_id, monto, fecha, concepto) VALUES (?, 500, '2026-09-14', 'x')",
-        (cliente_id,),
-    )
-    conn.commit()
-
-    assert admin_client.get("/accounts").json() == []
+    deudores = admin_client.get("/accounts").json()
+    assert [(d["party_id"], d["nombre"]) for d in deudores] == [(cliente_id, "Cliente sin external_ref")]
 
 
 def test_dos_ventas_fiadas_se_acumulan(admin_client):
