@@ -323,15 +323,14 @@ def test_el_pdf_del_recibo_sale_por_la_ruta_del_kit(admin_client):
     assert "Vecina del 12" in texto
 
 
-def test_el_recibo_del_kit_es_el_mismo_que_el_de_la_ruta_vieja(admin_client):
-    """`POST /api/recibos/cobranza/{id}` y `POST /accounts/receipts/{id}` son
-    la misma operación idempotente: dos llamadas, un solo recibo."""
+def test_emitir_el_recibo_del_kit_es_idempotente(admin_client):
+    """`POST /api/recibos/cobranza/{id}` es idempotente: dos llamadas, un solo recibo."""
     cliente_id, pago_id, _turno_id = _deudor_con_pago(admin_client)
 
-    por_kit = admin_client.post(f"/api/recibos/cobranza/{pago_id}")
-    por_ruta_vieja = admin_client.post(f"/accounts/receipts/{pago_id}")
-    assert por_kit.status_code == 200 and por_ruta_vieja.status_code == 200
-    assert por_kit.json()["id"] == por_ruta_vieja.json()["id"]
+    primero = admin_client.post(f"/api/recibos/cobranza/{pago_id}")
+    segundo = admin_client.post(f"/api/recibos/cobranza/{pago_id}")
+    assert primero.status_code == 200 and segundo.status_code == 200
+    assert primero.json()["id"] == segundo.json()["id"]
 
 
 def test_la_baja_de_pago_es_solo_admin(admin_client, staff_client):

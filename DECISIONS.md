@@ -1597,3 +1597,28 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Los proveedores ya migrados (ADR-028) siguen valiendo: su party ya tiene el id `proveedores.id + 100.000`.
   - Sin ficha de compras por proveedor: la ficha del kit no las conoce (queda como mejora).
 - Depende de: `libra-ui` v0.76.0 publicado y el pin de este repo subido a esa versión.
+
+## ADR-031 — Cuenta corriente con el router del motor (fase 4 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-26
+- Contexto: ADR-027 adoptó las pantallas del kit de cuenta corriente pero dejó el **backend propio**
+  (`/accounts`, `/api/cuenta-corriente` y `services/cuenta_corriente.py`, unas 600 líneas) porque el router del
+  motor (`libracore.cuenta_corriente_router`) no soportaba las reglas de cobro de este producto: el cobro exige
+  turno abierto y cae en la caja del turno, el selector ofrece sólo esa caja, el movimiento de caja lleva la
+  referencia `cc-pago-<id>` y la baja de un pago anula ese movimiento. Con las personas en el modelo del motor
+  (ADR-028) el cruce ya es por id, así que el router del motor sirve tal cual salvo esas reglas.
+- Decisión: agregar al router del motor **variantes** en vez de reescribirlo (criterio del humano: los motores
+  se adoptan y las diferencias entran como opciones). `libracore` v1.111.0 suma `OpcionesCuentaCorriente` con
+  tres ganchos opcionales —`validar_pago`, `cajas` y `al_eliminar_pago`— que, sin pasarlos, dejan el
+  comportamiento de Contalibra intacto. VentaLibra monta el router con sus ganchos
+  (`app/cuenta_corriente_ganchos.py`) y **retira `/accounts`, el router propio del kit y el servicio**.
+- Consecuencias:
+  - Los pagos ahora se registran con `POST /api/cuenta-corriente/{id}/pagar` (con `fecha`, como Contalibra);
+    `/accounts/*` desaparece. El listado devuelve `{clientes, total_deuda}`.
+  - El concepto del movimiento de caja pasa a ser `Pago CC - <cliente>` (el del motor).
+  - Los recibos siguen en un router propio mínimo (`app/routers/recibos.py`: emitir el de un pago y bajar el PDF):
+    en Contalibra y Restolibra también es código de cada producto, sin factory. **Deuda:** extraerlo a `libracore`.
+  - La baja del pago corre el gancho **antes** de anular los recibos y de borrarlo: si el movimiento de caja no se
+    puede identificar, no se toca nada (antes los recibos quedaban anulados y el pago vivo).
+- Depende de: `libracore` v1.111.0 publicado y el pin de este repo subido a esa versión.

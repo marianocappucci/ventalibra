@@ -8,11 +8,11 @@ alta en `clients` y su party espejo nace con el mismo id (`libracore.db.clients.
 Lo que se prueba ahora es que **dos clientes con deudas distintas no se confunden**.
 """
 from libracore.db import clients as db_clients
+from libracore.db import cuenta_corriente as db_cc
 from motor_de_test import TEST_DATABASE_URL
 
 from app import db as app_db
 from app.services import billing
-from app.services.cuenta_corriente import CuentaCorrienteService
 
 
 def test_el_saldo_de_un_cliente_no_se_confunde_con_el_de_otro():
@@ -48,6 +48,6 @@ def test_el_saldo_de_un_cliente_no_se_confunde_con_el_de_otro():
     _venta_fiada("POS-000002", beto, 700)
     conn.commit()
 
-    servicio = CuentaCorrienteService(conn)
-    assert servicio.saldo(ana) == 300
-    assert servicio.saldo(beto) == 700
+    # El cruce del router del motor: por id, con el origen de Contalibra.
+    assert db_cc.get_cc_saldo(ana, origen=db_cc.VENTAS_LIBRACOMMERCE) == 300
+    assert db_cc.get_cc_saldo(beto, origen=db_cc.VENTAS_LIBRACOMMERCE) == 700

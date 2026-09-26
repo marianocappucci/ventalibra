@@ -73,7 +73,7 @@ def test_fiar_deja_la_deuda_en_la_cuenta_del_cliente(admin_client):
 
     _venta_fiada(admin_client, cliente_id, item_id)
 
-    cuenta = admin_client.get(f"/accounts/{cliente_id}")
+    cuenta = admin_client.get(f"/api/cuenta-corriente/{cliente_id}")
     assert cuenta.status_code == 200, cuenta.text
     assert Decimal(str(cuenta.json()["saldo"])) == Decimal("3000")
     movimientos = cuenta.json()["movimientos"]
@@ -141,8 +141,8 @@ def test_cobrar_baja_el_saldo_y_entra_a_la_caja(admin_client):
     _venta_fiada(admin_client, cliente_id, item_id)
 
     cobro = admin_client.post(
-        f"/accounts/{cliente_id}/payments",
-        json={"monto": "1000", "medio_pago": "efectivo"},
+        f"/api/cuenta-corriente/{cliente_id}/pagar",
+        json={"fecha": hoy(), "monto": "1000", "medio_pago": "efectivo"},
     )
     assert cobro.status_code == 200, cobro.text
     assert Decimal(str(cobro.json()["saldo"])) == Decimal("2000")
@@ -159,11 +159,11 @@ def test_el_pago_queda_en_los_movimientos(admin_client):
     _venta_fiada(admin_client, cliente_id, item_id)
 
     admin_client.post(
-        f"/accounts/{cliente_id}/payments",
-        json={"monto": "1000", "medio_pago": "efectivo", "concepto": "Pago parcial"},
+        f"/api/cuenta-corriente/{cliente_id}/pagar",
+        json={"fecha": hoy(), "monto": "1000", "medio_pago": "efectivo", "concepto": "Pago parcial"},
     )
 
-    movimientos = admin_client.get(f"/accounts/{cliente_id}").json()["movimientos"]
+    movimientos = admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()["movimientos"]
     tipos = [m["tipo"] for m in movimientos]
     assert tipos == ["debito", "credito"]
     assert movimientos[1]["concepto"] == "Pago parcial"
@@ -179,7 +179,7 @@ def test_pagar_de_mas_deja_saldo_a_favor(admin_client):
     _venta_fiada(admin_client, cliente_id, item_id)
 
     cobro = admin_client.post(
-        f"/accounts/{cliente_id}/payments", json={"monto": "3500"},
+        f"/api/cuenta-corriente/{cliente_id}/pagar", json={"fecha": hoy(), "monto": "3500"},
     )
     assert Decimal(str(cobro.json()["saldo"])) == Decimal("-500")
 
@@ -192,7 +192,7 @@ def test_no_se_cobra_sin_turno_abierto(admin_client):
     admin_client.post(f"/shifts/{turno_id}/close", json={"monto_declarado": 0})
 
     respuesta = admin_client.post(
-        f"/accounts/{cliente_id}/payments", json={"monto": "1000"},
+        f"/api/cuenta-corriente/{cliente_id}/pagar", json={"fecha": hoy(), "monto": "1000"},
     )
     assert respuesta.status_code == 409
 
@@ -202,7 +202,7 @@ def test_un_monto_invalido_se_rechaza(admin_client):
     _abrir_turno(admin_client)
 
     assert admin_client.post(
-        f"/accounts/{cliente_id}/payments", json={"monto": "0"},
+        f"/api/cuenta-corriente/{cliente_id}/pagar", json={"fecha": hoy(), "monto": "0"},
     ).status_code == 422
 
 
@@ -221,16 +221,17 @@ def test_el_listado_de_deudores_los_devuelve_por_party_id(admin_client):
     _venta_fiada(admin_client, uno, item_id, cantidad="2")
     _venta_fiada(admin_client, otro, item_id, cantidad="1")
 
-    deudores = admin_client.get("/accounts").json()
-    por_id = {d["party_id"]: d for d in deudores}
+    listado = admin_client.get("/api/cuenta-corriente").json()
+    por_id = {d["id"]: d for d in listado["clientes"]}
     assert Decimal(str(por_id[uno]["saldo"])) == Decimal("3000")
     assert Decimal(str(por_id[otro]["saldo"])) == Decimal("1500")
-    assert por_id[uno]["nombre"] == "Vecina del 12"
+    assert por_id[uno]["name"] == "Vecina del 12"
+    assert listado["total_deuda"] == 4500
 
 
 def test_un_cliente_sin_movimientos_no_figura_como_deudor(admin_client):
     _make_cliente(admin_client, "Cliente que paga al contado")
-    assert admin_client.get("/accounts").json() == []
+    assert admin_client.get("/api/cuenta-corriente").json()["clientes"] == []
 
 
 def test_un_cliente_de_clients_con_deuda_aparece_por_su_id(admin_client):
@@ -247,8 +248,8 @@ def test_un_cliente_de_clients_con_deuda_aparece_por_su_id(admin_client):
     )
     conn.commit()
 
-    deudores = admin_client.get("/accounts").json()
-    assert [(d["party_id"], d["nombre"]) for d in deudores] == [(cliente_id, "Cliente sin external_ref")]
+    clientes = admin_client.get("/api/cuenta-corriente").json()["clientes"]
+    assert [(d["id"], d["name"]) for d in clientes] == [(cliente_id, "Cliente sin external_ref")]
 
 
 def test_dos_ventas_fiadas_se_acumulan(admin_client):
@@ -259,7 +260,7 @@ def test_dos_ventas_fiadas_se_acumulan(admin_client):
     _venta_fiada(admin_client, cliente_id, item_id, cantidad="1")
     _venta_fiada(admin_client, cliente_id, item_id, cantidad="2")
 
-    cuenta = admin_client.get(f"/accounts/{cliente_id}").json()
+    cuenta = admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()
     assert Decimal(str(cuenta["saldo"])) == Decimal("4500")
     assert len(cuenta["movimientos"]) == 2
 
@@ -280,13 +281,13 @@ def test_cobro_mixto_con_una_parte_fiada(admin_client):
     )
     assert confirmada["estado"] == "cobrada"
 
-    assert Decimal(str(admin_client.get(f"/accounts/{cliente_id}").json()["saldo"])) == Decimal("2000")
+    assert Decimal(str(admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()["saldo"])) == Decimal("2000")
     resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 1000
 
 
 def test_la_cuenta_de_un_cliente_inexistente_es_404(admin_client):
-    assert admin_client.get("/accounts/9999").status_code == 404
+    assert admin_client.get("/api/cuenta-corriente/9999").status_code == 404
 
 
 # 🔴 **Retirados, invariante ya no aplica**: `test_se_le_puede_poner_cliente_a_una_venta_ya_

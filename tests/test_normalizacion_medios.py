@@ -187,8 +187,8 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     # 3) La cobranza por MercadoPago -> cc_pagos + caja_movimientos + recibos.
     #    Sin cambios: sigue siendo este producto (`app/routers/accounts.py`),
     #    ajeno a la migración -- y ya tomaba el `party_id`, igual que D3.
-    cobranza = client.post(f"/accounts/{cliente_id}/payments", json={
-        "monto": "2000.00", "medio_pago": CANONICA, "referencia": "mp 7781",
+    cobranza = client.post(f"/api/cuenta-corriente/{cliente_id}/pagar", json={
+        "fecha": hoy(), "monto": "2000.00", "medio_pago": CANONICA, "referencia": "mp 7781",
     })
     assert cobranza.status_code == 200, cobranza.text
     recibo_id = cobranza.json()["recibo_id"]
@@ -242,7 +242,7 @@ def instancia_degradada(tmp_path):
             degradadas = _degradar_a_la_grafia_vieja(client.app.state.conn, conn_core)
         finally:
             conn_core.close()
-        pdf = client.get(f"/accounts/receipts/{recibo_id}/pdf")
+        pdf = client.get(f"/api/recibos/{recibo_id}/pdf")
         assert pdf.status_code == 200, pdf.text
         texto_antes = _texto_del_pdf(pdf.content)
 
@@ -333,7 +333,7 @@ def test_el_recibo_ya_emitido_deja_de_imprimir_el_slug_crudo(instancia_degradada
 
     with _client(create_app(instancia_degradada["destino"])) as client:
         _login(client)
-        pdf = client.get(f"/accounts/receipts/{instancia_degradada['recibo_id']}/pdf")
+        pdf = client.get(f"/api/recibos/{instancia_degradada['recibo_id']}/pdf")
         assert pdf.status_code == 200, pdf.text
         despues = _texto_del_pdf(pdf.content)
 
