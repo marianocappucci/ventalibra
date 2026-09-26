@@ -27,6 +27,7 @@ from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
 from libracore.caja_router import build_cierre_diario_router
+from libracore.clientes_router import build_clientes_router
 from libracore.config_router import (
     build_backup_router,
     build_empresa_admin_router,
@@ -59,7 +60,6 @@ from .routers import (
     cajas,
     catalog,
     cuenta_corriente_api,
-    customers,
     health,
     locations,
     medios,
@@ -526,7 +526,10 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(cajas.router, dependencies=staff_or_admin)
     app.include_router(suppliers.router, dependencies=staff_or_admin)
     app.include_router(purchasing.router, dependencies=staff_or_admin)
-    app.include_router(customers.router, dependencies=staff_or_admin)
+    # Clientes: el router del motor (`libracore.clientes_router`), el mismo que montan Contalibra y
+    # Restolibra sobre la tabla `clients`. Reemplaza a `/customers` (ADR-029). Permisos como los del
+    # resto del POS: staff o admin.
+    app.include_router(build_clientes_router(), dependencies=staff_or_admin)
     # El cajero cobra fiado en el mostrador, asi que no es admin-only.
     app.include_router(accounts.router, dependencies=staff_or_admin)
     # Contrato del kit para la cuenta corriente (`libra-ui/comercio/

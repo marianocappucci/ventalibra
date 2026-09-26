@@ -106,7 +106,7 @@ def test_registrar_con_cualquier_elegible_pasa_la_validacion(admin_client, medio
         # `exigir_cliente_para_fiar` (F3, ADR-025, prendida en `app/main.py`)
         # bloquea un fiado sin cliente ANTES de mirar el ítem -- sin esto el
         # control mediría ese gate, no el del ítem.
-        cliente = admin_client.post("/customers", json={"display_name": "Cliente de control"})
+        cliente = admin_client.post("/api/clientes", json={"name": "Cliente de control"})
         assert cliente.status_code == 200, cliente.text
         payload["cliente_id"] = cliente.json()["id"]
     r_valido = admin_client.post("/api/ventas", json=payload)

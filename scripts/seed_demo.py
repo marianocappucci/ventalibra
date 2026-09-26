@@ -140,15 +140,13 @@ ARTICULOS = [
     ("Lavandina 1 L", "UN", "Limpieza", 1600, 1050),
 ]
 
+#: Con la forma del router de clientes del motor (`/api/clientes`, ADR-029).
 CLIENTES = [
-    {"display_name": "Consumidor final", "party_type": "person"},
-    {"display_name": "Rosa Giménez", "party_type": "person", "phone": "11 4455-6677",
-     "condicion_iva": "Consumidor Final"},
-    {"display_name": "Kiosco La Esquina", "party_type": "organization",
-     "cuit": "30-71888999-2", "condicion_iva": "Responsable Inscripto",
-     "email": "laesquina@example.com.ar"},
-    {"display_name": "Comedor San Cayetano", "party_type": "organization",
-     "cuit": "30-71222333-4", "condicion_iva": "IVA Exento"},
+    {"name": "Consumidor final"},
+    {"name": "Rosa Giménez", "phone": "11 4455-6677", "iva_condition": "Consumidor Final"},
+    {"name": "Kiosco La Esquina", "cuit_dni": "30-71888999-2",
+     "iva_condition": "Responsable Inscripto", "email": "laesquina@example.com.ar"},
+    {"name": "Comedor San Cayetano", "cuit_dni": "30-71222333-4", "iva_condition": "IVA Exento"},
 ]
 
 PROVEEDORES = [
@@ -215,9 +213,8 @@ def sembrar(api: Api) -> None:
     print("Clientes…")
     clientes = {}
     for c in CLIENTES:
-        registro, nuevo = obtener_o_crear(
-            api, "/customers", "display_name", c["display_name"], c)
-        clientes[c["display_name"]] = registro
+        registro, nuevo = obtener_o_crear(api, "/api/clientes", "name", c["name"], c)
+        clientes[c["name"]] = registro
         contar("clientes", nuevo)
 
     print("Proveedores…")
@@ -522,9 +519,8 @@ def _sembrar_cuenta_corriente(api: Api, articulos: dict, clientes: dict,
     🔴 **Portado a F3 (2026-09-14, DECISIONS.md ADR-025).** Se sigue pidiendo
     la cuenta PUNTUAL (`GET /accounts/{party_id}`) y no el listado (`GET
     /accounts`) -- pero ya no por la razón que decía esta nota hasta el
-    2026-09-15: esa era la trampa de antes de que `POST /customers`
-    (`CustomerService.create`) creara de una la fila `clients` enlazada por
-    `external_ref` al dar de alta un cliente (arreglo del mismo día). Medido
+    2026-09-15: esa era la trampa de antes de que el alta de un cliente creara de una la fila
+    `clients` (hoy el cliente ES la fila `clients`, `POST /api/clientes`, ADR-029). Medido
     de nuevo con el código actual: `GET /accounts` justo después de la venta
     fiada de `_sembrar_ventas` YA trae a Kiosco La Esquina -- el listado no
     devuelve `[]`. La razón real para seguir pidiendo la cuenta puntual es

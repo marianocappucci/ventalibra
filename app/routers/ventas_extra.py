@@ -45,12 +45,12 @@ Una lectura nueva de F4 (no reemplaza nada de `/sales`, que nunca la tuvo):
   cuenta server-side.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from libracore.db import clients as db_clients
 from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..modules_gate import get_module_repository
 from ..services import mp_qr
-from ..services.customers import CustomerService
 from ..services.sales import SaleNotFound, SaleService
 from ..services.tickets import ticket_de_venta
 
@@ -79,8 +79,8 @@ def ticket(sale_id: int, request: Request):
 
     nombre = ""
     if sale.customer_party_id is not None:
-        cliente = CustomerService(request.app.state.conn).get(sale.customer_party_id)
-        nombre = (cliente or {}).get("display_name", "")
+        cliente = db_clients.get_client(sale.customer_party_id)  # id del cliente == id del party
+        nombre = (cliente or {}).get("name", "")
 
     pdf = ticket_de_venta(sale, nombre)
     return Response(
