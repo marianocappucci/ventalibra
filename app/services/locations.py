@@ -135,4 +135,9 @@ class LocationService:
             # de arriba ya corrió, así que ve el estado nuevo.
             set_default_deposito(self._conn, location_id)
 
+        # `update_deposito` y `set_default_deposito` escriben sin commitear: sin
+        # esto el cambio queda pendiente en la conexión compartida de la app y
+        # las demás conexiones (una por request de venta, que validan contra el
+        # default) no lo ven. Medido el 2026-09-25 sobre una copia de dev.
+        self._conn.commit()
         return self._repo.get_location(location_id)

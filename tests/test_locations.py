@@ -206,3 +206,21 @@ def test_listar_sin_incluir_inactivas_no_cambia_lo_de_siempre(admin_client):
     })
     ids = [l["id"] for l in admin_client.get("/locations").json()]
     assert sucursal["id"] not in ids
+
+
+def test_el_cambio_de_default_lo_ve_otra_conexion(admin_client):
+    """🔴 `PUT /locations/{id}` escribía sin commitear: la respuesta mostraba el
+    default nuevo (misma conexión) pero cada venta, que abre su propia conexión,
+    seguía viendo el viejo y rechazaba con 422. Se lee ACÁ por una conexión
+    distinta de la de la app, que es lo que hace una venta."""
+    import psycopg
+    from motor_de_test import TEST_DATABASE_URL
+
+    nueva = _crear_sucursal(admin_client, "Sucursal Nueva")
+    r = admin_client.put(f"/locations/{nueva['id']}", json={
+        "name": nueva["name"], "location_type": "store", "is_default": True, "active": True,
+    })
+    assert r.status_code == 200, r.text
+    with psycopg.connect(TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)) as otra:
+        defaults = otra.execute("SELECT id FROM locations WHERE is_default = 1").fetchall()
+    assert defaults == [(nueva["id"],)]
