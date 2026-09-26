@@ -86,7 +86,7 @@ def test_deja_el_catalogo_completo(api):
     assert len(api.get("/catalog/categories")) == 4
     assert len(api.get("/catalog/items")) == 11
     assert len(api.get("/api/clientes")) == 4
-    assert len(api.get("/suppliers")) == 2
+    assert len(api.get("/api/proveedores")) == 2
 
 
 def test_hay_una_unidad_con_fraccion(api):

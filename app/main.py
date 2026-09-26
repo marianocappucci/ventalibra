@@ -36,6 +36,7 @@ from libracore.config_router import (
 from libracore.db.core import es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.url_de_instancia import url_de_instancia
+from libracore.egresos_router import build_proveedores_router
 from libracore.mp_config_router import build_mp_config_router
 from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
@@ -55,6 +56,7 @@ from .auth import (
 )
 from .ganchos import GANCHOS
 from .modules_gate import require_module
+from .proveedores_guarda import no_eliminar_con_compras
 from .routers import (
     accounts,
     cajas,
@@ -68,7 +70,6 @@ from .routers import (
     reports,
     shifts,
     stock,
-    suppliers,
     ventas_extra,
 )
 from .routers import auth as auth_router
@@ -524,7 +525,12 @@ def create_app(db_path: str) -> FastAPI:
     # ANTES de `medios.router` para que quede claro que no compite con su
     # `GET /api/cajas/medios-disponibles` -- este router no define esa ruta.
     app.include_router(cajas.router, dependencies=staff_or_admin)
-    app.include_router(suppliers.router, dependencies=staff_or_admin)
+    # Proveedores: el router del motor (`libracore.egresos_router`), el mismo de Contalibra y Restolibra
+    # sobre la tabla `proveedores` (ADR-030). Reemplaza a `/suppliers`. La baja se guarda: el motor sólo
+    # mira los egresos, y acá un proveedor con compras no se elimina (`app/proveedores_guarda.py`).
+    app.include_router(
+        build_proveedores_router(), dependencies=[*staff_or_admin, Depends(no_eliminar_con_compras)],
+    )
     app.include_router(purchasing.router, dependencies=staff_or_admin)
     # Clientes: el router del motor (`libracore.clientes_router`), el mismo que montan Contalibra y
     # Restolibra sobre la tabla `clients`. Reemplaza a `/customers` (ADR-029). Permisos como los del
