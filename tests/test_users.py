@@ -225,7 +225,7 @@ def test_borrar_a_un_usuario_con_turno_da_409(
     victima_id = staff_client.get("/auth/me").json()["id"]
 
     abierto = staff_client.post(
-        "/shifts/open", json={"monto_inicial": 100, "caja_id": caja_default(staff_client)}
+        "/api/turnos/abrir", json={"monto_inicial": 100, "caja_id": caja_default(staff_client)}
     )
     assert abierto.status_code == 200, abierto.text
 

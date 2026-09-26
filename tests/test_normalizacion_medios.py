@@ -157,7 +157,7 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     cliente_id = cliente.json()["id"]
 
     turno = client.post(
-        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(client)}
+        "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_default(client)}
     )
     assert turno.status_code == 200, turno.text
 

@@ -21,10 +21,10 @@ from ventas_helpers import caja_default, hoy
 
 def _abrir_turno(client, monto_inicial=0):
     abierto = client.post(
-        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+        "/api/turnos/abrir", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
     )
     assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+    return abierto.json()["id"]
 
 
 def _make_item(client, name="Fideos 500g", price="1500.00"):

@@ -49,10 +49,10 @@ function montarRed() {
 
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json(MEDIOS))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.match(/\/shifts\/5\/summary/)) return Promise.resolve(json({ turno: TURNO, resumen: RESUMEN }))
-    if (u.match(/\/shifts\/5\/close$/) && metodo === 'POST') {
-      return Promise.resolve(json({ turno: { ...TURNO, estado: 'cerrado' } }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
+    if (u.match(/\/api\/turnos\/5$/) && metodo === 'GET') return Promise.resolve(json({ turno: TURNO, resumen: RESUMEN }))
+    if (u.match(/\/api\/turnos\/5\/cerrar$/) && metodo === 'POST') {
+      return Promise.resolve(json({ ...TURNO, estado: 'cerrado' }))
     }
     if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
@@ -104,7 +104,7 @@ describe('Cerrar turno: "Efectivo contado" no cae a $0 en silencio', () => {
 
     // El botón deshabilitado no dispara nada -- el guardia del POST es la
     // otra prueba: ningún click, con el botón disabled, generó el POST.
-    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/5/close'))).toBe(false)
+    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/5/cerrar'))).toBe(false)
   })
 
   it('con "1500,50" manda el POST de cierre con monto_declarado 1500.5', async () => {
@@ -121,7 +121,7 @@ describe('Cerrar turno: "Efectivo contado" no cae a $0 en silencio', () => {
     await user.click(botonCerrar)
 
     const cierre = await waitFor(() => {
-      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/5/close'))
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/5/cerrar'))
       expect(encontrada).toBeDefined()
       return encontrada!
     })
@@ -144,7 +144,7 @@ describe('Cerrar turno: "Efectivo contado" no cae a $0 en silencio', () => {
     await user.click(botonCerrar)
 
     await waitFor(() => {
-      const cierre = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/5/close'))
+      const cierre = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/5/cerrar'))
       expect(cierre?.body).toMatchObject({ monto_declarado: esperado })
     })
   })
@@ -158,7 +158,7 @@ describe('Cerrar turno: "Efectivo contado" no cae a $0 en silencio', () => {
     await user.type(within(dialog).getByLabelText('Efectivo contado'), '1.5.0,50')
     await within(dialog).findByText(/Monto inválido/)
     expect(within(dialog).getByRole('button', { name: /^Cerrar turno$/ })).toBeDisabled()
-    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/shifts/5/close'))).toBe(false)
+    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/5/cerrar'))).toBe(false)
   })
 
   it('con el campo vacío el botón queda deshabilitado, sin mostrar error', async () => {

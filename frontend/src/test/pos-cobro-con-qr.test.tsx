@@ -122,7 +122,7 @@ function montarRed(opciones: {
     if (u.endsWith('/api/ventas') && metodo === 'POST') {
       return Promise.resolve(json(venta({ id: vid, estado: 'pendiente', status: 'confirmed' })))
     }
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: TURNO }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/locations')) return Promise.resolve(json([LOCATION]))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/catalog/items/scan')) {

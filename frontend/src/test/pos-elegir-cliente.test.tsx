@@ -36,7 +36,7 @@ beforeEach(() => {
     llamadas.push(u)
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: TURNO }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
     if (u === '/api/clientes') return Promise.resolve(json(CLIENTES))
     return Promise.resolve(json([]))

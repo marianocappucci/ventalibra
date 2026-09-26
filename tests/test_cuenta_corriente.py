@@ -18,10 +18,10 @@ from ventas_helpers import caja_default, hoy
 
 def _abrir_turno(client, monto_inicial=0):
     abierto = client.post(
-        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
+        "/api/turnos/abrir", json={"monto_inicial": monto_inicial, "caja_id": caja_default(client)}
     )
     assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+    return abierto.json()["id"]
 
 
 def _make_item(client, name="Fideos 500g", price="1500.00"):
@@ -89,7 +89,7 @@ def test_lo_fiado_no_entra_al_arqueo_del_turno(admin_client):
 
     _venta_fiada(admin_client, cliente_id, item_id)
 
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 0
 
 
@@ -102,7 +102,7 @@ def test_una_venta_en_efectivo_si_entra_al_arqueo(admin_client):
 
     _registrar_venta(admin_client, item_id, cantidad="2")
 
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 3000
 
 
@@ -148,7 +148,7 @@ def test_cobrar_baja_el_saldo_y_entra_a_la_caja(admin_client):
     assert Decimal(str(cobro.json()["saldo"])) == Decimal("2000")
 
     # Cobrar deuda vieja SÍ es plata que entra: tiene que aparecer en el turno.
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 1000
 
 
@@ -189,7 +189,7 @@ def test_no_se_cobra_sin_turno_abierto(admin_client):
     cliente_id = _make_cliente(admin_client)
     turno_id = _abrir_turno(admin_client)
     _venta_fiada(admin_client, cliente_id, item_id)
-    admin_client.post(f"/shifts/{turno_id}/close", json={"monto_declarado": 0})
+    admin_client.post(f"/api/turnos/{turno_id}/cerrar", json={"monto_declarado": 0})
 
     respuesta = admin_client.post(
         f"/api/cuenta-corriente/{cliente_id}/pagar", json={"fecha": hoy(), "monto": "1000"},
@@ -282,7 +282,7 @@ def test_cobro_mixto_con_una_parte_fiada(admin_client):
     assert confirmada["estado"] == "cobrada"
 
     assert Decimal(str(admin_client.get(f"/api/cuenta-corriente/{cliente_id}").json()["saldo"])) == Decimal("2000")
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 1000
 
 

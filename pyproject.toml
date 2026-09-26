@@ -166,7 +166,10 @@ dependencies = [
 # v1.110.0 -> v1.111.0 (2026-09-26): `build_cuenta_corriente_router` acepta `opciones=OpcionesCuentaCorriente`
     # (`validar_pago`, `cajas`, `al_eliminar_pago`): VentaLibra monta el router del motor con sus reglas de
     # cobro por turno (ADR-031) y retira `/accounts` y el servicio propio. Sin migración.
-"libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.111.0",
+# v1.111.0 -> v1.112.0 (2026-09-26): `build_cajas_router` acepta `opciones=OpcionesCajas` y `build_turnos_router`
+    # `validar_apertura`/`enriquecer` (+ `GET /api/turnos/actual`): VentaLibra monta los routers del motor con sus
+    # reglas de cajas por sucursal (ADR-032) y retira `/shifts` y el ABM propio de cajas. Sin migración.
+"libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.112.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

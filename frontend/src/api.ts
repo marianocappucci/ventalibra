@@ -233,24 +233,16 @@ export type Caja = {
   medios_pago: string[]
   punto_venta: number | null
   mp_pos_id: string | null
-  activo: boolean
-  es_default: boolean
+  // 1/0, como los devuelve el motor (`libracore.caja_router`): se lee con `!!`.
+  activo: number
+  es_default: number
   sucursal_id: number | null
+  sucursal_nombre: string | null
   /** Si ya hay un turno abierto en esta caja (de cualquier usuario) -- el POS
    *  la excluye del selector al abrir turno. */
   tiene_turno_abierto: boolean
 }
 
-export type CajaEntrada = {
-  nombre: string
-  descripcion?: string
-  medios_pago: string[]
-  punto_venta?: number | null
-  mp_pos_id?: string | null
-}
-
-export type CajaAlta = CajaEntrada & { sucursal_id: number }
-export type CajaEdicion = CajaEntrada & { activo: boolean }
 
 // ── Cierre diario (2026-09-16) ─────────────────────────────────────────────
 

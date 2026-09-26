@@ -55,7 +55,7 @@ def test_anular_repone_el_stock_y_saca_la_plata_de_la_caja(admin_client):
 
     assert stock(admin_client, item_id, location_id) == 17
     assert Decimal(str(
-        admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]["total_ventas"]
+        admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]["total_ventas"]
     )) == 4500
 
     anulada = admin_client.post(f"/api/ventas/{sale_id}/anular")
@@ -64,7 +64,7 @@ def test_anular_repone_el_stock_y_saca_la_plata_de_la_caja(admin_client):
 
     # Todo como antes: la mercadería volvió y la plata salió.
     assert stock(admin_client, item_id, location_id) == 20
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 0
 
 
@@ -136,7 +136,7 @@ def test_anular_una_venta_pendiente_de_qr_no_toca_la_caja_y_vence_el_pago(admin_
     # igual que a cualquier otra venta.
     assert stock(admin_client, item_id, location_id) == 10
     # La caja NO se movió: la plata del QR nunca entró.
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 0
 
     conn = admin_client.app.state.conn
@@ -165,7 +165,7 @@ def test_devolver_una_parte_repone_solo_esa_parte(admin_client):
 
     assert stock(admin_client, item_id, location_id) == 17
     # Se reintegraron 2 x 1500 = 3000 de los 7500 cobrados.
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 4500
 
 
@@ -266,7 +266,7 @@ def test_devolver_a_cuenta_corriente_baja_la_deuda(admin_client):
 
     assert Decimal(str(admin_client.get(f"/api/cuenta-corriente/{cliente}").json()["saldo"])) == 1500
     # La caja no se movió.
-    resumen = admin_client.get(f"/shifts/{turno_id}/summary").json()["resumen"]
+    resumen = admin_client.get(f"/api/turnos/{turno_id}").json()["resumen"]
     assert Decimal(str(resumen["total_ventas"])) == 0
 
 

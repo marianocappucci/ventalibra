@@ -40,7 +40,7 @@ _AR = timezone(timedelta(hours=-3))
 
 def _abrir_turno(client):
     abierto = client.post(
-        "/shifts/open", json={"monto_inicial": 0, "caja_id": caja_default(client)}
+        "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_default(client)}
     )
     assert abierto.status_code == 200, abierto.text
 

@@ -86,7 +86,7 @@ function montarRed(opciones: {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     llamadas.push({ metodo, url: u, body })
 
-    if (u.includes('/shifts/current')) return Promise.resolve(json({ turno: null }))
+    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: null }))
     if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/api/cierre-diario/preview')) return Promise.resolve(json(opciones.preview ?? PREVIEW_BLOQUEADO))
     if (u.endsWith('/api/cierre-diario/cerrar') && metodo === 'POST') {

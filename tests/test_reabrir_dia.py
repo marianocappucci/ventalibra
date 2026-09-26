@@ -21,10 +21,10 @@ def _cerrar_turno_del_dia(client, sucursal_id: int) -> None:
     """Abre y cierra un turno en la sucursal principal, dejando la sucursal
     lista para cerrar el día (sin turnos abiertos)."""
     caja_id = caja_default(client)
-    abierto = client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": caja_id})
+    abierto = client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id})
     assert abierto.status_code == 200, abierto.text
-    tid = abierto.json()["turno"]["id"]
-    cerrado = client.post(f"/shifts/{tid}/close", json={"monto_declarado": 0, "notas": ""})
+    tid = abierto.json()["id"]
+    cerrado = client.post(f"/api/turnos/{tid}/cerrar", json={"monto_declarado": 0, "notas": ""})
     assert cerrado.status_code == 200, cerrado.text
 
 
@@ -46,7 +46,7 @@ def test_flujo_completo_reabrir_dia(admin_client, staff_client):
     # Con el día cerrado, abrir un turno nuevo en esa sucursal da 409 -- el
     # pedido original del humano ("una sucursal con el día cerrado no podía
     # abrir turno").
-    bloqueado = admin_client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": caja_id})
+    bloqueado = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id})
     assert bloqueado.status_code == 409, bloqueado.text
     assert "ya está cerrado" in bloqueado.json()["detail"]
 
@@ -72,10 +72,10 @@ def test_flujo_completo_reabrir_dia(admin_client, staff_client):
     assert preview["ya_cerrado"] is False
 
     # Reabierto el día, abrir turno ya funciona.
-    destrabado = admin_client.post("/shifts/open", json={"monto_inicial": 0, "caja_id": caja_id})
+    destrabado = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id})
     assert destrabado.status_code == 200, destrabado.text
-    tid_destrabado = destrabado.json()["turno"]["id"]
-    cerrado = admin_client.post(f"/shifts/{tid_destrabado}/close", json={"monto_declarado": 0, "notas": ""})
+    tid_destrabado = destrabado.json()["id"]
+    cerrado = admin_client.post(f"/api/turnos/{tid_destrabado}/cerrar", json={"monto_declarado": 0, "notas": ""})
     assert cerrado.status_code == 200, cerrado.text
 
     # Re-cerrar da un número nuevo, y el listado muestra los dos.

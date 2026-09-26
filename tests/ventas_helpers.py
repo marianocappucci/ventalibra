@@ -38,8 +38,8 @@ def caja_default(client) -> int:
     cajas.py::asegurar_cajas_de_todas`, que le crea su primera caja al
     arrancar `create_app()`).
 
-    `caja_id` es obligatorio en `POST /shifts/open` desde la feature de cajas
-    por sucursal (2026-09-16, ver `app/routers/shifts.py`): antes el turno
+    `caja_id` es obligatorio en `POST /api/turnos/abrir` desde la feature de cajas
+    por sucursal (2026-09-16, ver `app/cajas_ganchos.py`): antes el turno
     era compartido y este helper no hacía falta.
     """
     # De la sucursal DEFAULT, no la primera predeterminada de la lista: hay una
@@ -62,10 +62,10 @@ def abrir_turno(client, monto_inicial=0, caja_id=None) -> int:
     if caja_id is None:
         caja_id = caja_default(client)
     abierto = client.post(
-        "/shifts/open", json={"monto_inicial": monto_inicial, "caja_id": caja_id}
+        "/api/turnos/abrir", json={"monto_inicial": monto_inicial, "caja_id": caja_id}
     )
     assert abierto.status_code == 200, abierto.text
-    return abierto.json()["turno"]["id"]
+    return abierto.json()["id"]
 
 
 def crear_item(client, name="Yerba 1kg", price="1500.00") -> int:
