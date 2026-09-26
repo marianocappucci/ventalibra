@@ -180,7 +180,9 @@ describe('Sucursales', () => {
     const modal = await screen.findByRole('dialog')
     expect(modal).toHaveTextContent('Editar depósito')
     expect(screen.getByLabelText('Nombre')).toHaveValue('Depósito principal')
-    expect(screen.getByRole('combobox', { name: 'Tipo' })).toHaveTextContent('Depósito')
+    // El tipo se elige al crear: al editar se ve, pero no es un desplegable.
+    expect(screen.queryByRole('combobox', { name: 'Tipo' })).not.toBeInTheDocument()
+    expect(modal).toHaveTextContent('TipoDepósito')
     expect(screen.getByLabelText('Predeterminada')).toBeChecked()
     expect(screen.getByLabelText('Activa')).toBeChecked()
   })

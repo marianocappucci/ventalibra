@@ -434,10 +434,19 @@ def test_una_caja_historica_de_un_deposito_no_abre_turno(admin_client):
     assert "depósito" in r.json()["detail"]
 
 
-def test_un_deposito_que_pasa_a_sucursal_recibe_su_caja(admin_client):
-    deposito = _crear_deposito(admin_client)
-    r = admin_client.put(f"/locations/{deposito['id']}", json={
-        "name": deposito["name"], "location_type": "store", "is_default": False, "active": True,
+def test_una_ubicacion_vieja_que_pasa_a_sucursal_recibe_su_caja(admin_client):
+    """El tipo no se cambia entre sucursal y depósito, pero una fila de tipo
+    viejo (p. ej. `Negocio`) sí se elige una vez: si pasa a sucursal, vende."""
+    conn = admin_client.app.state.conn
+    conn.execute(
+        "INSERT INTO locations (name, description, location_type, is_default, active)"
+        " VALUES ('Local viejo', '', 'Negocio', 0, 1)"
+    )
+    conn.commit()
+    vieja = next(l for l in admin_client.get("/locations").json() if l["location_type"] == "Negocio")
+    assert _cajas_de(admin_client, vieja["id"]) == []
+    r = admin_client.put(f"/locations/{vieja['id']}", json={
+        "name": vieja["name"], "location_type": "store", "is_default": False, "active": True,
     })
     assert r.status_code == 200, r.text
-    assert len(_cajas_de(admin_client, deposito["id"])) == 1
+    assert len(_cajas_de(admin_client, vieja["id"])) == 1

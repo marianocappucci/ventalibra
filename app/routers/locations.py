@@ -9,6 +9,7 @@ from ..services.locations import (
     LocationNotFound,
     LocationService,
     SucursalConTurnoAbierto,
+    TipoNoSeCambia,
     vende,
 )
 
@@ -91,7 +92,7 @@ def update_location(location_id: int, data: LocationUpdate, request: Request):
         raise HTTPException(404, str(e)) from e
     except DatosInvalidos as e:
         raise HTTPException(422, str(e)) from e
-    except (SucursalConTurnoAbierto, FaltaTipoMinimo) as e:
+    except (SucursalConTurnoAbierto, FaltaTipoMinimo, TipoNoSeCambia) as e:
         raise HTTPException(409, str(e)) from e
     except ValueError as e:
         # Las guardas del motor (`update_deposito`/`set_default_deposito`
