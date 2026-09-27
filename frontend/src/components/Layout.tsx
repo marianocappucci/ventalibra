@@ -4,8 +4,8 @@
 import {
   ArrowRightLeft,
   Boxes,
-  BarChart3, Banknote, Building2, CalendarCheck, Clock, Coins, Landmark, Package, ReceiptText, ScrollText, Settings,
-  ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse,
+  BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, HandCoins, Landmark, Package, ReceiptText,
+  ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 import { LOGO, WORDMARK } from '@/branding'
@@ -38,6 +38,8 @@ export const Layout = createLayout({
     { to: '/productos', label: 'Productos', icon: Package },
     { to: '/compras', label: 'Compras', icon: ShoppingBag },
     { to: '/proveedores', label: 'Proveedores', icon: Truck },
+    // Fase 11 de la adopción de los motores (ADR-038): complementa a Compras, la contabilidad del pago.
+    { to: '/egresos', label: 'Egresos', icon: HandCoins },
     { to: '/clientes', label: 'Clientes', icon: Users },
     { to: '/cuentas-corrientes', label: 'Cuentas corrientes', icon: Wallet },
     { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
@@ -52,6 +54,8 @@ export const Layout = createLayout({
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
     { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
+    // Fase 12 de la adopción de los motores (ADR-038): ventas ya funciona, compras se completa con Egresos.
+    { to: '/libros-iva', label: 'Libros IVA', icon: BookText, adminOnly: true },
     { to: '/caja-medios', label: 'Caja por medio', icon: Coins, adminOnly: true },
     { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
     // Junto a Usuarios: se mira para responder "quién hizo esto".

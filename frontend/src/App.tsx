@@ -30,6 +30,9 @@ import { CuentasCorrientes } from './pages/CuentasCorrientes'
 import { CuentaCorrienteDetalle } from './pages/CuentaCorrienteDetalle'
 import { Tesoreria } from 'libra-ui/comercio/Tesoreria'
 import { TesoreriaDetalle } from 'libra-ui/comercio/TesoreriaDetalle'
+import { Egresos } from 'libra-ui/comercio/Egresos'
+import { EgresoDetalle } from 'libra-ui/comercio/EgresoDetalle'
+import { LibrosIva } from 'libra-ui/comercio/LibrosIva'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
@@ -239,6 +242,18 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <TesoreriaDetalle />
+          </ProtectedRoute>
+        }
+      />
+      {/* Egresos (fase 11, ADR-038): de staff y admin, como Compras y Proveedores. */}
+      <Route path="/egresos" element={<ProtectedRoute><Egresos /></ProtectedRoute>} />
+      <Route path="/egresos/:id" element={<ProtectedRoute><EgresoDetalle /></ProtectedRoute>} />
+      {/* Libros IVA (fase 12, ADR-038): contable-fiscal, de admin. */}
+      <Route
+        path="/libros-iva"
+        element={
+          <ProtectedRoute adminOnly>
+            <LibrosIva />
           </ProtectedRoute>
         }
       />
