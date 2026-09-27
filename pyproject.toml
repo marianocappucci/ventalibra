@@ -54,7 +54,9 @@ dependencies = [
     # validación y baja) y códigos por producto; el ERP arma su repositorio con la fábrica que declara el producto
     # (`usar_fabrica_de_repositorio`, la auditoría); la búsqueda no distingue acentos. VentaLibra monta los productos y las listas
     # de precio del motor (ADR-034) y retira `/catalog/items*` y `/pricing`. Sin migración.
-    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.19.0",
+    # v0.19.0 -> v0.20.0 (2026-09-27): `puerto_de_reportes` acepta `solo_confirmadas` (una venta anulada o pendiente de cobro no
+    # es una venta) y `sin_fiado`. VentaLibra monta los reportes del motor con las dos (ADR-035) y retira `/reports/*`. Sin migración.
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.20.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -176,7 +178,9 @@ dependencies = [
 # v1.111.0 -> v1.112.0 (2026-09-26): `build_cajas_router` acepta `opciones=OpcionesCajas` y `build_turnos_router`
     # `validar_apertura`/`enriquecer` (+ `GET /api/turnos/actual`): VentaLibra monta los routers del motor con sus
     # reglas de cajas por sucursal (ADR-032) y retira `/shifts` y el ABM propio de cajas. Sin migración.
-"libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.112.0",
+# v1.112.0 -> v1.113.0 (2026-09-27): `build_reportes_router`/`build_reportes_export_router` y `db.reportes` aceptan `sin_fiado`:
+    # los reportes de caja dejan afuera la cuenta corriente (fiar no es cobrar), como el arqueo del turno. VentaLibra lo activa (ADR-035).
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.113.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

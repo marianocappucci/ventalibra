@@ -23,6 +23,7 @@ from libraauth.terminos import TerminosRepository, build_terminos_router
 from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
 from libracommerce.db.auditoria import entidades as entidades_auditadas
+from libracommerce.erp.reportes import puerto_de_reportes
 from libracommerce.web.catalogo_router import build_depositos_router, build_productos_router, build_stock_router
 from libracommerce.web.listas_router import (
     build_listas_precio_router,
@@ -46,6 +47,7 @@ from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.egresos_router import build_proveedores_router
 from libracore.mp_config_router import build_mp_config_router
+from libracore.reportes_router import build_reportes_export_router, build_reportes_router
 from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
@@ -82,7 +84,6 @@ from .routers import (
     health,
     purchasing,
     recibos,
-    reports,
     ventas_extra,
 )
 from .routers import (
@@ -623,7 +624,17 @@ def create_app(db_path: str) -> FastAPI:
         ),
         dependencies=staff_or_admin,
     )
-    app.include_router(reports.router, dependencies=admin_only)
+    # Reportes (fase 8, ADR-035): el router del motor sobre las ventas de LibraCommerce (`libracommerce.erp.reportes`), el mismo que
+    # monta Contalibra, con dos variantes: una venta anulada o pendiente de cobro no es una venta (`solo_confirmadas`) y **fiar no es
+    # cobrar** (`sin_fiado`: la cuenta corriente no es ingreso de caja, como en el arqueo del turno). Reemplaza a `/reports/*`. Sólo
+    # admin, como antes; los exports CSV (`/reportes/export/*`) van con la sesión por cookie de la SPA.
+    reportes = puerto_de_reportes(lc_get_connection, solo_confirmadas=True, sin_fiado=True)
+    app.include_router(
+        build_reportes_router(reportes=reportes, sin_fiado=True), dependencies=admin_only,
+    )
+    app.include_router(
+        build_reportes_export_router(sesion=require_admin, reportes=reportes, sin_fiado=True),
+    )
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=admin_only)
