@@ -156,8 +156,8 @@ PROVEEDORES = [
 ]
 
 DEPOSITOS = [
-    {"name": "Salón", "location_type": "store"},
-    {"name": "Depósito", "location_type": "warehouse"},
+    {"nombre": "Salón", "tipo": "store"},
+    {"nombre": "Depósito", "tipo": "warehouse"},
 ]
 
 #: Stock inicial por artículo. **No todos tienen**: uno queda en cero y otro
@@ -224,8 +224,8 @@ def sembrar(api: Api) -> None:
     print("Depósitos…")
     depositos = {}
     for d in DEPOSITOS:
-        registro, nuevo = obtener_o_crear(api, "/locations", "name", d["name"], d)
-        depositos[d["name"]] = registro["id"]
+        registro, nuevo = obtener_o_crear(api, "/api/depositos", "nombre", d["nombre"], d)
+        depositos[d["nombre"]] = registro["id"]
         contar("depósitos", nuevo)
 
     # 🔴 Portado a F3 (2026-09-14, ADR-025): el depósito de stock y ventas NO
@@ -299,7 +299,7 @@ def _sembrar_stock(api: Api, articulos: dict, deposito: int, contar) -> None:
     saldo sin el movimiento que lo explica, y la pantalla de movimientos
     mostraría un stock que apareció de la nada.
 
-    Idempotente mirando la existencia actual: `/stock/adjustments` no tiene
+    Idempotente mirando la existencia actual: `/api/stock/{id}/ajuste` no tiene
     listado —es un movimiento, no un registro— así que la única forma de saber
     si ya se cargó es preguntarle al saldo.
     """
@@ -312,9 +312,9 @@ def _sembrar_stock(api: Api, articulos: dict, deposito: int, contar) -> None:
             contar("stock", False)
             continue
         try:
-            api.post("/stock/adjustments", {
-                "item_id": articulos[nombre], "location_id": deposito,
-                "quantity_delta": cantidad, "reason": "Carga inicial",
+            api.post(f"/api/stock/{articulos[nombre]}/ajuste", {
+                "modo": "entrada", "cantidad": float(cantidad), "deposito_id": deposito,
+                "referencia": "Carga inicial",
             })
             contar("stock", True)
         except RuntimeError as e:
@@ -333,7 +333,7 @@ def _deposito_default(api: Api) -> int:
     real (`erp.stock.descontar_stock_venta` -> `get_default_deposito_id`),
     que es "Depósito principal" -- sembrado por `app/db.py::connect()` ANTES
     de que este script cree ningún depósito propio, y que no hay forma de
-    cambiar por API (`app/routers/locations.py` no tiene `set-default`).
+    cambiar por API antes de la fase 6 (hoy `POST /api/depositos/{id}/set-default` lo hace).
     Medido sin este fix: la yerba (stock inicial 48, se venden 5, entran 24
     por la compra) quedaba en 72 = 48 + 24 -- **la resta nunca pasó**, porque
     las ventas descontaban de "Depósito principal" (que arranca vacío) y el
@@ -345,23 +345,21 @@ def _deposito_default(api: Api) -> int:
     como depósitos con nombre -- para que la pantalla de depósitos no quede
     vacía -- pero el stock y las ventas van contra el default real.
     """
-    return next(d["id"] for d in api.get("/locations") if d.get("is_default"))
+    return next(d["id"] for d in api.get("/api/depositos") if d.get("es_default"))
 
 
 def _existencia(api: Api, item_id: int, location_id: int) -> float:
     """El saldo actual de un artículo en un depósito.
 
-    ⚠️ Dos cosas que no se adivinan: la ruta es `/stock/{item_id}` —**no**
-    `/stock/items/{item_id}`, que da 404— y `location_id` es un query param
-    **obligatorio**. El stock es por depósito, no un número global, y pedirlo
-    sin decir dónde no tendría respuesta.
+    ⚠️ La ruta es `/api/stock/{item_id}` y el saldo del depósito vuelve en
+    `stock_deposito` (`deposito_id` es un query param): el stock es por depósito, no un número global.
     """
-    datos = api.get(f"/stock/{item_id}?location_id={location_id}")
+    datos = api.get(f"/api/stock/{item_id}?deposito_id={location_id}")
     if datos is None:
         return 0.0
     if isinstance(datos, list):
-        return sum(float(e.get("quantity", 0)) for e in datos)
-    for clave in ("quantity", "total", "cantidad"):
+        return sum(float(e.get("stock_deposito", 0)) for e in datos)
+    for clave in ("stock_deposito", "quantity", "total", "cantidad"):
         if clave in datos:
             return float(datos[clave] or 0)
     filas = next((v for v in datos.values() if isinstance(v, list)), [])

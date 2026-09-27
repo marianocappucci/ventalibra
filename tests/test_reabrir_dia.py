@@ -13,8 +13,8 @@ from ventas_helpers import caja_default
 
 
 def _sucursal_principal(client) -> int:
-    locs = client.get("/locations").json()
-    return next(l["id"] for l in locs if l["is_default"])
+    locs = client.get("/api/depositos").json()
+    return next(l["id"] for l in locs if l["es_default"])
 
 
 def _cerrar_turno_del_dia(client, sucursal_id: int) -> None:

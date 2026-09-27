@@ -17,7 +17,7 @@ el gate en `app/main.py` (ver el comentario ahí, sobre por qué va sólo en
 `/mp-status`) -- no es un cambio de test, es la causa real de que estos
 cuatro test fallaran.
 """
-from ventas_helpers import abrir_turno, crear_item, deposito_default, registrar_venta
+from ventas_helpers import abrir_turno, ajustar, crear_item, deposito_default, registrar_venta
 
 
 def _disable(client, modulo: str) -> None:
@@ -66,10 +66,7 @@ def test_catalog_stock_and_sales_are_never_gated(admin_client):
     _disable(admin_client, "facturacion")
     item_id = crear_item(admin_client)
     location_id = deposito_default(admin_client)
-    assert admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
-    ).status_code == 200
+    assert ajustar(admin_client, item_id, location_id, "5").status_code == 200
     abrir_turno(admin_client)
     venta = registrar_venta(admin_client, item_id)
     assert venta["id"] is not None

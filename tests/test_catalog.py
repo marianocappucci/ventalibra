@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from conftest import https_client
+from ventas_helpers import ajustar, crear_ubicacion
 
 
 def _make_unit(client, code="u"):
@@ -295,9 +296,7 @@ def _update_payload(**overrides):
 
 
 def _make_location(client, name="Deposito"):
-    response = client.post("/locations", json={"name": name})
-    assert response.status_code == 200, response.text
-    return response.json()["id"]
+    return crear_ubicacion(client, name)["id"]
 
 
 def test_update_item_ok(admin_client):
@@ -392,10 +391,7 @@ def test_update_item_change_unit_with_stock_movement_fails_409(admin_client):
     item_id = _make_item(admin_client)
     _make_unit(admin_client, "kg")
     location_id = _make_location(admin_client)
-    ajuste = admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "10", "reason": "carga inicial"},
-    )
+    ajuste = ajustar(admin_client, item_id, location_id, "10", motivo="carga inicial")
     assert ajuste.status_code == 200, ajuste.text
 
     response = admin_client.put(
@@ -414,10 +410,7 @@ def test_update_item_other_fields_edit_even_with_movements(admin_client):
     """El bloqueo es SOLO de la unidad -- el resto se edita siempre."""
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5", "reason": "carga inicial"},
-    )
+    ajustar(admin_client, item_id, location_id, "5", motivo="carga inicial")
 
     response = admin_client.put(
         f"/catalog/items/{item_id}",

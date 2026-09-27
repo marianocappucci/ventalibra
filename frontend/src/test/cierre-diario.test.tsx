@@ -23,7 +23,7 @@ function json(body: unknown, status = 200) {
 }
 
 const LOCATIONS = [
-  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
+  { id: 1, nombre: 'Sucursal Centro', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 },
 ]
 
 const PREVIEW_BLOQUEADO = {
@@ -87,7 +87,7 @@ function montarRed(opciones: {
     llamadas.push({ metodo, url: u, body })
 
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: null }))
-    if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/api/cierre-diario/preview')) return Promise.resolve(json(opciones.preview ?? PREVIEW_BLOQUEADO))
     if (u.endsWith('/api/cierre-diario/cerrar') && metodo === 'POST') {
       return Promise.resolve(json(opciones.cerrarBody ?? { id: 1 }, opciones.cerrarStatus ?? 200))

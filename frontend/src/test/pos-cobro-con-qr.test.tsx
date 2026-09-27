@@ -53,7 +53,7 @@ const ITEM = {
   unit_code: 'u', default_sale_price: '3000.00', active: true,
 }
 
-const LOCATION = { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true }
+const LOCATION = { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 }
 
 /** La venta ya registrada -- lo que devuelve `POST /api/ventas` (D1: nace
  *  completa, no un borrador vacío). */
@@ -123,7 +123,7 @@ function montarRed(opciones: {
       return Promise.resolve(json(venta({ id: vid, estado: 'pendiente', status: 'confirmed' })))
     }
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/locations')) return Promise.resolve(json([LOCATION]))
+    if (u.includes('/api/depositos')) return Promise.resolve(json([LOCATION]))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/catalog/items/scan')) {
       return Promise.resolve(json({

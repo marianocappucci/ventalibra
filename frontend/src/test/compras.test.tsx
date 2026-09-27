@@ -46,7 +46,7 @@ const ITEMS = [
   { id: 2, item_type: 'product', name: 'Azúcar', description: '', category_id: null, unit_code: 'kg', active: true, sellable: true, purchasable: true, default_sale_price: '0', default_cost: '0' },
 ]
 
-const LOCATIONS = [{ id: 1, name: 'Depósito Central', branch_id: null, location_type: 'warehouse', active: true, is_default: true }]
+const LOCATIONS = [{ id: 1, nombre: 'Depósito Central', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 }]
 
 type Llamada = { url: string; metodo: string; cuerpo: unknown }
 let llamadas: Llamada[]
@@ -69,7 +69,7 @@ beforeEach(() => {
     if (u === '/purchase-orders') return Promise.resolve(json(ORDENES))
     if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
     if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
-    if (u === '/locations') return Promise.resolve(json(LOCATIONS))
+    if (u === '/api/depositos') return Promise.resolve(json(LOCATIONS))
     if (u === '/purchase-receipts') return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   }))

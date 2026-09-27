@@ -13,7 +13,7 @@ import { Link } from 'react-router-dom'
 import {
   api, ApiError, ITEM_CODE_TYPE_LABELS, opcionesCategoria,
   type CatalogItem, type Category, type ItemCode, type ItemCodeType, type ItemVariant,
-  type StockPorDeposito, type Unit,
+  type Unit,
 } from '../api'
 import { SelectBuscable, type OpcionSelect } from 'libra-ui/SelectBuscable'
 import { Card, CardContent } from '@/components/ui/card'
@@ -495,8 +495,8 @@ export function Productos() {
       ])
       // Aparte del Promise.all de arriba: un 500 acá no puede dejar la
       // pantalla sin productos.
-      void api.get<StockPorDeposito>('/stock/por-deposito/grilla')
-        .then((g) => setStockPorItem(Object.fromEntries((g?.items ?? []).map((i) => [i.item_id, i.total]))))
+      void api.get<{ productos: { id: number; stock_actual: number }[] }>('/api/stock')
+        .then((g) => setStockPorItem(Object.fromEntries((g?.productos ?? []).map((p) => [p.id, String(p.stock_actual)]))))
         .catch(() => setStockPorItem({}))
       setItems(itemList)
       setUnits(unitList)

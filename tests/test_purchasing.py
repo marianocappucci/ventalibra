@@ -1,3 +1,6 @@
+from ventas_helpers import crear_ubicacion, stock
+
+
 def _make_item(client, name="Fideos 500g", cost="900.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     created = client.post(
@@ -9,9 +12,7 @@ def _make_item(client, name="Fideos 500g", cost="900.00"):
 
 
 def _make_location(client, name="Deposito"):
-    created = client.post("/locations", json={"name": name})
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
+    return crear_ubicacion(client, name)["id"]
 
 
 def _make_supplier(client, name="Distribuidora SA"):
@@ -43,8 +44,7 @@ def test_receipt_without_order_moves_stock_and_updates_cost(admin_client):
     assert confirmed.json()["status"] == "confirmed"
     assert confirmed.json()["received_at"] is not None
 
-    stock = admin_client.get(f"/stock/{item_id}", params={"location_id": location_id})
-    assert float(stock.json()["quantity"]) == 10.0
+    assert float(stock(admin_client, item_id, location_id)) == 10.0
 
     item = admin_client.get(f"/catalog/items/{item_id}")
     assert float(item.json()["default_cost"]) == 950.0

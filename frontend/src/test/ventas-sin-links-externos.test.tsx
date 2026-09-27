@@ -49,7 +49,7 @@ function montarRed(extra: Record<string, Response> = {}) {
     if (u.match(/\/api\/ventas\/42$/)) return Promise.resolve(json(VENTA_FACTURADA))
     if (u.startsWith('/api/ventas')) return Promise.resolve(json([VENTA_FACTURADA]))
     if (u.includes('/ventas/42/devuelto')) return Promise.resolve(json({ por_clave: [], deposito_id: null }))
-    if (u.includes('/locations')) return Promise.resolve(json([]))
+    if (u.includes('/api/depositos')) return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   })
   vi.stubGlobal('fetch', fetchMock)

@@ -19,8 +19,8 @@ function json(body: unknown, status = 200) {
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
 const LOCATIONS = [
-  { id: 1, name: 'Sucursal Centro', branch_id: null, location_type: 'store', active: true, is_default: true },
-  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'store', active: true, is_default: false },
+  { id: 1, nombre: 'Sucursal Centro', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
+  { id: 2, nombre: 'Sucursal Norte', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
 ]
 
 const CAJAS_SUCURSAL_1 = [
@@ -56,7 +56,7 @@ function montarRedBase(opciones: { turno?: unknown; aperturaBody?: unknown; aper
     if (u.endsWith('/api/turnos/abrir') && metodo === 'POST') {
       return Promise.resolve(json(opciones.aperturaBody ?? TURNO_CON_CAJA, opciones.aperturaStatus ?? 200))
     }
-    if (u.includes('/locations')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   })

@@ -1661,3 +1661,42 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - **Queda afuera:** los movimientos de caja (`build_caja_router` y `libra-ui/comercio/Caja`), que VentaLibra no tiene
   hoy: entra con la fase de tesorería (9).
 - Depende de: `libracore` v1.112.0 y `libra-ui` v0.77.0 publicados y los pines de este repo subidos.
+
+## ADR-033 — Sucursales, depósitos, stock y transferencias con los routers del motor y las pantallas del kit (fase 6 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-26
+- Contexto: VentaLibra tenía `/locations` (`app/routers/locations.py`, `services/locations.py`), `/stock` (`app/routers/stock.py`,
+  `services/stock.py`, unas 400 líneas con la transferencia, el historial y la grilla por depósito) y tres pantallas propias
+  (`Sucursales`, `Stock`, `Transferencias`, ~700 líneas). Contalibra usa `build_depositos_router` y `build_stock_router` de
+  `libracommerce` y las pantallas `Depositos`/`DepositoDetalle`/`DepositoTransferencia`/`Stock` del kit. Medido antes de empezar:
+  las factories leen `locations`, `stock_movements` y `catalog_items`, **las mismas tablas** que VentaLibra: no hay migración.
+- Decisión: adoptar los routers y las pantallas y expresar lo propio como **variantes** (el motor es la referencia).
+  - `libracommerce` v0.18.0: `OpcionesDepositos` (`autorizar_escritura`, `validar_alta`, `validar_edicion`,
+    `validar_eliminacion`, `al_guardar`), el `tipo` del depósito, `GET /api/depositos/transferencias` (el historial), el resultado
+    de cada lado en la transferencia, `OpcionesStock.por_deposito` (columnas por depósito y ajuste a un depósito) y el ajuste, la
+    lectura y la transferencia **por depósito y por variante**.
+  - `libra-ui` v0.78.0: `Depositos` con `tipos`, `soloLectura`, `titulo`; `DepositoDetalle` con `soloLectura`;
+    `DepositoTransferencia` con `conHistorial`; `Stock` con columnas y ajuste por depósito (dirigido por los datos) y `conFiltros`.
+  - VentaLibra declara sus reglas en `app/depositos_ganchos.py` y **retira `/locations`, `/stock` y las tres pantallas**.
+- Reglas propias que quedan como ganchos: dos tipos (`store`/`warehouse`) que no se cambian; como mínimo una sucursal y un depósito
+  activos; una sucursal con turno abierto no se desactiva; una sucursal no se elimina (tiene cajas y ventas); la sucursal nueva recibe su
+  caja; alta, edición, predeterminada y baja son de admin, la lectura y la transferencia de staff y admin.
+- Consecuencias:
+  - Los consumidores del POS pasan a `GET /api/depositos` (`nombre`, `tipo`, `activo`, `es_default`; 1/0 en los dos últimos): POS,
+    devolución, compras, cierre diario y cajas.
+  - `PUT` de un depósito ya no recibe el tipo ni `is_default`: el tipo se elige al crear y la predeterminada se marca con
+    `POST /api/depositos/{id}/set-default`. Las guardas de default son las del motor y contestan **422** (antes 409).
+  - Un depósito inexistente o inactivo en una transferencia es **422** (antes 404). Sin `variant_id`, el stock de un ítem en un depósito
+    es el de **todas sus variantes** (antes sólo lo cargado sin variante); con `variant_id`, el de esa variante.
+  - **Se pierde el tipo «viejo» retipable** (una fila con un tipo que no era ninguno de los dos podía elegirse una vez): el `PUT` del
+    motor no trae el tipo. Un dato así se corrige en la base (se hizo con dev el 2026-09-26).
+  - `GET /api/productos` se monta **de sólo lectura** (405 en escrituras) porque las pantallas del kit de transferencia listan productos de
+    ahí; se edita por `/catalog` hasta la fase 7, que adopta la pantalla de Productos y retira esa API.
+  - La pantalla de Stock gana lo que Contalibra ya tenía: alertas de mínimo, ajuste (fijar, entrada, salida) con fecha y
+    referencia, y el historial de movimientos; conserva el buscador y «sólo los que tienen stock» que tenía la propia.
+  - **Auditoría:** un ajuste de stock y la edición de una sucursal o depósito ya no quedan en `actividad_log` (el router
+    del motor escribe sin el repositorio envuelto; tampoco pasa en Contalibra). El ajuste sí queda en el ledger
+    (`stock_movements`, con `created_by`) y en el historial de movimientos. **Deuda:** si se quiere en los Logs, es un cambio del motor.
+  - Para las pantallas del kit el frontend suma `components/ui/textarea` y `formatEntero` (lo que cada producto provee).
+- Depende de: `libracommerce` v0.18.0 y `libra-ui` v0.78.0 publicados y los pines de este repo subidos.

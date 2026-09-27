@@ -12,9 +12,11 @@ quedó cobrado.
 import pytest
 from ventas_helpers import (
     abrir_turno,
+    ajustar,
     caja_default,
     con_stock,
     crear_item,
+    crear_ubicacion,
     deposito_default,
     hoy,
     registrar_venta,
@@ -133,16 +135,8 @@ def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
         f"/catalog/items/{item['id']}/variants", json={"sku": "REM-L", "name": "L"},
     ).json()
     location_id = deposito_default(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "10",
-              "variant_id": variant_m["id"]},
-    )
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item["id"], "location_id": location_id, "quantity_delta": "5",
-              "variant_id": variant_l["id"]},
-    )
+    ajustar(admin_client, item["id"], location_id, "10", variant_id=variant_m["id"])
+    ajustar(admin_client, item["id"], location_id, "5", variant_id=variant_l["id"])
     abrir_turno(admin_client)
 
     venta = registrar_venta(admin_client, items=[
@@ -151,10 +145,8 @@ def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
     ])
     assert venta["items"][0]["variante_id"] == variant_m["id"]
 
-    stock_m = admin_client.get(f"/stock/{item['id']}", params={"location_id": location_id, "variant_id": variant_m["id"]})
-    stock_l = admin_client.get(f"/stock/{item['id']}", params={"location_id": location_id, "variant_id": variant_l["id"]})
-    assert float(stock_m.json()["quantity"]) == 8.0
-    assert float(stock_l.json()["quantity"]) == 5.0
+    assert float(stock(admin_client, item["id"], location_id, variant_m["id"])) == 8.0
+    assert float(stock(admin_client, item["id"], location_id, variant_l["id"])) == 5.0
 
 
 # 🔴 **Retirado, invariante de borrador incremental**: `test_add_item_with_unknown_variant_fails`
@@ -440,7 +432,7 @@ def test_cerrar_un_turno_inexistente_es_404(admin_client):
 def test_deposito_id_descuenta_del_deposito_elegido_no_del_default(admin_client):
     item_id = _make_item(admin_client)
     default_id = deposito_default(admin_client)
-    otro = admin_client.post("/locations", json={"name": "Sucursal Once", "location_type": "store"}).json()
+    otro = crear_ubicacion(admin_client, "Sucursal Once", "store")
     con_stock(admin_client, item_id, otro["id"], "10")
     con_stock(admin_client, item_id, default_id, "10")
     # El turno en una caja de ESA sucursal: desde el 2026-09-17 el backend

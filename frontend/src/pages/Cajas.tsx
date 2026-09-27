@@ -7,7 +7,7 @@
 // movimientos de caja, así que no se ofrece el enlace.
 import { useEffect, useState } from 'react'
 import { Cajas as CajasComercio, type SucursalDeCaja } from 'libra-ui/comercio/Cajas'
-import { api, type Location } from '../api'
+import { api, type Deposito } from '../api'
 
 export function Cajas() {
   // `null` hasta que llegan: sin esto la pantalla arranca sin sucursales y se comporta como la de un producto
@@ -15,9 +15,9 @@ export function Cajas() {
   const [sucursales, setSucursales] = useState<SucursalDeCaja[] | null>(null)
 
   useEffect(() => {
-    api.get<Location[]>('/locations')
+    api.get<Deposito[]>('/api/depositos')
       .then((locs) => setSucursales(locs.map((l) => ({
-        id: l.id, nombre: l.name, admiteCajas: l.active && l.location_type === 'store',
+        id: l.id, nombre: l.nombre, admiteCajas: !!l.activo && l.tipo === 'store',
       }))))
       .catch(() => setSucursales([]))
   }, [])

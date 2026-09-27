@@ -6,19 +6,25 @@ era compartido (`get_turno_activo_any`): con dos locales vendiendo a la vez
 eso mezclaba la plata de los dos. Ver `app/services/cajas.py`,
 `app/cajas_ganchos.py` (los ganchos de los routers del motor).
 """
-from ventas_helpers import abrir_turno, caja_default, con_stock, crear_item, hoy, registrar_venta
+from ventas_helpers import (
+    abrir_turno,
+    caja_default,
+    con_stock,
+    crear_item,
+    crear_ubicacion,
+    hoy,
+    registrar_venta,
+)
 
 
 def _crear_sucursal(client, nombre="Sucursal Norte") -> dict:
-    r = client.post("/locations", json={"name": nombre, "location_type": "store"})
-    assert r.status_code == 200, r.text
-    return r.json()
+    return crear_ubicacion(client, nombre, "store")
 
 
 def _sembrada(client) -> dict:
     """La sucursal que siembra `app/db.py::connect()` (`store`, predeterminada).
     No es `json()[0]`: el listado va por nombre y ahora también hay un depósito."""
-    return next(loc for loc in client.get("/locations").json() if loc["is_default"])
+    return next(loc for loc in client.get("/api/depositos").json() if loc["es_default"])
 
 
 def _cajas_de(client, sucursal_id: int) -> list:
@@ -400,16 +406,14 @@ def test_el_movimiento_de_caja_de_la_venta_toma_la_caja_del_turno(admin_client):
 
 
 def _crear_deposito(client, nombre="Depósito Norte") -> dict:
-    r = client.post("/locations", json={"name": nombre, "location_type": "warehouse"})
-    assert r.status_code == 200, r.text
-    return r.json()
+    return crear_ubicacion(client, nombre, "warehouse")
 
 
 def test_una_base_nueva_nace_con_una_sucursal_que_vende(admin_client):
     """El Location sembrado por `app/db.py::connect()` es `store`: si fuera un
     depósito, una instancia nueva no tendría ni dónde abrir turno."""
-    sembrada = next(l for l in admin_client.get("/locations").json() if l["is_default"])
-    assert sembrada["location_type"] == "store"
+    sembrada = next(l for l in admin_client.get("/api/depositos").json() if l["es_default"])
+    assert sembrada["tipo"] == "store"
     assert len(_cajas_de(admin_client, sembrada["id"])) == 1
 
 
@@ -437,22 +441,24 @@ def test_una_caja_historica_de_un_deposito_no_abre_turno(admin_client):
     assert "depósito" in r.json()["detail"]
 
 
-def test_una_ubicacion_vieja_que_pasa_a_sucursal_recibe_su_caja(admin_client):
-    """El tipo no se cambia entre sucursal y depósito, pero una fila de tipo
-    viejo (p. ej. `Negocio`) sí se elige una vez: si pasa a sucursal, vende."""
+def test_una_ubicacion_de_tipo_viejo_no_vende_ni_recibe_caja(admin_client):
+    """Una fila de un tipo que no es `store` ni `warehouse` (p. ej. `Negocio`, de antes del modelo de dos tipos) no
+    vende: no tiene caja y no admite cajas nuevas. Desde la fase 6 el tipo no se edita (el `PUT` del motor ni lo trae):
+    un dato así se corrige en la base, como se hizo con dev."""
     conn = admin_client.app.state.conn
     conn.execute(
         "INSERT INTO locations (name, description, location_type, is_default, active)"
         " VALUES ('Local viejo', '', 'Negocio', 0, 1)"
     )
     conn.commit()
-    vieja = next(l for l in admin_client.get("/locations").json() if l["location_type"] == "Negocio")
+    vieja = next(l for l in admin_client.get("/api/depositos").json() if l["tipo"] == "Negocio")
     assert _cajas_de(admin_client, vieja["id"]) == []
-    r = admin_client.put(f"/locations/{vieja['id']}", json={
-        "name": vieja["name"], "location_type": "store", "is_default": False, "active": True,
-    })
+    r = admin_client.post("/api/cajas", json={"nombre": "Caja", "sucursal_id": vieja["id"]})
+    assert r.status_code == 422, r.text
+    # Guardarla (renombrarla) tampoco le inventa una caja.
+    r = admin_client.put(f"/api/depositos/{vieja['id']}", json={"nombre": "Local viejo 2", "activo": True})
     assert r.status_code == 200, r.text
-    assert len(_cajas_de(admin_client, vieja["id"])) == 1
+    assert _cajas_de(admin_client, vieja["id"]) == []
 
 
 # ── Desactivar una caja (2026-09-26): con movimientos no se puede eliminar ──
@@ -520,7 +526,7 @@ def test_la_caja_dice_si_tiene_turno_abierto_y_en_que_sucursal_esta(admin_client
     sucursal = _sembrada(admin_client)
     caja_id = caja_default(admin_client)
     antes = next(c for c in admin_client.get("/api/cajas").json() if c["id"] == caja_id)
-    assert antes["tiene_turno_abierto"] is False and antes["sucursal_nombre"] == sucursal["name"]
+    assert antes["tiene_turno_abierto"] is False and antes["sucursal_nombre"] == sucursal["nombre"]
     abrir_turno(admin_client, caja_id=caja_id)
     durante = next(c for c in admin_client.get(f"/api/cajas?sucursal_id={sucursal['id']}").json()
                    if c["id"] == caja_id)

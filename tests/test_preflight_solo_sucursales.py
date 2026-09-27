@@ -92,23 +92,17 @@ def test_preflight_postgres_real_es_de_solo_lectura(admin_client):
     """Ejercita el driver de producción sobre la base local EXCLUSIVA de tests."""
     import psycopg
 
-    origen_r = admin_client.post("/locations", json={
-        "name": "Depósito test", "location_type": "warehouse",
-    })
+    origen_r = admin_client.post("/api/depositos", json={"nombre": "Depósito test", "tipo": "warehouse"})
     assert origen_r.status_code == 200, origen_r.text
     # El escenario previo a la transición: el depósito es el predeterminado.
-    hecho = admin_client.put(f"/locations/{origen_r.json()['id']}", json={
-        "name": "Depósito test", "location_type": "warehouse", "is_default": True, "active": True,
-    })
+    hecho = admin_client.post(f"/api/depositos/{origen_r.json()['id']}/set-default")
     assert hecho.status_code == 200, hecho.text
     origen = hecho.json()
-    destino_r = admin_client.post("/locations", json={
-        "name": "Salón test", "location_type": "store",
-    })
+    destino_r = admin_client.post("/api/depositos", json={"nombre": "Salón test", "tipo": "store"})
     assert destino_r.status_code == 200, destino_r.text
     with preflight._abrir(sqlite_path=None, pg_url=TEST_DATABASE_URL) as conn:
         informe = preflight.auditar(conn, origen["id"], destino_r.json()["id"])
         assert informe["apto_para_planificar"] is True
         with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
             conn.execute("DELETE FROM locations")
-    assert len(admin_client.get("/locations").json()) == 4
+    assert len(admin_client.get("/api/depositos").json()) == 4
