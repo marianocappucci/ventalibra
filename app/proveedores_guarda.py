@@ -1,10 +1,11 @@
 """La guarda de baja de un proveedor con compras.
 
-El router de proveedores del motor (`libracore.egresos_router.build_proveedores_router`) sólo impide
-eliminar un proveedor con **egresos**; VentaLibra no tiene egresos sino órdenes y recepciones de compra
-(`purchase_orders`/`purchase_receipts`, atadas al party espejo). Sin esta guarda, eliminar un proveedor
-dejaría compras apuntando a un proveedor que ya no existe. Es una dependencia del `include_router`,
-porque la factory no ofrece un gancho para esto.
+El router de proveedores del motor (`libracore.egresos_router.build_proveedores_router`) ya impide
+eliminar un proveedor con **egresos** (`ValueError` -> 422, desde la fase 11: antes esto no aplicaba,
+VentaLibra no tenía egresos). Pero un proveedor puede tener órdenes y recepciones de compra
+(`purchase_orders`/`purchase_receipts`, atadas al party espejo) sin tener ni un egreso, y de eso el motor
+no sabe nada: sin esta guarda, eliminarlo dejaría compras apuntando a un proveedor que ya no existe. Es
+una dependencia del `include_router`, porque la factory no ofrece un gancho para esto.
 """
 import re
 
