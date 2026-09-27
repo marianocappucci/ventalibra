@@ -1778,7 +1778,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
     (`proveedor_id == party_id`, sin restricción de quién escribe): `numerador`, y el par `resolver_proveedor`/`proveedor_de` para
     que un producto traduzca su propio esquema de ids de proveedor. Nuevo respecto de lo que tenía VentaLibra: filtro server-side de
     recepciones por `purchase_order_id` (antes sólo del lado del cliente) y prefijo `/api` (antes no lo tenía).
-  - `libra-ui` v0.75.0: `comercio/Compras` y `comercio/CompraDetalle`, extraídas casi verbatim (mismos textos, mismo flujo de
+  - `libra-ui` v0.80.0: `comercio/Compras` y `comercio/CompraDetalle`, extraídas casi verbatim (mismos textos, mismo flujo de
     "Recibir mercadería" dentro de la orden) — sólo cambian las rutas a `/api/...` y `location_id` por `deposito_id` en la
     confirmación, más los tipos (`PurchaseOrder`, `PurchaseReceipt`...) que pasan a `comercio/tipos`.
   - VentaLibra monta `build_compras_router` con `app/compras_ganchos.py` (numeración con `next_sequence`, atómica — el `MAX(id)+1`
@@ -1789,4 +1789,26 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - El contrato público deja de exponer `supplier_party_id` (sólo lo tenía por comodidad de depuración; ninguna pantalla lo leía).
   - `GET /api/purchase-receipts?purchase_order_id=` ya no depende de traer todas las recepciones y filtrar en el cliente.
   - Contalibra y Restolibra no ganan nada de esto (no tienen el módulo) ni pierden nada (Egresos sigue disponible para los dos).
-- Depende de: `libracommerce` v0.21.0 y `libra-ui` v0.75.0 publicados y los pines de este repo subidos.
+- Depende de: `libracommerce` v0.21.0 y `libra-ui` v0.80.0 publicados y los pines de este repo subidos.
+
+## ADR-037 — Tesorería con el router del motor, libre en todos los planes (fase 10 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-27
+- Contexto: VentaLibra no tenía ninguna forma de llevar cuentas bancarias, efectivo en caja fuerte o billeteras
+  digitales aparte de la caja del POS. `libracore.tesoreria_router.build_tesoreria_router` y las pantallas
+  `comercio/Tesoreria`/`TesoreriaDetalle` del kit ya existen, sin ganchos ni variantes: cuentas, movimientos y
+  transferencias son un problema de cualquier comercio, no del modelo de venta de este producto. La tabla
+  (`cuentas_tesoreria`/`movimientos_tesoreria`) ya vive en la cadena de migraciones de `libracore` que VentaLibra
+  corre en cada deploy, vacía hasta ahora: sin riesgo de dato.
+- Decisión: montar `build_tesoreria_router` tal cual, sin `app/*_ganchos.py` (no hace falta: el router no tiene
+  opciones). Único punto que decidir era **quién la ve**: en Contalibra, `tesoreria` es un módulo real de
+  `plans.py` (gateado, plan "estándar"). Se le preguntó al humano y decidió que en VentaLibra queda **libre en
+  todos los planes**, como Compras, Ventas o Caja — coherente con el propio `plans.py` de este producto
+  ("facturación es el único módulo gateable por ahora"). De admin (mismo criterio que Cajas y Listas de precio):
+  cuentas y transferencias de plata no son una tarea de mostrador.
+- Consecuencias:
+  - VentaLibra no agrega `"tesoreria"` a `PLAN_MODULOS`: no hay `require_module` en el montaje.
+  - Nueva entrada de menú "Tesorería" (icono `Banknote`: `Landmark` ya lo usa "Cajas" en este producto).
+  - Contalibra y Restolibra no se tocan: siguen con `tesoreria` como módulo de plan "estándar".
+- Depende de: nada nuevo que publicar — `libracore` y `libra-ui` ya traían el router y las pantallas sin cambios.
