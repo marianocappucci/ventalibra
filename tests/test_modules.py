@@ -25,7 +25,8 @@ def _disable(client, modulo: str) -> None:
 
 
 def test_all_modules_enabled_by_default(admin_client):
-    assert admin_client.app.state.modules.get_all() == {"facturacion": True}
+    # Fase 13 (ADR-039): "dashboard" se sumó a TODOS_LOS_MODULOS junto con "facturacion".
+    assert admin_client.app.state.modules.get_all() == {"facturacion": True, "dashboard": True}
 
 
 def test_billing_router_requires_facturacion_module(admin_client):
