@@ -1697,6 +1697,40 @@ decisión explícita del humano, y no forman parte de esta ADR.
     referencia, y el historial de movimientos; conserva el buscador y «sólo los que tienen stock» que tenía la propia.
   - **Auditoría:** un ajuste de stock y la edición de una sucursal o depósito ya no quedan en `actividad_log` (el router
     del motor escribe sin el repositorio envuelto; tampoco pasa en Contalibra). El ajuste sí queda en el ledger
-    (`stock_movements`, con `created_by`) y en el historial de movimientos. **Deuda:** si se quiere en los Logs, es un cambio del motor.
+    (`stock_movements`, con `created_by`) y en el historial de movimientos. **Deuda** (resuelta en la fase 7, ADR-034: la fábrica del repositorio devolvió la auditoría de ubicaciones y productos; el ajuste de stock sigue sin quedar en los Logs).
   - Para las pantallas del kit el frontend suma `components/ui/textarea` y `formatEntero` (lo que cada producto provee).
 - Depende de: `libracommerce` v0.18.0 y `libra-ui` v0.78.0 publicados y los pines de este repo subidos.
+
+## ADR-034 — Productos y listas de precio con los routers del motor y las pantallas del kit (fase 7 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-27
+- Contexto: VentaLibra tenía `/catalog` (`app/routers/catalog.py` 334 líneas, `services/catalog.py` 395: productos, códigos,
+  variantes, escaneo, unidades y categorías), `/pricing` (119 + 56, que **ninguna pantalla usaba**) y la pantalla propia de Productos
+  (623 líneas). Contalibra usa `build_productos_router` y `build_listas_precio_router` de `libracommerce` y las pantallas `Productos`,
+  `ListasPrecio` y `ListaPrecioDetalle` del kit. Las factories leen las mismas tablas: sin migración de datos.
+- Decisión: adoptar los routers y las pantallas y expresar lo propio como **variantes**.
+  - `libracommerce` v0.19.0: `OpcionesCatalogo` (`unidades_de_la_base`, `autorizar_categorias`, `validar_producto`,
+    `validar_eliminacion`); `GET`/`POST /api/productos/{id}/codigos` (varios códigos por producto); `categoria_id` en el producto; el
+    listado con `solo_activos`/`solo_vendibles` y **búsqueda sin acentos y por todas las palabras**; y **la fábrica del repositorio**
+    (`usar_fabrica_de_repositorio`): el ERP arma su repositorio con la que declara el producto.
+  - `libra-ui` v0.79.0: `Productos` con `conDetalle` (códigos y variantes), `conStockTotal`, `conEliminar` y las unidades del backend.
+  - VentaLibra declara sus reglas en `app/productos_ganchos.py`, monta las listas de precio (CRUD, quiebres por cantidad y precios con
+    vigencia y por sucursal; **de admin**) y **retira `/catalog/items*`, `/pricing`, sus servicios y la pantalla propia**.
+- Se queda en VentaLibra a propósito (🔷): `/catalog/units` (código, nombre, si admite fracciones, escala decimal) y
+  `/catalog/categories` (jerárquicas, con baja lógica y nombre único entre las activas). El motor no las tiene; el alta y la baja de
+  categorías del motor están **cerradas** (405) para que no haya dos vías.
+- Consecuencias:
+  - **Se arreglaron cosas del motor que habrían roto los datos de VentaLibra:** guardar un producto reescribía su unidad (nombre
+    `Kilogramo`→`kg`, escala 3→0), reseteaba `purchasable`/`tax_profile`/`metadata` y le cambiaba el tipo al código principal.
+  - **La auditoría vuelve** (deuda de la fase 6): con la fábrica, el alta y la edición de productos, códigos, variantes y ubicaciones quedan
+    en `actividad_log` como antes. El ajuste de stock sigue sin quedar (es SQL directo; sí queda en el ledger).
+  - El POS y Compras usan `/api/productos` (`nombre`, `precio_venta` numérico, `unidad`, `activo`): el POS pide `solo_activos=true`; el
+    escaneo es `GET /api/productos/escanear` (`producto`, `cantidad`, `precio_unitario`, `de_balanza`).
+  - La unidad tiene que existir (422; el motor la crearía al pasar) y se bloquea con movimientos (409); la categoría tiene que existir y estar
+    activa (422); el tipo (producto/servicio) no se cambia (409); un producto **no se elimina** (409), se desactiva.
+  - **Se pierde la lista predeterminada** (`is_default`, con su 409 si había dos y `resolve` sin lista): nadie la usaba y el motor no la tiene.
+  - Sí se pierde `purchasable` como dato editable (sólo viajaba de ida y vuelta; se conserva lo que ya había).
+  - La búsqueda por nombre gana el código y la categoría (y la sigue sin distinguir acentos ni mayúsculas).
+  - El frontend suma `components/ui/radio-group` (lo que el kit espera del producto).
+- Depende de: `libracommerce` v0.19.0 y `libra-ui` v0.79.0 publicados y los pines de este repo subidos.

@@ -201,10 +201,9 @@ def sembrar(api: Api) -> None:
     print("Artículos…")
     articulos = {}
     for nombre, unidad, categoria, precio, costo in ARTICULOS:
-        registro, nuevo = obtener_o_crear(api, "/catalog/items", "name", nombre, {
-            "name": nombre, "unit_code": unidad,
-            "category_id": categorias[categoria],
-            "default_sale_price": precio, "default_cost": costo,
+        registro, nuevo = obtener_o_crear(api, "/api/productos", "nombre", nombre, {
+            "nombre": nombre, "unidad": unidad, "categoria": categoria,
+            "precio_venta": precio, "precio_costo": costo,
         })
         articulos[nombre] = registro["id"]
         contar("artículos", nuevo)

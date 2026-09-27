@@ -9,9 +9,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  api, ApiError, opcionesItem, PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_TONO,
+  api, ApiError, opcionesProducto, PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_TONO,
   PURCHASE_RECEIPT_STATUS_LABELS, PURCHASE_RECEIPT_STATUS_TONO,
-  type CatalogItem, type Deposito, type PurchaseOrder, type PurchaseReceipt, type Proveedor,
+  type Producto, type Deposito, type PurchaseOrder, type PurchaseReceipt, type Proveedor,
 } from '../api'
 import { fechaHora } from '@/lib/fechas'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
@@ -44,7 +44,7 @@ export function CompraDetalle() {
   const orderId = Number(id)
 
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
-  const [items, setItems] = useState<CatalogItem[]>([])
+  const [items, setItems] = useState<Producto[]>([])
   const [suppliers, setSuppliers] = useState<Proveedor[]>([])
   const [locations, setLocations] = useState<Deposito[]>([])
   const [receipts, setReceipts] = useState<PurchaseReceipt[]>([])
@@ -69,7 +69,7 @@ export function CompraDetalle() {
     try {
       const [o, i, s, l, r] = await Promise.all([
         api.get<PurchaseOrder>(`/purchase-orders/${orderId}`),
-        api.get<CatalogItem[]>('/catalog/items'),
+        api.get<Producto[]>('/api/productos?solo_activos=true'),
         api.get<Proveedor[]>('/api/proveedores'),
         api.get<Deposito[]>('/api/depositos'),
         api.get<PurchaseReceipt[]>('/purchase-receipts'),
@@ -95,7 +95,7 @@ export function CompraDetalle() {
   }
 
   function itemName(itemId: number): string {
-    return items.find((i) => i.id === itemId)?.name ?? `#${itemId}`
+    return items.find((i) => i.id === itemId)?.nombre ?? `#${itemId}`
   }
 
   function supplierName(supplierId: number): string {
@@ -219,7 +219,7 @@ export function CompraDetalle() {
                 <SelectBuscable
                   value={lineItemId}
                   onChange={setLineItemId}
-                  opciones={opcionesItem(items)}
+                  opciones={opcionesProducto(items)}
                   placeholder="Producto…"
                   ariaLabel="Producto"
                   className="w-48"

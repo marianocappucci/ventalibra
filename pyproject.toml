@@ -50,7 +50,11 @@ dependencies = [
     # v0.17.0 -> v0.18.0 (2026-09-27): `build_depositos_router` acepta `opciones=OpcionesDepositos` (tipo, historial de
     # transferencias, ganchos) y `build_stock_router` `OpcionesStock(por_deposito=True)`: VentaLibra monta los routers
     # del motor con sus reglas de sucursales y depósitos (ADR-033) y retira `/locations` y `/stock`. Sin migración.
-    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.18.0",
+    # v0.18.0 -> v0.19.0 (2026-09-27): `build_productos_router` acepta `opciones=OpcionesCatalogo` (unidades de la base, ganchos de
+    # validación y baja) y códigos por producto; el ERP arma su repositorio con la fábrica que declara el producto
+    # (`usar_fabrica_de_repositorio`, la auditoría); la búsqueda no distingue acentos. VentaLibra monta los productos y las listas
+    # de precio del motor (ADR-034) y retira `/catalog/items*` y `/pricing`. Sin migración.
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.19.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

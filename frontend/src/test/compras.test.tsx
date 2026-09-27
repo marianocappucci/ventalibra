@@ -42,8 +42,8 @@ const ORDENES = [
 const ORDEN_NUEVA = { id: 8, number: 'OC-000008', supplier_party_id: 100001, proveedor_id: 1, status: 'draft', items: [], is_fully_received: false }
 
 const ITEMS = [
-  { id: 1, item_type: 'product', name: 'Yerba', description: '', category_id: null, unit_code: 'kg', active: true, sellable: true, purchasable: true, default_sale_price: '0', default_cost: '0' },
-  { id: 2, item_type: 'product', name: 'Azúcar', description: '', category_id: null, unit_code: 'kg', active: true, sellable: true, purchasable: true, default_sale_price: '0', default_cost: '0' },
+  { id: 1, codigo: null, nombre: 'Yerba', descripcion: '', precio_venta: 0, precio_costo: 0, unidad: 'kg', categoria: '', stock_minimo: 0, estacion: '', vendible: 1, activo: 1, tipo: 'producto' },
+  { id: 2, codigo: null, nombre: 'Azúcar', descripcion: '', precio_venta: 0, precio_costo: 0, unidad: 'kg', categoria: '', stock_minimo: 0, estacion: '', vendible: 1, activo: 1, tipo: 'producto' },
 ]
 
 const LOCATIONS = [{ id: 1, nombre: 'Depósito Central', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 }]
@@ -68,7 +68,7 @@ beforeEach(() => {
     if (u === '/purchase-orders/8') return Promise.resolve(json(ORDEN_NUEVA))
     if (u === '/purchase-orders') return Promise.resolve(json(ORDENES))
     if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
-    if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+    if (u.startsWith('/api/productos')) return Promise.resolve(json(ITEMS))
     if (u === '/api/depositos') return Promise.resolve(json(LOCATIONS))
     if (u === '/purchase-receipts') return Promise.resolve(json([]))
     return Promise.resolve(json([]))
@@ -134,7 +134,7 @@ describe('El listado de compras', () => {
       llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
       if (u === '/purchase-orders') return Promise.resolve(json([ORDENES[0], ORDEN_2]))
       if (u === '/api/proveedores') return Promise.resolve(json([...PROVEEDORES, PROVEEDOR_2]))
-      if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+      if (u.startsWith('/api/productos')) return Promise.resolve(json(ITEMS))
       return Promise.resolve(json([]))
     }))
 

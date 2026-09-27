@@ -21,5 +21,5 @@ def test_staff_cannot_manage_users(staff_client):
 
 
 def test_staff_can_use_catalog(staff_client):
-    response = staff_client.get("/catalog/items")
+    response = staff_client.get("/api/productos")
     assert response.status_code == 200

@@ -26,9 +26,9 @@ import { Link } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
 import {
-  api, ApiError, type Caja, type CatalogItem, type Cliente, type Deposito, type ItemVariant,
+  api, ApiError, type Caja, type Cliente, type Deposito, type Escaneo, type Producto, type VarianteProducto,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
-  type ScanResult, type Shift, type ShiftState, type ShiftSummary,
+  type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -221,11 +221,11 @@ type CartLine = {
   variante_id: number | null
 }
 
-function lineaVacia(item: CatalogItem, cantidad: string, variante?: ItemVariant, precioUnitario?: string | null): CartLine {
+function lineaVacia(item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null): CartLine {
   return {
-    nombre: variante ? `${item.name} (${variante.name})` : item.name,
+    nombre: variante ? `${item.nombre} (${variante.nombre})` : item.nombre,
     qty: cantidad,
-    precio: precioUnitario ?? item.default_sale_price,
+    precio: precioUnitario ?? String(item.precio_venta),
     producto_id: item.id,
     variante_id: variante?.id ?? null,
   }
@@ -250,16 +250,16 @@ export function Pos() {
   const [marcada, setMarcada] = useState<number | null>(null)
   const [reciente, setReciente] = useState<number | null>(null)
 
-  const [candidatos, setCandidatos] = useState<CatalogItem[]>([])
-  const [variantes, setVariantes] = useState<ItemVariant[]>([])
-  const [pendiente, setPendiente] = useState<{ item: CatalogItem; cantidad: string } | null>(null)
+  const [candidatos, setCandidatos] = useState<Producto[]>([])
+  const [variantes, setVariantes] = useState<VarianteProducto[]>([])
+  const [pendiente, setPendiente] = useState<{ item: Producto; cantidad: string } | null>(null)
 
   // Sugerencias mientras se tipea (sin Enter) -- distintas de `candidatos`,
   // que es el modal que dispara `buscar()` cuando el Enter no matcheo un
   // codigo exacto y la busqueda por nombre trajo mas de un resultado. Las
   // dos conviven: esta es la busqueda en vivo, esa sigue andando igual que
   // siempre.
-  const [sugerencias, setSugerencias] = useState<CatalogItem[]>([])
+  const [sugerencias, setSugerencias] = useState<Producto[]>([])
   // Guarda por secuencia (no AbortController: `api.get` de libra-ui no
   // acepta AbortSignal, y no se toca ese paquete desde aca) -- si una
   // respuesta vieja llega despues de una mas nueva, se descarta en vez de
@@ -340,7 +340,7 @@ export function Pos() {
       // cada tecla -- para que dos fetches realmente en vuelo a la vez (no
       // dos teclas que el debounce ya absorbio) sean los que se comparan.
       const secuencia = ++secuenciaSugerenciasRef.current
-      api.get<CatalogItem[]>(`/catalog/items?search=${encodeURIComponent(resto)}`)
+      api.get<Producto[]>(`/api/productos?solo_activos=true&q=${encodeURIComponent(resto)}`)
         .then((encontrados) => {
           // Llego una respuesta mas nueva mientras esta viajaba: la vieja se
           // descarta en vez de pisarle el resultado a la de recien.
@@ -408,7 +408,7 @@ export function Pos() {
   }
 
   function agregar(
-    item: CatalogItem, cantidad: string, variante?: ItemVariant, precioUnitario?: string | null,
+    item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null,
   ) {
     setCart((prev) => {
       const nueva = [...prev, lineaVacia(item, cantidad, variante, precioUnitario)]
@@ -425,12 +425,12 @@ export function Pos() {
   }
 
   async function elegirItem(
-    item: CatalogItem, cantidad: string, precioUnitario?: string | null,
+    item: Producto, cantidad: string, precioUnitario?: string | null,
   ) {
     // Un item con variantes no se puede vender sin elegir cual: se pregunta
     // solo en ese caso, no en cada producto.
     try {
-      const vs = await api.get<ItemVariant[]>(`/catalog/items/${item.id}/variants`)
+      const vs = (await api.get<VarianteProducto[]>(`/api/productos/${item.id}/variantes`)).filter((v) => v.activa)
       if (vs.length > 0) {
         setPendiente({ item, cantidad })
         setVariantes(vs)
@@ -448,7 +448,7 @@ export function Pos() {
    *  variantes y termina en `agregar`, que limpia el campo y devuelve el
    *  foco). El multiplicador tipeado antes del nombre ("3 * cono") se
    *  respeta igual que en el flujo de Enter. */
-  async function elegirSugerencia(item: CatalogItem) {
+  async function elegirSugerencia(item: Producto) {
     const { cantidad } = parseMultiplicador(query)
     // Se esconde ACA, antes del await: `elegirItem` puede tardar (pide las
     // variantes), y la lista no tiene por que seguir visible mientras tanto.
@@ -479,21 +479,21 @@ export function Pos() {
     try {
       // Primero por codigo exacto: es lo que manda el lector, y tiene que
       // entrar sin intervencion.
-      const escaneado = await api.get<ScanResult>(
-        `/catalog/items/scan?code=${encodeURIComponent(resto)}`,
+      const escaneado = await api.get<Escaneo>(
+        `/api/productos/escanear?code=${encodeURIComponent(resto)}`,
       )
       // Una etiqueta de balanza ya trae cuanto se peso, y el multiplicador
       // no aplica: cada etiqueta es de un paquete concreto, no de N iguales.
       await elegirItem(
-        escaneado.item,
-        escaneado.from_scale ? escaneado.quantity : cantidad,
-        escaneado.unit_price,
+        escaneado.producto,
+        escaneado.de_balanza ? String(escaneado.cantidad) : cantidad,
+        escaneado.precio_unitario === null ? null : String(escaneado.precio_unitario),
       )
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         try {
-          const encontrados = await api.get<CatalogItem[]>(
-            `/catalog/items?search=${encodeURIComponent(resto)}`,
+          const encontrados = await api.get<Producto[]>(
+            `/api/productos?solo_activos=true&q=${encodeURIComponent(resto)}`,
           )
           if (encontrados.length === 0) setError(`Sin resultados para "${resto}".`)
           else if (encontrados.length === 1) await elegirItem(encontrados[0], cantidad)
@@ -695,8 +695,8 @@ export function Pos() {
                     onClick={() => elegirSugerencia(item)}
                     className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
                   >
-                    <span>{item.name}</span>
-                    <span className="tabular-nums text-muted-foreground">${money(item.default_sale_price)}</span>
+                    <span>{item.nombre}</span>
+                    <span className="tabular-nums text-muted-foreground">${money(String(item.precio_venta))}</span>
                   </button>
                 </li>
               ))}
@@ -888,8 +888,8 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
 }
 
 function ElegirCandidato({ candidatos, onElegir, onCerrar }: {
-  candidatos: CatalogItem[]
-  onElegir: (item: CatalogItem) => void
+  candidatos: Producto[]
+  onElegir: (item: Producto) => void
   onCerrar: () => void
 }) {
   if (candidatos.length === 0) return null
@@ -905,8 +905,8 @@ function ElegirCandidato({ candidatos, onElegir, onCerrar }: {
               onClick={() => onElegir(item)}
               className="flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
             >
-              <span>{item.name}</span>
-              <span className="tabular-nums text-muted-foreground">${money(item.default_sale_price)}</span>
+              <span>{item.nombre}</span>
+              <span className="tabular-nums text-muted-foreground">${money(String(item.precio_venta))}</span>
             </button>
           ))}
         </div>
@@ -916,8 +916,8 @@ function ElegirCandidato({ candidatos, onElegir, onCerrar }: {
 }
 
 function ElegirVariante({ variantes, onElegir, onCerrar }: {
-  variantes: ItemVariant[]
-  onElegir: (v: ItemVariant) => void
+  variantes: VarianteProducto[]
+  onElegir: (v: VarianteProducto) => void
   onCerrar: () => void
 }) {
   if (variantes.length === 0) return null
@@ -933,7 +933,7 @@ function ElegirVariante({ variantes, onElegir, onCerrar }: {
               onClick={() => onElegir(v)}
               className="rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
             >
-              {v.name}
+              {v.nombre}
             </button>
           ))}
         </div>
