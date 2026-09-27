@@ -28,6 +28,8 @@ import { Usuarios } from './pages/Usuarios'
 import { Configuracion } from './pages/Configuracion'
 import { CuentasCorrientes } from './pages/CuentasCorrientes'
 import { CuentaCorrienteDetalle } from './pages/CuentaCorrienteDetalle'
+import { Tesoreria } from 'libra-ui/comercio/Tesoreria'
+import { TesoreriaDetalle } from 'libra-ui/comercio/TesoreriaDetalle'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
@@ -220,6 +222,23 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <Cajas />
+          </ProtectedRoute>
+        }
+      />
+      {/* Tesorería (fase 10, ADR-037): cuentas bancarias y transferencias, sin ganchos ni variantes. */}
+      <Route
+        path="/tesoreria"
+        element={
+          <ProtectedRoute adminOnly>
+            <Tesoreria />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tesoreria/:id"
+        element={
+          <ProtectedRoute adminOnly>
+            <TesoreriaDetalle />
           </ProtectedRoute>
         }
       />

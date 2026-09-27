@@ -53,6 +53,7 @@ from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
+from libracore.tesoreria_router import build_tesoreria_router
 from libracore.ventas_cobro_router import build_cobro_de_ventas_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -604,6 +605,11 @@ def create_app(db_path: str) -> FastAPI:
     )
     # Los recibos que llaman las pantallas de cuenta corriente del kit.
     app.include_router(recibos.router, dependencies=staff_or_admin)
+    # Tesorería (fase 10, ADR-037): el router del motor, sin ganchos -- las cuentas bancarias y sus
+    # movimientos son un problema de cualquier comercio, no del modelo de venta de este producto (`libracore`
+    # ya trae la tabla, vacía hasta ahora). De admin: es la única instancia de la familia que la deja libre
+    # en todos los planes (no gateada por `require_module`, a diferencia de Contalibra).
+    app.include_router(build_tesoreria_router(usuario_actual=get_current_user), dependencies=admin_only)
     # Cierre diario: acto registrado y numerado por sucursal (LibraCore
     # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).
     # `autorizar_cierre` no se pasa: el gate de ESTE producto para "admin o
