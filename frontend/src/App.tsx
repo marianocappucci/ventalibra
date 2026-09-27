@@ -31,6 +31,7 @@ import { CuentaCorrienteDetalle } from './pages/CuentaCorrienteDetalle'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
+import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
@@ -274,6 +275,14 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <Reportes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/caja-medios"
+        element={
+          <ProtectedRoute adminOnly>
+            <CajaPorMedio />
           </ProtectedRoute>
         }
       />

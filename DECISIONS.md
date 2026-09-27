@@ -1734,3 +1734,30 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - La búsqueda por nombre gana el código y la categoría (y la sigue sin distinguir acentos ni mayúsculas).
   - El frontend suma `components/ui/radio-group` (lo que el kit espera del producto).
 - Depende de: `libracommerce` v0.19.0 y `libra-ui` v0.79.0 publicados y los pines de este repo subidos.
+
+## ADR-035 — Reportes con el router del motor y las pantallas del kit (fase 8 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-27
+- Contexto: VentaLibra tenía `/reports/{sales,caja,stock}` (`app/routers/reports.py` 27 líneas + `services/reports.py` 129) y una pantalla
+  propia de Reportes (188). Contalibra usa `build_reportes_router` (`libracore`) sobre `libracommerce.erp.reportes` y las pantallas
+  `Reportes` y `CajaMedios` del kit.
+- Decisión: adoptar el router y las pantallas, sin variantes de pantalla (el kit no cambió). Las diferencias de VentaLibra son de **datos** y
+  entran como opciones del motor con default = Contalibra:
+  - `libracommerce` v0.20.0: `puerto_de_reportes(solo_confirmadas=)`: una venta **anulada** (`cancelled`) o **pendiente de cobro**
+    (`draft`, un QR sin acreditar) no es una venta. Arreglo de paso: el saldo de caja del resumen no excluía los movimientos anulados.
+  - `libracore` v1.113.0: `sin_fiado` en `build_reportes_router`, `build_reportes_export_router` y `db.reportes`: los reportes de caja dejan afuera
+    la cuenta corriente. **Fiar no es cobrar:** la capa ERP escribe un movimiento de caja por cada medio, cuenta corriente incluido, y sin esto el
+    reporte sumaba la deuda como ingreso y no coincidía con el arqueo del turno (ADR-027) ni con `get_caja_resumen`.
+  - VentaLibra monta los dos con las dos opciones activas, sólo admin (como antes), y **retira `/reports/*`** y su servicio.
+- Consecuencias:
+  - **Se midió por mutación** que los defectos existían: sin las opciones, una venta anulada contaba y un pago a cuenta corriente entraba a la caja.
+    **Contalibra y Restolibra tienen el mismo defecto por default**; no se cambió porque altera números que hoy ven sus usuarios (activarlo es pasar las dos
+    opciones al montar).
+  - La pantalla gana lo que Contalibra ya tenía: agrupación por día/semana/mes, medios de pago, exports CSV, facturas emitidas y la **Caja por medio**
+    (por mostrador y por medio de cobro; nueva entrada de menú, sólo admin), que con varias cajas por sucursal es la pregunta natural.
+  - `stock_bajo` son los productos por debajo de **su mínimo** (el que se carga en Productos), no un umbral global en cero; el listado completo de stock está
+    en la pantalla de Stock.
+  - Los tops de productos suman `cantidad × precio` (antes también descuento e impuestos, por ítem); los medios de pago de las ventas a cuenta corriente sí
+    aparecen (la venta fue a cuenta corriente), pero no en la caja.
+- Depende de: `libracommerce` v0.20.0 y `libracore` v1.113.0 publicados y los pines de este repo subidos. `libra-ui` no cambia.
