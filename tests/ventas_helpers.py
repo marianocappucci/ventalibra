@@ -97,14 +97,35 @@ def deposito_default(client) -> int:
     return conn.execute("SELECT id FROM locations WHERE is_default = 1 LIMIT 1").fetchone()[0]
 
 
+def ajustar(client, item_id, location_id, delta, *, variant_id=None, motivo=""):
+    """Un movimiento de stock manual en un depósito: `entrada` si `delta` es positivo, `salida` si es negativo
+    (`POST /api/stock/{id}/ajuste`, el router del motor; ADR-033)."""
+    delta = Decimal(str(delta))
+    cuerpo = {
+        "modo": "entrada" if delta > 0 else "salida", "cantidad": float(abs(delta)),
+        "deposito_id": location_id, "referencia": motivo,
+    }
+    if variant_id is not None:
+        cuerpo["variant_id"] = variant_id
+    return client.post(f"/api/stock/{item_id}/ajuste", json=cuerpo)
+
+
 def con_stock(client, item_id, location_id, cantidad="20") -> None:
-    client.post("/stock/adjustments", json={
-        "item_id": item_id, "location_id": location_id, "quantity_delta": cantidad,
-    })
+    ajustar(client, item_id, location_id, cantidad)
 
 
-def stock(client, item_id, location_id) -> Decimal:
-    return Decimal(client.get(f"/stock/{item_id}", params={"location_id": location_id}).json()["quantity"])
+def stock(client, item_id, location_id, variant_id=None) -> Decimal:
+    params = {"deposito_id": location_id}
+    if variant_id is not None:
+        params["variant_id"] = variant_id
+    return Decimal(str(client.get(f"/api/stock/{item_id}", params=params).json()["stock_deposito"]))
+
+
+def crear_ubicacion(client, nombre, tipo="warehouse") -> dict:
+    """Una sucursal (`store`) o un depósito (`warehouse`), por `POST /api/depositos`."""
+    r = client.post("/api/depositos", json={"nombre": nombre, "tipo": tipo})
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 def registrar_venta(client, item_id=None, *, precio="1500.00", cantidad="2", items=None,

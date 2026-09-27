@@ -7,7 +7,7 @@ Lo que cambió es CÓMO se registra la venta que el reporte después agrupa:
 import secrets
 from datetime import date, timedelta
 
-from ventas_helpers import caja_default, hoy
+from ventas_helpers import ajustar, caja_default, crear_ubicacion, hoy
 
 
 def _abrir_turno(client, monto_inicial=0):
@@ -31,9 +31,7 @@ def _make_item(client, name="Fideos 500g", price="1500.00"):
 
 
 def _make_location(client, name="Sucursal 1"):
-    created = client.post("/locations", json={"name": name})
-    assert created.status_code == 200, created.text
-    return created.json()["id"]
+    return crear_ubicacion(client, name)["id"]
 
 
 def _confirmed_sale(client, item_id, location_id, quantity="1", price="1500.00", name="línea"):  # noqa: ARG001
@@ -196,10 +194,7 @@ def test_caja_report_reflects_confirmed_sale_payment(admin_client):
 def test_stock_report_reflects_current_stock_and_flags_low_stock(admin_client):
     item_id = _make_item(admin_client, name="Arroz 1kg")
     location_id = _make_location(admin_client)
-    admin_client.post(
-        "/stock/adjustments",
-        json={"item_id": item_id, "location_id": location_id, "quantity_delta": "5"},
-    )
+    ajustar(admin_client, item_id, location_id, "5")
 
     response = admin_client.get("/reports/stock")
     assert response.status_code == 200, response.text

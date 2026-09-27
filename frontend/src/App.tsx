@@ -9,6 +9,7 @@ import { Pos } from './pages/Pos'
 import { Productos } from './pages/Productos'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
+import { SucursalDetalle } from './pages/SucursalDetalle'
 import { Transferencias } from './pages/Transferencias'
 import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
@@ -184,6 +185,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Sucursales />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sucursales/:id"
+        element={
+          <ProtectedRoute>
+            <SucursalDetalle />
           </ProtectedRoute>
         }
       />

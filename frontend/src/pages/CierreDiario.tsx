@@ -2,7 +2,7 @@
 // ticket de 80 mm. Lo puede hacer admin o cajero (staff) -- ver
 // DECISIONS.md, feature de cajas por sucursal.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type Location, type ShiftState } from '../api'
+import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type Deposito, type ShiftState } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,7 +30,7 @@ export function CierreDiario() {
   // es sólo para no ofrecer un botón que va a dar 403.
   const { user } = useAuth()
   const esAdmin = user?.role === 'admin'
-  const [locations, setLocations] = useState<Location[]>([])
+  const [locations, setLocations] = useState<Deposito[]>([])
   const [sucursalId, setSucursalId] = useState<string>('')
   const [preview, setPreview] = useState<CierreDiarioPreview | null>(null)
   const [historial, setHistorial] = useState<CierreDiarioRow[]>([])
@@ -57,13 +57,14 @@ export function CierreDiario() {
     (async () => {
       try {
         const [locs, estado] = await Promise.all([
-          api.get<Location[]>('/locations'),
+          api.get<Deposito[]>('/api/depositos'),
           api.get<ShiftState>('/api/turnos/actual').catch(() => ({ turno: null }) as ShiftState),
         ])
-        setLocations(locs)
+        const activas = locs.filter((l) => !!l.activo)
+        setLocations(activas)
         const sucursalDelTurno = estado.turno?.sucursal?.id
-        const porDefecto = locs.find((l) => l.is_default)
-        setSucursalId(String(sucursalDelTurno ?? porDefecto?.id ?? locs[0]?.id ?? ''))
+        const porDefecto = activas.find((l) => !!l.es_default)
+        setSucursalId(String(sucursalDelTurno ?? porDefecto?.id ?? activas[0]?.id ?? ''))
       } catch (err) {
         setError(describeError(err))
       }
@@ -91,7 +92,7 @@ export function CierreDiario() {
   useEffect(() => { cargar() }, [cargar])
 
   const nombreSucursal = useMemo(() => {
-    const m = new Map(locations.map((l) => [l.id, l.name]))
+    const m = new Map(locations.map((l) => [l.id, l.nombre]))
     return (id: number | null) => (id !== null ? m.get(id) ?? `Sucursal #${id}` : 'Sin sucursal')
   }, [locations])
 
@@ -139,7 +140,7 @@ export function CierreDiario() {
             <SelectTrigger className="h-8 w-56"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
             <SelectContent>
               {locations.map((l) => (
-                <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
               ))}
             </SelectContent>
           </Select>

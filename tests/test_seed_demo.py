@@ -64,7 +64,7 @@ def _salon(api) -> int:
     mantiene el nombre de la función porque el resto del archivo la llama
     así, pero ya no filtra por `name`.
     """
-    return next(d["id"] for d in api.get("/locations") if d.get("is_default"))
+    return next(d["id"] for d in api.get("/api/depositos") if d.get("es_default"))
 
 
 # ── 🔴 Desde cero ─────────────────────────────────────────────────────────

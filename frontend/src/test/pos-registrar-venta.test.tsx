@@ -36,8 +36,8 @@ const ITEM = {
 
 // Dos sucursales: sirve para afirmar que viaja la elegida, no "la primera".
 const LOCATIONS = [
-  { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
-  { id: 2, name: 'Sucursal Norte', branch_id: null, location_type: 'store', active: true, is_default: false },
+  { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
+  { id: 2, nombre: 'Sucursal Norte', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
 ]
 
 function venta(overrides: Record<string, unknown> = {}) {
@@ -87,7 +87,7 @@ function montarRed(opciones: {
       return Promise.resolve(json(venta()))
     }
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/locations')) return Promise.resolve(json(opciones.locations ?? LOCATIONS))
+    if (u.includes('/api/depositos')) return Promise.resolve(json(opciones.locations ?? LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/catalog/items/scan')) {
       return Promise.resolve(json({ item: ITEM, quantity: '1', unit_price: null, from_scale: false }))
@@ -233,8 +233,8 @@ describe('La sucursal inicial del POS', () => {
     // antes, mostraría "Depósito" en vez de "Salón".
     montarRed({
       locations: [
-        { id: 2, name: 'Depósito', branch_id: null, location_type: 'store', active: true, is_default: false },
-        { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: true },
+        { id: 2, nombre: 'Depósito', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
+        { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
       ],
     })
     const user = userEvent.setup()
@@ -249,8 +249,8 @@ describe('La sucursal inicial del POS', () => {
   it('sin ninguna marcada is_default, cae a la primera de la lista', async () => {
     montarRed({
       locations: [
-        { id: 2, name: 'Depósito', branch_id: null, location_type: 'store', active: true, is_default: false },
-        { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: false },
+        { id: 2, nombre: 'Depósito', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
+        { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
       ],
     })
     const user = userEvent.setup()
@@ -263,8 +263,8 @@ describe('La sucursal inicial del POS', () => {
   it('no ofrece los depósitos: sólo una sucursal `store` vende', async () => {
     montarRed({
       locations: [
-        { id: 3, name: 'Depósito', branch_id: null, location_type: 'warehouse', active: true, is_default: true },
-        { id: 1, name: 'Salón', branch_id: null, location_type: 'store', active: true, is_default: false },
+        { id: 3, nombre: 'Depósito', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 },
+        { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
       ],
     })
     const user = userEvent.setup()

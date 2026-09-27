@@ -11,7 +11,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   api, ApiError, opcionesItem, PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_TONO,
   PURCHASE_RECEIPT_STATUS_LABELS, PURCHASE_RECEIPT_STATUS_TONO,
-  type CatalogItem, type Location, type PurchaseOrder, type PurchaseReceipt, type Proveedor,
+  type CatalogItem, type Deposito, type PurchaseOrder, type PurchaseReceipt, type Proveedor,
 } from '../api'
 import { fechaHora } from '@/lib/fechas'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
@@ -46,7 +46,7 @@ export function CompraDetalle() {
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
   const [items, setItems] = useState<CatalogItem[]>([])
   const [suppliers, setSuppliers] = useState<Proveedor[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
+  const [locations, setLocations] = useState<Deposito[]>([])
   const [receipts, setReceipts] = useState<PurchaseReceipt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -71,13 +71,13 @@ export function CompraDetalle() {
         api.get<PurchaseOrder>(`/purchase-orders/${orderId}`),
         api.get<CatalogItem[]>('/catalog/items'),
         api.get<Proveedor[]>('/api/proveedores'),
-        api.get<Location[]>('/locations'),
+        api.get<Deposito[]>('/api/depositos'),
         api.get<PurchaseReceipt[]>('/purchase-receipts'),
       ])
       setOrder(o)
       setItems(i)
       setSuppliers(s)
-      setLocations(l)
+      setLocations(l.filter((d) => !!d.activo))
       setReceipts(r)
     } catch (err) {
       setError(describeError(err))
@@ -274,7 +274,7 @@ function RecibirMercaderiaDialog({
   order, locations, itemName, onCerrar, onRecibida, onRecargarRecepciones,
 }: {
   order: PurchaseOrder
-  locations: Location[]
+  locations: Deposito[]
   itemName: (itemId: number) => string
   onCerrar: () => void
   onRecibida: () => void | Promise<void>
@@ -292,7 +292,7 @@ function RecibirMercaderiaDialog({
     () => Object.fromEntries(pendientes.map((l) => [l.item_id, l.unit_cost])),
   )
   const [locationId, setLocationId] = useState(() => {
-    const porDefecto = locations.find((l) => l.is_default)
+    const porDefecto = locations.find((l) => !!l.es_default)
     return porDefecto ? String(porDefecto.id) : (locations[0] ? String(locations[0].id) : '')
   })
   const [documentReference, setDocumentReference] = useState('')
@@ -401,7 +401,7 @@ function RecibirMercaderiaDialog({
             <Select value={locationId} onValueChange={setLocationId}>
               <SelectTrigger id="recepcion-deposito" className="w-48"><SelectValue placeholder="Depósito…" /></SelectTrigger>
               <SelectContent>
-                {locations.map((loc) => <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>)}
+                {locations.map((loc) => <SelectItem key={loc.id} value={String(loc.id)}>{loc.nombre}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -433,7 +433,7 @@ function RecibirMercaderiaDialog({
  *  camino- ofrece acá su propio "Confirmar", con el depósito. */
 function RecepcionesDeLaOrden({
   receipts, locations, onConfirmada,
-}: { receipts: PurchaseReceipt[]; locations: Location[]; onConfirmada: () => void | Promise<void> }) {
+}: { receipts: PurchaseReceipt[]; locations: Deposito[]; onConfirmada: () => void | Promise<void> }) {
   const [confirmando, setConfirmando] = useState<PurchaseReceipt | null>(null)
 
   return (
@@ -502,12 +502,12 @@ function ConfirmarRecepcionDialog({
   receipt, locations, onCerrar, onConfirmada,
 }: {
   receipt: PurchaseReceipt
-  locations: Location[]
+  locations: Deposito[]
   onCerrar: () => void
   onConfirmada: () => void | Promise<void>
 }) {
   const [locationId, setLocationId] = useState(() => {
-    const porDefecto = locations.find((l) => l.is_default)
+    const porDefecto = locations.find((l) => !!l.es_default)
     return porDefecto ? String(porDefecto.id) : (locations[0] ? String(locations[0].id) : '')
   })
   const [busy, setBusy] = useState(false)
@@ -541,7 +541,7 @@ function ConfirmarRecepcionDialog({
           <Select value={locationId} onValueChange={setLocationId}>
             <SelectTrigger id="confirmar-deposito" className="w-48"><SelectValue placeholder="Depósito…" /></SelectTrigger>
             <SelectContent>
-              {locations.map((loc) => <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>)}
+              {locations.map((loc) => <SelectItem key={loc.id} value={String(loc.id)}>{loc.nombre}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

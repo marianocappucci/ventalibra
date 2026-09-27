@@ -191,16 +191,17 @@ export type PriceList = {
   is_default: boolean
 }
 
-export type Location = {
+/** Una sucursal (`store`) o un depósito (`warehouse`), como los devuelve `GET /api/depositos` del motor (ADR-033).
+ *  `activo` y `es_default` viajan como 1/0: se leen con `!!`. `es_default` es el depósito del que descuenta una venta
+ *  que no declara `deposito_id` (F4, ADR-025). */
+export type Deposito = {
   id: number
-  name: string
-  branch_id: number | null
-  location_type: string
-  active: boolean
-  /** El depósito del que descuenta una venta que no declara `deposito_id`
-   *  (F4, ADR-025) -- en este producto un "location" ES un depósito del
-   *  motor, mismo `id` (ver `app/services/locations.py`). */
-  is_default: boolean
+  nombre: string
+  descripcion: string | null
+  tipo: string
+  activo: number
+  es_default: number
+  total_productos?: number
 }
 
 export type ShiftCaja = { id: number; nombre: string; punto_venta: number | null }
@@ -529,29 +530,6 @@ export type StockReportItem = {
 export type StockReport = {
   items: StockReportItem[]
   low_stock: StockReportItem[]
-}
-
-/** La grilla producto x deposito de `GET /stock/por-deposito/grilla`.
- *
- *  Se diferencia de `StockReport` (de `/reports/stock`), que suma TODO el
- *  parque por producto: ese total no dice donde esta la mercaderia, y con
- *  varias sucursales es justo el dato que hace falta. */
-export type StockDeposito = { id: number; nombre: string; tipo: string }
-
-export type StockPorDepositoItem = {
-  item_id: number
-  nombre: string
-  unit_code: string
-  /** Clave = id del deposito, como string (viaja en JSON). Trae TODOS los
-   *  depositos activos, incluidos los que estan en cero: uno que falta de la
-   *  fila es indistinguible de uno vacio. */
-  por_deposito: Record<string, string>
-  total: string
-}
-
-export type StockPorDeposito = {
-  depositos: StockDeposito[]
-  items: StockPorDepositoItem[]
 }
 
 // --- opciones para los selects con busqueda (libra-ui/SelectBuscable) ------

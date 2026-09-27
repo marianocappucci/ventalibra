@@ -412,7 +412,7 @@ describe('Columna Stock total', () => {
       const metodo = init?.method ?? 'GET'
       llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
       if (metodo === 'POST') return Promise.resolve(json({}))
-      if (u.startsWith('/stock/por-deposito/grilla')) return Promise.resolve(json(grilla))
+      if (u.startsWith('/api/stock')) return Promise.resolve(json(grilla))
       if (u.startsWith('/catalog/units')) return Promise.resolve(json(UNIDADES))
       if (u.startsWith('/catalog/items')) return Promise.resolve(json(PRODUCTOS))
       return Promise.resolve(json([]))
@@ -422,7 +422,8 @@ describe('Columna Stock total', () => {
   it('muestra el total sumado de todos los depositos', async () => {
     conStock({
       depositos: [{ id: 1, nombre: 'Centro', tipo: 'store' }],
-      items: [{ item_id: 1, nombre: 'Yerba Playadito', unit_code: 'kg', por_deposito: { '1': '7' }, total: '7' }],
+      productos: [{ id: 1, nombre: 'Yerba Playadito', unidad: 'kg', por_deposito: { '1': 7 }, stock_actual: 7 }],
+      alertas: [],
     })
     await montar()
     await screen.findByText('Yerba Playadito')
@@ -449,7 +450,7 @@ describe('Columna Stock total', () => {
       const metodo = init?.method ?? 'GET'
       llamadas.push({ url: u, metodo, cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
       if (metodo === 'POST') return Promise.resolve(json({}))
-      if (u.startsWith('/stock/por-deposito/grilla')) {
+      if (u.startsWith('/api/stock')) {
         // Un 500 con `detail`, que `api-client` convierte en ApiError -- es
         // el caso real de "se cayó el depósito y el catálogo no".
         return Promise.resolve(new Response(
@@ -468,7 +469,7 @@ describe('Columna Stock total', () => {
     // El stub SÍ se ejercitó: si el pedido de stock no saliera nunca, los
     // asserts de abajo serían verdes sin probar nada (el verde que no prueba).
     await waitFor(() => {
-      expect(llamadas.some((l) => l.metodo === 'GET' && l.url.startsWith('/stock/por-deposito/grilla'))).toBe(true)
+      expect(llamadas.some((l) => l.metodo === 'GET' && l.url.startsWith('/api/stock'))).toBe(true)
     })
 
     // La promesa del stock ya tuvo su 500 y su `.catch`: con el pedido
