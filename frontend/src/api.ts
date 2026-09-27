@@ -441,36 +441,6 @@ export type PurchaseReceipt = {
   document_reference: string | null
 }
 
-export type SalesReport = {
-  date_from: string
-  date_to: string
-  total_ventas: number
-  total_facturado: string
-  por_dia: { day: string; cantidad: number; total: string }[]
-  top_items: { item_id: number; descripcion: string; cantidad: string; total: string }[]
-}
-
-export type CajaReport = {
-  date_from: string
-  date_to: string
-  ingresos: string
-  egresos: string
-  saldo_periodo: string
-  saldo_total: string
-}
-
-export type StockReportItem = {
-  item_id: number
-  name: string
-  unit_code: string
-  stock: string
-}
-
-export type StockReport = {
-  items: StockReportItem[]
-  low_stock: StockReportItem[]
-}
-
 // --- opciones para los selects con busqueda (libra-ui/SelectBuscable) ------
 //
 // Viven aca, junto a los tipos, para que las pantallas que eligen un

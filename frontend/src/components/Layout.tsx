@@ -4,7 +4,7 @@
 import {
   ArrowRightLeft,
   Boxes,
-  BarChart3, Building2, CalendarCheck, Clock, Landmark, Package, ReceiptText, ScrollText, Settings,
+  BarChart3, Building2, CalendarCheck, Clock, Coins, Landmark, Package, ReceiptText, ScrollText, Settings,
   ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -50,6 +50,7 @@ export const Layout = createLayout({
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
     { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
+    { to: '/caja-medios', label: 'Caja por medio', icon: Coins, adminOnly: true },
     { to: '/usuarios', label: 'Usuarios', icon: Building2, adminOnly: true },
     // Junto a Usuarios: se mira para responder "quién hizo esto".
     { to: '/logs', label: 'Logs', icon: ScrollText, adminOnly: true },

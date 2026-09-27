@@ -1,13 +1,14 @@
-"""Reportes de ventas, caja y stock: `app/services/reports.py` es propio de
-VentaLibra y F3 no lo toca (D6 -- catálogo/listas/reportes a las factories de
-LibraCommerce -- queda fuera de esta fase por tamaño; ver el reporte de F3).
-Lo que cambió es CÓMO se registra la venta que el reporte después agrupa:
-`POST /api/ventas` (D1, una sola llamada) en vez de borrador + confirmar.
+"""Reportes con el router del motor (`/api/reportes`, fase 8, ADR-035).
+
+Hasta la fase 8 esto era `/reports/{sales,caja,stock}` (`app/routers/reports.py` + `services/reports.py`). Ahora es
+`libracore.reportes_router.build_reportes_router` sobre las ventas de LibraCommerce (`libracommerce.erp.reportes`), el mismo de
+Contalibra, con dos variantes: una venta anulada o pendiente de cobro no es una venta, y fiar no es cobrar (la cuenta corriente no
+es ingreso de caja). Sólo admin.
 """
 import secrets
 from datetime import date, timedelta
 
-from ventas_helpers import ajustar, caja_default, crear_ubicacion, hoy
+from ventas_helpers import ajustar, caja_default, crear_ubicacion, hoy, registrar_venta
 
 
 def _abrir_turno(client, monto_inicial=0):
@@ -66,19 +67,26 @@ def _today_range():
     return {"date_from": today, "date_to": today}
 
 
+def _reporte(client, **params):
+    r = client.get("/api/reportes", params={"desde": hoy(), "hasta": hoy(), **params})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _ventas_del_dia(reporte) -> tuple[int, float]:
+    return sum(v["cantidad"] for v in reporte["ventas_ts"]), sum(float(v["total"]) for v in reporte["ventas_ts"])
+
+
 def test_sales_report_totals_confirmed_sale(admin_client):
     item_id = _make_item(admin_client, price="1500.00")
     location_id = _make_location(admin_client)
     confirmed = _confirmed_sale(admin_client, item_id, location_id, quantity="2")
     assert confirmed.status_code == 200, confirmed.text
 
-    response = admin_client.get("/reports/sales", params=_today_range())
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["total_ventas"] == 1
-    assert float(body["total_facturado"]) == 3000.0
-    assert len(body["por_dia"]) == 1
-    assert body["por_dia"][0]["cantidad"] == 1
+    reporte = _reporte(admin_client)
+    assert _ventas_del_dia(reporte) == (1, 3000.0)
+    assert reporte["resumen"]["ventas_cantidad"] == 1 and float(reporte["resumen"]["ventas_total"]) == 3000.0
+    assert len(reporte["ventas_ts"]) == 1 and reporte["ventas_ts"][0]["periodo"] == hoy()
 
 
 def _mover_occurred_on(client, sale_id, fecha):
@@ -88,67 +96,53 @@ def _mover_occurred_on(client, sale_id, fecha):
 
 
 def test_el_reporte_agrupa_por_occurred_on_no_por_confirmed_at(admin_client):
-    """🔴 **F3 cambia dónde vive el defecto que ADR-016 cerró el 2026-08-24,
-    no lo reintroduce.**
-
-    Hasta acá el reporte filtraba `confirmed_at` (UTC) con una ventana
-    convertida a hora local, justamente para que una venta de las 22:00 no
-    quedara contada en el día siguiente. Desde F3, `libracommerce.erp.
-    ventas.crear_venta` -- que es quien registra la venta ahora -- **nunca
-    escribe `confirmed_at`**: sólo `occurred_on`, que llega ya en la fecha
-    LOCAL (`VentaPayload.fecha`). Sin este cambio en `app/services/
-    reports.py`, toda venta nueva quedaba fuera de todos los reportes, sin
-    ningún error -- el riesgo que ADR-025 dejó anotado ("el reporte tiene
-    que sobrevivir al pasaje").
-
-    La conversión de huso ya no la hace el reporte: la hace quien pone
-    `occurred_on` (el caller, al crear; la migración `0003`, para las ventas
-    viejas -- ver `tests/test_migracion_0003.py`, que cubre exactamente el
-    caso de cruce de medianoche). Acá sólo se verifica que el reporte
-    agrupa por esa columna, no por `confirmed_at`.
-    """
+    """🔴 `libracommerce.erp.ventas.crear_venta` **nunca escribe `confirmed_at`**: sólo `occurred_on`, que llega ya en la fecha LOCAL.
+    Un reporte que filtrara `confirmed_at` dejaría toda venta nueva afuera, sin ningún error (ADR-025). Acá se verifica que agrupa por
+    `occurred_on`."""
     item_id = _make_item(admin_client, price="1000.00")
     location_id = _make_location(admin_client)
     confirmed = _confirmed_sale(admin_client, item_id, location_id, price="1000.00")
     assert confirmed.status_code == 200, confirmed.text
-    # La venta nueva no escribe confirmed_at.
     conn = admin_client.app.state.conn
     fila = conn.execute(
         "SELECT confirmed_at, occurred_on FROM sales WHERE id = ?", (confirmed.json()["id"],),
     ).fetchone()
-    assert fila[0] is None
-    assert fila[1] == hoy()
+    assert fila[0] is None and fila[1] == hoy()
 
     _mover_occurred_on(admin_client, confirmed.json()["id"], "2026-03-14")
 
-    en_el_dia = admin_client.get(
-        "/reports/sales", params={"date_from": "2026-03-14", "date_to": "2026-03-14"})
-    assert en_el_dia.json()["total_ventas"] == 1
-
-    # 🔑 El control negativo: sin filtrar de verdad por `occurred_on`, la
-    # venta seguiría apareciendo en cualquier rango (o en el de "hoy").
-    otro_dia = admin_client.get(
-        "/reports/sales", params={"date_from": "2026-03-15", "date_to": "2026-03-15"})
-    assert otro_dia.json()["total_ventas"] == 0
+    assert _ventas_del_dia(_reporte(admin_client, desde="2026-03-14", hasta="2026-03-14"))[0] == 1
+    # 🔑 El control negativo: sin filtrar de verdad por `occurred_on`, la venta seguiría apareciendo en cualquier rango.
+    assert _ventas_del_dia(_reporte(admin_client, desde="2026-03-15", hasta="2026-03-15"))[0] == 0
 
 
 def test_sales_report_ignores_draft_sales(admin_client):
-    """Un borrador que nunca se registró no cuenta.
-
-    D1 no deja un borrador vía API (`POST /api/ventas` registra completo en
-    una sola llamada): se escribe directo en la base, con la misma forma que
-    dejaba `POST /sales` antes de F3.
-    """
+    """Un borrador (una venta pendiente de cobro, p. ej. un QR sin acreditar) no es una venta: no cuenta."""
     conn = admin_client.app.state.conn
     conn.execute(
-        "INSERT INTO sales (number, status, source_type, subtotal, total) "
-        "VALUES (?, 'draft', 'pos', 0, 0)", (f"POS-{secrets.token_hex(4)}",),
+        "INSERT INTO sales (number, status, source_type, subtotal, total, occurred_on) "
+        "VALUES (?, 'draft', 'pos', 0, 500, ?)", (f"POS-{secrets.token_hex(4)}", hoy()),
     )
     conn.commit()
 
-    response = admin_client.get("/reports/sales", params=_today_range())
-    assert response.status_code == 200
-    assert response.json()["total_ventas"] == 0
+    reporte = _reporte(admin_client)
+    assert _ventas_del_dia(reporte)[0] == 0 and reporte["resumen"]["ventas_cantidad"] == 0
+
+
+def test_una_venta_anulada_no_cuenta(admin_client):
+    """🔴 El motor de Contalibra cuenta todo lo que hay en `sales`; acá `solo_confirmadas` deja afuera lo anulado."""
+    item_id = _make_item(admin_client, price="1000.00")
+    location_id = _make_location(admin_client)
+    buena = _confirmed_sale(admin_client, item_id, location_id, price="1000.00")
+    mala = registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1")
+    anulada = admin_client.post(f"/api/ventas/{mala['id']}/anular")
+    assert anulada.status_code == 200, anulada.text
+
+    reporte = _reporte(admin_client)
+    assert _ventas_del_dia(reporte) == (1, 1000.0)
+    assert reporte["resumen"]["ventas_cantidad"] == 1
+    assert sum(float(m["total"]) for m in reporte["medios"]) == 1000.0
+    assert buena.status_code == 200
 
 
 def test_sales_report_top_items_reflects_confirmed_sale(admin_client):
@@ -156,13 +150,11 @@ def test_sales_report_top_items_reflects_confirmed_sale(admin_client):
     location_id = _make_location(admin_client)
     _confirmed_sale(admin_client, item_id, location_id, quantity="3", price="2000.00", name="Yerba 1kg")
 
-    response = admin_client.get("/reports/sales", params=_today_range())
-    top_items = response.json()["top_items"]
-    assert len(top_items) == 1
-    assert top_items[0]["item_id"] == item_id
-    assert top_items[0]["descripcion"] == "Yerba 1kg"
-    assert float(top_items[0]["cantidad"]) == 3.0
-    assert float(top_items[0]["total"]) == 6000.0
+    productos = _reporte(admin_client)["productos"]
+    assert len(productos) == 1
+    assert productos[0]["nombre"] == "Yerba 1kg"
+    assert float(productos[0]["cantidad"]) == 3.0
+    assert float(productos[0]["total"]) == 6000.0
 
 
 def test_sales_report_excludes_dates_outside_range(admin_client):
@@ -173,10 +165,7 @@ def test_sales_report_excludes_dates_outside_range(admin_client):
     hoy_date = date.fromisoformat(hoy())
     yesterday = (hoy_date - timedelta(days=2)).isoformat()
     day_before = (hoy_date - timedelta(days=5)).isoformat()
-    response = admin_client.get(
-        "/reports/sales", params={"date_from": day_before, "date_to": yesterday},
-    )
-    assert response.json()["total_ventas"] == 0
+    assert _ventas_del_dia(_reporte(admin_client, desde=day_before, hasta=yesterday))[0] == 0
 
 
 def test_caja_report_reflects_confirmed_sale_payment(admin_client):
@@ -184,36 +173,77 @@ def test_caja_report_reflects_confirmed_sale_payment(admin_client):
     location_id = _make_location(admin_client)
     _confirmed_sale(admin_client, item_id, location_id, price="500.00")
 
-    response = admin_client.get("/reports/caja", params=_today_range())
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert float(body["ingresos"]) == 500.0
-    assert float(body["saldo_periodo"]) == 500.0
+    reporte = _reporte(admin_client)
+    ingresos = next(c for c in reporte["caja"] if c["tipo"] == "ingreso")
+    assert float(ingresos["total"]) == 500.0
+    assert float(reporte["resumen"]["caja_saldo"]) == 500.0
 
 
-def test_stock_report_reflects_current_stock_and_flags_low_stock(admin_client):
+def test_fiar_no_es_cobrar_la_cuenta_corriente_no_es_ingreso_de_caja(admin_client):
+    """🔴 La capa ERP escribe un movimiento de caja por cada medio, cuenta corriente incluido. Sin `sin_fiado` el reporte sumaría la deuda
+    como plata en el cajón y dejaría de coincidir con el arqueo del turno (ADR-027)."""
+    item_id = _make_item(admin_client, price="1000.00")
+    cliente = admin_client.post("/api/clientes", json={"name": "Kiosco"}).json()["id"]
+    _abrir_turno(admin_client)
+    registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1")  # efectivo: 1000
+    registrar_venta(admin_client, item_id, precio="2000.00", cantidad="1", cliente_id=cliente,
+                    pagos=[{"medio": "cuenta_corriente", "monto": 2000.0}])
+
+    reporte = _reporte(admin_client)
+    assert _ventas_del_dia(reporte) == (2, 3000.0)  # las dos son ventas
+    ingresos = next(c for c in reporte["caja"] if c["tipo"] == "ingreso")
+    assert float(ingresos["total"]) == 1000.0  # pero sólo una entró al cajón
+    assert float(reporte["resumen"]["caja_saldo"]) == 1000.0
+    # Y como medio de venta sí se ve: la venta fue a cuenta corriente.
+    assert "cuenta_corriente" in {m["medio"] for m in reporte["medios"]}
+    # La caja por medio tampoco lo trae, y su saldo es el del arqueo.
+    pivot = admin_client.get("/api/reportes/caja-medios", params={"desde": hoy(), "hasta": hoy()}).json()
+    assert "cuenta_corriente" not in pivot["totales"]
+    assert sum(c["saldo"] for c in pivot["cajas"]) == 1000.0
+
+
+def test_la_caja_por_medio_separa_cada_mostrador(admin_client):
+    item_id = _make_item(admin_client, price="500.00")
+    _abrir_turno(admin_client)
+    registrar_venta(admin_client, item_id, precio="500.00", cantidad="1")
+    pivot = admin_client.get("/api/reportes/caja-medios", params={"desde": hoy(), "hasta": hoy()}).json()
+    assert [c["id"] for c in pivot["cajas"]] == [caja_default(admin_client)]
+    assert pivot["totales"]["efectivo"]["ingresos"] == 500.0
+    assert pivot["cajas_config"] and pivot["medio_label"]["efectivo"] == "Efectivo"
+
+
+def test_los_exports_csv(admin_client):
+    item_id = _make_item(admin_client, name="Yerba 1kg", price="500.00")
+    _abrir_turno(admin_client)
+    registrar_venta(admin_client, item_id, precio="500.00", cantidad="2")
+    ventas = admin_client.get("/reportes/export/ventas", params={"desde": hoy(), "hasta": hoy()})
+    assert ventas.status_code == 200 and "periodo,cantidad,total" in ventas.text and hoy() in ventas.text
+    assert "Yerba" in admin_client.get("/reportes/export/productos").text or "línea" in admin_client.get("/reportes/export/productos").text
+    assert "efectivo" in admin_client.get("/reportes/export/medios").text
+    assert "Caja,Medio de cobro" in admin_client.get("/reportes/caja-medios/export").text
+
+
+def test_el_stock_bajo_es_el_de_los_minimos(admin_client):
+    """`stock_bajo` son los productos por debajo de SU mínimo (el que se carga en Productos), no un umbral global en cero."""
     item_id = _make_item(admin_client, name="Arroz 1kg")
     location_id = _make_location(admin_client)
-    ajustar(admin_client, item_id, location_id, "5")
-
-    response = admin_client.get("/reports/stock")
-    assert response.status_code == 200, response.text
-    body = response.json()
-    item_row = next(i for i in body["items"] if i["item_id"] == item_id)
-    assert float(item_row["stock"]) == 5.0
-    assert item_row not in body["low_stock"]
-
-
-def test_stock_report_flags_zero_stock_as_low(admin_client):
-    item_id = _make_item(admin_client, name="Fideos sin stock")
-
-    response = admin_client.get("/reports/stock")
-    assert response.status_code == 200
-    body = response.json()
-    low_stock_ids = [i["item_id"] for i in body["low_stock"]]
-    assert item_id in low_stock_ids
+    ajustar(admin_client, item_id, location_id, "2")
+    assert _reporte(admin_client)["stock_bajo"] == []  # sin mínimo no hay «bajo»
+    _make_unit_and_min = admin_client.get("/api/productos").json()[0]
+    r = admin_client.put(f"/api/productos/{item_id}", json={
+        "nombre": "Arroz 1kg", "unidad": "u", "codigo": "", "precio_venta": 1500, "precio_costo": 900, "stock_minimo": 5})
+    assert r.status_code == 200, r.text
+    bajo = _reporte(admin_client)["stock_bajo"]
+    assert [(b["nombre"], float(b["stock_actual"]), float(b["stock_minimo"])) for b in bajo] == [("Arroz 1kg", 2.0, 5.0)]
+    assert _make_unit_and_min["id"] == item_id
 
 
 def test_staff_cannot_access_reports(staff_client):
-    response = staff_client.get("/reports/sales", params=_today_range())
-    assert response.status_code == 403
+    assert staff_client.get("/api/reportes", params={"desde": hoy(), "hasta": hoy()}).status_code == 403
+    assert staff_client.get("/api/reportes/caja-medios").status_code == 403
+    assert staff_client.get("/reportes/export/ventas").status_code == 403
+
+
+def test_las_rutas_viejas_ya_no_existen(admin_client):
+    for ruta in ("/reports/sales", "/reports/caja", "/reports/stock"):
+        assert admin_client.get(ruta, params=_today_range()).status_code in (404, 405), ruta
