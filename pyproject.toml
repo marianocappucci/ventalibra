@@ -184,7 +184,9 @@ dependencies = [
     # reglas de cajas por sucursal (ADR-032) y retira `/shifts` y el ABM propio de cajas. Sin migración.
 # v1.112.0 -> v1.113.0 (2026-09-27): `build_reportes_router`/`build_reportes_export_router` y `db.reportes` aceptan `sin_fiado`:
     # los reportes de caja dejan afuera la cuenta corriente (fiar no es cobrar), como el arqueo del turno. VentaLibra lo activa (ADR-035).
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.113.0",
+# v1.113.0 -> v1.114.0 (2026-09-27): `build_dashboard_router` y `db.dashboard` aceptan `sin_fiado`, mismo criterio que
+    # Reportes (fase 8). VentaLibra lo activa (fase 13, ADR-039).
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.114.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
