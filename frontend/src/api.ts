@@ -18,7 +18,6 @@
 export { api, ApiError, type User } from 'libra-ui/api-client'
 
 import type { OpcionSelect } from 'libra-ui/SelectBuscable'
-import type { TonoEstado } from 'libra-ui/badge-estado'
 
 export type Category = {
   id: number
@@ -377,69 +376,15 @@ export type ArcaConfig = {
   clave_path: string
 }
 
-export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled'
-
-// Etiquetas y tonos de estado de compras: viven acá y no repetidos en
-// Compras.tsx/CompraDetalle.tsx, que son los dos que los necesitan.
-export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
-  draft: 'Borrador', sent: 'Enviada', partial: 'Recibida parcial',
-  received: 'Recibida', cancelled: 'Cancelada',
-}
-
-export const PURCHASE_ORDER_STATUS_TONO: Record<PurchaseOrderStatus, TonoEstado> = {
-  draft: 'neutro', sent: 'curso', partial: 'atencion',
-  received: 'ok', cancelled: 'negativo',
-}
-
-export type PurchaseOrderItem = {
-  item_id: number
-  quantity_ordered: string
-  quantity_received: string
-  pending_quantity: string
-  unit_cost: string
-  tax_rate: string
-  subtotal: string
-}
-
-export type PurchaseOrder = {
-  id: number
-  number: string
-  supplier_party_id: number
-  /** El `proveedores.id` del motor: con el que se pide y se nombra al proveedor. */
-  proveedor_id: number
-  status: PurchaseOrderStatus
-  items: PurchaseOrderItem[]
-  is_fully_received: boolean
-}
-
-export type PurchaseReceiptStatus = 'draft' | 'confirmed'
-
-export const PURCHASE_RECEIPT_STATUS_LABELS: Record<PurchaseReceiptStatus, string> = {
-  draft: 'Borrador', confirmed: 'Confirmada',
-}
-
-export const PURCHASE_RECEIPT_STATUS_TONO: Record<PurchaseReceiptStatus, TonoEstado> = {
-  draft: 'neutro', confirmed: 'ok',
-}
-
-export type PurchaseReceiptItem = {
-  item_id: number
-  quantity: string
-  unit_cost: string
-  lot_code: string | null
-  expires_at: string | null
-}
-
-export type PurchaseReceipt = {
-  id: number
-  supplier_party_id: number
-  proveedor_id: number
-  purchase_order_id: number | null
-  status: PurchaseReceiptStatus
-  items: PurchaseReceiptItem[]
-  received_at: string | null
-  document_reference: string | null
-}
+/** Las órdenes de compra y las recepciones del motor (`/api/purchase-orders`, `/api/purchase-receipts`), extraídas
+ *  al kit en la fase 9 de la adopción (ADR-036): VentaLibra es el único producto de la familia con este módulo. */
+export type {
+  PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus, PurchaseReceipt, PurchaseReceiptItem, PurchaseReceiptStatus,
+} from 'libra-ui/comercio/tipos'
+export {
+  PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_TONO,
+  PURCHASE_RECEIPT_STATUS_LABELS, PURCHASE_RECEIPT_STATUS_TONO,
+} from 'libra-ui/comercio/tipos'
 
 // --- opciones para los selects con busqueda (libra-ui/SelectBuscable) ------
 //
@@ -458,22 +403,6 @@ export { opcionesProveedor } from 'libra-ui/comercio/tipos'
 
 // Las opciones de producto son las del kit: el nombre como etiqueta y el código/categoría como pista.
 export { opcionesProducto } from 'libra-ui/comercio/tipos'
-
-export function opcionesOrdenCompra(ordenes: PurchaseOrder[]): OpcionSelect[] {
-  return ordenes.map((o) => ({
-    value: String(o.id),
-    label: o.number,
-    hint: PURCHASE_ORDER_STATUS_HINT[o.status],
-  }))
-}
-
-const PURCHASE_ORDER_STATUS_HINT: Record<PurchaseOrderStatus, string> = {
-  draft: 'borrador',
-  sent: 'enviada',
-  partial: 'recibida parcial',
-  received: 'recibida',
-  cancelled: 'cancelada',
-}
 
 export function opcionesCategoria(categorias: Category[]): OpcionSelect[] {
   return categorias.map((c) => ({

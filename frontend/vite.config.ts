@@ -10,13 +10,15 @@ import tailwindcss from '@tailwindcss/vite'
 // se sirve desde el mismo proceso FastAPI (ver app/asgi.py).
 const API_PATHS = [
   '/auth', '/catalog', '/pricing', '/locations', '/stock',
-  '/suppliers', '/purchase-orders', '/purchase-receipts', '/customers',
+  '/suppliers', '/customers',
   '/users', '/config', '/settings', '/accounts', '/health',
-  // Lo que monta el motor bajo `/api` (ventas, medios de pago, config, resguardo).
+  // Lo que monta el motor bajo `/api` (ventas, medios de pago, config, resguardo, compras...).
   '/api',
 ]
 // `/sales` se retiró entero en F4 (2026-09-15, DECISIONS.md ADR-025) -- sin
-// backend que lo sirva, ya no tiene nada que hacer en esta lista.
+// backend que lo sirva, ya no tiene nada que hacer en esta lista. `/purchase-orders`/
+// `/purchase-receipts` corrieron la misma suerte en la fase 9 (2026-09-27, ADR-036): el motor
+// las monta bajo `/api`, que ya está en la lista.
 
 // Las claves del proxy se emiten como regex (Vite trata como RegExp toda
 // clave que empieza con `^`) que exige que el path TERMINE ahi o siga con

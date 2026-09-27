@@ -73,7 +73,7 @@ def test_ningun_servicio_usa_el_repositorio_desnudo():
     )
 
 
-def test_los_cuatro_servicios_pasan_por_la_fabrica():
+def test_los_tres_servicios_pasan_por_la_fabrica():
     """La contracara del test de arriba: que la fábrica se esté usando de
     verdad y no que simplemente nadie importe nada. Si un servicio dejara de
     construir su repositorio, el test de arriba seguiría en verde.
@@ -102,13 +102,18 @@ def test_los_cuatro_servicios_pasan_por_la_fabrica():
     del motor arma su repositorio con la fábrica que `app/commerce.py` le declara (`usar_fabrica_de_repositorio`,
     `libracommerce` v0.19.0), así que el alta y la edición de productos, códigos, variantes y ubicaciones siguen
     quedando en `actividad_log` (lo fijan `test_dar_de_alta_un_producto_queda_registrado` y los que siguen).
+
+    🔴 Y son TRES desde la fase 9 (2026-09-27, ADR-036): `purchasing.py` se retiró con `/purchase-orders`/
+    `/purchase-receipts` (las compras son el router del motor, `build_compras_router`). Mismo caso que el de
+    arriba: `erp/compras.py` arma su repositorio con `repositorio_de`, la misma fábrica, así que las órdenes y
+    las recepciones de compra siguen quedando en `actividad_log`.
     """
     raiz = pathlib.Path(__file__).resolve().parent.parent / "app" / "services"
     usan = [
         f.name for f in raiz.glob("*.py")
         if "from ..commerce import repositorio" in f.read_text(encoding="utf-8")
     ]
-    assert len(usan) == 4, f"esperaba 4 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
+    assert len(usan) == 3, f"esperaba 3 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
 
 
 # ── Que registre, end-to-end ──────────────────────────────────────────────

@@ -30,23 +30,23 @@ def test_el_proveedor_nuevo_no_tiene_party_hasta_que_se_le_compra(admin_client):
     party = OFFSET_PROVEEDOR + proveedor_id
     assert conn.execute("SELECT COUNT(*) FROM parties WHERE id = ?", (party,)).fetchone()[0] == 0
 
-    orden = admin_client.post("/purchase-orders", json={"proveedor_id": proveedor_id})
+    orden = admin_client.post("/api/purchase-orders", json={"proveedor_id": proveedor_id})
     assert orden.status_code == 200, orden.text
     assert orden.json()["proveedor_id"] == proveedor_id
-    assert orden.json()["supplier_party_id"] == party
+    assert "supplier_party_id" not in orden.json()  # el contrato público sólo habla de `proveedor_id`
     assert conn.execute("SELECT display_name FROM parties WHERE id = ?", (party,)).fetchone()[0] == "Prov"
 
 
 def test_una_compra_a_un_proveedor_que_no_existe_da_404(admin_client):
-    assert admin_client.post("/purchase-orders", json={"proveedor_id": 9999}).status_code == 404
-    assert admin_client.post("/purchase-receipts", json={"proveedor_id": 9999}).status_code == 404
+    assert admin_client.post("/api/purchase-orders", json={"proveedor_id": 9999}).status_code == 404
+    assert admin_client.post("/api/purchase-receipts", json={"proveedor_id": 9999}).status_code == 404
 
 
 def test_el_espejo_toma_el_nombre_actual_al_comprar(admin_client):
     proveedor = admin_client.post("/api/proveedores", json={"nombre": "Viejo"}).json()
-    admin_client.post("/purchase-orders", json={"proveedor_id": proveedor["id"]})
+    admin_client.post("/api/purchase-orders", json={"proveedor_id": proveedor["id"]})
     admin_client.put(f"/api/proveedores/{proveedor['id']}", json={"nombre": "Nuevo nombre"})
-    admin_client.post("/purchase-orders", json={"proveedor_id": proveedor["id"]})
+    admin_client.post("/api/purchase-orders", json={"proveedor_id": proveedor["id"]})
     party = OFFSET_PROVEEDOR + proveedor["id"]
     conn = admin_client.app.state.conn
     assert conn.execute("SELECT display_name FROM parties WHERE id = ?", (party,)).fetchone()[0] == "Nuevo nombre"
@@ -55,7 +55,7 @@ def test_el_espejo_toma_el_nombre_actual_al_comprar(admin_client):
 def test_un_proveedor_con_compras_no_se_elimina(admin_client):
     """El motor sólo mira los egresos; VentaLibra guarda la baja si hay órdenes o recepciones."""
     proveedor_id = admin_client.post("/api/proveedores", json={"nombre": "Con compras"}).json()["id"]
-    admin_client.post("/purchase-orders", json={"proveedor_id": proveedor_id})
+    admin_client.post("/api/purchase-orders", json={"proveedor_id": proveedor_id})
     r = admin_client.delete(f"/api/proveedores/{proveedor_id}")
     assert r.status_code == 409, r.text
     assert "compras" in r.json()["detail"]

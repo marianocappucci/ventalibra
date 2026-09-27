@@ -454,7 +454,7 @@ def _sembrar_compras(api: Api, articulos: dict, deposito: int, contar) -> None:
     de verdad interesa mostrar: es la que entra la mercadería al stock, así que
     sin confirmar se vería una recepción que no movió nada.
     """
-    if _lista(api.get("/purchase-orders")):
+    if _lista(api.get("/api/purchase-orders")):
         contar("compras", False)
         print("  (ya hay órdenes de compra)")
         return
@@ -469,31 +469,31 @@ def _sembrar_compras(api: Api, articulos: dict, deposito: int, contar) -> None:
 
     LINEAS = [("Yerba mate 1 kg", 24, 3200), ("Arroz largo fino 1 kg", 40, 1150)]
     try:
-        orden = api.post("/purchase-orders", {"proveedor_id": proveedor_id})
+        orden = api.post("/api/purchase-orders", {"proveedor_id": proveedor_id})
         for nombre, cantidad, costo in LINEAS:
             if nombre not in articulos:
                 continue
-            api.post(f"/purchase-orders/{orden['id']}/items", {
+            api.post(f"/api/purchase-orders/{orden['id']}/items", {
                 "item_id": articulos[nombre], "quantity_ordered": cantidad,
                 "unit_cost": costo, "tax_rate": 0.21,
             })
         contar("orden_compra", True)
 
-        recepcion = api.post("/purchase-receipts", {
+        recepcion = api.post("/api/purchase-receipts", {
             "proveedor_id": proveedor_id, "purchase_order_id": orden["id"],
             "document_reference": "Remito 0001-00004512",
         })
         for nombre, cantidad, costo in LINEAS:
             if nombre not in articulos:
                 continue
-            api.post(f"/purchase-receipts/{recepcion['id']}/items", {
+            api.post(f"/api/purchase-receipts/{recepcion['id']}/items", {
                 "item_id": articulos[nombre], "quantity": cantidad,
                 "unit_cost": costo,
             })
         # 🔴 Confirmar pide **a qué depósito entra** la mercadería, y con razón:
-        # es lo que decide dónde suma el stock. Sin `location_id` contesta 422.
-        api.post(f"/purchase-receipts/{recepcion['id']}/confirm",
-                 {"location_id": deposito})
+        # es lo que decide dónde suma el stock. Sin `deposito_id` contesta 422.
+        api.post(f"/api/purchase-receipts/{recepcion['id']}/confirm",
+                 {"deposito_id": deposito})
         contar("recepcion", True)
     except RuntimeError as e:
         print(f"  -- compras: {e}")
