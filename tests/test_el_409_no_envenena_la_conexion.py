@@ -32,14 +32,12 @@ def _unidad(client, code="u"):
 
 def _item(client, name="Yerba"):
     _unidad(client)
-    r = client.post("/catalog/items", json={
-        "item_type": "product", "name": name, "unit_code": "u",
-    })
+    r = client.post("/api/productos", json={"nombre": name, "unidad": "u"})
     assert r.status_code in (200, 201), r.text
     return r.json()["id"]
 
 
-@pytest.mark.parametrize("camino", ["codigo", "variante", "lista_default"])
+@pytest.mark.parametrize("camino", ["codigo", "variante", "unidad"])
 def test_un_409_no_deja_la_app_sin_escribir(admin_client, camino):
     """Provoca el 409 por cada ruta que lo traduce, y despues escribe.
 
@@ -50,14 +48,16 @@ def test_un_409_no_deja_la_app_sin_escribir(admin_client, camino):
     item_id = _item(admin_client, name=f"Item {camino}")
 
     if camino == "codigo":
-        cuerpo = {"code_type": "barcode", "code": "7791234567890"}
-        ruta = f"/catalog/items/{item_id}/codes"
+        cuerpo = {"tipo": "barcode", "codigo": "7791234567890"}
+        ruta = f"/api/productos/{item_id}/codigos"
     elif camino == "variante":
-        cuerpo = {"sku": "SKU-REPETIDO", "name": "Talle M"}
-        ruta = f"/catalog/items/{item_id}/variants"
+        cuerpo = {"sku": "SKU-REPETIDO", "nombre": "Talle M"}
+        ruta = f"/api/productos/{item_id}/variantes"
     else:
-        cuerpo = {"name": "Lista", "description": "", "is_default": True}
-        ruta = "/pricing/lists"
+        # Las listas de precio no tienen dato único que repetir (el motor no tiene lista predeterminada): el tercer
+        # camino es ahora la unidad, que sí (`UNIQUE(code)`).
+        cuerpo = {"code": "repetida", "name": "Repetida"}
+        ruta = "/catalog/units"
 
     primera = admin_client.post(ruta, json=cuerpo)
     assert primera.status_code in (200, 201), primera.text

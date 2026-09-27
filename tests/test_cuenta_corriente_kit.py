@@ -37,8 +37,8 @@ def _cerrar_turno(client, turno_id):
 def _make_item(client, name="Fideos 500g", price="1500.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     creado = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": price},
+        "/api/productos",
+        json={"nombre": name, "unidad": "u", "precio_venta": price},
     )
     assert creado.status_code == 200, creado.text
     return creado.json()["id"]

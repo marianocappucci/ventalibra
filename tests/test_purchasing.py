@@ -4,8 +4,8 @@ from ventas_helpers import crear_ubicacion, stock
 def _make_item(client, name="Fideos 500g", cost="900.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     created = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": "1500.00", "default_cost": cost},
+        "/api/productos",
+        json={"nombre": name, "unidad": "u", "precio_venta": "1500.00", "precio_costo": cost},
     )
     assert created.status_code == 200, created.text
     return created.json()["id"]
@@ -46,8 +46,8 @@ def test_receipt_without_order_moves_stock_and_updates_cost(admin_client):
 
     assert float(stock(admin_client, item_id, location_id)) == 10.0
 
-    item = admin_client.get(f"/catalog/items/{item_id}")
-    assert float(item.json()["default_cost"]) == 950.0
+    item = admin_client.get(f"/api/stock/{item_id}")
+    assert float(item.json()["producto"]["precio_costo"]) == 950.0
 
 
 def test_receipt_linked_to_order_marks_it_partial(admin_client):

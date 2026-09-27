@@ -35,7 +35,7 @@ const ORDEN = {
 }
 
 const ITEMS = [
-  { id: 1, item_type: 'product', name: 'Yerba', description: '', category_id: null, unit_code: 'kg', active: true, sellable: true, purchasable: true, default_sale_price: '0', default_cost: '0' },
+  { id: 1, codigo: null, nombre: 'Yerba', descripcion: '', precio_venta: 0, precio_costo: 0, unidad: 'kg', categoria: '', stock_minimo: 0, estacion: '', vendible: 1, activo: 1, tipo: 'producto' },
 ]
 
 const LOCATIONS = [{ id: 1, nombre: 'Depósito Central', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 }]
@@ -68,7 +68,7 @@ beforeEach(() => {
       return Promise.resolve(json(orden))
     }
     if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
-    if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+    if (u.startsWith('/api/productos')) return Promise.resolve(json(ITEMS))
     if (u === '/api/depositos') return Promise.resolve(json(LOCATIONS))
     if (metodo === 'POST' && u === '/purchase-receipts') return Promise.resolve(json(RECEIPT_CREADA))
     if (metodo === 'POST' && u === '/purchase-receipts/55/items') return Promise.resolve(json(RECEIPT_CREADA))
@@ -174,7 +174,7 @@ describe('El detalle de una orden de compra', () => {
       llamadas.push({ url: u, metodo, cuerpo })
       if (u === '/purchase-orders/7') return Promise.resolve(json(ORDEN))
       if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
-      if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+      if (u.startsWith('/api/productos')) return Promise.resolve(json(ITEMS))
       if (u === '/api/depositos') return Promise.resolve(json(LOCATIONS))
       // Con una línea cargada: un borrador vacío no es confirmable (ver el
       // test siguiente).
@@ -209,7 +209,7 @@ describe('El detalle de una orden de compra', () => {
       const u = String(url)
       if (u === '/purchase-orders/7') return Promise.resolve(json(ORDEN))
       if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
-      if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+      if (u.startsWith('/api/productos')) return Promise.resolve(json(ITEMS))
       if (u === '/api/depositos') return Promise.resolve(json(LOCATIONS))
       if (u === '/purchase-receipts') return Promise.resolve(json([RECEIPT_CREADA]))
       return Promise.resolve(json([]))
@@ -227,7 +227,7 @@ describe('El detalle de una orden de compra', () => {
       const metodo = init?.method ?? 'GET'
       if (u === '/purchase-orders/7') return Promise.resolve(json(ORDEN))
       if (u === '/api/proveedores') return Promise.resolve(json(PROVEEDORES))
-      if (u.startsWith('/catalog/items')) return Promise.resolve(json(ITEMS))
+      if (u.startsWith('/api/productos')) return Promise.resolve(json(ITEMS))
       if (u === '/api/depositos') return Promise.resolve(json(LOCATIONS))
       if (metodo === 'POST' && u === '/purchase-receipts') return Promise.resolve(json(RECEIPT_CREADA))
       if (metodo === 'POST' && u === '/purchase-receipts/55/items') {

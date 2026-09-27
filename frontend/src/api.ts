@@ -34,56 +34,20 @@ export type Unit = {
   decimal_scale: number
 }
 
-export type CatalogItem = {
-  id: number
-  item_type: 'product' | 'service'
-  name: string
-  description: string
-  category_id: number | null
-  unit_code: string
-  active: boolean
-  sellable: boolean
-  purchasable: boolean
-  default_sale_price: string
-  default_cost: string
-}
+// Los productos son los del motor (`libra-ui/comercio/tipos`, ADR-034): el mismo tipo que Contalibra.
+export type { Producto, VarianteProducto } from 'libra-ui/comercio/tipos'
+import type { Producto, VarianteProducto } from 'libra-ui/comercio/tipos'
 
-/** Body de `PUT /catalog/items/{id}` -- reemplaza el item entero (mismo
- *  criterio que el alta), asi que no hay version parcial: todos los campos
- *  van siempre. `item_type` queda afuera porque el backend no lo acepta acá
- *  (ver `app/routers/catalog.py::ItemUpdate`): producto/servicio se define
- *  al crear, no al editar. */
-export type ItemUpdate = {
-  name: string
-  unit_code: string
-  category_id: number | null
-  description: string
-  active: boolean
-  sellable: boolean
-  purchasable: boolean
-  default_sale_price: string
-  default_cost: string
-}
-
-/** Un escaneo ya resuelto. Es más que el producto porque la etiqueta de una
- *  balanza trae adentro cuánto se pesó. */
-export type ScanResult = {
-  item: CatalogItem
+/** Un escaneo ya resuelto (`GET /api/productos/escanear`). Es más que el producto porque la etiqueta de una balanza trae
+ *  adentro cuánto se pesó, y un SKU de variante trae la variante. */
+export type Escaneo = {
+  producto: Producto
   /** 1 para un código común; el peso, si la etiqueta lo traía. */
-  quantity: string
+  cantidad: number
   /** Solo si la balanza imprimió el importe ya calculado. */
-  unit_price: string | null
-  from_scale: boolean
-}
-
-export type ItemCodeType = 'internal' | 'barcode' | 'sku' | 'scale' | 'other'
-
-export const ITEM_CODE_TYPE_LABELS: Record<ItemCodeType, string> = {
-  internal: 'Interno',
-  barcode: 'Código de barras',
-  sku: 'SKU',
-  scale: 'Balanza',
-  other: 'Otro',
+  precio_unitario: number | null
+  de_balanza: boolean
+  variante?: VarianteProducto
 }
 
 export type MovimientoCuenta = {
@@ -164,31 +128,6 @@ export type ScaleFormat = {
   value_kind: ScaleValueKind
   divisor: number
   total_digits: number
-}
-
-export type ItemCode = {
-  id: number
-  item_id: number
-  code_type: ItemCodeType
-  code: string
-  is_primary: boolean
-}
-
-export type ItemVariant = {
-  id: number
-  item_id: number
-  sku: string
-  name: string
-  attributes: Record<string, string>
-  active: boolean
-}
-
-export type PriceList = {
-  id: number
-  name: string
-  description: string
-  active: boolean
-  is_default: boolean
 }
 
 /** Una sucursal (`store`) o un depósito (`warehouse`), como los devuelve `GET /api/depositos` del motor (ADR-033).
@@ -547,13 +486,8 @@ export type StockReport = {
 // que en Contalibra.
 export { opcionesProveedor } from 'libra-ui/comercio/tipos'
 
-export function opcionesItem(items: CatalogItem[]): OpcionSelect[] {
-  return items.map((i) => ({
-    value: String(i.id),
-    label: i.name,
-    hint: [i.unit_code, i.active ? null : 'inactivo'].filter(Boolean).join(' · ') || undefined,
-  }))
-}
+// Las opciones de producto son las del kit: el nombre como etiqueta y el código/categoría como pista.
+export { opcionesProducto } from 'libra-ui/comercio/tipos'
 
 export function opcionesOrdenCompra(ordenes: PurchaseOrder[]): OpcionSelect[] {
   return ordenes.map((o) => ({

@@ -35,8 +35,8 @@ def _unidad(client, code="u") -> None:
 
 def _producto(client, nombre="Yerba 1kg") -> dict:
     _unidad(client)
-    r = client.post("/catalog/items", json={
-        "item_type": "product", "name": nombre, "unit_code": "u",
+    r = client.post("/api/productos", json={
+        "nombre": nombre, "unidad": "u",
     })
     assert r.status_code in (200, 201), r.text
     return r.json()
@@ -73,7 +73,7 @@ def test_ningun_servicio_usa_el_repositorio_desnudo():
     )
 
 
-def test_los_seis_servicios_pasan_por_la_fabrica():
+def test_los_cuatro_servicios_pasan_por_la_fabrica():
     """La contracara del test de arriba: que la fábrica se esté usando de
     verdad y no que simplemente nadie importe nada. Si un servicio dejara de
     construir su repositorio, el test de arriba seguiría en verde.
@@ -96,13 +96,19 @@ def test_los_seis_servicios_pasan_por_la_fabrica():
     transferencia son del router del motor, que escribe sin el repositorio envuelto). **Consecuencia conocida:** un
     ajuste de stock y la edición de una sucursal o depósito ya no quedan en `actividad_log`; el ajuste sí queda en el
     ledger (`stock_movements`, con `created_by`) y en el historial de movimientos de la pantalla de Stock.
+
+    🔴 Y son CUATRO desde la fase 7 (2026-09-27, ADR-034): `catalog.py` y `pricing.py` se retiraron con `/catalog/items`
+    y `/pricing` (los productos y las listas son los routers del motor). **Eso no deja el catálogo sin auditar:** el ERP
+    del motor arma su repositorio con la fábrica que `app/commerce.py` le declara (`usar_fabrica_de_repositorio`,
+    `libracommerce` v0.19.0), así que el alta y la edición de productos, códigos, variantes y ubicaciones siguen
+    quedando en `actividad_log` (lo fijan `test_dar_de_alta_un_producto_queda_registrado` y los que siguen).
     """
     raiz = pathlib.Path(__file__).resolve().parent.parent / "app" / "services"
     usan = [
         f.name for f in raiz.glob("*.py")
         if "from ..commerce import repositorio" in f.read_text(encoding="utf-8")
     ]
-    assert len(usan) == 6, f"esperaba 6 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
+    assert len(usan) == 4, f"esperaba 4 servicios sobre la fábrica, hay {len(usan)}: {sorted(usan)}"
 
 
 # ── Que registre, end-to-end ──────────────────────────────────────────────

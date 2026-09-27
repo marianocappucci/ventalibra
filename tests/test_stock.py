@@ -8,7 +8,7 @@ from ventas_helpers import ajustar, crear_ubicacion, stock
 
 def _make_item(client):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
-    created = client.post("/catalog/items", json={"name": "Yerba 1kg", "unit_code": "u"})
+    created = client.post("/api/productos", json={"nombre": "Yerba 1kg", "unidad": "u"})
     return created.json()["id"]
 
 
@@ -60,8 +60,8 @@ def test_fijar_en_compara_con_el_stock_de_ese_deposito(admin_client):
 
 def test_stock_is_tracked_independently_per_variant(admin_client):
     item_id = _make_item(admin_client)
-    variant_m = admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "V-M", "name": "M"}).json()
-    variant_l = admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "V-L", "name": "L"}).json()
+    variant_m = admin_client.post(f"/api/productos/{item_id}/variantes", json={"sku": "V-M", "nombre": "M"}).json()
+    variant_l = admin_client.post(f"/api/productos/{item_id}/variantes", json={"sku": "V-L", "nombre": "L"}).json()
     location_id = _make_location(admin_client)
 
     ajustar(admin_client, item_id, location_id, "10", variant_id=variant_m["id"])
@@ -76,8 +76,8 @@ def test_stock_is_tracked_independently_per_variant(admin_client):
 
 def test_fijar_en_una_variante_no_toca_a_las_otras(admin_client):
     item_id = _make_item(admin_client)
-    variant_m = admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "V-M", "name": "M"}).json()
-    variant_l = admin_client.post(f"/catalog/items/{item_id}/variants", json={"sku": "V-L", "name": "L"}).json()
+    variant_m = admin_client.post(f"/api/productos/{item_id}/variantes", json={"sku": "V-M", "nombre": "M"}).json()
+    variant_l = admin_client.post(f"/api/productos/{item_id}/variantes", json={"sku": "V-L", "nombre": "L"}).json()
     location_id = _make_location(admin_client)
     ajustar(admin_client, item_id, location_id, "10", variant_id=variant_m["id"])
     ajustar(admin_client, item_id, location_id, "5", variant_id=variant_l["id"])

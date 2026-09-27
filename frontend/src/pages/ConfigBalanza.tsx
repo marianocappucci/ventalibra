@@ -7,7 +7,7 @@
 // configuracion quedo bien sin arriesgar un cobro equivocado.
 import { useEffect, useState } from 'react'
 import {
-  api, ApiError, type ScanResult, type ScaleFormat, type ScaleValueKind,
+  api, ApiError, type Escaneo, type ScaleFormat, type ScaleValueKind,
 } from '../api'
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
@@ -223,7 +223,7 @@ export function ConfigBalanza() {
  *  configurado recién cuando se cobró de menos. */
 function Probador() {
   const [codigo, setCodigo] = useState('')
-  const [resultado, setResultado] = useState<ScanResult | null>(null)
+  const [resultado, setResultado] = useState<Escaneo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [probando, setProbando] = useState(false)
 
@@ -234,7 +234,7 @@ function Probador() {
     setError(null)
     setResultado(null)
     try {
-      setResultado(await api.get<ScanResult>(`/catalog/items/scan?code=${encodeURIComponent(texto)}`))
+      setResultado(await api.get<Escaneo>(`/api/productos/escanear?code=${encodeURIComponent(texto)}`))
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -267,13 +267,13 @@ function Probador() {
 
         {resultado && (
           <div className="rounded-md border p-3 text-sm">
-            <p className="font-medium">{resultado.item.name}</p>
-            {resultado.from_scale ? (
+            <p className="font-medium">{resultado.producto.nombre}</p>
+            {resultado.de_balanza ? (
               <p className="text-muted-foreground">
-                {resultado.unit_price
-                  ? `Importe impreso en la etiqueta: $${Number(resultado.unit_price)
+                {resultado.precio_unitario
+                  ? `Importe impreso en la etiqueta: $${Number(resultado.precio_unitario)
                       .toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-                  : `Peso leído: ${Number(resultado.quantity)
+                  : `Peso leído: ${Number(resultado.cantidad)
                       .toLocaleString('es-AR', { minimumFractionDigits: 3 })} kg`}
               </p>
             ) : (

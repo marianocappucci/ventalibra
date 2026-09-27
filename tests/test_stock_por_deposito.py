@@ -10,7 +10,7 @@ from ventas_helpers import ajustar, crear_ubicacion
 
 def _item(client, nombre, unidad="u"):
     client.post("/catalog/units", json={"code": unidad, "name": "Unidad"})
-    return client.post("/catalog/items", json={"name": nombre, "unit_code": unidad}).json()["id"]
+    return client.post("/api/productos", json={"nombre": nombre, "unidad": unidad}).json()["id"]
 
 
 def _sucursal(client, nombre, tipo="store"):

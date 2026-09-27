@@ -126,13 +126,13 @@ def test_get_unknown_sale_404(admin_client):
 def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
     admin_client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     item = admin_client.post(
-        "/catalog/items", json={"name": "Remera", "unit_code": "u", "default_sale_price": "5000.00"},
+        "/api/productos", json={"nombre": "Remera", "unidad": "u", "precio_venta": "5000.00"},
     ).json()
     variant_m = admin_client.post(
-        f"/catalog/items/{item['id']}/variants", json={"sku": "REM-M", "name": "M"},
+        f"/api/productos/{item['id']}/variantes", json={"sku": "REM-M", "nombre": "M"},
     ).json()
     variant_l = admin_client.post(
-        f"/catalog/items/{item['id']}/variants", json={"sku": "REM-L", "name": "L"},
+        f"/api/productos/{item['id']}/variantes", json={"sku": "REM-L", "nombre": "L"},
     ).json()
     location_id = deposito_default(admin_client)
     ajustar(admin_client, item["id"], location_id, "10", variant_id=variant_m["id"])

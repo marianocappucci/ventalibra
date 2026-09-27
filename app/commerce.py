@@ -20,7 +20,7 @@ LibraCommerce, para que el motor comercial no dependa del de auth.
 
 from libraauth.auditoria import usuario_actual
 from libracommerce.db.auditoria import RepositorioAuditado
-from libracommerce.db.repository import SqliteCommerceRepository
+from libracommerce.db.repository import SqliteCommerceRepository, usar_fabrica_de_repositorio
 from libracore.db.core import Conexion
 
 
@@ -28,3 +28,9 @@ def repositorio(conn: Conexion) -> RepositorioAuditado:
     return RepositorioAuditado(
         SqliteCommerceRepository(conn), conn, usuario=usuario_actual.get,
     )
+
+
+# Las funciones del ERP del motor (`libracommerce.erp.catalogo`, listas de precio: las que usan los routers de
+# productos y depósitos) arman su repositorio adentro. Se les declara ACÁ, una vez, cómo se arma el de este producto,
+# así lo que entra por el motor también queda en `actividad_log` (libracommerce v0.19.0).
+usar_fabrica_de_repositorio(repositorio)

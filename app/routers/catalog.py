@@ -1,19 +1,16 @@
+"""Administración de **unidades** y **categorías** del catálogo (Configuración).
+
+Desde la fase 7 (2026-09-27, ADR-034) los productos —alta, edición, códigos, variantes y escaneo— son el router del
+motor (`/api/productos`, `app/productos_ganchos.py`). Queda acá lo que el motor no tiene: las unidades con su código,
+su nombre, si admiten fracciones y su escala decimal, y las categorías jerárquicas con baja lógica y nombre único entre
+las activas.
+"""
 import sqlite3
-from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
-from libracommerce.domain.catalog import CatalogItemType, ItemCodeType
 from pydantic import BaseModel
 
-from ..services.catalog import (
-    CatalogService,
-    CategoryInvalido,
-    CategoryNotFound,
-    ItemInvalido,
-    ItemNotFound,
-    ItemUnitLockedError,
-)
-from ..services.scale import ScaleLabelError, ScaleService
+from ..services.catalog import CatalogService, CategoryInvalido, CategoryNotFound
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -50,118 +47,6 @@ class UnitOut(BaseModel):
     name: str
     allows_fraction: bool
     decimal_scale: int
-
-
-class ItemCreate(BaseModel):
-    name: str
-    unit_code: str
-    item_type: str = "product"
-    category_id: int | None = None
-    description: str = ""
-    default_sale_price: Decimal = Decimal("0")
-    default_cost: Decimal = Decimal("0")
-
-
-class ItemUpdate(BaseModel):
-    """`item_type` queda afuera a proposito: producto/servicio es una
-    decision del alta, no algo que se edite despues. El resto de los campos
-    de `ItemCreate` se editan siempre, salvo `unit_code` con movimientos --
-    ver ItemUnitLockedError en `services/catalog.py`.
-
-    Nombre no vacio y precio/costo no negativos NO se validan aca con
-    `Field` a proposito -- antes este modelo los validaba (y `ItemCreate`
-    no), asi que el mismo 422 salia con dos formatos distintos segun si era
-    alta o edicion. Ahora los valida `CatalogService._validar_item`, unico
-    lugar para los dos endpoints -- ver create_item/update_item."""
-
-    name: str
-    unit_code: str
-    category_id: int | None = None
-    description: str = ""
-    active: bool = True
-    sellable: bool = True
-    purchasable: bool = True
-    default_sale_price: Decimal = Decimal("0")
-    default_cost: Decimal = Decimal("0")
-
-
-class ItemOut(BaseModel):
-    id: int
-    item_type: str
-    name: str
-    description: str
-    category_id: int | None
-    unit_code: str
-    active: bool
-    sellable: bool
-    purchasable: bool
-    default_sale_price: Decimal
-    default_cost: Decimal
-
-
-def _to_item_out(item) -> ItemOut:
-    return ItemOut(
-        id=item.id, item_type=item.item_type, name=item.name, description=item.description,
-        category_id=item.category_id, unit_code=item.unit.code, active=item.active,
-        sellable=item.sellable, purchasable=item.purchasable,
-        default_sale_price=item.default_sale_price, default_cost=item.default_cost,
-    )
-
-
-class ScanOut(BaseModel):
-    """Un escaneo resuelto. Es mas que el producto porque una etiqueta de
-    balanza trae adentro cuanto se peso, y el POS necesita las dos cosas."""
-
-    item: ItemOut
-    #: 1 para un codigo de barras comun; el peso, si la etiqueta lo traia.
-    quantity: Decimal
-    #: Solo cuando la balanza vino con el importe ya calculado: en ese caso
-    #: se cobra este y no el de la lista de precios.
-    unit_price: Decimal | None
-    from_scale: bool
-
-
-class ItemCodeCreate(BaseModel):
-    code_type: str
-    code: str
-    is_primary: bool = False
-
-
-class ItemCodeOut(BaseModel):
-    id: int
-    item_id: int
-    code_type: str
-    code: str
-    is_primary: bool
-
-
-def _to_code_out(item_code) -> ItemCodeOut:
-    return ItemCodeOut(
-        id=item_code.id, item_id=item_code.item_id, code_type=item_code.code_type,
-        code=item_code.code, is_primary=item_code.is_primary,
-    )
-
-
-class ItemVariantCreate(BaseModel):
-    sku: str
-    name: str
-    attributes: dict[str, str] = {}
-
-
-class ItemVariantOut(BaseModel):
-    id: int
-    item_id: int
-    sku: str
-    name: str
-    attributes: dict[str, str]
-    active: bool
-
-
-def _to_variant_out(variant) -> ItemVariantOut:
-    return ItemVariantOut(
-        id=variant.id, item_id=variant.item_id, sku=variant.sku,
-        name=variant.name, attributes=variant.attributes, active=variant.active,
-    )
 
 
 def _service(request: Request) -> CatalogService:
@@ -214,121 +99,3 @@ def create_unit(data: UnitCreate, request: Request):
 @router.get("/units", response_model=list[UnitOut])
 def list_units(request: Request):
     return [UnitOut(**u.__dict__) for u in _service(request).list_units()]
-
-
-@router.post("/items", response_model=ItemOut)
-def create_item(data: ItemCreate, request: Request):
-    try:
-        item_type = CatalogItemType(data.item_type)
-    except ValueError:
-        raise HTTPException(422, f"invalid item_type: {data.item_type!r}")
-    try:
-        item = _service(request).create_item(
-            name=data.name, unit_code=data.unit_code, item_type=item_type,
-            category_id=data.category_id, description=data.description,
-            default_sale_price=data.default_sale_price, default_cost=data.default_cost,
-        )
-    except KeyError as exc:
-        # unidad desconocida -- ver _get_unit en services/catalog.py.
-        raise HTTPException(422, str(exc))
-    except ItemInvalido as exc:
-        # nombre vacio, categoria desconocida o precio/costo negativo --
-        # mismo criterio que update_item, ver _validar_item.
-        raise HTTPException(422, str(exc))
-    return _to_item_out(item)
-
-
-@router.put("/items/{item_id}", response_model=ItemOut)
-def update_item(item_id: int, data: ItemUpdate, request: Request):
-    try:
-        item = _service(request).update_item(
-            item_id,
-            name=data.name, description=data.description, category_id=data.category_id,
-            unit_code=data.unit_code, active=data.active, sellable=data.sellable,
-            purchasable=data.purchasable, default_sale_price=data.default_sale_price,
-            default_cost=data.default_cost,
-        )
-    except ItemNotFound:
-        raise HTTPException(404, "item not found")
-    except KeyError as exc:
-        # unidad desconocida -- mismo criterio que create_item.
-        raise HTTPException(422, str(exc))
-    except ItemInvalido as exc:
-        # nombre vacio, categoria desconocida o precio/costo negativo.
-        raise HTTPException(422, str(exc))
-    except ItemUnitLockedError as exc:
-        raise HTTPException(409, str(exc))
-    return _to_item_out(item)
-
-
-@router.get("/items", response_model=list[ItemOut])
-def list_items(request: Request, category_id: int | None = None, search: str | None = None):
-    items = _service(request).list_items(category_id=category_id, search=search)
-    return [_to_item_out(item) for item in items]
-
-
-@router.get("/items/scan", response_model=ScanOut)
-def scan_item(code: str, request: Request):
-    # Ruta literal "/items/scan" registrada ANTES de "/items/{item_id}" a
-    # proposito: FastAPI/Starlette matchea rutas en orden de registro, y
-    # ambas tienen la misma forma (dos segmentos) -- si "/items/{item_id}"
-    # fuera primero, "scan" caeria ahi y fallaria al intentar convertirlo
-    # a int en vez de llegar a este endpoint.
-    try:
-        resultado = ScaleService(request.app.state.conn).scan(code)
-    except ScaleLabelError as exc:
-        # 422 y no 404: el codigo se leyo perfecto, lo que no se puede es
-        # vender lo que dice. Un 404 mandaria al cajero a buscar un codigo
-        # mal escaneado que en realidad esta bien.
-        raise HTTPException(422, str(exc))
-    if resultado is None:
-        raise HTTPException(404, "no item matches that code")
-    return ScanOut(
-        item=_to_item_out(resultado.item),
-        quantity=resultado.quantity,
-        unit_price=resultado.unit_price,
-        from_scale=resultado.from_scale,
-    )
-
-
-@router.get("/items/{item_id}", response_model=ItemOut)
-def get_item(item_id: int, request: Request):
-    item = _service(request).get_item(item_id)
-    if item is None:
-        raise HTTPException(404, "item not found")
-    return _to_item_out(item)
-
-
-@router.post("/items/{item_id}/codes", response_model=ItemCodeOut)
-def add_code(item_id: int, data: ItemCodeCreate, request: Request):
-    try:
-        code_type = ItemCodeType(data.code_type)
-    except ValueError:
-        raise HTTPException(422, f"invalid code_type: {data.code_type!r}")
-    try:
-        item_code = _service(request).add_code(item_id, code_type, data.code, is_primary=data.is_primary)
-    except sqlite3.IntegrityError as exc:
-        # UNIQUE(code_type, code) o el indice parcial de un solo primario
-        # por item -- ambos son errores de datos del cliente, no del server.
-        raise HTTPException(409, str(exc))
-    return _to_code_out(item_code)
-
-
-@router.get("/items/{item_id}/codes", response_model=list[ItemCodeOut])
-def list_codes(item_id: int, request: Request):
-    return [_to_code_out(c) for c in _service(request).list_codes(item_id)]
-
-
-@router.post("/items/{item_id}/variants", response_model=ItemVariantOut)
-def add_variant(item_id: int, data: ItemVariantCreate, request: Request):
-    try:
-        variant = _service(request).add_variant(item_id, data.sku, data.name, attributes=data.attributes)
-    except sqlite3.IntegrityError as exc:
-        # UNIQUE(sku) -- error de datos del cliente, no del server.
-        raise HTTPException(409, str(exc))
-    return _to_variant_out(variant)
-
-
-@router.get("/items/{item_id}/variants", response_model=list[ItemVariantOut])
-def list_variants(item_id: int, request: Request):
-    return [_to_variant_out(v) for v in _service(request).list_variants(item_id)]

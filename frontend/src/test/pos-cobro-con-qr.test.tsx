@@ -49,8 +49,8 @@ const TURNO = {
 }
 
 const ITEM = {
-  id: 3, name: 'Yerba 1kg', sku: 'YER1', barcode: '779000001',
-  unit_code: 'u', default_sale_price: '3000.00', active: true,
+  id: 3, nombre: 'Yerba 1kg', sku: 'YER1', barcode: '779000001',
+  unidad: 'u', precio_venta: 3000, activo: 1,
 }
 
 const LOCATION = { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 }
@@ -125,13 +125,13 @@ function montarRed(opciones: {
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/api/depositos')) return Promise.resolve(json([LOCATION]))
     if (u.includes('/customers')) return Promise.resolve(json([]))
-    if (u.includes('/catalog/items/scan')) {
+    if (u.includes('/api/productos/escanear')) {
       return Promise.resolve(json({
-        item: ITEM, quantity: '1', unit_price: null, from_scale: false,
+        producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false,
       }))
     }
     // Sin variantes: el POS agrega el ítem pelado, sin diálogo intermedio.
-    if (u.includes('/variants')) return Promise.resolve(json([]))
+    if (u.includes('/variantes')) return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   })
 

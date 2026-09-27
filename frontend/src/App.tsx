@@ -7,6 +7,8 @@ import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
 import { Productos } from './pages/Productos'
+import { ListasPrecio } from './pages/ListasPrecio'
+import { ListaPrecioDetalle } from './pages/ListaPrecioDetalle'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
 import { SucursalDetalle } from './pages/SucursalDetalle'
@@ -193,6 +195,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SucursalDetalle />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/listas-precio"
+        element={
+          <ProtectedRoute adminOnly>
+            <ListasPrecio />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/listas-precio/:id"
+        element={
+          <ProtectedRoute adminOnly>
+            <ListaPrecioDetalle />
           </ProtectedRoute>
         }
       />

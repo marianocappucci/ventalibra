@@ -240,7 +240,7 @@ def test_no_se_elimina_el_ultimo_deposito_activo(admin_client):
     assert "como mínimo" in r.json()["detail"]
 
 
-# ── Los routers propios se retiraron; los productos del motor son de sólo lectura ──
+# ── Los routers propios se retiraron ──
 
 
 def test_las_rutas_viejas_ya_no_existen(admin_client):
@@ -249,17 +249,3 @@ def test_las_rutas_viejas_ya_no_existen(admin_client):
                          ("get", "/stock/transferencias/historial")):
         r = getattr(admin_client, metodo)(ruta)
         assert r.status_code in (404, 405), f"{metodo.upper()} {ruta} -> {r.status_code}"
-
-
-def test_los_productos_del_motor_se_leen_pero_no_se_escriben_hasta_la_fase_7(admin_client, staff_client):
-    """`/api/productos` está montado para que las pantallas de transferencia y de stock del kit listen productos;
-    se edita por `/catalog` (que aplica las reglas de este producto) hasta que la fase 7 adopte la pantalla."""
-    crear_item(admin_client, name="Yerba 1kg")
-    for cliente in (admin_client, staff_client):
-        r = cliente.get("/api/productos")
-        assert r.status_code == 200, r.text
-        assert "Yerba 1kg" in [p["nombre"] for p in r.json()]
-    r = admin_client.post("/api/productos", json={"nombre": "Por la puerta de atrás", "precio_venta": 1})
-    assert r.status_code == 405, r.text
-    assert "Por la puerta de atrás" not in [p["nombre"] for p in admin_client.get("/api/productos").json()]
-    assert admin_client.delete("/api/productos/1").status_code == 405

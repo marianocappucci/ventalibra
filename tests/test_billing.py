@@ -85,8 +85,8 @@ def _abrir_turno(client, monto_inicial=0):
 def _make_item(client, name="Fideos 500g", price="1500.00"):
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     created = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": price, "default_cost": "900.00"},
+        "/api/productos",
+        json={"nombre": name, "unidad": "u", "precio_venta": price, "precio_costo": "900.00"},
     )
     assert created.status_code == 200, created.text
     return created.json()["id"]
