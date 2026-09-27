@@ -16,7 +16,7 @@ import pytest
 
 @pytest.mark.sin_aceptar_terminos
 def test_una_llamada_gateada_corta_hasta_aceptar(admin_client):
-    respuesta = admin_client.get("/catalog/items")
+    respuesta = admin_client.get("/api/productos")
     assert respuesta.status_code == 403
     assert respuesta.json()["detail"]["code"] == "terminos_pendientes"
 
@@ -31,7 +31,7 @@ def test_aceptar_destraba_la_instancia(admin_client):
     assert aceptada.status_code == 200, aceptada.text
     assert aceptada.json()["pendiente"] is False
 
-    assert admin_client.get("/catalog/items").status_code == 200
+    assert admin_client.get("/api/productos").status_code == 200
 
 
 @pytest.mark.sin_aceptar_terminos

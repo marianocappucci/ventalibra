@@ -30,13 +30,13 @@ const LOCATIONS = [
 ]
 
 const CONO_SIMPLE = {
-  id: 3, name: 'Cono Simple', unit_code: 'u', default_sale_price: '500.00', active: true,
+  id: 3, nombre: 'Cono Simple', unidad: 'u', precio_venta: 500, activo: 1,
 }
 const CONO_DOBLE = {
-  id: 4, name: 'Cono Doble', unit_code: 'u', default_sale_price: '800.00', active: true,
+  id: 4, nombre: 'Cono Doble', unidad: 'u', precio_venta: 800, activo: 1,
 }
 const YERBA = {
-  id: 5, name: 'Yerba 1kg', unit_code: 'u', default_sale_price: '3000.00', active: true,
+  id: 5, nombre: 'Yerba 1kg', unidad: 'u', precio_venta: 3000, activo: 1,
   barcode: '779000001',
 }
 
@@ -56,22 +56,22 @@ function montarRedBase() {
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
-    if (u.includes('/variants')) return Promise.resolve(json([]))
+    if (u.includes('/variantes')) return Promise.resolve(json([]))
 
-    if (u.includes('/catalog/items/scan')) {
+    if (u.includes('/api/productos/escanear')) {
       if (u.includes('779000001')) {
-        return Promise.resolve(json({ item: YERBA, quantity: '1', unit_price: null, from_scale: false }))
+        return Promise.resolve(json({ producto: YERBA, cantidad: 1, precio_unitario: null, de_balanza: false }))
       }
       return Promise.resolve(json({ detail: 'no encontrado' }, 404))
     }
-    if (u.includes('/catalog/items?search=')) {
-      const termino = decodeURIComponent(u.split('search=')[1] ?? '')
+    if (u.includes('/api/productos?')) {
+      const termino = decodeURIComponent(u.split('q=')[1] ?? '')
       busquedas.push(termino)
       // Emula el LIKE del backend: coincide si el NOMBRE del producto
       // contiene el término (no al revés -- "con" es más corto que "cono" y
       // nunca lo "contendría").
       const coincidencias = [CONO_SIMPLE, CONO_DOBLE].filter(
-        (p) => p.name.toLowerCase().includes(termino.toLowerCase()),
+        (p) => p.nombre.toLowerCase().includes(termino.toLowerCase()),
       )
       return Promise.resolve(json(coincidencias))
     }

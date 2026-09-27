@@ -24,6 +24,11 @@ from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
 from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.web.catalogo_router import build_depositos_router, build_productos_router, build_stock_router
+from libracommerce.web.listas_router import (
+    build_listas_precio_router,
+    build_precios_vigentes_router,
+    build_quiebres_router,
+)
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
@@ -66,15 +71,15 @@ from .cajas_ganchos import (
     validar_apertura_de,
 )
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
-from .depositos_ganchos import OPCIONES_DE_STOCK, opciones_de_depositos, solo_lectura
+from .depositos_ganchos import OPCIONES_DE_STOCK, opciones_de_depositos
 from .ganchos import GANCHOS
 from .modules_gate import require_module
+from .productos_ganchos import OPCIONES_DE_CATALOGO
 from .proveedores_guarda import no_eliminar_con_compras
 from .routers import auth as auth_router
 from .routers import (
     catalog,
     health,
-    pricing,
     purchasing,
     recibos,
     reports,
@@ -448,7 +453,6 @@ def create_app(db_path: str) -> FastAPI:
         dependencies=admin_only + [Depends(require_module("facturacion"))],
     )
     app.include_router(catalog.router, dependencies=staff_or_admin)
-    app.include_router(pricing.router, dependencies=staff_or_admin)
     # `GET /ventas/{id}/ticket` y `GET /pos/mp-estado` -- las dos lecturas
     # sueltas que quedaron cuando `/sales` se retiró entero en F4 (ADR-025,
     # ver `app/routers/ventas_extra.py`, que reemplaza a `app/routers/
@@ -553,12 +557,20 @@ def create_app(db_path: str) -> FastAPI:
         build_stock_router(conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_STOCK),
         dependencies=staff_or_admin,
     )
-    # Los productos del motor, **sólo lectura** hasta la fase 7: las pantallas de transferencia y de stock del kit
-    # los listan de `GET /api/productos` (las mismas tablas que `/catalog`, que sigue siendo por donde se editan).
+    # Productos (fase 7, ADR-034): el router del motor con las reglas de VentaLibra como ganchos
+    # (`app/productos_ganchos.py`). Reemplaza a `/catalog/items*` (alta, edición, códigos, variantes y escaneo);
+    # `/catalog/units` y `/catalog/categories` siguen siendo la administración de unidades y categorías.
     app.include_router(
-        build_productos_router(conexion=lc_get_connection, usuario_actual=usuario_actual),
-        dependencies=[*staff_or_admin, Depends(solo_lectura)],
+        build_productos_router(
+            conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_CATALOGO,
+        ),
+        dependencies=staff_or_admin,
     )
+    # Listas de precio (fase 7): CRUD, ítems, ajuste porcentual e importación; quiebres por cantidad; y los precios
+    # con vigencia y por sucursal (`/api/listas-precio/...`). Configurar precios es de admin. Reemplazan a
+    # `/pricing`, que ninguna pantalla usaba.
+    for fabrica in (build_listas_precio_router, build_quiebres_router, build_precios_vigentes_router):
+        app.include_router(fabrica(conexion=lc_get_connection), dependencies=admin_only)
     # Proveedores: el router del motor (`libracore.egresos_router`), el mismo de Contalibra y Restolibra
     # sobre la tabla `proveedores` (ADR-030). Reemplaza a `/suppliers`. La baja se guarda: el motor sólo
     # mira los egresos, y acá un proveedor con compras no se elimina (`app/proveedores_guarda.py`).

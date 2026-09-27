@@ -5,7 +5,7 @@ import {
   ArrowRightLeft,
   Boxes,
   BarChart3, Building2, CalendarCheck, Clock, Landmark, Package, ReceiptText, ScrollText, Settings,
-  ShoppingBag, ShoppingCart, Truck, Users, Wallet, Warehouse,
+  ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 import { LOGO, WORDMARK } from '@/branding'
@@ -41,6 +41,7 @@ export const Layout = createLayout({
     { to: '/clientes', label: 'Clientes', icon: Users },
     { to: '/cuentas-corrientes', label: 'Cuentas corrientes', icon: Wallet },
     { to: '/sucursales', label: 'Sucursales', icon: Warehouse },
+    { to: '/listas-precio', label: 'Listas de precio', icon: Tags, adminOnly: true },
     { to: '/stock', label: 'Stock', icon: Boxes },
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },

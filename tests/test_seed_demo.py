@@ -84,7 +84,7 @@ def test_deja_el_catalogo_completo(api):
 
     assert len(api.get("/catalog/units")) == 2
     assert len(api.get("/catalog/categories")) == 4
-    assert len(api.get("/catalog/items")) == 11
+    assert len(api.get("/api/productos")) == 11
     assert len(api.get("/api/clientes")) == 4
     assert len(api.get("/api/proveedores")) == 2
 
@@ -129,7 +129,7 @@ def test_las_ventas_descontaron_stock(api):
     # recepción confirmada que no entrara stock sería una recepción de mentira.
     from scripts.seed_demo import _existencia
 
-    items = {i["name"]: i["id"] for i in api.get("/catalog/items")}
+    items = {i["nombre"]: i["id"] for i in api.get("/api/productos")}
     total = _existencia(api, items["Yerba mate 1 kg"], _salon(api))
 
     assert total == 48 - 5 + 24, f"la cuenta no cierra: quedó {total}"
@@ -166,7 +166,7 @@ def test_queda_un_articulo_sin_stock(api):
 
     from scripts.seed_demo import _existencia
 
-    items = {i["name"]: i["id"] for i in api.get("/catalog/items")}
+    items = {i["nombre"]: i["id"] for i in api.get("/api/productos")}
 
     assert _existencia(api, items["Cerveza rubia 473 cc"], _salon(api)) == 0
 
@@ -177,7 +177,7 @@ def test_queda_stock_fraccionado(api):
 
     from scripts.seed_demo import _existencia
 
-    items = {i["name"]: i["id"] for i in api.get("/catalog/items")}
+    items = {i["nombre"]: i["id"] for i in api.get("/api/productos")}
     total = _existencia(api, items["Queso cremoso"], _salon(api))
 
     assert total != int(total), f"el stock quedó entero: {total}"
@@ -193,7 +193,7 @@ def test_correrlo_dos_veces_no_duplica(api, capsys):
 
     salida = capsys.readouterr().out
     assert "artículos    0 creados, 11 ya estaban" in salida
-    assert len(api.get("/catalog/items")) == 11
+    assert len(api.get("/api/productos")) == 11
     assert len(api.get("/api/clientes")) == 4
 
 

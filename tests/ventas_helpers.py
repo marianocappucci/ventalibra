@@ -71,8 +71,8 @@ def abrir_turno(client, monto_inicial=0, caja_id=None) -> int:
 def crear_item(client, name="Yerba 1kg", price="1500.00") -> int:
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
     creado = client.post(
-        "/catalog/items",
-        json={"name": name, "unit_code": "u", "default_sale_price": price},
+        "/api/productos",
+        json={"nombre": name, "unidad": "u", "precio_venta": price},
     )
     assert creado.status_code == 200, creado.text
     return creado.json()["id"]
@@ -119,6 +119,13 @@ def stock(client, item_id, location_id, variant_id=None) -> Decimal:
     if variant_id is not None:
         params["variant_id"] = variant_id
     return Decimal(str(client.get(f"/api/stock/{item_id}", params=params).json()["stock_deposito"]))
+
+
+def producto_de(client, item_id) -> dict:
+    """El producto como lo ve el motor (`GET /api/stock/{id}` lo trae junto con su stock)."""
+    r = client.get(f"/api/stock/{item_id}")
+    assert r.status_code == 200, r.text
+    return r.json()["producto"]
 
 
 def crear_ubicacion(client, nombre, tipo="warehouse") -> dict:

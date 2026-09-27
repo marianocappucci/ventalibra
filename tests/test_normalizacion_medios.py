@@ -146,8 +146,8 @@ def _sembrar_cobros_con_mercadopago(client) -> int:
     ejercite más.
     """
     client.post("/catalog/units", json={"code": "u", "name": "Unidad"})
-    item = client.post("/catalog/items", json={
-        "name": "Yerba 1kg", "unit_code": "u", "default_sale_price": "2000.00",
+    item = client.post("/api/productos", json={
+        "nombre": "Yerba 1kg", "unidad": "u", "precio_venta": "2000.00",
     })
     assert item.status_code == 200, item.text
     item_id = item.json()["id"]

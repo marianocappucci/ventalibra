@@ -21,7 +21,7 @@ uno de ellos.
 """
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException
 from libracommerce.web.catalogo_router import (
     DepositoCreatePayload,
     DepositoUpdatePayload,
@@ -35,14 +35,6 @@ from .services import cajas as cajas_service
 from .services.locations import TIPO_QUE_VENDE, TIPOS_VALIDOS
 
 OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True)
-
-
-def solo_lectura(request: Request) -> None:
-    """Los productos del motor (`/api/productos`) se montan sólo para leer: se editan por `/catalog` hasta que la
-    fase 7 adopte la pantalla del kit y retire esa API. Escribir por los dos caminos saltaría las reglas de este
-    producto (unidades, variantes, códigos)."""
-    if request.method not in ("GET", "HEAD", "OPTIONS"):
-        raise HTTPException(405, "Los productos se editan desde el catálogo (/catalog) hasta la fase 7.")
 
 
 def opciones_de_depositos(sucursales: Sucursales) -> OpcionesDepositos:
@@ -95,4 +87,4 @@ def opciones_de_depositos(sucursales: Sucursales) -> OpcionesDepositos:
     )
 
 
-__all__ = ["OPCIONES_DE_STOCK", "opciones_de_depositos", "solo_lectura"]
+__all__ = ["OPCIONES_DE_STOCK", "opciones_de_depositos"]
