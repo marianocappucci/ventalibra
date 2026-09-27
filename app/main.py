@@ -25,6 +25,7 @@ from libracommerce.db.auditoria import ActividadRepository
 from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.erp.reportes import puerto_de_reportes
 from libracommerce.web.catalogo_router import build_depositos_router, build_productos_router, build_stock_router
+from libracommerce.web.compras_router import build_compras_router
 from libracommerce.web.listas_router import (
     build_listas_precio_router,
     build_precios_vigentes_router,
@@ -72,6 +73,7 @@ from .cajas_ganchos import (
     usuario_actual,
     validar_apertura_de,
 )
+from .compras_ganchos import OPCIONES_DE_COMPRAS
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import OPCIONES_DE_STOCK, opciones_de_depositos
 from .ganchos import GANCHOS
@@ -82,7 +84,6 @@ from .routers import auth as auth_router
 from .routers import (
     catalog,
     health,
-    purchasing,
     recibos,
     ventas_extra,
 )
@@ -578,7 +579,13 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(
         build_proveedores_router(), dependencies=[*staff_or_admin, Depends(no_eliminar_con_compras)],
     )
-    app.include_router(purchasing.router, dependencies=staff_or_admin)
+    # Compras (fase 9, ADR-036): el router del motor con la numeración y la traducción de `proveedor_id` de
+    # este producto como ganchos (`app/compras_ganchos.py`). Reemplaza a `/purchase-orders`/`/purchase-receipts`
+    # propios; el motor los monta bajo `/api` (antes no lo tenían, inconsistente con el resto de la familia).
+    app.include_router(
+        build_compras_router(conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_COMPRAS),
+        dependencies=staff_or_admin,
+    )
     # Clientes: el router del motor (`libracore.clientes_router`), el mismo que montan Contalibra y
     # Restolibra sobre la tabla `clients`. Reemplaza a `/customers` (ADR-029). Permisos como los del
     # resto del POS: staff o admin.
