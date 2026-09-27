@@ -1761,3 +1761,32 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Los tops de productos suman `cantidad × precio` (antes también descuento e impuestos, por ítem); los medios de pago de las ventas a cuenta corriente sí
     aparecen (la venta fue a cuenta corriente), pero no en la caja.
 - Depende de: `libracommerce` v0.20.0 y `libracore` v1.113.0 publicados y los pines de este repo subidos. `libra-ui` no cambia.
+
+## ADR-036 — Compras (órdenes y recepciones) pasa al motor y al kit (fase 9 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-27
+- Contexto: VentaLibra tenía `/purchase-orders`/`/purchase-receipts` propios (`app/routers/purchasing.py` 218 líneas +
+  `services/purchasing.py` 131) y las pantallas `Compras`/`CompraDetalle` (206 + 559). Es el caso inverso a las fases 1–8: acá **no
+  hay** un "cómo lo monta Contalibra" que adoptar — VentaLibra es el único producto de la familia con seguimiento de pedido/recibido
+  y movimiento de stock por compra (Contalibra y Restolibra resuelven "comprarle a un proveedor" con Egresos, sin eso). El dominio, el
+  caso de uso (`confirm_purchase_receipt`) y las tablas ya vivían en `libracommerce` sin que ningún router los usara.
+- Decisión: extraer el router y las pantallas TAL CUAL las tenía VentaLibra, en vez de adoptar algo ya existente:
+  - `libracommerce` v0.21.0: `build_compras_router` (`libracommerce.web.compras_router`), con el dominio en inglés (`number`,
+    `status`, `quantity_ordered`...) como ya estaba — no hay una forma "de Contalibra" en español a la que converger. Sólo
+    `proveedor_id` (nunca `supplier_party_id`) es parte del contrato público, y `OpcionesCompras` agrega, sin cambiar el default
+    (`proveedor_id == party_id`, sin restricción de quién escribe): `numerador`, y el par `resolver_proveedor`/`proveedor_de` para
+    que un producto traduzca su propio esquema de ids de proveedor. Nuevo respecto de lo que tenía VentaLibra: filtro server-side de
+    recepciones por `purchase_order_id` (antes sólo del lado del cliente) y prefijo `/api` (antes no lo tenía).
+  - `libra-ui` v0.75.0: `comercio/Compras` y `comercio/CompraDetalle`, extraídas casi verbatim (mismos textos, mismo flujo de
+    "Recibir mercadería" dentro de la orden) — sólo cambian las rutas a `/api/...` y `location_id` por `deposito_id` en la
+    confirmación, más los tipos (`PurchaseOrder`, `PurchaseReceipt`...) que pasan a `comercio/tipos`.
+  - VentaLibra monta `build_compras_router` con `app/compras_ganchos.py` (numeración con `next_sequence`, atómica — el `MAX(id)+1`
+    sin lock del motor es para baja concurrencia; y la traducción de `proveedor_id` reusando `app/services/proveedores.py`, que ya
+    existía desde la fase 1), bajo `dependencies=staff_or_admin` como el router anterior (`autorizar_escritura` no hace falta:
+    lectura y escritura quedan igual de protegidas). Retira `/purchase-orders`/`/purchase-receipts` propios.
+- Consecuencias:
+  - El contrato público deja de exponer `supplier_party_id` (sólo lo tenía por comodidad de depuración; ninguna pantalla lo leía).
+  - `GET /api/purchase-receipts?purchase_order_id=` ya no depende de traer todas las recepciones y filtrar en el cliente.
+  - Contalibra y Restolibra no ganan nada de esto (no tienen el módulo) ni pierden nada (Egresos sigue disponible para los dos).
+- Depende de: `libracommerce` v0.21.0 y `libra-ui` v0.75.0 publicados y los pines de este repo subidos.

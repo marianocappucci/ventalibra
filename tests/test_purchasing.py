@@ -26,19 +26,19 @@ def test_receipt_without_order_moves_stock_and_updates_cost(admin_client):
     location_id = _make_location(admin_client)
     supplier_id = _make_supplier(admin_client)
 
-    receipt = admin_client.post("/purchase-receipts", json={"proveedor_id": supplier_id})
+    receipt = admin_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id})
     assert receipt.status_code == 200, receipt.text
     receipt_id = receipt.json()["id"]
     assert receipt.json()["status"] == "draft"
 
     with_item = admin_client.post(
-        f"/purchase-receipts/{receipt_id}/items",
+        f"/api/purchase-receipts/{receipt_id}/items",
         json={"item_id": item_id, "quantity": "10", "unit_cost": "950.00"},
     )
     assert with_item.status_code == 200, with_item.text
 
     confirmed = admin_client.post(
-        f"/purchase-receipts/{receipt_id}/confirm", json={"location_id": location_id},
+        f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id},
     )
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["status"] == "confirmed"
@@ -56,26 +56,26 @@ def test_receipt_linked_to_order_marks_it_partial(admin_client):
     supplier_id = _make_supplier(admin_client)
 
     order = admin_client.post(
-        "/purchase-orders", json={"proveedor_id": supplier_id},
+        "/api/purchase-orders", json={"proveedor_id": supplier_id},
     )
     order_id = order.json()["id"]
     admin_client.post(
-        f"/purchase-orders/{order_id}/items",
+        f"/api/purchase-orders/{order_id}/items",
         json={"item_id": item_id, "quantity_ordered": "10", "unit_cost": "900.00"},
     )
 
     receipt = admin_client.post(
-        "/purchase-receipts",
+        "/api/purchase-receipts",
         json={"proveedor_id": supplier_id, "purchase_order_id": order_id},
     )
     receipt_id = receipt.json()["id"]
     admin_client.post(
-        f"/purchase-receipts/{receipt_id}/items",
+        f"/api/purchase-receipts/{receipt_id}/items",
         json={"item_id": item_id, "quantity": "4", "unit_cost": "900.00"},
     )
-    admin_client.post(f"/purchase-receipts/{receipt_id}/confirm", json={"location_id": location_id})
+    admin_client.post(f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id})
 
-    updated_order = admin_client.get(f"/purchase-orders/{order_id}")
+    updated_order = admin_client.get(f"/api/purchase-orders/{order_id}")
     assert updated_order.json()["status"] == "partial"
     assert updated_order.json()["is_fully_received"] is False
     assert float(updated_order.json()["items"][0]["quantity_received"]) == 4.0
@@ -86,25 +86,25 @@ def test_receipt_linked_to_order_marks_it_received_when_complete(admin_client):
     location_id = _make_location(admin_client)
     supplier_id = _make_supplier(admin_client)
 
-    order = admin_client.post("/purchase-orders", json={"proveedor_id": supplier_id})
+    order = admin_client.post("/api/purchase-orders", json={"proveedor_id": supplier_id})
     order_id = order.json()["id"]
     admin_client.post(
-        f"/purchase-orders/{order_id}/items",
+        f"/api/purchase-orders/{order_id}/items",
         json={"item_id": item_id, "quantity_ordered": "10", "unit_cost": "900.00"},
     )
 
     receipt = admin_client.post(
-        "/purchase-receipts",
+        "/api/purchase-receipts",
         json={"proveedor_id": supplier_id, "purchase_order_id": order_id},
     )
     receipt_id = receipt.json()["id"]
     admin_client.post(
-        f"/purchase-receipts/{receipt_id}/items",
+        f"/api/purchase-receipts/{receipt_id}/items",
         json={"item_id": item_id, "quantity": "10", "unit_cost": "900.00"},
     )
-    admin_client.post(f"/purchase-receipts/{receipt_id}/confirm", json={"location_id": location_id})
+    admin_client.post(f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id})
 
-    updated_order = admin_client.get(f"/purchase-orders/{order_id}")
+    updated_order = admin_client.get(f"/api/purchase-orders/{order_id}")
     assert updated_order.json()["status"] == "received"
     assert updated_order.json()["is_fully_received"] is True
 
@@ -112,9 +112,9 @@ def test_receipt_linked_to_order_marks_it_received_when_complete(admin_client):
 def test_confirm_without_items_fails(admin_client):
     supplier_id = _make_supplier(admin_client)
     location_id = _make_location(admin_client)
-    receipt = admin_client.post("/purchase-receipts", json={"proveedor_id": supplier_id})
+    receipt = admin_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id})
     response = admin_client.post(
-        f"/purchase-receipts/{receipt.json()['id']}/confirm", json={"location_id": location_id},
+        f"/api/purchase-receipts/{receipt.json()['id']}/confirm", json={"deposito_id": location_id},
     )
     assert response.status_code == 409
 
@@ -123,16 +123,16 @@ def test_cannot_confirm_receipt_twice(admin_client):
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
     supplier_id = _make_supplier(admin_client)
-    receipt = admin_client.post("/purchase-receipts", json={"proveedor_id": supplier_id})
+    receipt = admin_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id})
     receipt_id = receipt.json()["id"]
     admin_client.post(
-        f"/purchase-receipts/{receipt_id}/items",
+        f"/api/purchase-receipts/{receipt_id}/items",
         json={"item_id": item_id, "quantity": "1", "unit_cost": "900.00"},
     )
-    admin_client.post(f"/purchase-receipts/{receipt_id}/confirm", json={"location_id": location_id})
+    admin_client.post(f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id})
 
     response = admin_client.post(
-        f"/purchase-receipts/{receipt_id}/confirm", json={"location_id": location_id},
+        f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id},
     )
     assert response.status_code == 409
 
@@ -140,27 +140,27 @@ def test_cannot_confirm_receipt_twice(admin_client):
 def test_create_receipt_with_unknown_order_404(admin_client):
     supplier_id = _make_supplier(admin_client)
     response = admin_client.post(
-        "/purchase-receipts", json={"proveedor_id": supplier_id, "purchase_order_id": 999},
+        "/api/purchase-receipts", json={"proveedor_id": supplier_id, "purchase_order_id": 999},
     )
     assert response.status_code == 404
 
 
 def test_list_purchase_orders_returns_newest_first(admin_client):
     supplier_id = _make_supplier(admin_client)
-    first = admin_client.post("/purchase-orders", json={"proveedor_id": supplier_id}).json()
-    second = admin_client.post("/purchase-orders", json={"proveedor_id": supplier_id}).json()
+    first = admin_client.post("/api/purchase-orders", json={"proveedor_id": supplier_id}).json()
+    second = admin_client.post("/api/purchase-orders", json={"proveedor_id": supplier_id}).json()
 
-    response = admin_client.get("/purchase-orders")
+    response = admin_client.get("/api/purchase-orders")
     assert response.status_code == 200
     assert [o["id"] for o in response.json()] == [second["id"], first["id"]]
 
 
 def test_list_purchase_receipts_returns_newest_first(admin_client):
     supplier_id = _make_supplier(admin_client)
-    first = admin_client.post("/purchase-receipts", json={"proveedor_id": supplier_id}).json()
-    second = admin_client.post("/purchase-receipts", json={"proveedor_id": supplier_id}).json()
+    first = admin_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id}).json()
+    second = admin_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id}).json()
 
-    response = admin_client.get("/purchase-receipts")
+    response = admin_client.get("/api/purchase-receipts")
     assert response.status_code == 200
     assert [r["id"] for r in response.json()] == [second["id"], first["id"]]
 
@@ -170,13 +170,13 @@ def test_staff_can_run_full_purchasing_flow(admin_client, staff_client):
     location_id = _make_location(admin_client)
     supplier_id = _make_supplier(admin_client)
 
-    receipt = staff_client.post("/purchase-receipts", json={"proveedor_id": supplier_id})
+    receipt = staff_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id})
     receipt_id = receipt.json()["id"]
     staff_client.post(
-        f"/purchase-receipts/{receipt_id}/items",
+        f"/api/purchase-receipts/{receipt_id}/items",
         json={"item_id": item_id, "quantity": "5", "unit_cost": "900.00"},
     )
     confirmed = staff_client.post(
-        f"/purchase-receipts/{receipt_id}/confirm", json={"location_id": location_id},
+        f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id},
     )
     assert confirmed.status_code == 200, confirmed.text

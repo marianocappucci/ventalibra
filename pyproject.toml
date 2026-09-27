@@ -56,7 +56,11 @@ dependencies = [
     # de precio del motor (ADR-034) y retira `/catalog/items*` y `/pricing`. Sin migración.
     # v0.19.0 -> v0.20.0 (2026-09-27): `puerto_de_reportes` acepta `solo_confirmadas` (una venta anulada o pendiente de cobro no
     # es una venta) y `sin_fiado`. VentaLibra monta los reportes del motor con las dos (ADR-035) y retira `/reports/*`. Sin migración.
-    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.20.0",
+    # v0.20.0 -> v0.21.0 (2026-09-27): `build_compras_router` (compras/web/compras_router.py), extraído del propio
+    # `app/routers/purchasing.py`/`services/purchasing.py` de este producto -- el dominio y las tablas ya vivían en el motor sin
+    # usar. VentaLibra monta las órdenes y recepciones del motor con `OpcionesCompras` (ADR-036) y retira `/purchase-orders`/
+    # `/purchase-receipts` propios. Sin migración.
+    "libracommerce[migrations,erp,web] @ git+https://github.com/marianocappucci/libracommerce.git@v0.21.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
