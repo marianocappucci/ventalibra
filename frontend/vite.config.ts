@@ -50,9 +50,16 @@ const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // por prefijo: sólo `/ventas/<id>/ticket`, `/ventas/<id>/devuelto` y
 // `/pos/mp-estado` se proxian; `/ventas`, `/ventas/<id>` y `/pos` a secas
 // caen en el catch-all de la SPA, que es lo que tienen que hacer.
+//
+// Misma colisión con `/libros-iva` (fases 11-12, ADR-038): los cuatro exports
+// REGINFO del motor (`libracore.libros_iva_router.build_libros_iva_export_router`)
+// van fuera de `/api` -- necesitan la cookie de sesión, no un fetch con
+// `credentials`, porque son un `<a href>` de descarga directa -- así que sólo
+// `/libros-iva/export/*` se proxia; `/libros-iva` a secas es la pantalla del kit.
 const RUTAS_PROPIAS_DEL_BACKEND: Record<string, { target: string; changeOrigin: boolean }> = {
   '^/ventas/\\d+/(?:ticket|devuelto)$': { target: 'http://localhost:8000', changeOrigin: true },
   '^/pos/mp-estado$': { target: 'http://localhost:8000', changeOrigin: true },
+  '^/libros-iva/export/.*$': { target: 'http://localhost:8000', changeOrigin: true },
 }
 
 export default defineConfig({

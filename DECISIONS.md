@@ -1812,3 +1812,42 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Nueva entrada de menú "Tesorería" (icono `Banknote`: `Landmark` ya lo usa "Cajas" en este producto).
   - Contalibra y Restolibra no se tocan: siguen con `tesoreria` como módulo de plan "estándar".
 - Depende de: nada nuevo que publicar — `libracore` y `libra-ui` ya traían el router y las pantallas sin cambios.
+
+## ADR-038 — Egresos y Libros IVA con los routers del motor, en una sola tanda (fases 11 y 12 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-27
+- Contexto: VentaLibra no tenía forma de registrar un gasto que no fuera mercadería (alquiler, sueldos,
+  servicios) ni el comprobante fiscal de un pago a un proveedor — Compras (fase 9) repone inventario,
+  no lleva contabilidad del pago. Tampoco tenía libro IVA: el lado ventas ya funciona solo (VentaLibra
+  factura contra la tabla `facturas` del motor desde `venta_facturacion`), pero el lado compras necesita
+  `egresos`, vacía hasta esta fase. El humano pidió las dos fases en una sola tanda porque Libros IVA
+  depende de que Egresos tenga uso real.
+  `libracore.egresos_router.build_egresos_router`/`build_libros_iva_router`/`build_libros_iva_export_router`
+  y las pantallas `comercio/Egresos`/`EgresoDetalle`/`LibrosIva` ya existen, sin ganchos ni variantes —
+  mismo caso que Tesorería.
+- Decisión: montar los tres routers tal cual.
+  - **Egresos**: de staff y admin (como Compras y Proveedores en este producto; en Contalibra también es
+    de cualquier usuario autenticado, no sólo admin) — es una tarea operativa, no de configuración. Libre
+    en todos los planes (mismo criterio que Tesorería, sin volver a preguntar la misma política de
+    negocio). Pagar un egreso escribe un movimiento en `libracore.db.caja` sin `turno_id`: se investigó
+    si eso rompía el arqueo de un turno y no es así — `cerrar_turno` calcula el monto esperado sólo con
+    `efectivo_ventas` (las ventas atadas al turno), nunca lee `caja_movimientos` en general; y el resumen
+    de caja (`get_caja_resumen`, el que alimenta a Reportes y Caja por medio) filtra por `caja_id` y
+    fecha, no por turno. Contalibra tiene el mismo comportamiento.
+  - **Libros IVA**: de admin, como en Contalibra — es un reporte contable-fiscal, no una tarea de
+    mostrador. Los cuatro exports REGINFO (`build_libros_iva_export_router`) van fuera de `/api` (piden
+    la cookie de sesión directo, son un `<a href>` de descarga): `vite.config.ts` los suma a
+    `RUTAS_PROPIAS_DEL_BACKEND` con un patrón angosto (`/libros-iva/export/*`), no al `API_PATHS` por
+    prefijo, porque `/libros-iva` a secas es la pantalla del kit — misma colisión que ya documentaba el
+    archivo para `/ventas` y `/pos` (F4, ADR-025).
+  - Ninguno de los dos se agrega a `PLAN_MODULOS`: libres en todos los planes.
+- Consecuencias:
+  - La guarda de baja de un proveedor (`app/proveedores_guarda.py`) queda con **dos** protecciones que se
+    complementan: la propia del motor contra egresos (`ValueError` → 422, recién activa: antes de esta
+    fase VentaLibra no tenía egresos) y la de este producto contra compras (409, sin cambios).
+  - Nueva entrada de menú "Egresos" (icono `HandCoins`, staff y admin) y "Libros IVA" (icono `BookText`,
+    admin) — íconos elegidos porque los de Contalibra (`ShoppingBag`, ya usado por "Compras") chocaban.
+  - Contalibra y Restolibra no se tocan: siguen con `egresos`/`libros_iva` como módulos de plan.
+- Depende de: nada nuevo que publicar — `libracore` y `libra-ui` ya traían los routers y las pantallas
+  sin cambios.

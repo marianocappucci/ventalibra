@@ -46,7 +46,8 @@ from libracore.db.core import es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
 from libracore.db.url_de_instancia import url_de_instancia
-from libracore.egresos_router import build_proveedores_router
+from libracore.egresos_router import build_egresos_router, build_proveedores_router
+from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.mp_config_router import build_mp_config_router
 from libracore.reportes_router import build_reportes_export_router, build_reportes_router
 from libracore.resguardo_enlace import build_resguardo_enlace_router
@@ -610,6 +611,20 @@ def create_app(db_path: str) -> FastAPI:
     # ya trae la tabla, vacía hasta ahora). De admin: es la única instancia de la familia que la deja libre
     # en todos los planes (no gateada por `require_module`, a diferencia de Contalibra).
     app.include_router(build_tesoreria_router(usuario_actual=get_current_user), dependencies=admin_only)
+    # Egresos (fase 11, ADR-038): el router del motor, sin ganchos. Complementa a Compras -- Compras
+    # repone inventario, Egresos es la contabilidad del pago (alquiler, sueldos, servicios, y también un
+    # pago a proveedor que Compras no cubre). De staff y admin, igual que Compras y Proveedores (mismo
+    # criterio de Contalibra); libre en todos los planes, como Tesorería. La baja de un proveedor con
+    # egresos ya la guarda el motor (`ValueError` -> 422 en `build_proveedores_router`); la de un proveedor
+    # con compras la sigue guardando `app/proveedores_guarda.py`.
+    app.include_router(build_egresos_router(usuario_actual=get_current_user), dependencies=staff_or_admin)
+    # Libros IVA (fase 12, ADR-038): ventas ya funciona (las facturas son la tabla `facturas` del motor,
+    # que este producto ya escribe desde `venta_facturacion`); compras se completa con Egresos, recién
+    # adoptado arriba. De admin, como en Contalibra: es un reporte contable-fiscal. Los cuatro exports
+    # REGINFO van FUERA de `/api` (por eso `vite.config.ts` los suma a `RUTAS_PROPIAS_DEL_BACKEND`, no a
+    # `API_PATHS`: `/libros-iva` a secas sigue siendo la pantalla de la SPA).
+    app.include_router(build_libros_iva_router(), dependencies=admin_only)
+    app.include_router(build_libros_iva_export_router(solo_admin=require_admin))
     # Cierre diario: acto registrado y numerado por sucursal (LibraCore
     # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).
     # `autorizar_cierre` no se pasa: el gate de ESTE producto para "admin o
