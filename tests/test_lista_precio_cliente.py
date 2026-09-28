@@ -24,6 +24,8 @@ def test_un_staff_puede_asignar_y_leer_la_lista(admin_client, staff_client):
     cid = _cliente(admin_client)
     lid = _lista(admin_client)
 
+    # El selector de la card carga las listas por este camino: con 403 quedaba sólo «precio base».
+    assert [l["id"] for l in staff_client.get("/api/listas-precio").json()] == [lid]
     assert staff_client.get(f"/api/clientes/{cid}/lista-precio").json() == {"lista_id": None, "lista": None}
     r = staff_client.put(f"/api/clientes/{cid}/lista-precio", json={"lista_id": lid})
     assert r.status_code == 200 and r.json()["lista_id"] == lid
