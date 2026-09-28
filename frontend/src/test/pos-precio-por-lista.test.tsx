@@ -35,26 +35,27 @@ const LOCATIONS = [
   { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
 ]
 
-function montarRed() {
+function montarRed(
+  precioUno = 2500, precioMuchos = precioUno, listas: unknown[] = [LISTA], fallaPrecio = false,
+  precioBalanza: number | null = null,
+) {
   const llamadas: string[] = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     const u = String(url)
     llamadas.push(u)
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-    if (u.includes('/api/listas-precio') && !u.includes('/precio')) return Promise.resolve(json([LISTA]))
     if (u.includes('/api/listas-precio/5/precio?')) {
-      const p = new URL(u).searchParams
-      const cantidad = Number(p.get('cantidad') || 1)
-      // Quiebre de cantidad: hasta 1 -> 3000, 2+ -> 2800
-      const precio = cantidad >= 2 ? 2800 : 3000
-      return Promise.resolve(json({ precio }))
+      if (fallaPrecio) return Promise.resolve(json({ detail: 'boom' }, 500))
+      const cantidad = Number(new URL(u, 'http://x').searchParams.get('cantidad') || 1)
+      return Promise.resolve(json({ precio: cantidad >= 2 ? precioMuchos : precioUno }))
     }
+    if (u === '/api/listas-precio') return Promise.resolve(json(listas))
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
     if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/api/productos/escanear')) {
-      return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))
+      return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: precioBalanza, de_balanza: precioBalanza !== null }))
     }
     return Promise.resolve(json([]))
   }))
@@ -81,73 +82,86 @@ beforeEach(() => {
 describe('Precio de lista (cantidad + vigencia)', () => {
   it('carga la lista predeterminada al montar el POS', async () => {
     const { llamadas } = montarRed()
-    const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
-
-    // Esperar a que se cargue el turno y la lista
-    await screen.findByText(/Turno #1/)
-
-    // Verificar que se llamó a /api/listas-precio
-    expect(llamadas.some((u) => u.includes('/api/listas-precio') && !u.includes('/precio'))).toBe(true)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
   })
 
-  it('al agregar un ítem con lista default, el precio es el del producto (cantidad 1)', async () => {
-    montarRed()
+  it('al agregar, el precio sale de la lista (no del precio plano) y consulta con cantidad y fecha', async () => {
+    const { llamadas } = montarRed(2500)
     const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
     await escanear(user)
+    await screen.findByText(/Yerba 1kg/)
 
-    // Cantidad 1 -> precio 3000 (del quiebre de cantidad de la lista)
-    const textElements = await screen.findAllByText(/3\.000,00/)
-    expect(textElements.length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/2\.500,00/)).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/3\.000,00/)).not.toBeInTheDocument()
+    const consulta = llamadas.find((u) => u.includes('/api/listas-precio/5/precio?'))!
+    expect(consulta).toContain('producto_id=3')
+    expect(consulta).toContain('cantidad=1')
+    expect(consulta).toMatch(/en=\d{4}-\d{2}-\d{2}T/)
   })
 
-  it('sin lista predeterminada, el POS sigue funcionando (fallback)', async () => {
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
-      const u = String(url)
-      if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
-      if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-      if (u.includes('/api/listas-precio') && !u.includes('/precio')) return Promise.resolve(json([])) // Sin lista
-      if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-      if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
-      if (u.includes('/customers')) return Promise.resolve(json([]))
-      if (u.includes('/api/productos/escanear')) {
-        return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))
-      }
-      return Promise.resolve(json([]))
-    }))
-
+  it('al cambiar la cantidad, vuelve a consultar y aplica el quiebre alcanzado', async () => {
+    const { llamadas } = montarRed(2500, 2000)
     const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
     await escanear(user)
+    await screen.findByText(/Yerba 1kg/)
+    await screen.findAllByText(/2\.500,00/)
 
-    // Sin lista default, usa precio_venta del producto (3000)
-    const textElements = await screen.findAllByText(/3\.000,00/)
-    expect(textElements.length).toBeGreaterThan(0)
+    const dialogo = await abrirCantidad()
+    const campo = within(dialogo).getByLabelText('Cantidad')
+    await user.clear(campo)
+    await user.type(campo, '3')
+    await user.click(within(dialogo).getByRole('button', { name: 'Aceptar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // 3 x 2.000 = 6.000: la cantidad quedó cargada y el precio se refrescó al del quiebre.
+    await waitFor(() => expect(screen.getAllByText(/6\.000,00/).length).toBeGreaterThan(0))
+    expect(llamadas.some((u) => u.includes('/api/listas-precio/5/precio?') && u.includes('cantidad=3'))).toBe(true)
   })
 
-  it('si /api/listas-precio/{id}/precio falla, el POS no se bloquea', async () => {
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
-      const u = String(url)
-      if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
-      if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-      if (u.includes('/api/listas-precio') && !u.includes('/precio')) return Promise.resolve(json([LISTA]))
-      if (u.includes('/api/listas-precio/5/precio')) return Promise.reject(new Error('500'))
-      if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-      if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
-      if (u.includes('/customers')) return Promise.resolve(json([]))
-      if (u.includes('/api/productos/escanear')) {
-        return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))
-      }
-      return Promise.resolve(json([]))
-    }))
-
+  it('sin lista predeterminada vende al precio plano y no consulta precios', async () => {
+    const { llamadas } = montarRed(2500, 2000, [])
     const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
     await escanear(user)
+    await screen.findByText(/Yerba 1kg/)
 
-    // Aun con fallo en /precio, el POS vende sin bloquearse
-    const textElements = await screen.findAllByText(/3\.000,00/)
-    expect(textElements.length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/3\.000,00/)).length).toBeGreaterThan(0)
+    expect(llamadas.some((u) => u.includes('/precio?'))).toBe(false)
+  })
+
+  it('si la consulta de precio falla, vende al precio plano sin bloquear', async () => {
+    const { llamadas } = montarRed(2500, 2000, [LISTA], true)
+    const user = userEvent.setup()
+    render(<MemoryRouter><Pos /></MemoryRouter>)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
+    await escanear(user)
+    await screen.findByText(/Yerba 1kg/)
+
+    expect((await screen.findAllByText(/3\.000,00/)).length).toBeGreaterThan(0)
+    expect(llamadas.some((u) => u.includes('/precio?'))).toBe(true)
+  })
+
+  it('una etiqueta de balanza con precio propio no se pisa con el de la lista', async () => {
+    const { llamadas } = montarRed(2500, 2000, [LISTA], false, 4200)
+    const user = userEvent.setup()
+    render(<MemoryRouter><Pos /></MemoryRouter>)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
+    await escanear(user)
+    await screen.findByText(/Yerba 1kg/)
+
+    expect((await screen.findAllByText(/4\.200,00/)).length).toBeGreaterThan(0)
+    expect(llamadas.some((u) => u.includes('/precio?'))).toBe(false)
   })
 })

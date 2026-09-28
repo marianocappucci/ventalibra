@@ -475,9 +475,9 @@ export function Pos() {
     } catch {
       // sin variantes accesibles: se vende el item pelado
     }
-    // `precioUnitario` ya viene resuelto (una etiqueta de balanza trae el suyo,
-    // o `null` si la balanza no dio ninguno): sólo se consulta la lista cuando
-    // nadie más ya lo decidió.
+    // `precioUnitario` sólo viene definido cuando una etiqueta de balanza trae el
+    // suyo: ese no se pisa. En cualquier otro caso (`undefined`) se consulta la
+    // lista predeterminada.
     const efectivo = precioUnitario === undefined ? await resolverPrecioEfectivo(item.id, cantidad) : precioUnitario
     agregar(item, cantidad, undefined, efectivo)
   }
@@ -526,7 +526,7 @@ export function Pos() {
       await elegirItem(
         escaneado.producto,
         escaneado.de_balanza ? String(escaneado.cantidad) : cantidad,
-        escaneado.precio_unitario === null ? null : String(escaneado.precio_unitario),
+        escaneado.precio_unitario === null ? undefined : String(escaneado.precio_unitario),
       )
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
