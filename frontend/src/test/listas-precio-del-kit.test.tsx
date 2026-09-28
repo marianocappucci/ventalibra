@@ -33,7 +33,7 @@ it('lista las listas de precio', async () => {
   expect(await screen.findByText('Mayorista')).toBeInTheDocument()
 })
 
-it('el detalle de una lista trae los quiebres por cantidad', async () => {
+it('el detalle de una lista trae los quiebres por cantidad y las promociones con vigencia', async () => {
   render(
     <MemoryRouter initialEntries={['/listas-precio/3']}>
       <Routes><Route path="/listas-precio/:id" element={<ListaPrecioDetalle />} /></Routes>
@@ -41,4 +41,5 @@ it('el detalle de una lista trae los quiebres por cantidad', async () => {
   )
   expect(await screen.findByText('Yerba Playadito')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Quiebres' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Promociones' })).toBeInTheDocument()
 })
