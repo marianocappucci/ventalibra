@@ -1970,7 +1970,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - Fecha: 2026-09-28
 - Contexto: segundo ítem del roadmap de producto, que ADR-042 dejó a medias (precio por cantidad y
   vigencia sí; combos y 2x1 no). Es construcción nueva: ningún producto de la familia tenía
-  promociones por regla, así que se hizo en `libracommerce` (ADR-012) para que Contalibra y
+  promociones por regla, así que se hizo en `libracommerce` (ADR-014) para que Contalibra y
   Restolibra puedan montarlas. Dos decisiones de negocio consultadas al humano: construir «llevá N
   pagá M» y combos fijos juntos, y registrar la promoción como **descuento de la venta más una
   tabla que anota cuál se aplicó** (no repartir el ahorro en el precio de cada línea, que
@@ -1997,10 +1997,10 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - 🔴 **Segundo arreglo: la vigencia se comparaba en UTC.** El POS manda `en` con `toISOString()` y
   el motor lo comparaba como texto contra vigencias guardadas en hora local: una promoción de 18 a
   20 hs se activaba a las 15 en Argentina. `libracommerce` v0.25.0 pasa un instante con zona a hora
-  local antes de comparar (ADR-012 del motor); el POS no cambia.
+  local antes de comparar (ADR-014 del motor); el POS no cambia.
 - Consecuencias: las promociones con horario rigen en hora de Argentina. Una instalación sin
   promociones vende exactamente como antes. Quedan fuera la ruta de variantes del POS
   (`elegirVariante`, que sigue al precio plano y sin promociones sobre la variante) y mostrar las
   promociones aplicadas en el detalle de la venta y en el ticket.
-- Depende de: `libracommerce` v0.25.0 (ADR-012) y `libra-ui` v0.84.0 (`comercio/Promociones`)
+- Depende de: `libracommerce` v0.25.0 (ADR-014) y `libra-ui` v0.84.0 (`comercio/Promociones`)
   publicados y los pines de este repo subidos.

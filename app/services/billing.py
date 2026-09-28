@@ -79,7 +79,7 @@ def configure(db_path: str) -> None:
         # criterio que `crear_venta_links`; la migración `NNNN_cliente_lista_precio` la aplica
         # sobre una instancia ya existente.
         crear_cliente_lista_precio(conn)
-        # Promociones (ADR-012 de libracommerce, ADR-043 de este producto): `promotions`,
+        # Promociones (ADR-014 de libracommerce, ADR-043 de este producto): `promotions`,
         # `promotion_items` y `sale_promotions`; las FK apuntan a `catalog_items` y `sales`
         # (LibraCommerce). Idempotente; la migración `NNNN_promociones` la aplica sobre una
         # instancia ya existente.

@@ -1,7 +1,7 @@
 """promociones: «llevá N pagá M» y combos, y lo que se aplicó en cada venta.
 
 `promotions`, `promotion_items` y `sale_promotions` son del motor desde el
-2026-09-28 (ADR-012 de libracommerce, `erp.schema.crear_promociones`, mismo
+2026-09-28 (ADR-014 de libracommerce, `erp.schema.crear_promociones`, mismo
 criterio que `crear_cliente_lista_precio` de la `0005`). Es construcción nueva
 —segundo ítem del roadmap de producto—, no una extracción: ningún producto de
 la familia las tenía. VentaLibra las monta con `OpcionesVentas(promociones=True)`

@@ -503,7 +503,7 @@ def create_app(db_path: str) -> FastAPI:
                 exigir_turno=True,
                 caja_con_turno=True,
                 # Las promociones vigentes se calculan en el servidor con las líneas que llegan y su
-                # ahorro se suma al descuento de la venta (libracommerce v0.25.0, ADR-012; ADR-043).
+                # ahorro se suma al descuento de la venta (libracommerce v0.25.0, ADR-014; ADR-043).
                 promociones=True,
                 # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
                 # retirado) rechazaba estos dos casos antes de confirmar --
