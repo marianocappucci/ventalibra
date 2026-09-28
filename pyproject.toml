@@ -63,7 +63,7 @@ dependencies = [
     # v0.21.0 -> v0.22.0 (2026-09-28): `erp.actualizacion_masiva` y `web.planillas_router.
     # build_actualizacion_precios_router` (actualización masiva de precios desde la planilla de un
     # proveedor, roadmap de producto, ADR-041). Extra nuevo `planillas` (trae `openpyxl`), sumado acá.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.22.0",
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.23.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
