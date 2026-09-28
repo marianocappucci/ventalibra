@@ -24,7 +24,12 @@ from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
 from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.erp.reportes import puerto_de_reportes
-from libracommerce.web.catalogo_router import build_depositos_router, build_productos_router, build_stock_router
+from libracommerce.web.catalogo_router import (
+    build_depositos_router,
+    build_productos_router,
+    build_stock_router,
+    build_sucursales_router,
+)
 from libracommerce.web.compras_router import build_compras_router
 from libracommerce.web.listas_router import (
     build_cliente_lista_router,
@@ -88,7 +93,7 @@ from .cajas_ganchos import (
 )
 from .compras_ganchos import OPCIONES_DE_COMPRAS
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
-from .depositos_ganchos import OPCIONES_DE_STOCK, opciones_de_depositos
+from .depositos_ganchos import OPCIONES_DE_STOCK, opciones_de_depositos, opciones_de_sucursales
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .productos_ganchos import OPCIONES_DE_CATALOGO
@@ -104,8 +109,8 @@ from .routers import (
 )
 from .services import billing
 from .services import cajas as cajas_service
-from .services.locations import LocationService, vende
 from .services.modules import ModuleRepository
+from .services.sucursales import SucursalService
 from .services.users import UserRepository, ensure_default_admin
 
 
@@ -223,7 +228,7 @@ def create_app(db_path: str) -> FastAPI:
         "ventalibra", core=True, default="./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
-    # Cajas por sucursal (2026-09-16): toda sucursal (Location del dominio)
+    # Cajas por sucursal (2026-09-16): toda sucursal (`branches`, del dominio)
     # tiene al menos una caja, idempotente. `billing.configure()` (via
     # `libracore.db.schema.init_core_schema()`) ya garantiza que exista AL
     # MENOS una caja default en la instancia, sin sucursal, para una base
@@ -231,10 +236,8 @@ def create_app(db_path: str) -> FastAPI:
     # completa lo que falte por sucursal. Corre en cada arranque; en el
     # segundo no crea nada (ver `app/services/cajas.py::
     # asegurar_cajas_de_todas`).
-    # Toda instancia declara como mínimo una sucursal y un depósito.
-    LocationService(conn).asegurar_tipos_minimos()
-    # Sólo las que venden (`store`): un depósito no tiene cajas propias.
-    _sucursales_activas = [s for s in LocationService(conn).list() if vende(s)]
+    # La sucursal y el depósito mínimos los garantiza `db.connect()` (ya corrió arriba).
+    _sucursales_activas = SucursalService(conn).list()
     _sucursal_default = next((s for s in _sucursales_activas if s.is_default), None)
     cajas_service.asegurar_cajas_de_todas(
         [s.id for s in _sucursales_activas],
@@ -550,8 +553,8 @@ def create_app(db_path: str) -> FastAPI:
     # ABM propio de `/api/cajas`. Leer es de staff y admin (se elige la caja al abrir turno); escribir en las
     # cajas es de admin, lo dice `autorizar_escritura`. Las sucursales se leen de `app.state.conn` en cada
     # pedido: la app la reemplaza al restaurar un respaldo.
-    def _sucursales() -> LocationService:
-        return LocationService(app.state.conn)
+    def _sucursales() -> SucursalService:
+        return SucursalService(app.state.conn)
 
     app.include_router(
         build_turnos_router(
@@ -561,12 +564,20 @@ def create_app(db_path: str) -> FastAPI:
         dependencies=staff_or_admin,
     )
     app.include_router(build_cajas_router(opciones=opciones_de_cajas(_sucursales)), dependencies=staff_or_admin)
-    # Sucursales/depósitos y stock (fase 6, ADR-033): los routers del motor con las reglas de VentaLibra como
-    # ganchos (`app/depositos_ganchos.py`). Reemplazan a `/locations` y a `/stock`. Leer y transferir es de staff y
-    # admin; crear, editar, predeterminar y borrar, de admin (`autorizar_escritura`).
+    # Sucursales/depósitos y stock (fase 6, ADR-033; jerarquía, 2026-09-28): los routers del motor con las reglas de
+    # VentaLibra como ganchos (`app/depositos_ganchos.py`). Reemplazan a `/locations` y a `/stock`. Una sucursal es
+    # una entidad propia y el stock vive en sus depósitos. Leer y transferir es de staff y admin; crear, editar,
+    # predeterminar y borrar, de admin (`autorizar_escritura`).
+    app.include_router(
+        build_sucursales_router(
+            conexion=lc_get_connection, usuario_actual=usuario_actual,
+            opciones=opciones_de_sucursales(_sucursales),
+        ),
+        dependencies=staff_or_admin,
+    )
     app.include_router(
         build_depositos_router(
-            conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=opciones_de_depositos(_sucursales),
+            conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=opciones_de_depositos(),
         ),
         dependencies=staff_or_admin,
     )
@@ -699,8 +710,8 @@ def create_app(db_path: str) -> FastAPI:
     def _resolver_sucursal_nombre(sucursal_id: int | None) -> str:
         if sucursal_id is None:
             return ""
-        loc = LocationService(app.state.conn).get(sucursal_id)
-        return loc.name if loc else ""
+        sucursal = SucursalService(app.state.conn).get(sucursal_id)
+        return sucursal.name if sucursal else ""
 
     app.include_router(
         build_cierre_diario_router(

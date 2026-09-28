@@ -96,15 +96,18 @@ def validar_deposito(conn: Any, *, operacion: str, turno: Any | None,
         return
     caja_nombre, sucursal_id = fila[0], int(fila[1])
     efectivo = deposito_id if deposito_id is not None else get_default_deposito_id(conn)
-    if efectivo == sucursal_id:
+    de_la_sucursal = conn.execute(
+        "SELECT 1 FROM locations WHERE id = ? AND branch_id = ?", (efectivo, sucursal_id)
+    ).fetchone()
+    if de_la_sucursal:
         return
     sucursal = conn.execute(
-        "SELECT name FROM locations WHERE id = ?", (sucursal_id,)
+        "SELECT name FROM branches WHERE id = ?", (sucursal_id,)
     ).fetchone()
     nombre_sucursal = sucursal[0] if sucursal else f"#{sucursal_id}"
     que = "La venta" if operacion == "venta" else "La devolución"
     raise DepositoNoPermitido(
-        f"{que} tiene que ser del depósito de la sucursal {nombre_sucursal}: "
+        f"{que} tiene que ser de un depósito de la sucursal {nombre_sucursal}: "
         f"el turno está abierto en la caja {caja_nombre}, que es de esa sucursal."
     )
 

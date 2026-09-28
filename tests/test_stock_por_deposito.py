@@ -79,13 +79,12 @@ def test_un_deposito_vacio_es_una_columna_y_no_se_omite(admin_client):
 
     datos = _stock(admin_client)
     assert vacio in [d["id"] for d in datos["depositos"]], "el depósito vacío no es columna"
-    assert {"store", "warehouse"} <= {d["tipo"] for d in datos["depositos"]}
     assert _en(_fila(datos, "Yerba"), vacio) == 0.0
 
 
 def test_las_columnas_son_las_ubicaciones_activas(admin_client):
-    baja = _sucursal(admin_client, "Sucursal de baja")
-    admin_client.put(f"/api/depositos/{baja}", json={"nombre": "Sucursal de baja", "activo": False})
+    baja = _sucursal(admin_client, "Depósito de baja", tipo="warehouse")
+    admin_client.put(f"/api/depositos/{baja}", json={"nombre": "Depósito de baja", "activo": False})
     assert baja not in [d["id"] for d in _stock(admin_client)["depositos"]]
 
 

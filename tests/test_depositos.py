@@ -1,99 +1,89 @@
-"""Sucursales y depósitos con el router del motor (`/api/depositos`, fase 6, ADR-033).
+"""Depósitos con el router del motor (`/api/depositos`, fase 6, ADR-033; jerarquía, 2026-09-28).
 
-Hasta la fase 6 esto era `/locations` (`app/routers/locations.py`). Ahora es `libracommerce.web.catalogo_router.
-build_depositos_router`, el mismo de Contalibra y Restolibra, con las reglas de VentaLibra como ganchos
-(`app/depositos_ganchos.py`): dos tipos que no se cambian, como mínimo una sucursal y un depósito activos, la
-sucursal con turno abierto no se desactiva, una sucursal no se elimina, y la sucursal nueva recibe su caja.
+Desde la jerarquía el stock vive sólo en los depósitos y **todo depósito pertenece a una sucursal**
+(`locations.branch_id`). Las guardas de «a lo sumo un default», «no desactivar el default» y «no quitar el último
+depósito activo de una sucursal» son del motor (`libracommerce.erp.catalogo`, ADR-012/013); la regla de este
+producto —el depósito nace con su sucursal— vive en `app/depositos_ganchos.py`.
 
-Las guardas de «a lo sumo un default» y «no desactivar el default» son del motor
-(`libracommerce.erp.catalogo.update_deposito`/`set_default_deposito`).
+Las reglas de las sucursales (`/api/sucursales`) están en `test_sucursales.py`.
 """
 from conftest import https_client
 from motor_de_test import destino_dominio
-from test_cajas import _cajas_de, _crear_sucursal
-from ventas_helpers import abrir_turno, con_stock, crear_item, crear_ubicacion
+from ventas_helpers import con_stock, crear_deposito, crear_item, crear_sucursal, sucursal_default
 
 from app.main import create_app
 
 
-def _sucursal_default(client) -> dict:
-    return next(loc for loc in client.get("/api/depositos").json() if loc["es_default"])
+def _deposito_default(client) -> dict:
+    return next(d for d in client.get("/api/depositos").json() if d["es_default"])
 
 
-def _editar(client, loc: dict, **cambios):
-    cuerpo = {"nombre": loc["nombre"], "descripcion": loc["descripcion"] or "", "activo": True} | cambios
-    return client.put(f"/api/depositos/{loc['id']}", json=cuerpo)
+def _editar(client, dep: dict, **cambios):
+    cuerpo = {"nombre": dep["nombre"], "descripcion": dep["descripcion"] or "", "activo": True} | cambios
+    return client.put(f"/api/depositos/{dep['id']}", json=cuerpo)
 
 
-def test_editar_sucursal_cambia_el_nombre(admin_client):
-    sucursal = _crear_sucursal(admin_client, "Sucursal Norte")
+def test_editar_deposito_cambia_el_nombre(admin_client):
+    deposito = crear_deposito(admin_client, "Depósito Norte")
 
-    editada = _editar(admin_client, sucursal, nombre="  Sucursal Norte (renombrada)  ")
+    editado = _editar(admin_client, deposito, nombre="  Depósito Norte (renombrado)  ")
 
-    assert editada.status_code == 200, editada.text
+    assert editado.status_code == 200, editado.text
     # El nombre se guarda sin los espacios del padding -- mismo criterio que el resto de la familia.
-    assert editada.json()["nombre"] == "Sucursal Norte (renombrada)"
-    assert editada.json()["tipo"] == "store"
+    assert editado.json()["nombre"] == "Depósito Norte (renombrado)"
 
 
-def test_marcar_default_desmarca_la_anterior(admin_client):
-    """`set-default` en la sucursal nueva deja EXACTAMENTE una default."""
-    vieja_default = _sucursal_default(admin_client)
-    nueva = _crear_sucursal(admin_client, "Sucursal Sur")
+def test_marcar_default_desmarca_el_anterior(admin_client):
+    """`set-default` en el depósito nuevo deja EXACTAMENTE un default."""
+    viejo_default = _deposito_default(admin_client)
+    nuevo = crear_deposito(admin_client, "Depósito Sur")
 
-    r = admin_client.post(f"/api/depositos/{nueva['id']}/set-default")
+    r = admin_client.post(f"/api/depositos/{nuevo['id']}/set-default")
     assert r.status_code == 200, r.text
     assert r.json()["es_default"]
 
     depositos = admin_client.get("/api/depositos").json()
-    assert [d["id"] for d in depositos if d["es_default"]] == [nueva["id"]]
-    assert not next(d for d in depositos if d["id"] == vieja_default["id"])["es_default"]
+    assert [d["id"] for d in depositos if d["es_default"]] == [nuevo["id"]]
+    assert not next(d for d in depositos if d["id"] == viejo_default["id"])["es_default"]
 
 
-def test_no_se_marca_default_una_inactiva_ni_se_escribe(admin_client):
-    """Guarda del motor: una default inactiva le seguiría cargando stock en silencio a un depósito dado de baja."""
-    otra = _crear_sucursal(admin_client, "Sucursal Norte")
-    assert _editar(admin_client, otra, activo=False).status_code == 200
+def test_no_se_marca_default_un_deposito_inactivo(admin_client):
+    """Guarda del motor: un default inactivo le seguiría cargando stock en silencio a un depósito dado de baja."""
+    otro = crear_deposito(admin_client, "Depósito Norte")
+    assert _editar(admin_client, otro, activo=False).status_code == 200
 
-    r = admin_client.post(f"/api/depositos/{otra['id']}/set-default")
+    r = admin_client.post(f"/api/depositos/{otro['id']}/set-default")
     assert r.status_code == 422, r.text
     assert "inactivo" in r.json()["detail"]
-    assert _sucursal_default(admin_client)["id"] != otra["id"]
+    assert _deposito_default(admin_client)["id"] != otro["id"]
 
 
-def test_desactivar_la_sucursal_default_da_422_y_no_deja_nada_a_medias(admin_client):
-    _crear_sucursal(admin_client, "Otra sucursal")  # así no es la última: la frena la guarda del motor
-    default = _sucursal_default(admin_client)
+def test_desactivar_el_deposito_default_da_422_y_no_deja_nada_a_medias(admin_client):
+    crear_deposito(admin_client, "Otro depósito")  # así no es el último de su sucursal
+    default = _deposito_default(admin_client)
 
     r = _editar(admin_client, default, activo=False)
 
     assert r.status_code == 422, r.text
     assert "por defecto" in r.json()["detail"]
-    assert _sucursal_default(admin_client)["activo"]  # sigue activa
+    assert _deposito_default(admin_client)["activo"]  # sigue activo
 
 
-def test_desactivar_sucursal_con_turno_abierto_da_409(admin_client):
-    sucursal = _crear_sucursal(admin_client, "Sucursal con turno")
-    caja_id = _cajas_de(admin_client, sucursal["id"])[0]["id"]
-    abrir_turno(admin_client, caja_id=caja_id)
+def test_no_se_desactiva_el_ultimo_deposito_activo_de_una_sucursal(admin_client):
+    """Una sucursal nueva nace con UN depósito, que no es el default de la instancia: la guarda que frena es la del
+    último depósito de su sucursal."""
+    sucursal = crear_sucursal(admin_client, "Sucursal Norte")
+    unico = next(d for d in admin_client.get("/api/depositos").json() if d["id"] == sucursal["deposito_predeterminado_id"])
 
-    r = _editar(admin_client, sucursal, activo=False)
+    r = _editar(admin_client, unico, activo=False)
 
-    assert r.status_code == 409, r.text
-    assert "turno" in r.json()["detail"]
-    assert next(d for d in admin_client.get("/api/depositos").json() if d["id"] == sucursal["id"])["activo"]
+    assert r.status_code == 422, r.text
+    assert "único depósito activo" in r.json()["detail"]
 
 
-def test_desactivar_sucursal_sin_turno_abierto_funciona(admin_client):
-    """Control positivo del test anterior: la guarda es por turno abierto, no por editar en general."""
-    sucursal = _crear_sucursal(admin_client, "Sucursal sin ventas")
-
-    r = _editar(admin_client, sucursal, activo=False)
-
-    assert r.status_code == 200, r.text
-    assert not r.json()["activo"]
-    # El listado del motor trae también las inactivas (la pantalla las muestra apagadas y permite reactivarlas).
-    assert not next(d for d in admin_client.get("/api/depositos").json() if d["id"] == sucursal["id"])["activo"]
+def test_con_otro_deposito_se_puede_dar_de_baja_uno(admin_client):
+    extra = crear_deposito(admin_client, "Depósito 2")
+    assert _editar(admin_client, extra, activo=False).status_code == 200
 
 
 def test_editar_inexistente_da_404(admin_client):
@@ -102,8 +92,8 @@ def test_editar_inexistente_da_404(admin_client):
 
 
 def test_editar_con_nombre_vacio_da_422(admin_client):
-    sucursal = _sucursal_default(admin_client)
-    r = admin_client.put(f"/api/depositos/{sucursal['id']}", json={"nombre": "   ", "activo": True})
+    deposito = _deposito_default(admin_client)
+    r = admin_client.put(f"/api/depositos/{deposito['id']}", json={"nombre": "   ", "activo": True})
     assert r.status_code == 422, r.text
 
 
@@ -113,21 +103,22 @@ def test_editar_sin_sesion_da_401(tmp_path):
         assert r.status_code == 401, r.text
 
 
-def test_el_cajero_no_crea_edita_predetermina_ni_borra_pero_las_lista(admin_client, staff_client):
-    """Alta, edición, predeterminada y baja, sólo admin (decisión del humano, 2026-09-17). El listado sigue abierto: el
-    POS lo necesita para abrir turno."""
-    sucursal = _crear_sucursal(admin_client, "Sucursal del admin")
+def test_el_cajero_no_crea_edita_predetermina_ni_borra_pero_los_lista(admin_client, staff_client):
+    """Alta, edición, predeterminado y baja, sólo admin (decisión del humano, 2026-09-17). El listado sigue abierto:
+    el POS lo necesita."""
+    deposito = crear_deposito(admin_client, "Depósito del admin")
 
-    assert staff_client.post("/api/depositos", json={"nombre": "Del cajero"}).status_code == 403
+    sucursal = sucursal_default(admin_client)["id"]
+    assert staff_client.post("/api/depositos", json={"nombre": "Del cajero", "branch_id": sucursal}).status_code == 403
     assert staff_client.put(
-        f"/api/depositos/{sucursal['id']}", json={"nombre": "Renombrada", "activo": True}
+        f"/api/depositos/{deposito['id']}", json={"nombre": "Renombrado", "activo": True}
     ).status_code == 403
-    assert staff_client.post(f"/api/depositos/{sucursal['id']}/set-default").status_code == 403
-    assert staff_client.delete(f"/api/depositos/{sucursal['id']}").status_code == 403
+    assert staff_client.post(f"/api/depositos/{deposito['id']}/set-default").status_code == 403
+    assert staff_client.delete(f"/api/depositos/{deposito['id']}").status_code == 403
 
     assert staff_client.get("/api/depositos").status_code == 200
     nombres = {d["nombre"] for d in admin_client.get("/api/depositos").json()}
-    assert "Del cajero" not in nombres and "Sucursal del admin" in nombres
+    assert "Del cajero" not in nombres and "Depósito del admin" in nombres
 
 
 def test_el_cambio_de_default_lo_ve_otra_conexion(admin_client):
@@ -136,95 +127,53 @@ def test_el_cambio_de_default_lo_ve_otra_conexion(admin_client):
     import psycopg
     from motor_de_test import TEST_DATABASE_URL
 
-    nueva = _crear_sucursal(admin_client, "Sucursal Nueva")
-    r = admin_client.post(f"/api/depositos/{nueva['id']}/set-default")
+    nuevo = crear_deposito(admin_client, "Depósito Nuevo")
+    r = admin_client.post(f"/api/depositos/{nuevo['id']}/set-default")
     assert r.status_code == 200, r.text
     with psycopg.connect(TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)) as otra:
         defaults = otra.execute("SELECT id FROM locations WHERE is_default = 1").fetchall()
-    assert defaults == [(nueva["id"],)]
+    assert defaults == [(nuevo["id"],)]
 
 
-# ── Dos tipos, y como mínimo uno de cada uno (decisión del humano, 2026-09-25) ──
+# ── Todo depósito pertenece a una sucursal (jerarquía, 2026-09-28) ──────────
 
 
-def _tipos_activos(client) -> list[str]:
-    return sorted(d["tipo"] for d in client.get("/api/depositos").json() if d["activo"])
+def test_un_deposito_nace_con_su_sucursal(admin_client):
+    sucursal = sucursal_default(admin_client)
+
+    r = admin_client.post("/api/depositos", json={"nombre": "Depósito Este", "branch_id": sucursal["id"]})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["branch_id"] == sucursal["id"]
 
 
-def test_una_base_nueva_declara_una_sucursal_y_un_deposito(admin_client):
-    assert _tipos_activos(admin_client) == ["store", "warehouse"]
-
-
-def test_el_tipo_se_elige_entre_sucursal_y_deposito(admin_client):
-    r = admin_client.post("/api/depositos", json={"nombre": "Local", "tipo": "Negocio"})
+def test_un_deposito_sin_sucursal_da_422(admin_client):
+    r = admin_client.post("/api/depositos", json={"nombre": "Suelto"})
     assert r.status_code == 422, r.text
-    # Sin tipo, un depósito, como siempre.
-    r = admin_client.post("/api/depositos", json={"nombre": "Sin tipo"})
-    assert r.status_code == 200 and r.json()["tipo"] == "warehouse"
+    assert "sucursal" in r.json()["detail"]
 
 
-def test_no_se_deja_a_la_instancia_sin_su_unica_sucursal_o_deposito(admin_client):
-    deposito = next(d for d in admin_client.get("/api/depositos").json() if d["tipo"] == "warehouse")
-    assert not deposito["es_default"]  # el default es la sucursal sembrada
-
-    r = _editar(admin_client, deposito, activo=False)
-    assert r.status_code == 409, r.text
-    assert "como mínimo" in r.json()["detail"]
-    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+def test_un_deposito_en_una_sucursal_inexistente_da_422(admin_client):
+    r = admin_client.post("/api/depositos", json={"nombre": "Huérfano", "branch_id": 9999})
+    assert r.status_code == 422, r.text
 
 
-def test_el_tipo_no_se_cambia_al_editar(admin_client):
-    """Una sucursal sigue siendo sucursal y un depósito, depósito (decisión del humano, 2026-09-26): el tipo se elige
-    al crear, y el `PUT` del motor ni lo recibe."""
-    depositos = admin_client.get("/api/depositos").json()
-    sucursal = next(d for d in depositos if d["tipo"] == "store")
-    deposito = next(d for d in depositos if d["tipo"] == "warehouse")
-    for loc, intento in ((sucursal, "warehouse"), (deposito, "store")):
-        r = _editar(admin_client, loc, tipo=intento)  # el campo no existe en el payload: se ignora
-        assert r.status_code == 200, r.text
-        assert r.json()["tipo"] == loc["tipo"]
-    assert _tipos_activos(admin_client) == ["store", "warehouse"]
+def test_el_listado_de_depositos_trae_la_sucursal_de_cada_uno(admin_client):
+    sucursal = sucursal_default(admin_client)
+    extra = crear_deposito(admin_client, "Depósito Extra", sucursal["id"])
+
+    por_id = {d["id"]: d for d in admin_client.get("/api/depositos").json()}
+
+    assert por_id[extra["id"]]["branch_id"] == sucursal["id"]
+    assert por_id[sucursal["deposito_predeterminado_id"]]["branch_id"] == sucursal["id"]
 
 
-def test_con_otro_deposito_se_puede_dar_de_baja_el_primero(admin_client):
-    deposito = next(d for d in admin_client.get("/api/depositos").json() if d["tipo"] == "warehouse")
-    crear_ubicacion(admin_client, "Depósito 2", "warehouse")
-    assert _editar(admin_client, deposito, activo=False).status_code == 200
-
-
-def test_el_arranque_completa_el_tipo_que_falta_y_es_idempotente(admin_client):
-    from app.services.locations import LocationService
-
-    conn = admin_client.app.state.conn
-    conn.execute("DELETE FROM locations WHERE location_type = 'warehouse'")
-    conn.commit()
-    servicio = LocationService(conn)
-    assert servicio.asegurar_tipos_minimos() == ["Depósito 1"]
-    assert servicio.asegurar_tipos_minimos() == []
-    assert _tipos_activos(admin_client) == ["store", "warehouse"]
-
-
-# ── Alta y baja (fase 6) ────────────────────────────────────────────────────
-
-
-def test_la_sucursal_nueva_recibe_su_caja_y_el_deposito_no(admin_client):
-    sucursal = crear_ubicacion(admin_client, "Sucursal Este", "store")
-    deposito = crear_ubicacion(admin_client, "Depósito Este", "warehouse")
-    assert len(_cajas_de(admin_client, sucursal["id"])) == 1
-    assert _cajas_de(admin_client, deposito["id"]) == []
-
-
-def test_una_sucursal_no_se_elimina_se_desactiva(admin_client):
-    sucursal = crear_ubicacion(admin_client, "Sucursal Oeste", "store")
-    r = admin_client.delete(f"/api/depositos/{sucursal['id']}")
-    assert r.status_code == 409, r.text
-    assert "desactivala" in r.json()["detail"]
-    assert sucursal["id"] in [d["id"] for d in admin_client.get("/api/depositos").json()]
+# ── Baja ────────────────────────────────────────────────────────────────────
 
 
 def test_un_deposito_sin_movimientos_se_elimina_y_con_movimientos_no(admin_client):
-    vacio = crear_ubicacion(admin_client, "Depósito vacío", "warehouse")
-    con_mov = crear_ubicacion(admin_client, "Depósito con stock", "warehouse")
+    vacio = crear_deposito(admin_client, "Depósito vacío")
+    con_mov = crear_deposito(admin_client, "Depósito con stock")
     con_stock(admin_client, crear_item(admin_client), con_mov["id"], "3")
 
     assert admin_client.delete(f"/api/depositos/{vacio['id']}").json() == {"ok": True}
@@ -233,11 +182,13 @@ def test_un_deposito_sin_movimientos_se_elimina_y_con_movimientos_no(admin_clien
     assert "movimientos" in r.json()["detail"]
 
 
-def test_no_se_elimina_el_ultimo_deposito_activo(admin_client):
-    deposito = next(d for d in admin_client.get("/api/depositos").json() if d["tipo"] == "warehouse")
-    r = admin_client.delete(f"/api/depositos/{deposito['id']}")
-    assert r.status_code == 409, r.text
-    assert "como mínimo" in r.json()["detail"]
+def test_no_se_elimina_el_ultimo_deposito_activo_de_una_sucursal(admin_client):
+    sucursal = crear_sucursal(admin_client, "Sucursal Norte")
+
+    r = admin_client.delete(f"/api/depositos/{sucursal['deposito_predeterminado_id']}")
+
+    assert r.status_code == 422, r.text
+    assert "único depósito activo" in r.json()["detail"]
 
 
 # ── Los routers propios se retiraron ──

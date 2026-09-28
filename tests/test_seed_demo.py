@@ -76,7 +76,8 @@ def test_el_seed_corre_entero_sobre_una_base_vacia(api, capsys):
     salida = capsys.readouterr().out
     assert "unidades     2 creados" in salida
     assert "artículos    11 creados" in salida
-    assert "depósitos    2 creados" in salida
+    assert "sucursales   1 creados" in salida
+    assert "depósitos    1 creados" in salida
 
 
 def test_deja_el_catalogo_completo(api):

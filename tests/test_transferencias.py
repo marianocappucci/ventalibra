@@ -104,8 +104,8 @@ def test_un_deposito_que_no_existe_o_esta_inactivo_da_422_con_su_nombre(admin_cl
     assert "9999" in r.json()["detail"] and "no existe" in r.json()["detail"]
     assert _stock(admin_client, item, centro) == 10.0
 
-    baja = crear_ubicacion(admin_client, "Sucursal de baja", "store")
-    admin_client.put(f"/api/depositos/{baja['id']}", json={"nombre": "Sucursal de baja", "activo": False})
+    baja = crear_ubicacion(admin_client, "Depósito de baja", "warehouse")
+    admin_client.put(f"/api/depositos/{baja['id']}", json={"nombre": "Depósito de baja", "activo": False})
     r = _transferir(admin_client, item, centro, baja["id"], 1)
     assert r.status_code == 422, r.text
     assert _stock(admin_client, item, centro) == 10.0
