@@ -53,7 +53,7 @@ const ITEM = {
   unidad: 'u', precio_venta: 3000, activo: 1,
 }
 
-const LOCATION = { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 }
+const LOCATION = { id: 1, nombre: 'Salón', codigo: null, direccion: null, activa: true, es_default: true, deposito_predeterminado_id: 11, depositos: 1 }
 
 /** La venta ya registrada -- lo que devuelve `POST /api/ventas` (D1: nace
  *  completa, no un borrador vacío). */
@@ -123,7 +123,7 @@ function montarRed(opciones: {
       return Promise.resolve(json(venta({ id: vid, estado: 'pendiente', status: 'confirmed' })))
     }
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/api/depositos')) return Promise.resolve(json([LOCATION]))
+    if (u.includes('/api/sucursales')) return Promise.resolve(json([LOCATION]))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/api/productos/escanear')) {
       return Promise.resolve(json({
@@ -223,7 +223,7 @@ describe('El cobro con QR', () => {
       return encontrada!
     })
     expect(registro.body).toMatchObject({
-      deposito_id: 1,
+      deposito_id: 11,
       pagos: [{ medio: 'mercadopago', monto: 3000, cobrar_con_qr: true }],
     })
 

@@ -2,7 +2,7 @@
 // ticket de 80 mm. Lo puede hacer admin o cajero (staff) -- ver
 // DECISIONS.md, feature de cajas por sucursal.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type Deposito, type ShiftState } from '../api'
+import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type ShiftState, type Sucursal } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,7 +30,10 @@ export function CierreDiario() {
   // es sólo para no ofrecer un botón que va a dar 403.
   const { user } = useAuth()
   const esAdmin = user?.role === 'admin'
-  const [locations, setLocations] = useState<Deposito[]>([])
+  // Las sucursales activas: las que se ofrecen en el selector.
+  const [locations, setLocations] = useState<Sucursal[]>([])
+  // Todas, con las dadas de baja: para nombrar cierres viejos (si no, una sucursal de baja se vería «Sucursal #N»).
+  const [todasLasSucursales, setTodasLasSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState<string>('')
   const [preview, setPreview] = useState<CierreDiarioPreview | null>(null)
   const [historial, setHistorial] = useState<CierreDiarioRow[]>([])
@@ -56,12 +59,13 @@ export function CierreDiario() {
   useEffect(() => {
     (async () => {
       try {
-        const [locs, estado] = await Promise.all([
-          api.get<Deposito[]>('/api/depositos'),
+        const [todas, estado] = await Promise.all([
+          api.get<Sucursal[]>('/api/sucursales?solo_activas=false'),
           api.get<ShiftState>('/api/turnos/actual').catch(() => ({ turno: null }) as ShiftState),
         ])
-        const activas = locs.filter((l) => !!l.activo)
+        const activas = todas.filter((l) => !!l.activa)
         setLocations(activas)
+        setTodasLasSucursales(todas)
         const sucursalDelTurno = estado.turno?.sucursal?.id
         const porDefecto = activas.find((l) => !!l.es_default)
         setSucursalId(String(sucursalDelTurno ?? porDefecto?.id ?? activas[0]?.id ?? ''))
@@ -92,9 +96,9 @@ export function CierreDiario() {
   useEffect(() => { cargar() }, [cargar])
 
   const nombreSucursal = useMemo(() => {
-    const m = new Map(locations.map((l) => [l.id, l.nombre]))
+    const m = new Map(todasLasSucursales.map((l) => [l.id, l.nombre]))
     return (id: number | null) => (id !== null ? m.get(id) ?? `Sucursal #${id}` : 'Sin sucursal')
-  }, [locations])
+  }, [todasLasSucursales])
 
   async function confirmarCierre() {
     setCerrando(true)

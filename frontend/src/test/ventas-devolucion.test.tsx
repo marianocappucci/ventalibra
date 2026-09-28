@@ -39,7 +39,25 @@ const DETALLE: Venta = {
 
 type Llamada = { metodo: string; url: string; body: unknown }
 
-function montarRed(opciones: { yaDevuelto?: number; depositoId?: number | null } = {}) {
+// Sucursal y depósito son entidades distintas: cada depósito tiene su `branch_id`, y la sucursal dice cuál es su
+// depósito de venta. Los ids no coinciden a propósito (la sucursal 7 vende del depósito 12).
+const dep = (id: number, nombre: string, branch_id: number, es_default = 0, activo = 1) => (
+  { id, nombre, descripcion: '', branch_id, tipo: 'warehouse', activo, es_default, total_productos: 0 }
+)
+const DEPOSITOS = [
+  dep(11, 'Salón Centro', 1, 1),
+  dep(13, 'Bodega Centro', 1),
+  dep(12, 'Salón Norte', 7),
+  dep(14, 'Bodega vieja Norte', 7, 0, 0),
+]
+const sucursal = (id: number, nombre: string, deposito_predeterminado_id: number, es_default = false) => (
+  { id, nombre, codigo: null, direccion: null, activa: true, es_default, deposito_predeterminado_id, depositos: 2 }
+)
+const SUCURSALES = [sucursal(1, 'Centro', 11, true), sucursal(7, 'Norte', 12)]
+
+function montarRed(opciones: {
+  yaDevuelto?: number; depositoId?: number | null; turnoEnSucursal?: number | null
+} = {}) {
   const llamadas: Llamada[] = []
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
@@ -53,15 +71,22 @@ function montarRed(opciones: { yaDevuelto?: number; depositoId?: number | null }
         por_clave: opciones.yaDevuelto
           ? [{ producto_id: 3, variante_id: null, cantidad: opciones.yaDevuelto }]
           : [],
-        deposito_id: opciones.depositoId ?? 1,
+        deposito_id: opciones.depositoId === undefined ? 11 : opciones.depositoId,
       }))
     }
-    if (u.includes('/api/depositos')) {
-      return Promise.resolve(json([
-        { id: 1, nombre: 'Depósito principal', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 },
-        { id: 2, nombre: 'Sucursal Once', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 0 },
-      ]))
+    if (u.includes('/api/turnos/actual')) {
+      const sucursalId = opciones.turnoEnSucursal
+      return Promise.resolve(json({
+        turno: sucursalId == null ? null : {
+          id: 5, usuario_id: 1, usuario_nombre: 'Ana', apertura: '2026-09-16T10:00:00', cierre: null,
+          monto_inicial: 0, estado: 'abierto', notas: '', caja_id: 10,
+          caja: { id: 10, nombre: 'Caja 1', punto_venta: null },
+          sucursal: { id: sucursalId, nombre: 'Sucursal' },
+        },
+      }))
     }
+    if (u.includes('/api/sucursales')) return Promise.resolve(json(SUCURSALES))
+    if (u.includes('/api/depositos')) return Promise.resolve(json(DEPOSITOS))
     if (u.includes('/api/ventas/42/devolver')) return Promise.resolve(json({ importe: 1500, venta: DETALLE }))
     return Promise.resolve(json([]))
   })
@@ -73,6 +98,15 @@ beforeEach(() => {
   localStorage.clear()
   _resetCacheDeMedios()
 })
+
+// Radix Select usa pointer capture, que jsdom no trae.
+if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false
+if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+
+async function abrirDialogo(user: ReturnType<typeof userEvent.setup>) {
+  render(<DevolucionDeVenta detalle={DETALLE} recargar={vi.fn()} />)
+  await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+}
 
 describe('La devolución de una venta', () => {
   it('manda sale_item_id, cantidad, deposito_id y medio_pago, y recarga', async () => {
@@ -94,7 +128,7 @@ describe('La devolución de una venta', () => {
     })
     expect(devolucion.body).toMatchObject({
       lineas: [{ sale_item_id: 501, cantidad: 2 }],
-      deposito_id: 1,
+      deposito_id: 11,
       medio_pago: 'efectivo',
     })
     // Nada de `index`: la forma vieja del payload (`POST /sales/{id}/returns`,
@@ -104,25 +138,67 @@ describe('La devolución de una venta', () => {
   })
 
   it('propone el depósito de la venta original', async () => {
-    montarRed({ depositoId: 2 })
+    montarRed({ depositoId: 13 })
     const user = userEvent.setup()
-    render(<DevolucionDeVenta detalle={DETALLE} recargar={vi.fn()} />)
-
-    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await abrirDialogo(user)
 
     // El combobox de depósito (no el de "Devolver por") tiene que mostrar
-    // "Sucursal Once" como valor ya elegido -- no hace falta abrirlo.
+    // "Bodega Centro" como valor ya elegido -- no hace falta abrirlo.
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveTextContent('Sucursal Once')
+      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveTextContent('Bodega Centro')
+    })
+  })
+
+  it('sin turno ofrece todos los depósitos activos, y sin depósito de la venta propone el de venta de la sucursal predeterminada', async () => {
+    montarRed({ depositoId: null })
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+
+    const combo = await screen.findByRole('combobox', { name: 'Depósito' })
+    await waitFor(() => expect(combo).toHaveTextContent('Salón Centro'))
+    await user.click(combo)
+    const nombres = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(nombres).toEqual(['Salón Centro', 'Bodega Centro', 'Salón Norte'])
+  })
+
+  it('con turno en una sucursal ofrece sólo los depósitos activos de ésa, y manda el elegido', async () => {
+    // El turno es de la sucursal 7. La venta original salió del depósito 11 (otra sucursal): no es opción, así que
+    // se propone el depósito de venta de la 7 (el 12), que es el que el backend acepta.
+    const { llamadas } = montarRed({ turnoEnSucursal: 7, depositoId: 11 })
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+
+    const combo = await screen.findByRole('combobox', { name: 'Depósito' })
+    await waitFor(() => expect(combo).toHaveTextContent('Salón Norte'))
+    await user.click(combo)
+    // Ni los depósitos de la sucursal 1 ni el dado de baja de la 7.
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Salón Norte'])
+    await user.keyboard('{Escape}')
+
+    await user.type(await screen.findByPlaceholderText(/máx\. 5/), '1')
+    await user.click(await screen.findByRole('button', { name: /Confirmar devolución/ }))
+    const devolucion = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.url.includes('/api/ventas/42/devolver'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(devolucion.body).toMatchObject({ deposito_id: 12 })
+  })
+
+  it('con turno, el depósito de la venta original se propone si es de la sucursal del turno', async () => {
+    montarRed({ turnoEnSucursal: 1, depositoId: 13 })
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveTextContent('Bodega Centro')
     })
   })
 
   it('topea la cantidad a lo que todavía no se devolvió', async () => {
     montarRed({ yaDevuelto: 4 })
     const user = userEvent.setup()
-    render(<DevolucionDeVenta detalle={DETALLE} recargar={vi.fn()} />)
-
-    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await abrirDialogo(user)
 
     // Vendido 5, ya devuelto 4: queda 1 disponible.
     await screen.findByPlaceholderText(/máx\. 1/)
