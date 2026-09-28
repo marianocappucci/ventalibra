@@ -4,8 +4,8 @@
 import {
   ArrowRightLeft,
   Boxes,
-  BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, HandCoins, Landmark, Package, ReceiptText,
-  ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse,
+  BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, HandCoins, Landmark, LayoutDashboard,
+  Package, ReceiptText, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 import { LOGO, WORDMARK } from '@/branding'
@@ -53,6 +53,9 @@ export const Layout = createLayout({
     { to: '/turnos', label: 'Turnos', icon: Clock },
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
     { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },
+    // Fase 13 de la adopción de los motores (ADR-039): gateado a "premium" (plans.py), a diferencia de
+    // Tesorería/Egresos/Libros IVA. Sin nav-hiding por módulo: un admin de otro plan ve el 403 del motor.
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: true },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
     // Fase 12 de la adopción de los motores (ADR-038): ventas ya funciona, compras se completa con Egresos.
     { to: '/libros-iva', label: 'Libros IVA', icon: BookText, adminOnly: true },

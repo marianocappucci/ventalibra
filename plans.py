@@ -2,13 +2,15 @@
 plans.py de gestiolibra/medlibra (PLANES/PLAN_MODULOS/aplicar_plan_en_db),
 consumido por libracore.provisioning via import diferido.
 
-Catalogo, inventario, ventas y compras son siempre libres en todos los
-planes (equivalente a "turnos" en Gestiolibra / todo el dominio clinico en
-MedLibra) -- lo mismo que caja, que en VentaLibra es "siempre" por decision
-de negocio (ver DECISIONS.md ADR-007, independiente del tema fiscal).
-Facturacion es el unico modulo gateable por ahora; Premium queda con
-margen para dashboard/reportes cuando se construyan (Fase 5 del
-ROADMAP.md).
+Catalogo, inventario, ventas, compras, tesoreria, egresos y libros IVA son
+siempre libres en todos los planes (equivalente a "turnos" en Gestiolibra /
+todo el dominio clinico en MedLibra) -- lo mismo que caja, que en VentaLibra
+es "siempre" por decision de negocio (ver DECISIONS.md ADR-007, independiente
+del tema fiscal). Facturacion y dashboard son los unicos modulos gateables
+por ahora (fase 13 de la adopcion de los motores, ADR-039: dashboard cierra
+la intencion que este comentario ya declaraba desde antes de construirse,
+Fase 5 del ROADMAP.md); Premium sigue con margen para reportes si algun dia
+se gatea tambien.
 """
 PLANES = ["basico", "estandar", "premium"]
 PLAN_LABELS = {"basico": "Básico", "estandar": "Estándar", "premium": "Premium"}
@@ -16,7 +18,7 @@ PLAN_PRECIOS = {"basico": 20000, "estandar": 35000, "premium": 55000}
 
 _BASICO: set[str] = set()
 _ESTANDAR = _BASICO | {"facturacion"}
-_PREMIUM = _ESTANDAR | set()  # dashboard/reportes se suman aca cuando existan
+_PREMIUM = _ESTANDAR | {"dashboard"}
 PLAN_MODULOS = {"basico": set(_BASICO), "estandar": set(_ESTANDAR), "premium": set(_PREMIUM)}
 
 TODOS_LOS_MODULOS = set(PLAN_MODULOS["premium"]) | _ESTANDAR | _BASICO

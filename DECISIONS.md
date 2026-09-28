@@ -1851,3 +1851,34 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Contalibra y Restolibra no se tocan: siguen con `egresos`/`libros_iva` como módulos de plan.
 - Depende de: nada nuevo que publicar — `libracore` y `libra-ui` ya traían los routers y las pantallas
   sin cambios.
+
+## ADR-039 — Dashboard con el router del motor y la pantalla del kit, gateado a premium (fase 13 de la adopción)
+
+- Estado: aceptada
+- Fecha: 2026-09-27
+- Contexto: a diferencia de Tesorería/Egresos/Libros IVA (fases 10–12), acá **sí hubo que construir**:
+  `libracore.dashboard_router.build_dashboard_router` no tenía `sin_fiado` (el mismo problema que Reportes
+  tenía antes de la fase 8: sin él, "Cobrado del mes" y "Saldo de caja" cuentan una venta a cuenta
+  corriente como plata ya entrada) — se agregó en `libracore` v1.114.0. Y la pantalla `Dashboard` no
+  existía en el kit: es la primera del inventario que sólo tenía referencia en **Contalibra**
+  (`pages/Dashboard.tsx`); Restolibra redirige `/dashboard` a `/salon` sin llegar a renderizarla. Se
+  extrajo a `libra-ui` v0.81.0 con props aditivas para lo que Contalibra tiene y otro producto no
+  (`accionesRapidas`, `conPresupuestos`, `rutaDeFactura`/`rutaDeFacturas`/`rutaDeCaja` nullables — mismo
+  patrón que `rutaDeFactura` de `Ventas`, ya `null` en este producto).
+- Decisión: a diferencia de las tres fases anteriores, acá el propio `plans.py` de este producto **ya
+  anticipaba el gate**, desde antes de que el módulo existiera: *"Facturación es el único módulo gateable
+  por ahora; Premium queda con margen para dashboard/reportes cuando se construyan"* (el comentario original
+  del ROADMAP). No fue necesario volver a preguntar la política: se agrega `"dashboard"` a `_PREMIUM`.
+  Contalibra, para comparar, monta el router **sin ningún gate** (ni admin ni módulo) — acá se lo dejó de
+  admin de todos modos, mismo criterio que Reportes y Caja por medio en este producto.
+  VentaLibra pasa `accionesRapidas=[]` (no tiene facturas/presupuestos/remitos como documentos propios,
+  ni una pantalla de "nuevo movimiento de caja" suelta), `conPresupuestos={false}` y las tres rutas en
+  `null` (no hay pantalla de facturas ni una de caja general).
+- Consecuencias:
+  - Nueva entrada de menú "Dashboard" (icono `LayoutDashboard`), visible para cualquier admin **aunque el
+    plan no lo incluya**: sin nav-hiding por módulo (no hay ese mecanismo armado en este producto todavía),
+    un admin de plan básico o estándar que hace clic ve el 403 genérico del motor
+    (`"modulo 'dashboard' no incluido en el plan actual"`), mismo comportamiento ya establecido para el
+    add-on `resguardo_externo`.
+  - Contalibra y Restolibra no se tocan: Contalibra sigue sin ningún gate en su propio Dashboard.
+- Depende de: `libracore` v1.114.0 y `libra-ui` v0.81.0 publicados y los pines de este repo subidos.
