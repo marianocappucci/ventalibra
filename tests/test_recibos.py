@@ -11,6 +11,12 @@ siga siendo válido aunque el comprobante falle.
 cableado estuviera roto **la suite entera pasaría igual** y `recibo_id`
 volvería en `None` sin que nada se queje. Afirmarlo es lo único que
 distingue "anda" de "no explota".
+
+Desde la fase 14 (ADR-040) `/api/recibos` es `libracore.recibos_router.
+build_recibos_router`, el mismo de Contalibra, con `get_venta=db_ventas.
+get_venta` (las ventas de mostrador viven en `sales` de LibraCommerce). Gana
+de paso listar/detalle, emitir de venta y anular (sólo admin) -- se prueban
+al final del archivo.
 """
 import io
 
@@ -139,7 +145,9 @@ def test_dos_cobros_son_dos_recibos_correlativos(admin_client):
 
 
 def test_un_pago_que_no_existe_no_emite_recibo(admin_client):
-    assert admin_client.post("/api/recibos/cobranza/99999").status_code == 404
+    # 409, no 404: mismo criterio que Contalibra (fase 14, ADR-040) -- antes de adoptar el router del
+    # motor, este endpoint propio contestaba 404 para el mismo caso.
+    assert admin_client.post("/api/recibos/cobranza/99999").status_code == 409
 
 
 # ── El PDF ───────────────────────────────────────────────────────────────────
@@ -209,3 +217,53 @@ def test_despues_de_un_fallo_el_boton_puede_emitirlo(admin_client, monkeypatch):
     assert recibo.status_code == 200
     reintentado = db_recibos.get_recibo(recibo.json()["id"])
     assert f"{str(reintentado['punto_venta']).zfill(4)}-{str(reintentado['numero']).zfill(8)}" == "0001-00000001"
+
+
+# ── Lo que se gana con el router del motor (fase 14, ADR-040) ────────────────
+
+def test_listar_trae_los_recibos_emitidos(admin_client):
+    cliente_id = _deudor(admin_client, "Listado")
+    admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                      json={"fecha": hoy(), "monto": "300.00", "medio_pago": "efectivo"})
+
+    listado = admin_client.get("/api/recibos").json()
+    assert listado["total"] >= 1
+    assert any(r["cliente_id"] == cliente_id for r in listado["recibos"])
+
+
+def test_emitir_recibo_de_una_venta_de_mostrador(admin_client):
+    """El gancho `get_venta` en acción: la venta sale de `sales`
+    (LibraCommerce), no de `ventas` (la tabla del propio esquema del motor,
+    que en este producto está vacía)."""
+    item_id = _make_item(admin_client, "Gaseosa")
+    _abrir_turno(admin_client)
+    venta = admin_client.post("/api/ventas", json={
+        "fecha": hoy(),
+        "items": [{"nombre": "línea", "qty": 1, "precio": 1500.0, "producto_id": item_id}],
+        "pagos": [{"medio": "efectivo", "monto": 1500.0}],
+    }).json()
+
+    r = admin_client.post(f"/api/recibos/venta/{venta['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["origen_tipo"] == "venta"
+    assert r.json()["total"] == 1500.0
+
+
+def test_una_venta_inexistente_no_emite_recibo(admin_client):
+    assert admin_client.post("/api/recibos/venta/99999").status_code == 409
+
+
+def test_un_cajero_no_puede_anular_un_recibo(staff_client, admin_client):
+    cliente_id = _deudor(admin_client, "Sin anular")
+    recibo_id = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                                  json={"fecha": hoy(), "monto": "100.00"}).json()["recibo_id"]
+    assert staff_client.post(f"/api/recibos/{recibo_id}/anular", json={"motivo": "x"}).status_code == 403
+
+
+def test_un_admin_puede_anular_un_recibo(admin_client):
+    cliente_id = _deudor(admin_client, "Anulable")
+    recibo_id = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
+                                  json={"fecha": hoy(), "monto": "100.00"}).json()["recibo_id"]
+    r = admin_client.post(f"/api/recibos/{recibo_id}/anular", json={"motivo": "error de carga"})
+    assert r.status_code == 200, r.text
+    assert r.json()["anulado"] is True
