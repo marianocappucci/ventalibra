@@ -31,6 +31,7 @@ from libracommerce.web.listas_router import (
     build_precios_vigentes_router,
     build_quiebres_router,
 )
+from libracommerce.web.planillas_router import build_actualizacion_precios_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
@@ -577,6 +578,14 @@ def create_app(db_path: str) -> FastAPI:
     # `/pricing`, que ninguna pantalla usaba.
     for fabrica in (build_listas_precio_router, build_quiebres_router, build_precios_vigentes_router):
         app.include_router(fabrica(conexion=lc_get_connection), dependencies=admin_only)
+    # Actualización masiva de precios (roadmap de producto, 2026-09-28): sube la planilla de un
+    # proveedor y recalcula el precio de venta manteniendo el margen de cada producto -- primer
+    # ítem del roadmap, no una adopción de Contalibra/Restolibra (no existía en ningún producto de
+    # la familia). De admin, mismo criterio que Listas de precio.
+    app.include_router(
+        build_actualizacion_precios_router(conexion=lc_get_connection, usuario_actual=usuario_actual),
+        dependencies=admin_only,
+    )
     # Proveedores: el router del motor (`libracore.egresos_router`), el mismo de Contalibra y Restolibra
     # sobre la tabla `proveedores` (ADR-030). Reemplaza a `/suppliers`. La baja se guarda: el motor sólo
     # mira los egresos, y acá un proveedor con compras no se elimina (`app/proveedores_guarda.py`).

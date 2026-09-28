@@ -9,6 +9,7 @@ import { Pos } from './pages/Pos'
 import { Productos } from './pages/Productos'
 import { ListasPrecio } from './pages/ListasPrecio'
 import { ListaPrecioDetalle } from './pages/ListaPrecioDetalle'
+import { ActualizacionMasivaPrecios } from 'libra-ui/comercio/ActualizacionMasivaPrecios'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
 import { SucursalDetalle } from './pages/SucursalDetalle'
@@ -218,6 +219,16 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <ListaPrecioDetalle />
+          </ProtectedRoute>
+        }
+      />
+      {/* Actualización masiva de precios (roadmap de producto, 2026-09-28): la pantalla del kit sin wrapper, sin
+          variantes que apagar -- mismo caso que Compras/Tesoreria. */}
+      <Route
+        path="/actualizacion-masiva-precios"
+        element={
+          <ProtectedRoute adminOnly>
+            <ActualizacionMasivaPrecios />
           </ProtectedRoute>
         }
       />
