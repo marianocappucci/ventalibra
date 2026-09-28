@@ -27,6 +27,7 @@ from libracommerce.erp.reportes import puerto_de_reportes
 from libracommerce.web.catalogo_router import build_depositos_router, build_productos_router, build_stock_router
 from libracommerce.web.compras_router import build_compras_router
 from libracommerce.web.listas_router import (
+    build_cliente_lista_router,
     build_listas_precio_router,
     build_precios_vigentes_router,
     build_quiebres_router,
@@ -603,6 +604,11 @@ def create_app(db_path: str) -> FastAPI:
     # Restolibra sobre la tabla `clients`. Reemplaza a `/customers` (ADR-029). Permisos como los del
     # resto del POS: staff o admin.
     app.include_router(build_clientes_router(), dependencies=staff_or_admin)
+    # Lista de precios asignada a un cliente (ADR-010 de libracommerce, extraído del add-on
+    # mayorista de Contalibra): a diferencia de ahí, acá no hay add-on que gatee -- listas de
+    # precio es un módulo siempre libre (fase 7) -- así que se monta con el mismo permiso que el
+    # resto de la ficha del cliente. Prende `conListaDePrecio` en `ClienteDetalle.tsx`.
+    app.include_router(build_cliente_lista_router(conexion=lc_get_connection), dependencies=staff_or_admin)
     # Cuenta corriente: el router del motor (`libracore.cuenta_corriente_router`), el mismo de Contalibra y
     # Restolibra, con las reglas de cobro de este producto como `OpcionesCuentaCorriente` (turno obligatorio,
     # caja del turno, baja de pago que anula el movimiento de caja; ver `app/cuenta_corriente_ganchos.py`).

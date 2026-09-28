@@ -64,10 +64,17 @@ def configure(db_path: str) -> None:
         # patron que `app/database.py::init_db()` de Contalibra/Restolibra:
         # las dos funciones son idempotentes, así que correrlas en cada
         # arranque es un no-op sobre una base que ya las tiene.
-        from libracommerce.erp.schema import crear_venta_links
+        from libracommerce.erp.schema import crear_cliente_lista_precio, crear_venta_links
         from libracommerce.erp.ventas import repuntar_fk_ventas_pagos
 
         crear_venta_links(conn)
+        # Lista de precios asignada a un cliente (ADR-010 de libracommerce, el enganche que el
+        # add-on mayorista de Contalibra tenía como tabla propia): sus FK apuntan a `clients`
+        # (recién creada por `init_core_schema` arriba) y a `price_lists` (LibraCommerce, ya
+        # creada por `db.connect()` antes de que arranque `configure()`). Idempotente, mismo
+        # criterio que `crear_venta_links`; la migración `NNNN_cliente_lista_precio` la aplica
+        # sobre una instancia ya existente.
+        crear_cliente_lista_precio(conn)
         repuntar_fk_ventas_pagos(conn)
         # La otra mitad de la normalizacion de grafias: caja, cuenta corriente,
         # egresos y recibos viven en ESTA base, que contra SQLite es un archivo
