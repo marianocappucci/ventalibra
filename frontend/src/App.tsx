@@ -10,6 +10,7 @@ import { Productos } from './pages/Productos'
 import { ListasPrecio } from './pages/ListasPrecio'
 import { ListaPrecioDetalle } from './pages/ListaPrecioDetalle'
 import { ActualizacionMasivaPrecios } from 'libra-ui/comercio/ActualizacionMasivaPrecios'
+import { Promociones } from 'libra-ui/comercio/Promociones'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
 import { SucursalDetalle } from './pages/SucursalDetalle'
@@ -229,6 +230,16 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <ActualizacionMasivaPrecios />
+          </ProtectedRoute>
+        }
+      />
+      {/* Promociones (roadmap de producto, 2026-09-28, ADR-043): «llevá N pagá M» y combos. La pantalla del
+          kit sin wrapper; las reglas las carga el admin, el cajero sólo las ve aplicadas en el POS. */}
+      <Route
+        path="/promociones"
+        element={
+          <ProtectedRoute adminOnly>
+            <Promociones />
           </ProtectedRoute>
         }
       />

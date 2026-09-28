@@ -5,7 +5,7 @@ import {
   ArrowRightLeft,
   Boxes,
   BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, FileSpreadsheet, HandCoins, Landmark,
-  LayoutDashboard, Package, ReceiptText, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet,
+  LayoutDashboard, Package, Percent, ReceiptText, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet,
   Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -48,6 +48,7 @@ export const Layout = createLayout({
     // Roadmap de producto (2026-09-28): no es una adopción de motores, es la primera mejora del
     // roadmap propio de VentaLibra (ver wiki/analyses/ventalibra-gaps-despensa.md).
     { to: '/actualizacion-masiva-precios', label: 'Actualización de precios', icon: FileSpreadsheet, adminOnly: true },
+    { to: '/promociones', label: 'Promociones', icon: Percent, adminOnly: true },
     { to: '/stock', label: 'Stock', icon: Boxes },
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },

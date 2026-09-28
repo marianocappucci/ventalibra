@@ -66,7 +66,11 @@ dependencies = [
     # v0.23.0 -> v0.24.0 (2026-09-28): `erp.listas_precio.set_lista_precio_default` (`POST /api/listas-precio/{id}/set-default`)
     # y `delete_precio_vigente` (`DELETE .../items/{producto_id}/vigencias/{vigencia_id}`): la lista predeterminada y la baja
     # de promociones con vigencia (roadmap de producto, ADR-042; ADR-011 del motor). Sin migración.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.24.0",
+    # v0.24.0 -> v0.25.0 (2026-09-28): `erp.promociones` y `web.promociones_router` («llevá N pagá M» y combos,
+    # `OpcionesVentas.promociones`, `erp.schema.crear_promociones`; ADR-014 del motor y ADR-043 de este producto),
+    # el arreglo de la zona horaria de la vigencia de precio, y las sucursales como tabla propia del motor
+    # (`branches`, ADR-012 y ADR-013 del motor: trabajo de otra sesión que viaja en la misma promoción).
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.25.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
