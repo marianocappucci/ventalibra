@@ -41,6 +41,7 @@ from libracore.config_router import (
     build_empresa_admin_router,
     build_empresa_router,
 )
+from libracore.consultar_cuit_router import build_consultar_cuit_router
 from libracore.cuenta_corriente_router import build_cuenta_corriente_router
 from libracore.dashboard_router import build_dashboard_router
 from libracore.db.core import es_url_postgres
@@ -50,6 +51,7 @@ from libracore.db.url_de_instancia import url_de_instancia
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.mp_config_router import build_mp_config_router
+from libracore.recibos_router import build_recibos_router
 from libracore.reportes_router import build_reportes_export_router, build_reportes_router
 from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
@@ -60,7 +62,7 @@ from libracore.ventas_cobro_router import build_cobro_de_ventas_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from . import db, venta_facturacion
+from . import db, db_ventas, venta_facturacion
 from .auth import (
     build_session_auth,
     get_current_user,
@@ -87,7 +89,6 @@ from .routers import auth as auth_router
 from .routers import (
     catalog,
     health,
-    recibos,
     ventas_extra,
 )
 from .routers import (
@@ -605,8 +606,17 @@ def create_app(db_path: str) -> FastAPI:
         ),
         dependencies=staff_or_admin,
     )
-    # Los recibos que llaman las pantallas de cuenta corriente del kit.
-    app.include_router(recibos.router, dependencies=staff_or_admin)
+    # Recibos (fase 14, ADR-040): el router del motor, extraído de Contalibra. Gana de paso listar/detalle,
+    # emitir de factura/venta (además de la cobranza que ya llamaban las pantallas de cuenta corriente del
+    # kit) y anular (sólo admin, `solo_admin`). Único gancho: `get_venta` -- las ventas de mostrador de
+    # este producto viven en `sales` de LibraCommerce, no en `ventas` del propio esquema del motor.
+    app.include_router(
+        build_recibos_router(usuario_actual=get_current_user, solo_admin=require_admin, get_venta=db_ventas.get_venta),
+        dependencies=staff_or_admin,
+    )
+    # Consulta de CUIT en ARCA (fase 14, ADR-040): el router del motor, extraído de Contalibra. Activa
+    # `conConsultaCuit` en las pantallas de Clientes del kit (ver frontend/src/pages/Clientes*.tsx).
+    app.include_router(build_consultar_cuit_router(usuario_actual=get_current_user), dependencies=staff_or_admin)
     # Tesorería (fase 10, ADR-037): el router del motor, sin ganchos -- las cuentas bancarias y sus
     # movimientos son un problema de cualquier comercio, no del modelo de venta de este producto (`libracore`
     # ya trae la tabla, vacía hasta ahora). De admin: es la única instancia de la familia que la deja libre

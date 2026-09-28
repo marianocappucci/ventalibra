@@ -297,13 +297,17 @@ def test_la_baja_del_pago_devuelve_la_plata_y_el_saldo(admin_client):
 
 def test_el_recibo_del_pago_bajado_no_se_puede_reemitir(admin_client):
     """Borrar el pago anula su recibo; si el pago ya no está, la ruta
-    idempotente del kit contesta 404 en vez de inventar un comprobante."""
+    idempotente del kit contesta 409 en vez de inventar un comprobante.
+
+    409 y no 404: mismo criterio que Contalibra desde que `/api/recibos` es
+    `libracore.recibos_router.build_recibos_router` (fase 14, ADR-040) --
+    `SinCobros` es un conflicto de estado, no un recurso inexistente."""
     cliente_id, pago_id, _turno_id = _deudor_con_pago(admin_client)
     emitido = admin_client.post(f"/api/recibos/cobranza/{pago_id}")
     assert emitido.status_code == 200, emitido.text
 
     admin_client.delete(f"/api/cuenta-corriente/pagos/{pago_id}")
-    assert admin_client.post(f"/api/recibos/cobranza/{pago_id}").status_code == 404
+    assert admin_client.post(f"/api/recibos/cobranza/{pago_id}").status_code == 409
 
 
 def test_el_pdf_del_recibo_sale_por_la_ruta_del_kit(admin_client):

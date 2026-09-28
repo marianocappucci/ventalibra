@@ -46,13 +46,13 @@ describe('Clientes (kit sobre /api/clientes)', () => {
     expect(pedidas.some((p) => p.includes('/customers'))).toBe(false)
   })
 
-  it('el alta no ofrece consultar el CUIT en ARCA (VentaLibra no tiene ese endpoint)', async () => {
+  it('el alta ofrece consultar el CUIT en ARCA (fase 14, ADR-040: el motor ya tiene el endpoint)', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter><Clientes /></MemoryRouter>)
     await screen.findByText('Ana Gomez')
     await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
     await screen.findByRole('dialog')
-    expect(screen.queryByTitle('Consultar datos en ARCA')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Consultar datos en ARCA')).toBeInTheDocument()
   })
 })
 
@@ -72,7 +72,7 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     await waitFor(() => expect(pedidas).toContain('GET /api/clientes/1'))
   })
 
-  it('no ofrece lo que VentaLibra no tiene: MercadoPago, comprobantes ni consulta de CUIT', async () => {
+  it('no ofrece lo que VentaLibra no tiene: MercadoPago ni comprobantes', async () => {
     montarFicha()
     await screen.findByText('Datos del cliente')
     expect(screen.queryByText('Auto-factura MP:')).not.toBeInTheDocument()
@@ -82,5 +82,14 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     expect(document.querySelector('a[href="/facturas/nueva"]')).toBeNull()
     // Sí conserva la baja.
     expect(screen.getByRole('button', { name: /Eliminar cliente/ })).toBeInTheDocument()
+  })
+
+  it('sí ofrece la consulta de CUIT en ARCA, dentro del modal de edición (fase 14, ADR-040)', async () => {
+    const user = userEvent.setup()
+    montarFicha()
+    await screen.findByText('Datos del cliente')
+    await user.click(screen.getByRole('button', { name: /Editar/ }))
+    await screen.findByRole('dialog')
+    expect(screen.getByTitle('Consultar datos en ARCA')).toBeInTheDocument()
   })
 })

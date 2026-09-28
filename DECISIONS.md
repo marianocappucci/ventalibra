@@ -1882,3 +1882,36 @@ decisión explícita del humano, y no forman parte de esta ADR.
     add-on `resguardo_externo`.
   - Contalibra y Restolibra no se tocan: Contalibra sigue sin ningún gate en su propio Dashboard.
 - Depende de: `libracore` v1.114.0 y `libra-ui` v0.81.0 publicados y los pines de este repo subidos.
+
+## ADR-040 — Recibos y consulta de CUIT como factories del motor (fase 14, cierra la adopción de motores)
+
+- Estado: aceptada
+- Fecha: 2026-09-28
+- Contexto: el último ítem 🟡 de deuda técnica del inventario de adopción de motores (no un módulo de
+  negocio nuevo, a diferencia de las fases 1–13): `app/routers/recibos.py` de este producto (dos rutas,
+  las que llaman las pantallas de cuenta corriente del kit) y el mismo router de Contalibra/Restolibra
+  eran ~130 líneas de código idéntico en cada repo, y `/api/consultar-cuit/{cuit}` (~70 líneas más) era
+  código propio de Contalibra desde siempre, con el cliente WSAA/WSPadron ya en el motor
+  (`libracore.arca_wsaa`/`arca_wspadron`) pero sin el endpoint. Se extrajeron los dos a `libracore` v1.115.0:
+  `recibos_router.build_recibos_router(usuario_actual, solo_admin, get_venta=None)` y
+  `consultar_cuit_router.build_consultar_cuit_router(usuario_actual)`.
+- Decisión: se montan los dos routers completos del motor, sin apagar nada — a diferencia de Tesorería/
+  Egresos/Libros IVA (fases sin ganchos porque ya encajaban), acá el único gancho real es `get_venta`
+  (`app.db_ventas.get_venta`, ya usado en el resto del producto): las ventas de mostrador de VentaLibra
+  viven en `sales` de LibraCommerce, no en `ventas` del propio esquema del motor.
+  `emitir_recibo_factura`/`emitir_recibo_cobranza` no necesitan ningún gancho: ya resuelven contra tablas
+  que este producto comparte con Contalibra desde fases anteriores (`facturas`, `caja_movimientos`,
+  `clients`, `cc_pagos`). `conConsultaCuit` de `Clientes`/`ClienteDetalle` (kit, ya existía desde la fase 2)
+  pasa a su default (`true`): el motor ya tiene el endpoint que necesitaba.
+- Consecuencias:
+  - VentaLibra gana, sin haberlo pedido, lo que antes sólo tenía Contalibra: listar y ver el detalle de
+    los recibos emitidos, emitir el recibo de una venta de mostrador (`POST /api/recibos/venta/{id}`) y
+    anular un recibo (sólo admin, `solo_admin`) — mismo criterio que toda la adopción: la diferencia por
+    defecto es la de Contalibra, no la que este producto tenía escrita a mano.
+  - **Cambio de comportamiento:** un `cc_pago_id`/`factura_id`/`venta_id` sin cobros para emitir contestaba
+    **404** en el router propio y contesta **409** con el del motor (mismo criterio que Contalibra:
+    `SinCobros` es un conflicto de estado, no un recurso inexistente). Avisado antes de publicar.
+  - `app/routers/recibos.py` se retira (las dos rutas que tenía ya las cubre el router del motor).
+  - Contalibra y Restolibra no se tocan: siguen con su propio router de recibos y su propio endpoint de
+    consulta de CUIT hasta que alguien los migre a esta factory (fuera del alcance de esta fase).
+- Depende de: `libracore` v1.115.0 publicado y el pin de este repo subido.
