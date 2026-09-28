@@ -25,7 +25,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
-import type { ListaPrecio } from 'libra-ui/comercio/tipos'
+import type { CalculoPromociones, ListaPrecio } from 'libra-ui/comercio/tipos'
 import {
   api, ApiError, type Caja, type Cliente, type Deposito, type Escaneo, type Producto, type VarianteProducto,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
@@ -585,7 +585,39 @@ export function Pos() {
   }
 
   const total = cart.reduce((acc, l) => acc + (Number(l.qty) || 0) * (Number(l.precio) || 0), 0)
-  const puedeCobrar = cart.length > 0 && Boolean(locationId)
+
+  // Las promociones (roadmap de producto, 2026-09-28: «llevá N pagá M» y combos): el
+  // ahorro lo calcula el motor (`POST /api/promociones/calcular`) y es el mismo que el
+  // servidor suma al descuento al registrar la venta (`OpcionesVentas.promociones`),
+  // así que lo que el cajero cobra es lo que el servidor espera. Se consulta después
+  // de cada cambio del carrito (agregar, cantidad, quitar: son acciones discretas, no
+  // teclas), sin demora, y `Cobrar` espera esa respuesta para no abrir el cobro con
+  // un total viejo. Si la consulta falla se vende sin descuento, sin bloquear.
+  const [promos, setPromos] = useState<CalculoPromociones | null>(null)
+  const [calculandoPromos, setCalculandoPromos] = useState(false)
+  const secuenciaPromosRef = useRef(0)
+  useEffect(() => {
+    if (cart.length === 0) {
+      setPromos(null)
+      setCalculandoPromos(false)
+      return
+    }
+    const secuencia = ++secuenciaPromosRef.current
+    setCalculandoPromos(true)
+    api.post<CalculoPromociones>('/api/promociones/calcular', {
+      items: cart.map((l) => ({
+        producto_id: l.producto_id, qty: Number(l.qty) || 0, precio: Number(l.precio) || 0,
+      })),
+      en: new Date().toISOString(),
+    })
+      .then((r) => { if (secuenciaPromosRef.current === secuencia) setPromos(r) })
+      .catch(() => { if (secuenciaPromosRef.current === secuencia) setPromos(null) })
+      .finally(() => { if (secuenciaPromosRef.current === secuencia) setCalculandoPromos(false) })
+  }, [cart])
+  const promosAplicadas = Array.isArray(promos?.aplicadas) ? promos.aplicadas : []
+  const ahorro = promosAplicadas.length > 0 ? Number(promos?.ahorro) || 0 : 0
+  const totalConPromos = Math.max(0, Math.round((total - ahorro) * 100) / 100)
+  const puedeCobrar = cart.length > 0 && Boolean(locationId) && !calculandoPromos
 
   // Atajos globales. preventDefault en las F porque el navegador se las
   // queda (F3 abre buscar, F6 mueve el foco a la barra de direcciones).
@@ -768,8 +800,21 @@ export function Pos() {
 
         <div className="grid content-start gap-2">
           <div className="rounded-md border p-4">
+            {ahorro > 0 && (
+              <div className="mb-2 grid gap-0.5 border-b pb-2 text-sm">
+                <p className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span><span className="tabular-nums">${money(total)}</span>
+                </p>
+                {promosAplicadas.map((a) => (
+                  <p key={`${a.promocion_id}-${a.nombre}`} className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                    <span>{a.nombre}{a.veces > 1 ? ` × ${a.veces}` : ''}</span>
+                    <span className="tabular-nums">−${money(a.ahorro)}</span>
+                  </p>
+                ))}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">Total</p>
-            <p className="text-4xl font-medium tabular-nums">${money(total)}</p>
+            <p className="text-4xl font-medium tabular-nums">${money(totalConPromos)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {cart.length} producto{cart.length === 1 ? '' : 's'}
             </p>
@@ -851,7 +896,7 @@ export function Pos() {
       {cobroOpen && (
         <Cobro
           cart={cart}
-          total={total}
+          total={totalConPromos}
           depositoId={locationId ? Number(locationId) : null}
           cliente={cliente}
           mp={mp}

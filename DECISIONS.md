@@ -1963,3 +1963,44 @@ decisión explícita del humano, y no forman parte de esta ADR.
   se refresca después. Una instalación sin lista predeterminada vende exactamente como antes. Queda
   fuera la ruta de variantes (`elegirVariante`), que sigue al precio plano.
 - Depende de: `libracommerce` v0.24.0 (PR #107) y `libra-ui` v0.83.0 (PR #205), ya publicados.
+
+## ADR-043 — Promociones «llevá N pagá M» y combos: el servidor las aplica y el POS las muestra
+
+- Estado: aceptada
+- Fecha: 2026-09-28
+- Contexto: segundo ítem del roadmap de producto, que ADR-042 dejó a medias (precio por cantidad y
+  vigencia sí; combos y 2x1 no). Es construcción nueva: ningún producto de la familia tenía
+  promociones por regla, así que se hizo en `libracommerce` (ADR-014) para que Contalibra y
+  Restolibra puedan montarlas. Dos decisiones de negocio consultadas al humano: construir «llevá N
+  pagá M» y combos fijos juntos, y registrar la promoción como **descuento de la venta más una
+  tabla que anota cuál se aplicó** (no repartir el ahorro en el precio de cada línea, que
+  distorsionaría el precio por producto en reportes y devoluciones).
+- Decisión: se montan `build_promociones_router` (las reglas, **admin**) y
+  `build_promociones_calculo_router` (`POST /api/promociones/calcular`, sólo lee, **staff o admin**),
+  y `OpcionesVentas(promociones=True)`. El servidor es la autoridad: `POST /api/ventas` calcula las
+  promociones con las líneas que llegan, suma el ahorro al `descuento` (con tope en el subtotal) y
+  lo registra en `sale_promotions`, todo en la transacción de la venta. Migración `0006_promociones`
+  (`erp.schema.crear_promociones`, la misma función que `configure()`). La pantalla es la del kit
+  sin wrapper (`libra-ui/comercio/Promociones`), ruta y menú de admin.
+- El POS consulta `calcular` después de cada cambio del carrito (agregar, cantidad, quitar: acciones
+  discretas, no teclas, así que ADR-025 D1 se respeta) y muestra subtotal, cada promoción y el total
+  con el ahorro, que es lo que se cobra: el mismo que el servidor va a registrar. **`Cobrar` espera
+  el cálculo** para no abrir el cobro con un total viejo. Si el cálculo falla se vende sin descuento
+  en pantalla, sin bloquear; el total que manda es el del servidor (la respuesta trae `descuento` y
+  `promociones`), y una venta cobrada de más no queda rechazada por `exigir_pago_completo`.
+- 🔴 **Arreglo que viaja con esto: el cajero no podía leer el precio de la lista.** El cableado de
+  ADR-042 pide `GET /api/listas-precio/{id}/precio` desde el POS, y esa ruta vive en el router de
+  quiebres, que es de admin: un cajero recibía 403 y el POS caía al precio plano **en silencio**
+  (los tests con `fetch` simulado no lo podían ver; sólo el admin tenía el precio de lista). La
+  guarda `require_staff_precio_admin_resto` (`app/auth.py`) abre **sólo** ese `GET` a staff. Los
+  quiebres en sí y todo lo que escribe siguen siendo de admin, como fijó #350.
+- 🔴 **Segundo arreglo: la vigencia se comparaba en UTC.** El POS manda `en` con `toISOString()` y
+  el motor lo comparaba como texto contra vigencias guardadas en hora local: una promoción de 18 a
+  20 hs se activaba a las 15 en Argentina. `libracommerce` v0.25.0 pasa un instante con zona a hora
+  local antes de comparar (ADR-014 del motor); el POS no cambia.
+- Consecuencias: las promociones con horario rigen en hora de Argentina. Una instalación sin
+  promociones vende exactamente como antes. Quedan fuera la ruta de variantes del POS
+  (`elegirVariante`, que sigue al precio plano y sin promociones sobre la variante) y mostrar las
+  promociones aplicadas en el detalle de la venta y en el ticket.
+- Depende de: `libracommerce` v0.25.0 (ADR-014) y `libra-ui` v0.84.0 (`comercio/Promociones`)
+  publicados y los pines de este repo subidos.
