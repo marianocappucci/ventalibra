@@ -11,6 +11,7 @@ misma API pública. La diferencia real está en main.py — su UserRepository
 trabaja sobre SQLAlchemy, así que VentaLibra (que es sqlite3 crudo) sumó un
 engine dedicado **sobre la base de libracore**, donde `usuarios` ya vivía.
 """
+from fastapi import Depends, Request
 from libraauth.session_auth import (
     SessionAuth,
 )
@@ -38,6 +39,16 @@ from libraauth.session_auth import (
 )
 
 from .services.users import UserRepository
+
+_METODOS_DE_LECTURA = ("GET", "HEAD")
+
+
+def require_staff_lectura_admin_escritura(
+    request: Request, user: dict = Depends(get_current_user),
+) -> dict:
+    """Staff o admin para leer; sólo admin para escribir."""
+    guardia = require_staff if request.method in _METODOS_DE_LECTURA else require_admin
+    return guardia(request, user)
 
 
 def build_session_auth(users: UserRepository) -> SessionAuth:

@@ -71,6 +71,7 @@ from .auth import (
     require_admin,
     require_admin_o_servicio,
     require_staff,
+    require_staff_lectura_admin_escritura,
 )
 from .cajas_ganchos import (
     cerrar_turno,
@@ -576,8 +577,13 @@ def create_app(db_path: str) -> FastAPI:
     )
     # Listas de precio (fase 7): CRUD, ítems, ajuste porcentual e importación; quiebres por cantidad; y los precios
     # con vigencia y por sucursal (`/api/listas-precio/...`). Configurar precios es de admin. Reemplazan a
-    # `/pricing`, que ninguna pantalla usaba.
-    for fabrica in (build_listas_precio_router, build_quiebres_router, build_precios_vigentes_router):
+    # `/pricing`, que ninguna pantalla usaba. Las listas se LEEN también con rol staff (la card «Lista de precios»
+    # de la ficha del cliente las carga para el selector); crear, editar y borrar sigue siendo de admin.
+    app.include_router(
+        build_listas_precio_router(conexion=lc_get_connection),
+        dependencies=[Depends(require_staff_lectura_admin_escritura)],
+    )
+    for fabrica in (build_quiebres_router, build_precios_vigentes_router):
         app.include_router(fabrica(conexion=lc_get_connection), dependencies=admin_only)
     # Actualización masiva de precios (roadmap de producto, 2026-09-28): sube la planilla de un
     # proveedor y recalcula el precio de venta manteniendo el margen de cada producto -- primer
