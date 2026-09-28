@@ -158,25 +158,25 @@ capacitación:
 
 ## 6. Plan y módulos
 
+Dos planes desde el 2026-09-28 (`DECISIONS.md` ADR-042): el escalón Estándar se fusionó en
+Premium porque, desde que Dashboard se gateó a Premium (fase 13, ADR-039), un solo módulo los
+separaba.
+
 | Plan | Precio | Qué habilita |
 |------|--------|--------------|
 | Básico | $20.000 | Catálogo, inventario, compras, ventas/POS y caja |
-| Estándar | $35.000 | Todo lo anterior + **facturación** |
-| Premium | $55.000 | Igual que Estándar por ahora — queda con margen para dashboard y reportes |
+| Premium | $55.000 | Todo lo anterior + **facturación** + **dashboard** |
 
 > **El core no se gatea**: catálogo, inventario, ventas, compras y caja están en todos los
-> planes (caja por decisión de negocio, `DECISIONS.md` ADR-007). Hoy el único módulo gateado es
-> `facturacion`. La fuente de verdad es `plans.py` de este repo.
->
-> ⚠️ **Premium y Estándar habilitan lo mismo hoy.** Es real, no un error de esta guía: el
-> escalón Premium existe para cuando se construyan dashboard y reportes. Tenerlo en cuenta al
-> vender.
+> planes (caja por decisión de negocio, `DECISIONS.md` ADR-007). Los únicos módulos gateados son
+> `facturacion` y `dashboard`, los dos exclusivos de Premium. La fuente de verdad es `plans.py`
+> de este repo.
 
 ---
 
 ## 7. Integraciones
 
-### ARCA / facturación electrónica (plan Estándar en adelante)
+### ARCA / facturación electrónica (plan Premium)
 
 La configuración vive en `/config/arca` de la instancia: certificado `.crt`, clave `.key`, CUIT
 y punto de venta. El punto de venta tiene que estar habilitado en AFIP como "Facturación

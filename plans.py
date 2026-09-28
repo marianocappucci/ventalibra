@@ -7,21 +7,24 @@ siempre libres en todos los planes (equivalente a "turnos" en Gestiolibra /
 todo el dominio clinico en MedLibra) -- lo mismo que caja, que en VentaLibra
 es "siempre" por decision de negocio (ver DECISIONS.md ADR-007, independiente
 del tema fiscal). Facturacion y dashboard son los unicos modulos gateables
-por ahora (fase 13 de la adopcion de los motores, ADR-039: dashboard cierra
-la intencion que este comentario ya declaraba desde antes de construirse,
-Fase 5 del ROADMAP.md); Premium sigue con margen para reportes si algun dia
-se gatea tambien.
+por ahora.
+
+Dos planes, no tres (ADR-042, decision del humano 2026-09-28): el escalon
+Estandar se fusiono en Premium porque, desde que Dashboard se gateo a Premium
+(fase 13, ADR-039), la unica diferencia entre ambos era ese modulo -- no
+alcanzaba para justificar un tercer precio. Basico se queda sin nada gateado
+y Premium suma facturacion + dashboard, al mismo precio que tenia Premium
+antes de la fusion.
 """
-PLANES = ["basico", "estandar", "premium"]
-PLAN_LABELS = {"basico": "Básico", "estandar": "Estándar", "premium": "Premium"}
-PLAN_PRECIOS = {"basico": 20000, "estandar": 35000, "premium": 55000}
+PLANES = ["basico", "premium"]
+PLAN_LABELS = {"basico": "Básico", "premium": "Premium"}
+PLAN_PRECIOS = {"basico": 20000, "premium": 55000}
 
 _BASICO: set[str] = set()
-_ESTANDAR = _BASICO | {"facturacion"}
-_PREMIUM = _ESTANDAR | {"dashboard"}
-PLAN_MODULOS = {"basico": set(_BASICO), "estandar": set(_ESTANDAR), "premium": set(_PREMIUM)}
+_PREMIUM = _BASICO | {"facturacion", "dashboard"}
+PLAN_MODULOS = {"basico": set(_BASICO), "premium": set(_PREMIUM)}
 
-TODOS_LOS_MODULOS = set(PLAN_MODULOS["premium"]) | _ESTANDAR | _BASICO
+TODOS_LOS_MODULOS = set(PLAN_MODULOS["premium"]) | _BASICO
 
 # Add-ons: modulos sueltos que NO pertenecen a ningun plan. Estan disponibles en
 # cualquier plan, vienen APAGADOS y se prenden por instancia desde el backoffice

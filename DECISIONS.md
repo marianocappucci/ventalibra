@@ -1915,3 +1915,31 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Contalibra y Restolibra no se tocan: siguen con su propio router de recibos y su propio endpoint de
     consulta de CUIT hasta que alguien los migre a esta factory (fuera del alcance de esta fase).
 - Depende de: `libracore` v1.115.0 publicado y el pin de este repo subido.
+
+## ADR-042 — Dos planes en vez de tres: Estándar se fusiona en Premium
+
+- Estado: aceptada
+- Fecha: 2026-09-28
+- Contexto: ADR-009 fijó tres planes (Básico/Estándar/Premium) diferenciados sólo por
+  `facturacion`, con Premium "vacío" respecto de Estándar hasta que hubiera algo más que gatear.
+  La fase 13 (ADR-039) le sumó `dashboard` a Premium, pero eso dejó a Estándar y Premium
+  separados por un solo módulo — decisión del humano el 2026-09-28: no alcanza para justificar
+  un tercer precio, y hay que volver a armar los planes.
+- Decisión: se fusiona Estándar en Premium. Quedan dos planes: Básico ($20.000, sin módulos
+  gateados) y Premium ($55.000 — el precio que ya tenía, no el de Estándar — con `facturacion` +
+  `dashboard`). `plans.py`: `PLANES = ["basico", "premium"]`, `_PREMIUM = _BASICO |
+  {"facturacion", "dashboard"}`. El core (catálogo, inventario, ventas, compras, caja,
+  tesorería, egresos, libros IVA) sigue sin gatear en ningún plan (ADR-007).
+- Consecuencias:
+  - Ningún consumidor del repo hardcodeaba `"estandar"` fuera de `plans.py`: los tests y
+    `libracore.provisioning` iteran `plans.PLANES`/usan `plans.modulos_de_plan()`, así que no
+    hizo falta tocar nada más que `plans.py`, `ROADMAP.md` y `ONBOARDING_CLIENTES.md`.
+  - Si alguna instancia real tiene guardado el plan `"estandar"` (la única que existía al
+    2026-09-28 era `demo`, según el wiki), `modulos_de_plan("estandar")` devuelve un set vacío
+    tras este cambio — hay que revisar y, si corresponde, reaplicar `plan=premium` con
+    `aplicar_plan_en_db` después de desplegar. No verificado desde este repo: es una acción sobre
+    una instancia corriendo, no un cambio de código.
+  - `scripts/nuevo_cliente.py` y el backoffice de planes no tenían el nombre "estandar" escrito a
+    mano: heredan `PLANES`/`PLAN_LABELS` de `plans.py`, así que el onboarding de un cliente nuevo
+    ya ofrece sólo Básico/Premium sin cambios adicionales.
+- Depende de: nada externo — cambio contenido en este repo.

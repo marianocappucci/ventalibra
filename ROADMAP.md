@@ -100,7 +100,9 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   módulo (`facturacion` desde Estándar; catálogo/stock/venta nunca se
   gatean) — `plans.py` + tabla `modulos` + `ModuleRepository` +
   `require_module()`, mismo patrón que GestioLibra/MedLibra. 45/45 tests.
-  Ver DECISIONS.md ADR-009.
+  Ver DECISIONS.md ADR-009. 🔵 **Revisado el 2026-09-28** (ADR-042): Estándar
+  se fusionó en Premium, quedan dos planes (Básico $20k / Premium $55k con
+  facturación + dashboard).
 - [x] Infraestructura de deploy: `Dockerfile`/`docker-compose.yml`/
   `scripts/nuevo_cliente.py`/`panel_admin.py`/`npm_api.py`/`npm_setup.py`,
   deploy keys SSH (`libracommerce` solo lectura + `ventalibra` propia).
