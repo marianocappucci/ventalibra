@@ -51,7 +51,7 @@ TABLAS_PROPIAS = (
 )
 
 #: La cabeza de la cadena propia. Sube con cada revision nueva.
-CABEZA = "0004_personas_del_motor"
+CABEZA = "0005_cliente_lista_precio"
 
 
 def _schema_de_las_propias() -> str:

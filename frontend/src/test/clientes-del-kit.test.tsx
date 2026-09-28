@@ -32,6 +32,8 @@ beforeEach(() => {
     pedidas.push(`${init?.method ?? 'GET'} ${u}`)
     if (u === '/api/clientes/1') return Promise.resolve(json(FICHA))
     if (u === '/api/clientes') return Promise.resolve(json([ANA]))
+    if (u === '/api/listas-precio') return Promise.resolve(json([{ id: 5, nombre: 'Mayorista', descripcion: '', activa: 1 }]))
+    if (u === '/api/clientes/1/lista-precio') return Promise.resolve(json({ lista_id: null, lista: null }))
     return Promise.resolve(json([]))
   }))
 })
@@ -82,6 +84,14 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     expect(document.querySelector('a[href="/facturas/nueva"]')).toBeNull()
     // Sí conserva la baja.
     expect(screen.getByRole('button', { name: /Eliminar cliente/ })).toBeInTheDocument()
+  })
+
+  it('sí ofrece la lista de precios mayorista (ADR-010 de libracommerce: el enganche pasó al motor)', async () => {
+    montarFicha()
+    await screen.findByText('Datos del cliente')
+    expect(await screen.findByText('Lista de precios (mayorista)')).toBeInTheDocument()
+    await waitFor(() => expect(pedidas).toContain('GET /api/listas-precio'))
+    await waitFor(() => expect(pedidas).toContain('GET /api/clientes/1/lista-precio'))
   })
 
   it('sí ofrece la consulta de CUIT en ARCA, dentro del modal de edición (fase 14, ADR-040)', async () => {
