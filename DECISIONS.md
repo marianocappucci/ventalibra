@@ -1915,3 +1915,26 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Contalibra y Restolibra no se tocan: siguen con su propio router de recibos y su propio endpoint de
     consulta de CUIT hasta que alguien los migre a esta factory (fuera del alcance de esta fase).
 - Depende de: `libracore` v1.115.0 publicado y el pin de este repo subido.
+
+## ADR-041 — Actualización masiva de precios desde la planilla de un proveedor
+
+- Estado: aceptada
+- Fecha: 2026-09-28
+- Contexto: primer ítem del roadmap de producto (no una adopción de motores: no existía en ningún
+  producto de la familia — ver `wiki/analyses/ventalibra-gaps-despensa.md`, "Importantes, no
+  bloqueantes"). Con la inflación argentina, cargar precios a mano contra la lista de un proveedor
+  es inviable. Se construyó en `libracommerce` (donde ya vive el catálogo de este producto desde la
+  fase 7) en vez de en este repo, para que Contalibra/Restolibra puedan adoptarla el día de mañana.
+  Dos decisiones de negocio consultadas al humano: qué actualiza la planilla (costo solo, con la
+  venta recalculada manteniendo el margen actual — no todos los proveedores mandan un precio de
+  venta sugerido) y con qué dato matchea cada fila (código de barra, ya cargado en cada producto).
+- Decisión: se monta `libracommerce.web.planillas_router.build_actualizacion_precios_router` tal
+  cual (sin ganchos: `get_venta`-style no aplica acá, el matcheo es genérico por `item_codes`), de
+  admin (`/actualizacion-masiva-precios`, mismo criterio que Listas de precio). El extra
+  `[planillas]` (trae `openpyxl`) se suma al pin de `libracommerce` de este producto.
+- Consecuencias: sube un `.xlsx`, ve la vista previa (costo/venta antes → después, códigos sin
+  producto aparte) y aplica — los dos pasos mandan la misma planilla, nunca un precio ya calculado.
+  Un producto sin costo previo (`precio_costo=0`) no tiene margen del que partir: se le actualiza el
+  costo pero la venta queda igual, marcado en la pantalla. Contalibra y Restolibra no se tocan.
+- Depende de: `libracommerce` (PR #101, extra `[planillas]`) y `libra-ui` v0.82.0 (`comercio/
+  ActualizacionMasivaPrecios`, PR #204) publicados y los pines de este repo subidos.
