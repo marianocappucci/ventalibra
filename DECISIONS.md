@@ -1938,3 +1938,28 @@ decisión explícita del humano, y no forman parte de esta ADR.
   costo pero la venta queda igual, marcado en la pantalla. Contalibra y Restolibra no se tocan.
 - Depende de: `libracommerce` (PR #101, extra `[planillas]`) y `libra-ui` v0.82.0 (`comercio/
   ActualizacionMasivaPrecios`, PR #204) publicados y los pines de este repo subidos.
+
+## ADR-042 — Promociones por cantidad y vigencia: el POS cobra al precio de la lista predeterminada
+
+- Estado: aceptada
+- Fecha: 2026-09-28
+- Contexto: roadmap de producto, "promociones y combos". El motor ya resolvía precios por cantidad y
+  por fecha/hora (`resolve_price`, quiebres y vigencias en `item_prices`), pero nada del producto lo
+  usaba: el POS vendía siempre a `precio_venta`, ni siquiera `Ventas.tsx` de Contalibra los aplicaba, y
+  no había forma de marcar una lista como predeterminada (`resolve_price` sin lista cae en la
+  `is_default=1 AND active=1`, capacidad muerta hasta hoy). El humano eligió construir cantidad y
+  vigencia juntas. Alcance de esta tanda: promociones de un producto; los combos (varios productos por
+  un precio) siguen pendientes.
+- Decisión: el motor suma `set_lista_precio_default` y `delete_precio_vigente` (`libracommerce`
+  v0.24.0, ADR-011) y el kit el botón de predeterminar y el editor de promociones (`libra-ui` v0.83.0,
+  `conVigencias`), que este producto activa en el detalle de la lista. El POS carga la lista
+  predeterminada al abrir y consulta `GET /api/listas-precio/{id}/precio?producto_id&cantidad&en` al
+  agregar una línea y al confirmar un cambio de cantidad. Cualquier falla (sin lista predeterminada,
+  sin precio para el producto, error de red) cae al precio plano sin bloquear la venta, criterio de
+  `mp-estado`. Un precio de etiqueta de balanza no se pisa.
+- Consecuencias: ADR-025 D1 (carrito local, sin ida y vuelta por edición) se respeta con matiz: el
+  precio se resuelve al agregar (`elegirItem` ya era asíncrono por las variantes) y al confirmar la
+  cantidad con «Aceptar» (acción discreta, no por tecla); la cantidad se carga al instante y el precio
+  se refresca después. Una instalación sin lista predeterminada vende exactamente como antes. Queda
+  fuera la ruta de variantes (`elegirVariante`), que sigue al precio plano.
+- Depende de: `libracommerce` v0.24.0 (PR #107) y `libra-ui` v0.83.0 (PR #205), ya publicados.

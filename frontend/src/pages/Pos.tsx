@@ -25,6 +25,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
+import type { ListaPrecio } from 'libra-ui/comercio/tipos'
 import {
   api, ApiError, type Caja, type Cliente, type Deposito, type Escaneo, type Producto, type VarianteProducto,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
@@ -291,12 +292,28 @@ export function Pos() {
   // lo lee el cajero.
   const [mp, setMp] = useState<MpDisponible | null>(null)
 
+  // La lista de precios predeterminada (roadmap de producto, 2026-09-28): si la
+  // instalación tiene una marcada, cada línea se cobra al precio que resulte de
+  // aplicar cantidad y vigencia (`libracommerce.erp.listas_precio.resolve_price`)
+  // en vez del precio plano del producto. `null` mientras carga o si no hay
+  // ninguna marcada -- en los dos casos el POS sigue vendiendo al precio de
+  // siempre, sin bloquear nada (mismo criterio que `mp-estado`, arriba).
+  const [listaPrecioDefaultId, setListaPrecioDefaultId] = useState<number | null>(null)
+
   useEffect(() => {
     api.get<MpDisponible>('/pos/mp-estado')
       .then(setMp)
       // Sin respuesta, el POS sigue cobrando por los medios de siempre: el QR
       // es una forma más de cobrar, no un requisito para vender.
       .catch(() => setMp({ disponible: false, auto_facturar: false }))
+  }, [])
+
+  useEffect(() => {
+    api.get<ListaPrecio[]>('/api/listas-precio')
+      .then((listas) => setListaPrecioDefaultId(listas.find((l) => l.es_default && l.activa)?.id ?? null))
+      // Sin lista (instalación que no configuró ninguna) el POS vende al
+      // precio plano de siempre, no rompe nada.
+      .catch(() => setListaPrecioDefaultId(null))
   }, [])
 
   const cargarTurno = useCallback(async () => {
@@ -424,6 +441,24 @@ export function Pos() {
     enfocarEscaneo()
   }
 
+  /** El precio de `productoId` para `cantidad`, AHORA, según la lista
+   *  predeterminada (cantidad y vigencia por fecha/hora -- roadmap de
+   *  producto). `null` si no hay lista default, no hay precio para ese
+   *  producto, o la consulta falla: en los tres casos el llamador cae al
+   *  precio plano de siempre, nunca bloquea la venta por esto. */
+  async function resolverPrecioEfectivo(productoId: number, cantidad: string): Promise<string | null> {
+    if (listaPrecioDefaultId === null) return null
+    try {
+      const { precio } = await api.get<{ precio: number | null }>(
+        `/api/listas-precio/${listaPrecioDefaultId}/precio?producto_id=${productoId}`
+        + `&cantidad=${encodeURIComponent(cantidad || '1')}&en=${encodeURIComponent(new Date().toISOString())}`,
+      )
+      return precio === null ? null : String(precio)
+    } catch {
+      return null
+    }
+  }
+
   async function elegirItem(
     item: Producto, cantidad: string, precioUnitario?: string | null,
   ) {
@@ -440,7 +475,11 @@ export function Pos() {
     } catch {
       // sin variantes accesibles: se vende el item pelado
     }
-    agregar(item, cantidad, undefined, precioUnitario)
+    // `precioUnitario` sólo viene definido cuando una etiqueta de balanza trae el
+    // suyo: ese no se pisa. En cualquier otro caso (`undefined`) se consulta la
+    // lista predeterminada.
+    const efectivo = precioUnitario === undefined ? await resolverPrecioEfectivo(item.id, cantidad) : precioUnitario
+    agregar(item, cantidad, undefined, efectivo)
   }
 
   /** Elegir una sugerencia de la busqueda en vivo -- mismo camino que
@@ -487,7 +526,7 @@ export function Pos() {
       await elegirItem(
         escaneado.producto,
         escaneado.de_balanza ? String(escaneado.cantidad) : cantidad,
-        escaneado.precio_unitario === null ? null : String(escaneado.precio_unitario),
+        escaneado.precio_unitario === null ? undefined : String(escaneado.precio_unitario),
       )
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -518,10 +557,20 @@ export function Pos() {
     enfocarEscaneo()
   }
 
-  function cambiarCantidad(index: number, cantidad: string) {
+  async function cambiarCantidad(index: number, cantidad: string) {
+    const productoId = cart[index]?.producto_id
     setCart((prev) => prev.map((linea, i) => (i === index ? { ...linea, qty: cantidad } : linea)))
     setCantidadOpen(false)
     enfocarEscaneo()
+    // El nuevo precio (si cambia el quiebre de cantidad alcanzado) llega
+    // después, sin bloquear el cierre del diálogo ni el resto de la venta --
+    // la cantidad ya quedó cargada aunque esto tarde o falle.
+    if (productoId !== null && productoId !== undefined) {
+      const efectivo = await resolverPrecioEfectivo(productoId, cantidad)
+      if (efectivo !== null) {
+        setCart((prev) => prev.map((linea, i) => (i === index && linea.producto_id === productoId ? { ...linea, precio: efectivo } : linea)))
+      }
+    }
   }
 
   function cancelarVenta() {
