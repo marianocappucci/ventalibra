@@ -33,6 +33,10 @@ from libracommerce.web.listas_router import (
     build_quiebres_router,
 )
 from libracommerce.web.planillas_router import build_actualizacion_precios_router
+from libracommerce.web.promociones_router import (
+    build_promociones_calculo_router,
+    build_promociones_router,
+)
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
@@ -72,6 +76,7 @@ from .auth import (
     require_admin_o_servicio,
     require_staff,
     require_staff_lectura_admin_escritura,
+    require_staff_precio_admin_resto,
 )
 from .cajas_ganchos import (
     cerrar_turno,
@@ -497,6 +502,9 @@ def create_app(db_path: str) -> FastAPI:
                 hooks=GANCHOS,
                 exigir_turno=True,
                 caja_con_turno=True,
+                # Las promociones vigentes se calculan en el servidor con las líneas que llegan y su
+                # ahorro se suma al descuento de la venta (libracommerce v0.25.0, ADR-012; ADR-043).
+                promociones=True,
                 # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
                 # retirado) rechazaba estos dos casos antes de confirmar --
                 # ADR-020. Con las dos apagadas (el default) `POST /api/ventas`
@@ -583,8 +591,18 @@ def create_app(db_path: str) -> FastAPI:
         build_listas_precio_router(conexion=lc_get_connection),
         dependencies=[Depends(require_staff_lectura_admin_escritura)],
     )
-    for fabrica in (build_quiebres_router, build_precios_vigentes_router):
-        app.include_router(fabrica(conexion=lc_get_connection), dependencies=admin_only)
+    # El POS le pide el precio de cada línea a la lista predeterminada (`GET .../{id}/precio`, que vive
+    # en el router de quiebres): esa ruta se lee también con staff; los quiebres y todo lo que escribe
+    # siguen siendo de admin (`require_staff_precio_admin_resto`).
+    app.include_router(
+        build_quiebres_router(conexion=lc_get_connection),
+        dependencies=[Depends(require_staff_precio_admin_resto)],
+    )
+    app.include_router(build_precios_vigentes_router(conexion=lc_get_connection), dependencies=admin_only)
+    # Promociones (roadmap de producto, 2026-09-28, ADR-043): «llevá N pagá M» y combos. Las reglas se
+    # cargan como admin; el cajero sólo calcula qué aplica a su carrito (`POST /calcular`, que sólo lee).
+    app.include_router(build_promociones_router(conexion=lc_get_connection), dependencies=admin_only)
+    app.include_router(build_promociones_calculo_router(conexion=lc_get_connection), dependencies=staff_or_admin)
     # Actualización masiva de precios (roadmap de producto, 2026-09-28): sube la planilla de un
     # proveedor y recalcula el precio de venta manteniendo el margen de cada producto -- primer
     # ítem del roadmap, no una adopción de Contalibra/Restolibra (no existía en ningún producto de
