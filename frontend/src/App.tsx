@@ -36,6 +36,7 @@ import { LibrosIva } from 'libra-ui/comercio/LibrosIva'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
+import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
 
@@ -304,6 +305,14 @@ export default function App() {
       {Object.entries(REDIRECCIONES_DEL_KIT).map(([desde, hacia]) => (
         <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
       ))}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute adminOnly>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/reportes"
         element={

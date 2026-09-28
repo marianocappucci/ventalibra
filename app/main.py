@@ -42,6 +42,7 @@ from libracore.config_router import (
     build_empresa_router,
 )
 from libracore.cuenta_corriente_router import build_cuenta_corriente_router
+from libracore.dashboard_router import build_dashboard_router
 from libracore.db.core import es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
@@ -625,6 +626,14 @@ def create_app(db_path: str) -> FastAPI:
     # `API_PATHS`: `/libros-iva` a secas sigue siendo la pantalla de la SPA).
     app.include_router(build_libros_iva_router(), dependencies=admin_only)
     app.include_router(build_libros_iva_export_router(solo_admin=require_admin))
+    # Dashboard (fase 13, ADR-039): a diferencia de Tesorería/Egresos/Libros IVA, éste sí es el módulo que
+    # `plans.py` venía anticipando desde antes de construirse ("Premium queda con margen para dashboard").
+    # `sin_fiado=True`: mismo motivo que Reportes (fase 8) -- sin esto, "Cobrado del mes" y "Saldo de caja"
+    # cuentan una venta a cuenta corriente como plata ya entrada. De admin, como Reportes y Caja por medio.
+    app.include_router(
+        build_dashboard_router(usuario_actual=get_current_user, sin_fiado=True),
+        dependencies=admin_only + [Depends(require_module("dashboard"))],
+    )
     # Cierre diario: acto registrado y numerado por sucursal (LibraCore
     # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).
     # `autorizar_cierre` no se pasa: el gate de ESTE producto para "admin o
