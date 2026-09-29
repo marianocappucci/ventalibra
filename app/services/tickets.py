@@ -29,8 +29,12 @@ _AR = timezone(timedelta(hours=-3))
 # escribirla. `label()` la devuelve cruda justamente para que se vea.
 # Ver wiki/concepts/medios-de-pago-familia-libra.md.
 
-def ticket_de_venta(sale, cliente_nombre: str = "") -> bytes:
-    """PDF del ticket de una venta confirmada, listo para la ticketeadora."""
+def ticket_de_venta(sale, cliente_nombre: str = "", promociones: list[dict] | None = None) -> bytes:
+    """PDF del ticket de una venta confirmada, listo para la ticketeadora.
+
+    `promociones` es lo que quedó en `sale_promotions` (`erp.promociones.promociones_de_venta`): el
+    ticket las imprime una por fila y el `descuento` de la venta, que ya las incluye, muestra sólo el
+    resto. Sin ellas (una venta anterior a las promociones) el ticket sale como siempre."""
     fecha = ""
     if sale.confirmed_at:
         dt = sale.confirmed_at
@@ -78,6 +82,7 @@ def ticket_de_venta(sale, cliente_nombre: str = "") -> bytes:
             for linea in sale.items
         ],
         "descuento": float(sale.discount_total or Decimal("0")),
+        "promociones": promociones or [],
         "total": float(sale.total),
         "pagos": [
             {
