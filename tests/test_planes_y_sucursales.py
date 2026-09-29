@@ -382,3 +382,14 @@ def test_si_no_se_pueden_leer_los_modulos_el_campo_se_omite_y_el_usuario_sale_ig
     assert r.status_code == 200
     assert "modulos" not in r.json()
     assert r.json()["username"] == "admin"
+
+
+def test_los_ids_como_texto_no_saltean_el_gate_de_sucursales(admin_client):
+    """El endpoint acepta los ids como texto numérico o flotante (pydantic en modo laxo): el gate los coacciona igual
+    y no deja cruzar de sucursal en Básico (hallazgo de Codex, 2026-09-29)."""
+    item, origen, destino = _dos_sucursales_con_stock(admin_client)
+    _aplicar(admin_client, "basico")
+
+    for o, d in ((str(origen), str(destino)), (float(origen), float(destino)), (origen, str(destino))):
+        assert _transferir(admin_client, item, o, d).status_code == 403, (o, d)
+    assert float(stock(admin_client, item, destino)) == 0.0

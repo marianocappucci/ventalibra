@@ -39,10 +39,13 @@ from libracommerce.web.catalogo_router import (
     SucursalCreatePayload,
     SucursalUpdatePayload,
 )
+from pydantic import TypeAdapter, ValidationError
 
 from .permisos import requiere
 from .services import cajas as cajas_service
 from .services.sucursales import SucursalService
+
+_ENTERO = TypeAdapter(int)  # mismo modo laxo que los campos `int` del cuerpo de la transferencia
 
 OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True)
 
@@ -134,7 +137,12 @@ def gate_de_transferencias(conexion: Callable[[], Any], modulos: Modulos):
 
     def _sucursal_de(conn, deposito_id: Any) -> tuple[bool, int | None]:
         """`(existe, sucursal_id)` del depósito, o `(False, None)` si el id no es un entero utilizable."""
-        if isinstance(deposito_id, bool) or not isinstance(deposito_id, int):
+        # 🔴 Se coacciona con el MISMO criterio que `TransferenciaPayload.origen_id: int` (pydantic, modo laxo): el
+        # endpoint acepta `"3"`, `3.0` o `true` como ids; si acá sólo valiera el `int` estricto, mandar el id como
+        # texto salteaba el gate y cruzaba de sucursal sin el módulo (hallazgo de Codex, 2026-09-29).
+        try:
+            deposito_id = _ENTERO.validate_python(deposito_id)
+        except ValidationError:
             return False, None
         deposito = catalogo.get_deposito(conn, deposito_id)
         return (deposito is not None), (deposito or {}).get("branch_id")
