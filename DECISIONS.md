@@ -2083,6 +2083,9 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - **Actualización 2026-09-29 (ADR-048):** el plan de Margen quedó decidido: **libre en Básico y en Premium**. No lleva `require_module`
   y `tests/test_margen.py::test_el_margen_esta_libre_en_todos_los_planes` lo fija. Sigue abierto el segundo pendiente (guardar el costo
   de la línea al vender).
+- **Actualización 2026-09-29 (ADR-050):** cerrado el segundo pendiente: la venta guarda el costo de cada línea (`libracommerce` v0.27.0,
+  `guardar_costo=True`). Lo de «El costo es el de HOY» vale ahora sólo para las ventas anteriores, que siguen en NULL (sin backfill) y
+  salen marcadas `costo_estimado`.
 
 ## ADR-047 — Etiquetas de góndola: una pantalla del kit de sólo lectura, sin endpoint nuevo
 
@@ -2357,3 +2360,29 @@ decisión explícita del humano, y no forman parte de esta ADR.
     costos, la recepción de compras y la cuenta corriente.
 - Depende de: nada externo —cambio contenido en este repo—; `libraauth` (`get_extras`, `build_users_router(roles=...)`) y `libra-ui`
   v0.88.0 (`Usuarios` con la prop `roles`).
+
+## ADR-050 — La venta guarda el costo de cada línea: el margen deja de ser estimado en las ventas nuevas
+
+- Estado: aceptada (decisión del humano, 2026-09-29); cierra el segundo pendiente de ADR-046
+- Fecha: 2026-09-29
+- Contexto: ADR-046 montó el margen y rotación del motor y dejó dicho que `POST /api/ventas` (`erp.ventas.crear_venta`) no guardaba
+  `sale_items.unit_cost_snapshot`: el reporte usaba el `default_cost` **de hoy** y marcaba `costo_estimado`, con lo que un cambio de costo
+  reescribía hacia atrás el margen de lo ya vendido. El humano decidió el 2026-09-29 guardar el costo al vender. El motor lo hizo
+  opt-in en `libracommerce` v0.27.0 (`OpcionesVentas.guardar_costo`, ADR-016 del motor; default `False`, así que Contalibra y Restolibra
+  no cambian).
+- Decisión: VentaLibra sube el pin a `libracommerce` v0.27.0 y pasa `guardar_costo=True` en el `OpcionesVentas` de `POST /api/ventas`
+  (`app/main.py`). Sin código propio de cálculo: lo hace el motor.
+  - **Qué se guarda** (lo resuelve y prueba el motor): por cada línea de producto, `sale_items.unit_cost_snapshot` = el `default_cost`
+    vigente al vender; NULL si el producto no tiene costo cargado (no un 0 que se confunda con un costo real); las líneas de servicio
+    quedan NULL.
+  - **Qué cambia en el reporte** (`GET /api/reportes/margen`): la línea con snapshot usa ese costo y **no** se marca `costo_estimado`; un
+    cambio posterior de `default_cost` ya no toca su margen. Un producto sin costo sigue saliendo `sin_costo`.
+  - **Sin backfill.** Las ventas anteriores a este cambio siguen con `unit_cost_snapshot` NULL y el reporte las sigue tratando como
+    antes: costo de hoy y `costo_estimado`. No hay forma de reconstruir el costo de aquel día, y poner el actual como si fuera el de
+    entonces sería inventar el dato. El aviso de «costo estimado» de la pantalla (`libra-ui/comercio/Margen`) sigue condicionado a lo que marca el motor
+    (`costo_estimado`), así que no aparece en un período con sólo ventas nuevas. Sin migración: la columna ya existía.
+- Consecuencias: ADR-046 y su entrada del CHANGELOG decían que la venta no guardaba el costo; se anotó la actualización. El costo vive
+  en el producto (`item_variants` no tiene columna de costo): una línea con variante guarda el del producto. Si el plan de Margen llegara
+  a gatearse (ADR-046/048), esto no cambia.
+- Depende de: `libracommerce` v0.27.0. **Numeración:** se tomó el 050 porque `develop` termina en ADR-048 y `feature/roles-de-usuario`
+  ya usa el 049; puede requerir renumerar al mergear.

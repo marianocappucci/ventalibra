@@ -5,6 +5,12 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **La venta guarda el costo de cada línea: el margen deja de ser estimado en las ventas nuevas** (2026-09-29, ADR-050). Cada venta
+  registrada desde ahora guarda el costo vigente del producto (`sale_items.unit_cost_snapshot`), así que el margen y rotación usan el
+  costo de aquella venta y un cambio posterior de costo ya no lo reescribe. Un producto sin costo cargado queda sin costo guardado (y el
+  reporte lo sigue marcando «sin costo»). **Sin backfill:** las ventas anteriores siguen con el costo de hoy y marcadas como estimadas.
+  Sin migración. Requiere `libracommerce` v0.27.0 (pin subido).
+
 - **Roles de usuario: admin, encargado, vendedor, cajero y depósito** (2026-09-29, ADR-049). Además de `admin` y `staff`, la
   pantalla de Usuarios ofrece **encargado** (todo menos usuarios, configuración, logs, estructura del local y reabrir un día),
   **vendedor** (POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y precios), **cajero** (POS, su turno y su caja,
@@ -40,7 +46,7 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 - **Margen y rotación por producto y por período** (2026-09-29, ADR-046). Pantalla nueva `/margen` (admin, menú «Margen y rotación»):
   ingreso, costo, margen ($ y %) y unidades por producto y por período (día, semana o mes), ordenable por cada columna y con export CSV,
   sobre `GET /api/reportes/margen` del motor. Una venta anulada o pendiente de cobro no cuenta y las devoluciones se restan. **El costo
-  es el actual del producto, no el del momento de la venta** (la venta todavía no lo guarda): la pantalla avisa qué productos usan un costo
+  es el actual del producto, no el del momento de la venta** (la venta todavía no lo guardaba; desde ADR-050 lo guarda): la pantalla avisa qué productos usan un costo
   estimado y cuáles no tienen costo cargado. Sin migración. Sin gate de plan hasta que se decida en cuál va.
   Requiere `libracommerce` v0.26.0 y `libra-ui` v0.87.0 (pines subidos).
 - **Etiquetas de góndola** (2026-09-29, ADR-047). Nueva pantalla `/etiquetas` (de admin): se eligen productos —todos,
