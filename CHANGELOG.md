@@ -5,6 +5,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **El mapa `VENTALIBRA_DEPOSITOS_A_SUCURSAL` también se aplica al arrancar y al restaurar un respaldo anterior a la jerarquía** (2026-09-29, ADR-044).
+  Antes sólo lo leía la revisión `0007`, y `db.connect()` mandaba los depósitos sin sucursal a la predeterminada aunque el mapa dijera otra.
+  Con un mapa mal escrito o que apunta a una sucursal inexistente, `connect()` ahora falla igual que la `0007`, pero sólo si hay depósitos huérfanos que asignar.
+- **Tests de las pantallas de Clientes y Proveedores del kit**: el formulario no está suelto antes de abrirlo y aparece y desaparece con el diálogo.
+
 - **Margen y rotación por producto y por período** (2026-09-29, ADR-046). Pantalla nueva `/margen` (admin, menú «Margen y rotación»):
   ingreso, costo, margen ($ y %) y unidades por producto y por período (día, semana o mes), ordenable por cada columna y con export CSV,
   sobre `GET /api/reportes/margen` del motor. Una venta anulada o pendiente de cobro no cuenta y las devoluciones se restan. **El costo

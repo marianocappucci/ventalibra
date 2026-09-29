@@ -17,6 +17,7 @@ numeración es única por sucursal y mezclarlos podría chocar; quedan como esta
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 TIPO_DE_DEPOSITO = "warehouse"
@@ -102,10 +103,11 @@ def asegurar_minimas(conn: Any) -> dict:
     sucursal activa, un depósito activo por cada sucursal activa y un depósito predeterminado de la instancia.
 
     La llaman `db.connect()` (en cada arranque y al restaurar un respaldo, que puede traer el modelo viejo) y
-    nada más: la revisión `0007` llama a `migrar`, que es lo único que necesita un deploy."""
+    nada más: la revisión `0007` llama a `migrar`, que es lo único que necesita un deploy. Las dos leen el mismo
+    mapa `VENTALIBRA_DEPOSITOS_A_SUCURSAL`, para que un respaldo viejo converja igual que un deploy."""
     from libracommerce.erp import catalogo
 
-    informe = migrar(conn)
+    informe = migrar(conn, depositos_a_sucursal=parsear_mapa(os.environ.get("VENTALIBRA_DEPOSITOS_A_SUCURSAL", "")))
     if conn.execute("SELECT 1 FROM branches WHERE active = 1").fetchone() is None:
         sid = catalogo.create_sucursal(conn, "Sucursal 1")
         catalogo.set_default_sucursal(conn, sid)
