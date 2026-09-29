@@ -17,6 +17,8 @@ numeración es única por sucursal y mezclarlos podría chocar; quedan como esta
 """
 from __future__ import annotations
 
+import os
+from collections.abc import Callable
 from typing import Any
 
 TIPO_DE_DEPOSITO = "warehouse"
@@ -27,9 +29,11 @@ def _tabla_existe(conn: Any, nombre: str) -> bool:
     return conn.execute("SELECT to_regclass(?)", (nombre,)).fetchone()[0] is not None
 
 
-def migrar(conn: Any, *, depositos_a_sucursal: dict[int, int] | None = None) -> dict:
-    """Idempotente. Devuelve un informe con lo que hizo (todo en cero si no había nada que hacer)."""
-    mapa = depositos_a_sucursal or {}
+def migrar(conn: Any, *, depositos_a_sucursal: dict[int, int] | Callable[[], dict[int, int]] | None = None) -> dict:
+    """Idempotente. Devuelve un informe con lo que hizo (todo en cero si no había nada que hacer).
+
+    `depositos_a_sucursal` puede ser un `callable` que devuelve el mapa: se llama **sólo si hay depósitos sin
+    sucursal**, para que un mapa mal escrito no impida arrancar una instancia que no lo necesita."""
     informe = {"sucursales_creadas": 0, "depositos_asignados": 0, "cajas_reasignadas": 0}
 
     stores = conn.execute(
@@ -68,6 +72,8 @@ def migrar(conn: Any, *, depositos_a_sucursal: dict[int, int] | None = None) -> 
 
     destino_por_defecto = conn.execute("SELECT id FROM branches WHERE is_default = 1").fetchone()
     huerfanos = conn.execute("SELECT id FROM locations WHERE branch_id IS NULL ORDER BY id").fetchall()
+    mapa = (depositos_a_sucursal() if callable(depositos_a_sucursal) else depositos_a_sucursal) if huerfanos else {}
+    mapa = mapa or {}
     for (did,) in huerfanos:
         destino = mapa.get(did) or (destino_por_defecto[0] if destino_por_defecto else None)
         if destino is None:
@@ -102,10 +108,13 @@ def asegurar_minimas(conn: Any) -> dict:
     sucursal activa, un depósito activo por cada sucursal activa y un depósito predeterminado de la instancia.
 
     La llaman `db.connect()` (en cada arranque y al restaurar un respaldo, que puede traer el modelo viejo) y
-    nada más: la revisión `0007` llama a `migrar`, que es lo único que necesita un deploy."""
+    nada más: la revisión `0007` llama a `migrar`, que es lo único que necesita un deploy. Las dos leen el mismo
+    mapa `VENTALIBRA_DEPOSITOS_A_SUCURSAL`, para que un respaldo viejo converja igual que un deploy."""
     from libracommerce.erp import catalogo
 
-    informe = migrar(conn)
+    informe = migrar(
+        conn, depositos_a_sucursal=lambda: parsear_mapa(os.environ.get("VENTALIBRA_DEPOSITOS_A_SUCURSAL", "")),
+    )
     if conn.execute("SELECT 1 FROM branches WHERE active = 1").fetchone() is None:
         sid = catalogo.create_sucursal(conn, "Sucursal 1")
         catalogo.set_default_sucursal(conn, sid)

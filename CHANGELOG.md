@@ -5,6 +5,10 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **El mapa `VENTALIBRA_DEPOSITOS_A_SUCURSAL` también se aplica al arrancar y al restaurar un respaldo anterior a la jerarquía** (2026-09-29, ADR-044).
+  Antes sólo lo leía la revisión `0007`, y `db.connect()` mandaba los depósitos sin sucursal a la predeterminada aunque el mapa dijera otra.
+  Con un mapa mal escrito o que apunta a una sucursal inexistente, `connect()` ahora falla igual que la `0007`, pero sólo si hay depósitos huérfanos que asignar.
+- **Tests de las pantallas de Clientes y Proveedores del kit**: el formulario no está suelto antes de abrirlo y aparece y desaparece con el diálogo.
 - **Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)** (2026-09-29, ADR-048). Básico ($20.000) es un
   solo local —una sucursal con los depósitos que necesite— y tiene todo lo demás libre; Premium ($55.000) suma la facturación ARCA y la
   multisucursal. El Dashboard **deja de ser de un plan**: se abre en los dos, igual que Margen, Etiquetas, Tesorería, Egresos y Libros
