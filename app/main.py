@@ -514,6 +514,11 @@ def create_app(db_path: str) -> FastAPI:
                 # Las promociones vigentes se calculan en el servidor con las líneas que llegan y su
                 # ahorro se suma al descuento de la venta (libracommerce v0.25.0, ADR-014; ADR-043).
                 promociones=True,
+                # La venta guarda el costo vigente de cada línea (`sale_items.unit_cost_snapshot` = `default_cost` de
+                # ese momento; NULL si el producto no tiene costo, y los servicios no llevan) para que el margen deje
+                # de ser estimado en las ventas nuevas (libracommerce v0.27.0, ADR-016 del motor; ADR-050). Sin
+                # backfill: las ventas anteriores siguen en NULL y el reporte de margen las marca `costo_estimado`.
+                guardar_costo=True,
                 # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
                 # retirado) rechazaba estos dos casos antes de confirmar --
                 # ADR-020. Con las dos apagadas (el default) `POST /api/ventas`
