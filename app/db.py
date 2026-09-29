@@ -153,8 +153,23 @@ def init_modules_schema(conn: Conexion) -> None:
     Alembic, pero VentaLibra ya es 100% sqlite3 crudo desde Fase 1).
     Sembrada con todo habilitado -- no bloquea nada hasta que
     plans.aplicar_plan_en_db() achica el acceso (provisioning de un
-    cliente real), mismo criterio documentado en gestiolibra/medlibra."""
-    from plans import TODOS_LOS_MODULOS
+    cliente real), mismo criterio documentado en gestiolibra/medlibra.
+
+    🔴 **Un modulo NUEVO en una instancia que ya tiene plan se siembra segun ese
+    plan, no prendido.** Corre en cada arranque y `INSERT OR IGNORE` solo agrega
+    lo que falta: con "todo prendido" un modulo que se suma a `plans.py`
+    (`multisucursal`, ADR-048) quedaria abierto en TODAS las instancias
+    Basico ya desplegadas hasta que alguien reaplique el plan a mano -- el gate
+    existiria y no cortaria. El plan se lee de la propia tabla (la columna
+    `plan` que escribe `aplicar_plan_en_db`); solo se actua cuando las filas de
+    plan dicen UNO (los add-ons, con `plan='addon'`, no cuentan). Una base recien
+    creada, o con planes mezclados o desconocidos, sigue con el sembrado de
+    siempre.
+
+    Un plan retirado (`plans.PLANES_RETIRADOS`, hoy `estandar`) se lee como su
+    reemplazo y deja un `WARNING` en cada arranque: no se reescribe la etiqueta
+    aca (eso es del provisioning), pero tampoco pasa desapercibido."""
+    import plans
 
     conn.executescript(
         """
@@ -165,10 +180,20 @@ def init_modules_schema(conn: Conexion) -> None:
         );
         """
     )
-    for modulo in sorted(TODOS_LOS_MODULOS):
+    existentes = {fila[0] for fila in conn.execute("SELECT modulo FROM modulos").fetchall()}
+    planes = {
+        fila[0] for fila in conn.execute("SELECT DISTINCT plan FROM modulos WHERE plan <> 'addon'").fetchall()
+    }
+    plan = next(iter(planes)) if len(planes) == 1 else None
+    if plan is not None and plan not in plans.PLAN_MODULOS and plan not in plans.PLANES_RETIRADOS:
+        plan = None  # un plan que este codigo no conoce: no se adivina
+    # Para un plan retirado esto es lo que deja el WARNING (ver `plans.plan_vigente`).
+    activos = plans.modulos_de_plan(plan) if plan is not None else None
+    for modulo in sorted(plans.TODOS_LOS_MODULOS - existentes):
+        habilitado = 1 if activos is None else int(modulo in activos)
         conn.execute(
-            "INSERT OR IGNORE INTO modulos (modulo, habilitado, plan) VALUES (?, 1, 'premium')",
-            (modulo,),
+            "INSERT OR IGNORE INTO modulos (modulo, habilitado, plan) VALUES (?, ?, ?)",
+            (modulo, habilitado, plan or "premium"),
         )
     conn.commit()
 

@@ -9,6 +9,14 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   Antes sólo lo leía la revisión `0007`, y `db.connect()` mandaba los depósitos sin sucursal a la predeterminada aunque el mapa dijera otra.
   Con un mapa mal escrito o que apunta a una sucursal inexistente, `connect()` ahora falla igual que la `0007`, pero sólo si hay depósitos huérfanos que asignar.
 - **Tests de las pantallas de Clientes y Proveedores del kit**: el formulario no está suelto antes de abrirlo y aparece y desaparece con el diálogo.
+- **Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)** (2026-09-29, ADR-048). Básico ($20.000) es un
+  solo local —una sucursal con los depósitos que necesite— y tiene todo lo demás libre; Premium ($55.000) suma la facturación ARCA y la
+  multisucursal. El Dashboard **deja de ser de un plan**: se abre en los dos, igual que Margen, Etiquetas, Tesorería, Egresos y Libros
+  IVA. Sin el módulo `multisucursal`, dar de alta (o reactivar) una segunda sucursal y transferir mercadería entre sucursales dan 403 con
+  un mensaje que lo explica; transferir entre depósitos de la misma sucursal sigue libre, y una instalación que ya tenga varias
+  sucursales las sigue viendo, editando y vendiendo. El plan Estándar deja de existir: una instancia que lo tenga guardado se trata como
+  Premium, avisando en el log. La pantalla avisa «disponible en Premium» en Sucursales, Transferencias, la configuración de ARCA y el
+  casillero «Emitir factura» del POS. `/auth/login` y `/auth/me` traen `modulos`. Sin migración. Reemplaza al PR #344.
 
 - **Margen y rotación por producto y por período** (2026-09-29, ADR-046). Pantalla nueva `/margen` (admin, menú «Margen y rotación»):
   ingreso, costo, margen ($ y %) y unidades por producto y por período (día, semana o mes), ordenable por cada columna y con export CSV,

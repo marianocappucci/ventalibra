@@ -692,8 +692,8 @@ web = [
 
 [[package]]
 name = "libracore"
-version = "1.116.0"
-source = { git = "https://github.com/marianocappucci/libracore.git?rev=v1.116.0#9a4d6e3837fdbfc5687ac4f7a95e851dee42dc2a" }
+version = "1.117.0"
+source = { git = "https://github.com/marianocappucci/libracore.git?rev=v1.117.0#b19ceaea69b55a2efdaec5309c51c81563b81807" }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
@@ -1367,7 +1367,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "libraauth", extras = ["migrations"], git = "https://github.com/marianocappucci/libraauth.git?rev=v0.46.0" },
     { name = "libracommerce", extras = ["migrations", "erp", "web", "planillas"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.26.0" },
-    { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.116.0" },
+    { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.117.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6" },

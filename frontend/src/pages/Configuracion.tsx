@@ -36,28 +36,22 @@
  *  después a buscar por qué "no anda".
  */
 import { createConfiguracion } from 'libra-ui/Configuracion'
-import { Printer, Ruler, Scale, Settings, Tags } from 'lucide-react'
+import { Printer, Ruler, Scale, Settings, ShieldCheck, Tags } from 'lucide-react'
 
+import { AvisoPremium } from '../components/aviso-premium'
+import { FACTURACION, useTieneModulo } from '../lib/modulos'
 import { ConfigBalanza } from './ConfigBalanza'
 import { ConfigCategorias } from './ConfigCategorias'
 import { ConfigTicket } from './ConfigTicket'
 import { ConfigUnidades } from './ConfigUnidades'
 
-export const Configuracion = createConfiguracion({
+// Todo lo que las dos variantes comparten: lo único que cambia entre planes es la integración con ARCA.
+const COMUN = {
   // El icono que el sidebar de este producto le da a /configuracion.
   icono: Settings,
   // Sale en el tutorial de Gmail —es el nombre que hay que ponerle a la
   // contraseña de aplicación— y en el de Padrón A13.
   producto: 'VentaLibra',
-  integraciones: {
-    // Ver el docstring: acá no hay webhook, y es deliberado.
-    mercadopago: { webhook: false },
-    // 🔴 `empresa` es el slug de la fila de `arca_config`, el mismo que usa
-    // `services/billing.py`. En una instancia sin fila, sin esto el primer
-    // guardado la crearía como `default` — donde ese servicio no mira nunca.
-    arca: { empresa: 'venta' },
-    email: true,
-  },
   // Las cuatro propias. Se quedan en el producto y no suben al kit: la
   // balanza es de un comercio con mostrador y el formato de etiqueta que
   // parsea es específico de acá, el ticket de este producto no es el de
@@ -73,4 +67,45 @@ export const Configuracion = createConfiguracion({
     { clave: 'unidades', label: 'Unidades de medida', icono: Ruler, contenido: <ConfigUnidades /> },
     { clave: 'categorias', label: 'Categorías', icono: Tags, contenido: <ConfigCategorias /> },
   ],
+}
+
+// Ver el docstring: acá no hay webhook, y es deliberado.
+const MERCADOPAGO = { webhook: false }
+
+// Plan Premium: ARCA completa.
+const ConfiguracionConArca = createConfiguracion({
+  ...COMUN,
+  integraciones: {
+    mercadopago: MERCADOPAGO,
+    // 🔴 `empresa` es el slug de la fila de `arca_config`, el mismo que usa
+    // `services/billing.py`. En una instancia sin fila, sin esto el primer
+    // guardado la crearía como `default` — donde ese servicio no mira nunca.
+    arca: { empresa: 'venta' },
+    email: true,
+  },
 })
+
+// Plan Básico (ADR-048): la facturación ARCA es del plan Premium y `/config/arca` contesta 403 sin el módulo, así
+// que el kit no la ofrece: en su lugar, en el mismo lugar de la barra, el aviso. Las otras dos integraciones no
+// cambian.
+const ConfiguracionSinArca = createConfiguracion({
+  ...COMUN,
+  integraciones: {
+    mercadopago: MERCADOPAGO,
+    email: true,
+    extra: [{
+      clave: 'arca',
+      label: 'ARCA / AFIP',
+      icono: ShieldCheck,
+      contenido: (
+        <AvisoPremium titulo="Facturación electrónica ARCA">
+          Emitir facturas y configurar el certificado y el punto de venta es del plan Premium.
+        </AvisoPremium>
+      ),
+    }],
+  },
+})
+
+export function Configuracion() {
+  return useTieneModulo(FACTURACION) ? <ConfiguracionConArca /> : <ConfiguracionSinArca />
+}
