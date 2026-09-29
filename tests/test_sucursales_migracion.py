@@ -119,6 +119,24 @@ def test_connect_aplica_el_mapa_al_restaurar_un_respaldo_viejo(conn, monkeypatch
         arranque.close()
 
 
+def test_un_mapa_mal_escrito_no_impide_arrancar_una_instancia_que_no_lo_necesita(conn, monkeypatch):
+    """El mapa se lee sólo si hay depósitos sin sucursal (hallazgo de Codex, 2026-09-29): una base ya migrada arranca
+    aunque la variable esté rota, y con un depósito huérfano el error sigue siendo explícito."""
+    from motor_de_test import TEST_DATABASE_URL
+
+    from app.db import connect
+
+    _ubicacion(conn, "Centro", "store", default=1)
+    conn.commit()
+    monkeypatch.setenv("VENTALIBRA_DEPOSITOS_A_SUCURSAL", "esto-no-es-un-mapa")
+    connect(TEST_DATABASE_URL).close()  # sin huérfanos: no toca el mapa
+
+    _ubicacion(conn, "Salón", "warehouse")
+    conn.commit()
+    with pytest.raises(ValueError):
+        connect(TEST_DATABASE_URL).close()
+
+
 def test_un_mapa_a_una_sucursal_inexistente_falla_sin_asignar(conn):
     _ubicacion(conn, "Centro", "store", default=1)
     salon = _ubicacion(conn, "Salón", "warehouse")
