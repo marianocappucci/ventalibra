@@ -11,6 +11,7 @@ import { ListasPrecio } from './pages/ListasPrecio'
 import { ListaPrecioDetalle } from './pages/ListaPrecioDetalle'
 import { ActualizacionMasivaPrecios } from 'libra-ui/comercio/ActualizacionMasivaPrecios'
 import { Promociones } from 'libra-ui/comercio/Promociones'
+import { EtiquetasGondola } from 'libra-ui/comercio/EtiquetasGondola'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
 import { SucursalDetalle } from './pages/SucursalDetalle'
@@ -250,6 +251,16 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <Promociones />
+          </ProtectedRoute>
+        }
+      />
+      {/* Etiquetas de góndola (roadmap de producto, 2026-09-29, ADR-047): la pantalla del kit sin wrapper, de sólo
+          lectura sobre productos y listas de precio. De admin: las listas lo son. */}
+      <Route
+        path="/etiquetas"
+        element={
+          <ProtectedRoute adminOnly>
+            <EtiquetasGondola />
           </ProtectedRoute>
         }
       />

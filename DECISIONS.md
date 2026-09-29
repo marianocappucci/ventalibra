@@ -2077,6 +2077,28 @@ decisión explícita del humano, y no forman parte de esta ADR.
   no se asignó ninguno y hoy lo ve todo admin, igual que Reportes (`tests/test_margen.py::test_sin_decision_de_plan_esta_disponible_para_todo_admin`
   lo documenta). Para gatearlo: sumar `"margen"` al plan elegido en `plans.py` y `Depends(require_module("margen"))` en el `include_router` de
   `app/main.py`. Segundo pendiente, de motor: guardar el costo de la línea al vender (`crear_venta`), lo que vuelve exacto el margen de ahí en más.
-- Depende de: `libracommerce` v0.26.0 y `libra-ui` v0.87.0, **todavía sin publicar**: los pines de `pyproject.toml` (`@v0.25.1`) y de
-  `frontend/package.json` (`#v0.85.0`) no se tocaron. Con los pines actuales `app/main.py` no importa (falta `margen_router`) y la pantalla
-  no compila; se suben en el mismo PR cuando existan los tags.
+- Depende de: `libracommerce` v0.26.0 y `libra-ui` v0.87.0; los pines de `pyproject.toml` y `frontend/package.json` se subieron en el mismo
+  PR (#360).
+
+## ADR-047 — Etiquetas de góndola: una pantalla del kit de sólo lectura, sin endpoint nuevo
+
+- Estado: aceptada
+- Fecha: 2026-09-29
+- Contexto: roadmap de producto, «etiquetas de góndola» (`wiki/analyses/ventalibra-gaps-despensa.md`): al cambiar los
+  precios hay que reimprimir el cartel de la góndola con el precio nuevo. Se midió antes de pedirle nada al motor: lo que
+  ya expone alcanza —`GET /api/productos` trae nombre, código principal, precio y unidad; `/api/productos/categorias` el
+  filtro; `/api/listas-precio` y `/api/listas-precio/{id}/items` el precio de cada lista—. Sin datos ni stock nuevos, sin
+  migración.
+- Decisión: la pantalla es del kit (`libra-ui/comercio/EtiquetasGondola`, decisión vigente: lo compartido va en el kit y
+  el producto sólo lo monta, sin adaptadores) y se monta sin wrapper en `/etiquetas`, de admin como Listas de precio
+  (`ProtectedRoute adminOnly` y `adminOnly: true` en el menú). No hay router ni ruta nueva en este repo. La etiqueta dice
+  el precio que cobra el POS (ADR-042): el de la lista predeterminada, con el precio de venta del producto de respaldo.
+  El código de barras se dibuja en SVG dentro del kit, sin dependencia: EAN-13 o EAN-8 si el código lo es y cierra, Code 128
+  para el resto (el código interno `BEB-0001` que genera el alta no es un EAN).
+- Consecuencias: 🔴 el precio impreso es el **base** de la lista: no resuelve quiebres por cantidad ni vigencias
+  (promociones por fecha), que dependen de cuándo y cuánto se compre. Sale en una hoja A4 recortable (2, 3 o 4 columnas);
+  una impresora de rollo (térmica) necesita el tamaño de papel de cada modelo y queda para una tanda aparte. **No se asignó
+  a ningún plan** (`plans.py` sin tocar): la pantalla sólo lee endpoints que hoy son libres en todos los planes, así que un
+  gate de verdad requeriría un endpoint propio; queda como decisión de negocio abierta.
+- Depende de: `libra-ui` v0.88.0 (`comercio/EtiquetasGondola`) publicado y el pin de `frontend/package.json` subido de
+  v0.85.0 a v0.88.0. Hasta entonces `App.tsx` no compila ni pasa el test nuevo.

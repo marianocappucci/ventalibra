@@ -10,7 +10,12 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   sobre `GET /api/reportes/margen` del motor. Una venta anulada o pendiente de cobro no cuenta y las devoluciones se restan. **El costo
   es el actual del producto, no el del momento de la venta** (la venta todavía no lo guarda): la pantalla avisa qué productos usan un costo
   estimado y cuáles no tienen costo cargado. Sin migración. Sin gate de plan hasta que se decida en cuál va.
-  Requiere `libracommerce` v0.26.0 y `libra-ui` v0.87.0 (aún sin publicar: los pines no se subieron).
+  Requiere `libracommerce` v0.26.0 y `libra-ui` v0.87.0 (pines subidos).
+- **Etiquetas de góndola** (2026-09-29, ADR-047). Nueva pantalla `/etiquetas` (de admin): se eligen productos —todos,
+  por categoría o buscando— y se arma una hoja A4 para imprimir, con nombre, precio y código de barras de cada uno
+  (EAN-13/EAN-8 si el código lo es, Code 128 para el resto). El precio es el que cobra el POS: el de la lista
+  predeterminada, con el del producto de respaldo; se puede elegir otra lista. De sólo lectura, sin endpoint ni migración.
+  Requiere `libra-ui` v0.88.0.
 
 - **Sucursal y depósito son entidades distintas** (2026-09-28, ADR-044). Hasta hoy una sucursal y un depósito eran la
   misma fila y cualquiera de las dos tenía stock; ahora una sucursal agrupa depósitos y **el stock vive sólo en el

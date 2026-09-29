@@ -5,8 +5,8 @@ import {
   ArrowRightLeft,
   Boxes,
   BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, FileSpreadsheet, HandCoins, Landmark,
-  LayoutDashboard, Package, Percent, ReceiptText, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, TrendingUp, Truck, Users, Wallet,
-  Warehouse,
+  LayoutDashboard, Package, Percent, ReceiptText, ScanBarcode, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, TrendingUp, Truck,
+  Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 import { LOGO, WORDMARK } from '@/branding'
@@ -49,6 +49,8 @@ export const Layout = createLayout({
     // roadmap propio de VentaLibra (ver wiki/analyses/ventalibra-gaps-despensa.md).
     { to: '/actualizacion-masiva-precios', label: 'Actualización de precios', icon: FileSpreadsheet, adminOnly: true },
     { to: '/promociones', label: 'Promociones', icon: Percent, adminOnly: true },
+    // Roadmap de producto (2026-09-29, ADR-047): las etiquetas de góndola se arman con los precios ya cargados.
+    { to: '/etiquetas', label: 'Etiquetas', icon: ScanBarcode, adminOnly: true },
     { to: '/stock', label: 'Stock', icon: Boxes },
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },
