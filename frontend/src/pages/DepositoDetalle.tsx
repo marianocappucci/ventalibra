@@ -2,12 +2,13 @@
 // lleva a la lista de sucursales, desde donde se llegó.
 import { DepositoDetalle as DepositoDetalleComercio } from 'libra-ui/comercio/DepositoDetalle'
 import { useAuth } from '../context/AuthContext'
+import { puede } from '../lib/permisos'
 
 export function DepositoDetalle() {
   const { user } = useAuth()
   return (
     <DepositoDetalleComercio
-      soloLectura={user?.role !== 'admin'} rutaDeDepositos="/sucursales" rutaDeTransferencia="/transferencias"
+      soloLectura={!puede(user, 'sucursales.admin')} rutaDeDepositos="/sucursales" rutaDeTransferencia="/transferencias"
     />
   )
 }

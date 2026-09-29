@@ -73,7 +73,10 @@ dependencies = [
     # v0.25.0 -> v0.25.1 (2026-09-28): las promociones validan cada cota de vigencia por separado (una sola mal
     # escrita se guardaba y rompía `calcular` en cada venta) y `calcular` sin `en` usa la hora de Argentina y no la
     # del proceso. Sin migración. Hallazgos de la revisión de Codex sobre libracommerce#110.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.26.0",
+    # v0.25.1 -> v0.27.0 (2026-09-29): v0.26.0 sumó `web.margen_router` (margen y rotación, ADR-015 del motor; ADR-046 de este
+    # producto) y v0.27.0 `OpcionesVentas.guardar_costo` (opt-in): la venta guarda `sale_items.unit_cost_snapshot` con el
+    # `default_cost` vigente (ADR-016 del motor; ADR-050 de este producto). Sin migración.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.27.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

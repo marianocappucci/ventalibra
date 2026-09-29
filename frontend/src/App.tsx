@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
 import { REDIRECCIONES_DE_CATALOGO, REDIRECCIONES_DE_CONFIGURACION, REDIRECCIONES_DEL_KIT } from './rutas-viejas'
 import { Layout } from './components/Layout'
+import { ModulosContext, modulosDe } from './lib/modulos'
+import { type Capacidad, inicioDe, puede } from './lib/permisos'
 import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
@@ -45,7 +47,14 @@ import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
 
-function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
+// `cap`: la capacidad (o cualquiera de una lista) que pide la ruta (`lib/permisos.ts`, ADR-049). Sin `cap` alcanza con
+// estar en sesión. Quien no la tiene va a su pantalla inicial (el POS si vende, el stock si es del depósito) y, si su
+// rol no tiene ninguna de las dos, ve el aviso de abajo: nunca una redirección en círculo. Sólo decide qué se ofrece;
+// el que corta es el backend.
+// Sucursales y depósitos: los ve quien administra la estructura o quien mueve mercadería entre depósitos.
+const SUCURSALES: readonly Capacidad[] = ['sucursales.admin', 'stock.transferir']
+
+function ProtectedRoute({ children, cap }: { children: ReactNode; cap?: Capacidad | readonly Capacidad[] }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
@@ -55,8 +64,28 @@ function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; 
     )
   }
   if (!user) return <Navigate to="/login" replace />
-  if (adminOnly && user.role !== 'admin') return <Navigate to="/pos" replace />
-  return <Layout>{children}</Layout>
+  if (cap && !puede(user, cap)) {
+    const inicio = inicioDe(user)
+    if (inicio) return <Navigate to={inicio} replace />
+    return (
+      <div className="flex min-h-svh items-center justify-center p-6 text-center text-sm text-muted-foreground">
+        Tu usuario no tiene pantallas asignadas. Pedile a un administrador que le asigne un rol.
+      </div>
+    )
+  }
+  // Los módulos del plan que la SPA lee para ofrecer (o no) lo que es de Premium; ver `lib/modulos.ts`.
+  return (
+    <ModulosContext.Provider value={modulosDe(user)}>
+      <Layout>{children}</Layout>
+    </ModulosContext.Provider>
+  )
+}
+
+// La raíz y toda ruta desconocida: a la pantalla inicial del rol (POS o stock), o al login si no hay sesión.
+function Inicio() {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  return <Navigate to={user ? (inicioDe(user) ?? '/pos') : '/login'} replace />
 }
 
 export default function App() {
@@ -69,7 +98,7 @@ export default function App() {
       <Route
         path="/pos"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="ventas.pos">
             <Pos />
           </ProtectedRoute>
         }
@@ -77,7 +106,7 @@ export default function App() {
       <Route
         path="/productos"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="catalogo.ver">
             <Productos />
           </ProtectedRoute>
         }
@@ -92,7 +121,7 @@ export default function App() {
       <Route
         path="/compras"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="compras.ver">
             <Compras />
           </ProtectedRoute>
         }
@@ -100,7 +129,7 @@ export default function App() {
       <Route
         path="/compras/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="compras.ver">
             <CompraDetalle />
           </ProtectedRoute>
         }
@@ -108,7 +137,7 @@ export default function App() {
       <Route
         path="/proveedores"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="compras.ver">
             <Proveedores />
           </ProtectedRoute>
         }
@@ -116,7 +145,7 @@ export default function App() {
       <Route
         path="/proveedores/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="compras.ver">
             <ProveedorDetalle />
           </ProtectedRoute>
         }
@@ -124,7 +153,7 @@ export default function App() {
       <Route
         path="/clientes"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="clientes.ver">
             <Clientes />
           </ProtectedRoute>
         }
@@ -132,7 +161,7 @@ export default function App() {
       <Route
         path="/clientes/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="clientes.ver">
             <ClienteDetalle />
           </ProtectedRoute>
         }
@@ -140,7 +169,7 @@ export default function App() {
       <Route
         path="/ventas"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="ventas.pos">
             <Ventas />
           </ProtectedRoute>
         }
@@ -148,7 +177,7 @@ export default function App() {
       <Route
         path="/ventas/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="ventas.pos">
             <VentaDetalle />
           </ProtectedRoute>
         }
@@ -156,7 +185,7 @@ export default function App() {
       <Route
         path="/cuentas-corrientes"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="cuenta_corriente">
             <CuentasCorrientes />
           </ProtectedRoute>
         }
@@ -168,20 +197,19 @@ export default function App() {
       <Route
         path="/cuenta-corriente/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="cuenta_corriente">
             <CuentaCorrienteDetalle />
           </ProtectedRoute>
         }
       />
-      {/* Staff o admin (decisión del humano, 2026-09-21): quien mueve la
-          mercadería entre locales es el encargado, no el dueño. El alta de
-          sucursales sí es admin -- esa cambia la estructura de la instancia,
-          esto mueve existencias. */}
-      {/* Mirar cuánto hay es del mostrador, como el POS: sin `adminOnly`. */}
+      {/* Quien mueve la mercadería entre locales es el encargado o el depósito, no el dueño (decisión del humano,
+          2026-09-21; `stock.transferir`). El alta de sucursales sí es admin (`sucursales.admin`) -- esa cambia la
+          estructura de la instancia, esto mueve existencias. */}
+      {/* Mirar cuánto hay es de todos los roles (`stock.ver`), el depósito incluido. */}
       <Route
         path="/stock"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="stock.ver">
             <Stock />
           </ProtectedRoute>
         }
@@ -189,7 +217,7 @@ export default function App() {
       <Route
         path="/transferencias"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="stock.transferir">
             <Transferencias />
           </ProtectedRoute>
         }
@@ -197,7 +225,7 @@ export default function App() {
       <Route
         path="/sucursales"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap={SUCURSALES}>
             <Sucursales />
           </ProtectedRoute>
         }
@@ -205,7 +233,7 @@ export default function App() {
       <Route
         path="/sucursales/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap={SUCURSALES}>
             <SucursalDetalle />
           </ProtectedRoute>
         }
@@ -213,7 +241,7 @@ export default function App() {
       <Route
         path="/depositos/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap={SUCURSALES}>
             <DepositoDetalle />
           </ProtectedRoute>
         }
@@ -221,7 +249,7 @@ export default function App() {
       <Route
         path="/listas-precio"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="precios.escribir">
             <ListasPrecio />
           </ProtectedRoute>
         }
@@ -229,7 +257,7 @@ export default function App() {
       <Route
         path="/listas-precio/:id"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="precios.escribir">
             <ListaPrecioDetalle />
           </ProtectedRoute>
         }
@@ -239,7 +267,7 @@ export default function App() {
       <Route
         path="/actualizacion-masiva-precios"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="precios.escribir">
             <ActualizacionMasivaPrecios />
           </ProtectedRoute>
         }
@@ -249,17 +277,17 @@ export default function App() {
       <Route
         path="/promociones"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="precios.escribir">
             <Promociones />
           </ProtectedRoute>
         }
       />
       {/* Etiquetas de góndola (roadmap de producto, 2026-09-29, ADR-047): la pantalla del kit sin wrapper, de sólo
-          lectura sobre productos y listas de precio. De admin: las listas lo son. */}
+          lectura sobre productos y listas de precio. Del admin y el encargado (`etiquetas`). */}
       <Route
         path="/etiquetas"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="etiquetas">
             <EtiquetasGondola />
           </ProtectedRoute>
         }
@@ -267,7 +295,7 @@ export default function App() {
       <Route
         path="/cajas"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="caja.admin">
             <Cajas />
           </ProtectedRoute>
         }
@@ -276,7 +304,7 @@ export default function App() {
       <Route
         path="/tesoreria"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="tesoreria">
             <Tesoreria />
           </ProtectedRoute>
         }
@@ -284,33 +312,33 @@ export default function App() {
       <Route
         path="/tesoreria/:id"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="tesoreria">
             <TesoreriaDetalle />
           </ProtectedRoute>
         }
       />
-      {/* Egresos (fase 11, ADR-038): de staff y admin, como Compras y Proveedores. */}
-      <Route path="/egresos" element={<ProtectedRoute><Egresos /></ProtectedRoute>} />
-      <Route path="/egresos/:id" element={<ProtectedRoute><EgresoDetalle /></ProtectedRoute>} />
-      {/* Libros IVA (fase 12, ADR-038): contable-fiscal, de admin. */}
+      {/* Egresos (fase 11, ADR-038): de `egresos` (encargado, y el staff heredado además del admin). */}
+      <Route path="/egresos" element={<ProtectedRoute cap="egresos"><Egresos /></ProtectedRoute>} />
+      <Route path="/egresos/:id" element={<ProtectedRoute cap="egresos"><EgresoDetalle /></ProtectedRoute>} />
+      {/* Libros IVA (fase 12, ADR-038): contable-fiscal, de `libros_iva` (admin y encargado). */}
       <Route
         path="/libros-iva"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="libros_iva">
             <LibrosIva />
           </ProtectedRoute>
         }
       />
-      {/* Turnos de caja (ADR-032): el cajero ve los suyos, el admin los de todos. */}
-      <Route path="/turnos" element={<ProtectedRoute><Turnos /></ProtectedRoute>} />
-      <Route path="/turnos/:id" element={<ProtectedRoute><TurnoDetalle /></ProtectedRoute>} />
-      <Route path="/turnos/:id/cerrar" element={<ProtectedRoute><TurnoCerrar /></ProtectedRoute>} />
-      {/* Admin y cajero (staff): el cierre diario lo puede hacer cualquiera
-          de los dos -- ver DECISIONS.md, la feature de cajas por sucursal. */}
+      {/* Turnos de caja (ADR-032): cada uno ve los suyos; el encargado y el admin, los de todos (`turnos.todos`). */}
+      <Route path="/turnos" element={<ProtectedRoute cap="caja.propia"><Turnos /></ProtectedRoute>} />
+      <Route path="/turnos/:id" element={<ProtectedRoute cap="caja.propia"><TurnoDetalle /></ProtectedRoute>} />
+      <Route path="/turnos/:id/cerrar" element={<ProtectedRoute cap="caja.propia"><TurnoCerrar /></ProtectedRoute>} />
+      {/* El cierre diario es del encargado y del admin (`cierre_diario`; el staff heredado lo sigue teniendo). El
+          cajero nuevo ya no: ADR-049. */}
       <Route
         path="/cierre-diario"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute cap="cierre_diario">
             <CierreDiario />
           </ProtectedRoute>
         }
@@ -318,7 +346,7 @@ export default function App() {
       <Route
         path="/usuarios"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="usuarios.admin">
             <Usuarios />
           </ProtectedRoute>
         }
@@ -328,7 +356,7 @@ export default function App() {
       <Route
         path="/configuracion"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="config">
             <Configuracion />
           </ProtectedRoute>
         }
@@ -351,7 +379,7 @@ export default function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="dashboard">
             <Dashboard />
           </ProtectedRoute>
         }
@@ -359,7 +387,7 @@ export default function App() {
       <Route
         path="/reportes"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="reportes">
             <Reportes />
           </ProtectedRoute>
         }
@@ -367,7 +395,7 @@ export default function App() {
       <Route
         path="/margen"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="margen">
             <Margen />
           </ProtectedRoute>
         }
@@ -375,21 +403,21 @@ export default function App() {
       <Route
         path="/caja-medios"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="reportes">
             <CajaPorMedio />
           </ProtectedRoute>
         }
       />
-      {/* El gateo real es del backend (`admin_only` sobre `/logs`). */}
+      {/* El gateo real es del backend (capacidad `logs` sobre `/logs`). */}
       <Route
         path="/logs"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute cap="logs">
             <Logs />
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/pos" replace />} />
+      <Route path="*" element={<Inicio />} />
     </Routes>
   )
 }

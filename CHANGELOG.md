@@ -5,10 +5,48 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **La venta guarda el costo de cada línea: el margen deja de ser estimado en las ventas nuevas** (2026-09-29, ADR-050). Cada venta
+  registrada desde ahora guarda el costo vigente del producto (`sale_items.unit_cost_snapshot`), así que el margen y rotación usan el
+  costo de aquella venta y un cambio posterior de costo ya no lo reescribe. Un producto sin costo cargado queda sin costo guardado (y el
+  reporte lo sigue marcando «sin costo»). **Sin backfill:** las ventas anteriores siguen con el costo de hoy y marcadas como estimadas.
+  Sin migración. Requiere `libracommerce` v0.27.0 (pin subido).
+
+- **Roles de usuario: admin, encargado, vendedor, cajero y depósito** (2026-09-29, ADR-049). Además de `admin` y `staff`, la
+  pantalla de Usuarios ofrece **encargado** (todo menos usuarios, configuración, logs, estructura del local y reabrir un día),
+  **vendedor** (POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y precios), **cajero** (POS, su turno y su caja,
+  consulta de stock y precios, clientes en lectura y alta) y **depósito** (stock, ajustes y transferencias, y lectura de órdenes y recepciones
+  de compra sin importes; **no recibe compras**, lo hace el encargado; sin POS y sin plata). Cada rol ve en el menú sólo lo suyo, y una ruta que no es suya lo lleva a su pantalla inicial (el POS, o el stock
+  para el depósito). **`staff` no se migra ni se borra**: sigue siendo un rol válido con exactamente los permisos de siempre («heredado;
+  migrar a un rol concreto»), y el visitante de la demo conserva la lectura de todo. La matriz vive en `app/permisos.py`;
+  `/auth/login` y `/auth/me` traen `capacidades`. Un rol inválido es 422 al crear o editar un usuario; sigue sin poderse dejar la
+  instancia sin admin ni sacarse el rol a uno mismo. Sin migración. **Cambios para quien ya usaba el mostrador**: el cajero nuevo
+  sigue fiando desde el POS pero no ve saldos, recibos ni cobranzas (cobrar deudas es del vendedor y el encargado), y no tiene cierre
+  diario (el `staff` de antes conserva todo).
+  **Costos**: la capacidad nueva `costos.ver` (admin, encargado y el `staff` heredado) decide quién ve lo que cuesta la mercadería. Sin
+  ella, la API no manda `precio_costo` (productos, stock, listas de precio) ni `unit_cost` y subtotal (órdenes y recepciones de compra):
+  el vendedor y el cajero no ven costos y el depósito ve las cantidades de la recepción sin importes. **El ticket de un turno**
+  (`/api/cierre-diario/turno/{id}/ticket`) es de quien lo abrió (o de quien ve los turnos de todos): un cajero o un vendedor ya no puede
+  pedir el de otro. **Recibir compras** es del encargado (y del `staff` heredado): confirmar una recepción fija el costo del producto,
+  y un depósito, que no ve plata, podía cambiarlo con una recepción arbitraria. **Pendiente conocido** (ADR-049): la columna «Precio
+  costo» de Productos muestra `$ NaN` a los roles sin `costos.ver`.
+
+- **El mapa `VENTALIBRA_DEPOSITOS_A_SUCURSAL` también se aplica al arrancar y al restaurar un respaldo anterior a la jerarquía** (2026-09-29, ADR-044).
+  Antes sólo lo leía la revisión `0007`, y `db.connect()` mandaba los depósitos sin sucursal a la predeterminada aunque el mapa dijera otra.
+  Con un mapa mal escrito o que apunta a una sucursal inexistente, `connect()` ahora falla igual que la `0007`, pero sólo si hay depósitos huérfanos que asignar.
+- **Tests de las pantallas de Clientes y Proveedores del kit**: el formulario no está suelto antes de abrirlo y aparece y desaparece con el diálogo.
+- **Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)** (2026-09-29, ADR-048). Básico ($20.000) es un
+  solo local —una sucursal con los depósitos que necesite— y tiene todo lo demás libre; Premium ($55.000) suma la facturación ARCA y la
+  multisucursal. El Dashboard **deja de ser de un plan**: se abre en los dos, igual que Margen, Etiquetas, Tesorería, Egresos y Libros
+  IVA. Sin el módulo `multisucursal`, dar de alta (o reactivar) una segunda sucursal y transferir mercadería entre sucursales dan 403 con
+  un mensaje que lo explica; transferir entre depósitos de la misma sucursal sigue libre, y una instalación que ya tenga varias
+  sucursales las sigue viendo, editando y vendiendo. El plan Estándar deja de existir: una instancia que lo tenga guardado se trata como
+  Premium, avisando en el log. La pantalla avisa «disponible en Premium» en Sucursales, Transferencias, la configuración de ARCA y el
+  casillero «Emitir factura» del POS. `/auth/login` y `/auth/me` traen `modulos`. Sin migración. Reemplaza al PR #344.
+
 - **Margen y rotación por producto y por período** (2026-09-29, ADR-046). Pantalla nueva `/margen` (admin, menú «Margen y rotación»):
   ingreso, costo, margen ($ y %) y unidades por producto y por período (día, semana o mes), ordenable por cada columna y con export CSV,
   sobre `GET /api/reportes/margen` del motor. Una venta anulada o pendiente de cobro no cuenta y las devoluciones se restan. **El costo
-  es el actual del producto, no el del momento de la venta** (la venta todavía no lo guarda): la pantalla avisa qué productos usan un costo
+  es el actual del producto, no el del momento de la venta** (la venta todavía no lo guardaba; desde ADR-050 lo guarda): la pantalla avisa qué productos usan un costo
   estimado y cuáles no tienen costo cargado. Sin migración. Sin gate de plan hasta que se decida en cuál va.
   Requiere `libracommerce` v0.26.0 y `libra-ui` v0.87.0 (pines subidos).
 - **Etiquetas de góndola** (2026-09-29, ADR-047). Nueva pantalla `/etiquetas` (de admin): se eligen productos —todos,

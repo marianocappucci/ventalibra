@@ -98,6 +98,45 @@ def test_el_mapa_manda_sobre_la_predeterminada(conn):
     assert conn.execute("SELECT branch_id FROM locations WHERE id = ?", (salon,)).fetchone()[0] == norte
 
 
+def test_connect_aplica_el_mapa_al_restaurar_un_respaldo_viejo(conn, monkeypatch):
+    """Restaurar un respaldo anterior a la jerarquía y arrancar: `db.connect()` migra por `asegurar_minimas`, y
+    ésta tiene que respetar `VENTALIBRA_DEPOSITOS_A_SUCURSAL` igual que la revisión `0007` (si no, el depósito
+    sin dueño cae en la sucursal predeterminada aunque el mapa diga otra)."""
+    from motor_de_test import TEST_DATABASE_URL
+
+    from app.db import connect
+
+    _ubicacion(conn, "Centro", "store", default=1)
+    norte = _ubicacion(conn, "Norte", "store")
+    salon = _ubicacion(conn, "Salón", "warehouse")
+    conn.commit()
+    monkeypatch.setenv("VENTALIBRA_DEPOSITOS_A_SUCURSAL", f"{salon}:{norte}")
+
+    arranque = connect(TEST_DATABASE_URL)
+    try:
+        assert arranque.execute("SELECT branch_id FROM locations WHERE id = ?", (salon,)).fetchone()[0] == norte
+    finally:
+        arranque.close()
+
+
+def test_un_mapa_mal_escrito_no_impide_arrancar_una_instancia_que_no_lo_necesita(conn, monkeypatch):
+    """El mapa se lee sólo si hay depósitos sin sucursal (hallazgo de Codex, 2026-09-29): una base ya migrada arranca
+    aunque la variable esté rota, y con un depósito huérfano el error sigue siendo explícito."""
+    from motor_de_test import TEST_DATABASE_URL
+
+    from app.db import connect
+
+    _ubicacion(conn, "Centro", "store", default=1)
+    conn.commit()
+    monkeypatch.setenv("VENTALIBRA_DEPOSITOS_A_SUCURSAL", "esto-no-es-un-mapa")
+    connect(TEST_DATABASE_URL).close()  # sin huérfanos: no toca el mapa
+
+    _ubicacion(conn, "Salón", "warehouse")
+    conn.commit()
+    with pytest.raises(ValueError):
+        connect(TEST_DATABASE_URL).close()
+
+
 def test_un_mapa_a_una_sucursal_inexistente_falla_sin_asignar(conn):
     _ubicacion(conn, "Centro", "store", default=1)
     salon = _ubicacion(conn, "Salón", "warehouse")

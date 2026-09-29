@@ -11,9 +11,10 @@ ADR-027, que ya no viven en un router propio:
 - el selector de caja ofrece **sólo la caja del turno**;
 - `cuenta_corriente` no es un medio de cobro (422): es la marca de que la operación se hizo a crédito;
 - el movimiento de caja lleva SIEMPRE la referencia `cc-pago-<id>` (la que escribió el usuario vive en
-  `cc_pagos`): es lo que permite darle de baja al pago, buscando el ingreso por esa referencia;
-- la baja de un pago **anula** (no borra: pedido del humano, 2026-08-28) el movimiento de caja; un pago cuyo
-  movimiento no se puede identificar se rechaza (409) en vez de dejar un ingreso huérfano en el arqueo.
+  `cc_pagos`): sirve de rastro y es de donde sale el backfill de `cc_pago_id` (la baja ya no busca por texto);
+- la baja de un pago **anula** (no borra: pedido del humano, 2026-08-28) sus movimientos de caja, y eso lo hace el
+  motor por `cc_pago_id` desde `libracore` v1.117.0; acá queda la regla de que un pago cuyo movimiento no se puede
+  identificar se rechaza (409) en vez de dejar un ingreso huérfano en el arqueo.
 """
 from fastapi import HTTPException
 from libracore import medios_pago
@@ -21,6 +22,7 @@ from libracore.cuenta_corriente_router import CobroAprobado, OpcionesCuentaCorri
 from libracore.db import caja as db_caja
 from libracore.db import cuenta_corriente as db_cc
 from libracore.db import turnos as db_turnos
+from libracore.db.core import get_connection
 
 #: Plantilla de la referencia del movimiento de caja de un pago a cuenta.
 REFERENCIA_DEL_PAGO = "cc-pago-{pago_id}"
@@ -56,23 +58,25 @@ def cajas_del_turno(user: dict) -> list[dict]:
 
 
 def al_eliminar_pago(pago_id: int, user: dict) -> None:
-    """Anula el movimiento de caja del pago, buscándolo por su referencia. Si no lo encuentra, 409."""
+    """Rechaza la baja si el pago no tiene ningún movimiento de caja identificable (409).
+
+    Anular esos movimientos ya no es de acá: `libracore` v1.117.0 lo hace en el motor, por `cc_pago_id`, para todos
+    los productos. Este gancho sólo conserva la regla de VentaLibra —un pago cuyo movimiento no se puede identificar
+    no se da de baja, para no dejar un ingreso huérfano en el arqueo—. Los pagos anteriores al motor se ligan con el
+    backfill de `app/cc_pago_backfill.py` (migración `0008`)."""
     pago = db_cc.get_cc_pago(pago_id)
     if pago is None:
         raise HTTPException(404, f"no existe el pago {pago_id}")
-    tag = REFERENCIA_DEL_PAGO.format(pago_id=pago_id)
-    movimientos = [
-        m for m in db_caja.get_caja_movimientos(desde=pago["fecha"], hasta=pago["fecha"], limit=500)
-        if m["referencia"] == tag
-    ]
-    if not movimientos:
+    with get_connection() as conn:
+        hay = conn.execute(
+            "SELECT 1 FROM caja_movimientos WHERE cc_pago_id = ? LIMIT 1", (pago_id,)
+        ).fetchone()
+    if hay is None:
         raise HTTPException(
             409,
             f"el pago {pago_id} no tiene un movimiento de caja identificable: "
             "no se da de baja automáticamente",
         )
-    for movimiento in movimientos:
-        db_caja.anular_caja_movimiento(movimiento["id"])
 
 
 OPCIONES = OpcionesCuentaCorriente(

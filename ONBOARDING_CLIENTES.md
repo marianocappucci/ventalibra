@@ -6,8 +6,8 @@ contratación hasta que está operando.
 
 > **Qué es VentaLibra y qué no.** Es el vertical de **retail**: catálogo, inventario, compras a
 > proveedores, ventas y POS, caja por turno, listas de precios, cuenta corriente y reportes. La
-> facturación electrónica existe y se vende por plan, pero el centro del producto es el
-> mostrador. Si el cliente lo que necesita es contabilidad, el producto es Contalibra; si es un
+> facturación electrónica y la multisucursal son lo que se vende como plan Premium, pero el
+> centro del producto es el mostrador. Si el cliente lo que necesita es contabilidad, el producto es Contalibra; si es un
 > restaurante, Restolibra.
 
 ---
@@ -34,7 +34,7 @@ contratación hasta que está operando.
 | Slug | Nombre corto sin espacios: define `clientes/<slug>/` y el subdominio |
 | CUIT y condición ante IVA | Determina el tipo de comprobante (A, B o C) |
 | Domicilio fiscal | Aparece en los comprobantes |
-| Plan contratado | Define si tiene facturación |
+| Plan contratado | Define si tiene facturación ARCA y más de una sucursal |
 | Sucursales / depósitos | Dónde se vende y dónde está el stock |
 | Catálogo | Listado de productos: si es grande, pedirlo en Excel |
 | Precios y listas | Si maneja más de una lista (mayorista/minorista) |
@@ -158,25 +158,33 @@ capacitación:
 
 ## 6. Plan y módulos
 
+Dos planes desde el 2026-09-29 (`DECISIONS.md` ADR-048): lo que los separa es **lo fiscal y lo
+multisucursal**, no un tablero. El plan Estándar ya no existe.
+
 | Plan | Precio | Qué habilita |
 |------|--------|--------------|
-| Básico | $20.000 | Catálogo, inventario, compras, ventas/POS y caja |
-| Estándar | $35.000 | Todo lo anterior + **facturación** |
-| Premium | $55.000 | Igual que Estándar por ahora — queda con margen para dashboard y reportes |
+| Básico | $20.000 | **Un solo local** (una sucursal, con los depósitos que necesite): POS, stock, compras, caja, clientes y proveedores, cuenta corriente, promociones, margen, dashboard, etiquetas, tesorería, egresos y libros IVA |
+| Premium | $55.000 | Todo lo anterior + **facturación ARCA** + **multisucursal** (más de una sucursal y transferencias de mercadería entre sucursales) |
 
 > **El core no se gatea**: catálogo, inventario, ventas, compras y caja están en todos los
-> planes (caja por decisión de negocio, `DECISIONS.md` ADR-007). Hoy el único módulo gateado es
-> `facturacion`. La fuente de verdad es `plans.py` de este repo.
+> planes (caja por decisión de negocio, `DECISIONS.md` ADR-007), y el dashboard también. Los
+> únicos módulos gateados son `facturacion` y `multisucursal`, los dos exclusivos de Premium. La
+> fuente de verdad es `plans.py` de este repo.
 >
-> ⚠️ **Premium y Estándar habilitan lo mismo hoy.** Es real, no un error de esta guía: el
-> escalón Premium existe para cuando se construyan dashboard y reportes. Tenerlo en cuenta al
-> vender.
+> **Un solo local en Básico**: sin `multisucursal` el sistema no deja dar de alta una segunda
+> sucursal ni pasar mercadería de una sucursal a otra (avisa «disponible en Premium»). Un local
+> con varios depósitos sigue siendo un local: mover mercadería entre sus depósitos es libre. Si
+> un cliente Básico ya tiene varias sucursales cargadas, las conserva; sólo no puede crear más.
+>
+> **Si encontrás una instancia con el plan `estandar` guardado** (sólo la demo lo tenía), se
+> opera como Premium y deja un aviso en el log al arrancar. Reaplicá `premium` con
+> `plans.aplicar_plan_en_db` para actualizar la etiqueta.
 
 ---
 
 ## 7. Integraciones
 
-### ARCA / facturación electrónica (plan Estándar en adelante)
+### ARCA / facturación electrónica (plan Premium)
 
 La configuración vive en `/config/arca` de la instancia: certificado `.crt`, clave `.key`, CUIT
 y punto de venta. El punto de venta tiene que estar habilitado en AFIP como "Facturación
@@ -195,12 +203,26 @@ aplicación.
 
 ## 8. Usuarios
 
-- [ ] Crear el usuario **admin** para el dueño o encargado
-- [ ] Crear un usuario por cada persona que atienda el mostrador
+- [ ] Crear el usuario **admin** para el dueño
+- [ ] Crear un usuario por cada persona, **con el rol que le corresponde** (tabla de abajo)
 - [ ] Comunicar las credenciales de forma segura
 
 El admin inicial de la instancia sale de las variables `VENTALIBRA_ADMIN_*` que fija el alta;
-los demás se crean desde la pantalla de usuarios.
+los demás se crean desde la pantalla de usuarios (**Usuarios → + Nuevo usuario**, elegir el rol).
+Sólo un admin (o el backoffice) crea y edita usuarios, y el rol se puede cambiar después: rige en el
+pedido siguiente, sin que la persona tenga que volver a entrar.
+
+| Rol | Para quién | Qué hace |
+|---|---|---|
+| **Admin** | El dueño | Todo, incluidos usuarios, configuración, logs, sucursales, depósitos y cajas |
+| **Encargado** | Quien maneja el local | Todo menos lo del admin: precios y listas, stock, compras, tesorería, cierre diario, turnos de todos, reportes, margen y dashboard |
+| **Vendedor** | Mostrador con clientes | POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y de precios |
+| **Cajero** | Quien cobra | POS, su turno y su caja, consulta de stock y de precios, clientes (ver y dar de alta). No ve cuenta corriente, cierre diario ni reportes |
+| **Depósito** | Quien recibe y mueve mercadería | Stock, ajustes, transferencias y recepción de compras; ve productos y proveedores. Sin POS ni plata |
+| **Staff** *(heredado)* | Usuarios de antes de los roles | Lo mismo que siempre. **Migrarlo a un rol concreto** cuando se pueda |
+
+**Regla práctica:** dar el rol más chico que le alcance. Un cajero que necesita ver el cierre diario es un encargado;
+alguien que sólo mueve mercadería es depósito. La matriz completa está en `DECISIONS.md` (ADR-049).
 
 ---
 
@@ -256,7 +278,7 @@ CONFIGURACIÓN
 
 USUARIOS
 [ ] admin creado
-[ ] Usuarios de mostrador creados
+[ ] Usuarios creados, cada uno con su rol (admin, encargado, vendedor, cajero, depósito)
 
 CAPACITACIÓN
 [ ] Handoff hecho
