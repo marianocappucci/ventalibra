@@ -2031,3 +2031,25 @@ decisión explícita del humano, y no forman parte de esta ADR.
   y frontend salen juntos: la API de sucursales cambia y el POS depende de ella.
 - Depende de: `libracommerce` v0.25.0 o posterior (PR #106 y #109; el pin de este repo ya está en v0.25.1) y `libra-ui` v0.85.0
   (`comercio/Sucursales` y `SucursalDetalle`, PR #207), ambos publicados.
+
+## ADR-045 — Las promociones aplicadas se ven en el detalle de la venta, el ticket y el comprobante del POS
+
+- Estado: aceptada
+- Fecha: 2026-09-29
+- Contexto: ADR-043 dejó las promociones aplicándose y registradas (`sale_promotions`), pero invisibles: el
+  cliente veía un `Descuento` sin saber de qué era, en el ticket y en la pantalla. `GET /api/ventas/{id}` y
+  la respuesta de `POST /api/ventas` ya traían `promociones`; faltaba mostrarlas.
+- Decisión: tres lugares, cada uno con su cambio en el repo que corresponde, todos aditivos. El detalle de
+  venta (`libra-ui`, `VentaDetalle`) muestra una fila por promoción y deja «Descuento» para el resto. El
+  ticket impreso (`libracore.ticket_generator`, ADR-012 de libracore) imprime una fila por promoción; el
+  puente de este producto (`app/services/tickets.py`, `GET /ventas/{id}/ticket`) lee `sale_promotions` de
+  ESA venta y se la pasa. El comprobante de «venta cobrada» del POS lista cada promoción con su ahorro.
+- **El `descuento` de la venta ya incluye el ahorro de las promociones**, así que en el detalle y en el
+  ticket la fila «Descuento» muestra sólo lo que sobra (un descuento manual) y desaparece si no queda nada:
+  el mismo monto no sale contado dos veces.
+- Consecuencias: una venta anterior a las promociones, o sin ninguna aplicada, se ve y se imprime
+  exactamente como antes; lo fijan tests en los tres repos. La venta cobrada por QR pendiente no trae las
+  promociones hasta que se refresca (`GET /api/ventas/{id}`), como el resto de sus datos.
+- Depende de: `libracore` con ADR-012 (`promociones` en `generar_ticket_venta`) y `libra-ui` v0.86.0
+  (`VentaDetalle`), publicados y los pines de este repo subidos.
+
