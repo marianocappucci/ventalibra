@@ -73,7 +73,7 @@ dependencies = [
     # v0.25.0 -> v0.25.1 (2026-09-28): las promociones validan cada cota de vigencia por separado (una sola mal
     # escrita se guardaba y rompía `calcular` en cada venta) y `calcular` sin `en` usa la hora de Argentina y no la
     # del proceso. Sin migración. Hallazgos de la revisión de Codex sobre libracommerce#110.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.25.1",
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.26.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

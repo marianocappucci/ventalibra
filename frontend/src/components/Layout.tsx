@@ -5,7 +5,7 @@ import {
   ArrowRightLeft,
   Boxes,
   BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, FileSpreadsheet, HandCoins, Landmark,
-  LayoutDashboard, Package, Percent, ReceiptText, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet,
+  LayoutDashboard, Package, Percent, ReceiptText, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, TrendingUp, Truck, Users, Wallet,
   Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -62,6 +62,8 @@ export const Layout = createLayout({
     // Tesorería/Egresos/Libros IVA. Sin nav-hiding por módulo: un admin de otro plan ve el 403 del motor.
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: true },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
+    // Roadmap de producto, tanda 1 (2026-09-29, ADR-046): margen y rotación por producto y por período.
+    { to: '/margen', label: 'Margen y rotación', icon: TrendingUp, adminOnly: true },
     // Fase 12 de la adopción de los motores (ADR-038): ventas ya funciona, compras se completa con Egresos.
     { to: '/libros-iva', label: 'Libros IVA', icon: BookText, adminOnly: true },
     { to: '/caja-medios', label: 'Caja por medio', icon: Coins, adminOnly: true },
