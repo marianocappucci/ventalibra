@@ -88,7 +88,6 @@
   ],
   "deposito": [
     "catalogo.ver",
-    "compras.recibir",
     "compras.ver",
     "stock.ajustar",
     "stock.transferir",

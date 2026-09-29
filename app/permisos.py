@@ -23,8 +23,8 @@ Los roles:
   reabrir un día cerrado.
 - `vendedor`: mostrador con clientes; no ve costos ni márgenes ni reportes.
 - `cajero`: POS, su turno y su caja; no ve cierre diario, cuentas corrientes ni reportes.
-- `deposito` (sin tilde, es un valor de base y de URL; en pantalla se lee «Depósito»): mercadería y compras; sin
-  POS y sin plata.
+- `deposito` (sin tilde, es un valor de base y de URL; en pantalla se lee «Depósito»): stock, ajustes y transferencias, y
+  lectura de órdenes y recepciones de compra sin importes; no recibe compras, sin POS y sin plata.
 - `staff`: **heredado; migrar a un rol concreto.** Los usuarios que ya existían. Tiene exactamente lo que
   tenía antes de los roles (la unión de lo que hacía un cajero y un mozo de mostrador): ni una capacidad más,
   ni una menos. No se migra ni se borra a nadie.
@@ -134,8 +134,11 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "compras.ver": frozenset({_E, _D, _S}),
     # Órdenes de compra, y alta, edición y baja de proveedores.
     "compras.escribir": frozenset({_E, _S}),
-    # Recepción de mercadería contra una compra (crear, cargar líneas, confirmar).
-    "compras.recibir": frozenset({_E, _D, _S}),
+    # Recepción de mercadería contra una compra (crear, cargar líneas, confirmar). NO la tiene el depósito (decisión del
+    # humano, 2026-09-29): confirmar una recepción deja su `unit_cost` como nuevo costo del producto (`default_cost`), o sea
+    # que quien recibe fija costos, y el depósito no ve ni maneja plata. Recibe el encargado; el depósito lee las órdenes y
+    # recepciones (`compras.ver`) sin importes y maneja el stock.
+    "compras.recibir": frozenset({_E, _S}),
     # ── Costos ──
     # Ver lo que cuesta la mercadería: el `precio_costo` de un producto (productos, stock, listas de precio) y el costo
     # y el subtotal de cada línea de las órdenes y recepciones de compra. Sin ella la API no manda esos campos

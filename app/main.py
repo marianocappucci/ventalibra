@@ -690,7 +690,7 @@ def create_app(db_path: str) -> FastAPI:
     # Proveedores: el router del motor (`libracore.egresos_router`), el mismo de Contalibra y Restolibra
     # sobre la tabla `proveedores` (ADR-030). Reemplaza a `/suppliers`. La baja se guarda: el motor sólo
     # mira los egresos, y acá un proveedor con compras no se elimina (`app/proveedores_guarda.py`). Leerlos es de
-    # `compras.ver` (también el depósito, que recibe contra ellos); escribirlos, de `compras.escribir`.
+    # `compras.ver` (también el depósito, que los lee); escribirlos, de `compras.escribir`.
     app.include_router(
         build_proveedores_router(),
         dependencies=[
@@ -703,8 +703,8 @@ def create_app(db_path: str) -> FastAPI:
     # propios; el motor los monta bajo `/api` (antes no lo tenían, inconsistente con el resto de la familia).
     #
     # Leer es de `compras.ver`; emitir órdenes de compra, de `compras.escribir`; y la RECEPCIÓN de mercadería
-    # (`/api/purchase-receipts`: crear, cargar líneas, confirmar) es de `compras.recibir`, que también tiene el
-    # depósito: es quien la recibe.
+    # (`/api/purchase-receipts`: crear, cargar líneas, confirmar) es de `compras.recibir` (encargado y staff heredado, más
+    # admin), NO del depósito: confirmar una recepción fija el costo del producto (`default_cost`) y el depósito no maneja plata.
     app.include_router(
         build_compras_router(conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_COMPRAS),
         dependencies=[Depends(requiere_segun_ruta(

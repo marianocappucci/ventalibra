@@ -2185,10 +2185,11 @@ decisión explícita del humano, y no forman parte de esta ADR.
     cerrado.
   - **`vendedor`**: mostrador con clientes: POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y de precios. No ve
     reportes ni márgenes ni el cierre diario.
-  - **`cajero`**: POS, su turno y su caja, consulta de stock y de precios, clientes en lectura y alta. No tiene cuenta corriente, cierre
-    diario ni reportes.
-  - **`deposito`** (sin tilde: es un valor de base y de URL; en pantalla, «Depósito»): stock, ajustes, transferencias y recepción de
-    compras; lee productos y proveedores. Sin POS y sin plata: nada de caja, ventas, tesorería, reportes ni márgenes.
+  - **`cajero`**: POS, su turno y su caja, consulta de stock y de precios, clientes en lectura y alta. **Puede fiar desde el POS** (vender a
+    cuenta corriente a un cliente, ADR-031), pero no ve saldos, recibos ni cobranzas, ni tiene cierre diario ni reportes.
+  - **`deposito`** (sin tilde: es un valor de base y de URL; en pantalla, «Depósito»): stock, ajustes y transferencias; lee productos,
+    proveedores y las órdenes y recepciones de compra (siempre sin costos ni importes). **No recibe compras** (decisión del humano,
+    2026-09-29; ver abajo). Sin POS y sin plata: nada de caja, ventas, tesorería, reportes ni márgenes.
   - **`staff`: heredado, migrar a un rol concreto.** Los usuarios que ya existían **no se migran ni se borran**: siguen siendo un rol
     válido con **exactamente** lo que tenían. La pantalla de Usuarios lo ofrece marcado como heredado. El visitante de la demo entra
     como `staff` y conserva su lectura abierta de todas las pantallas.
@@ -2225,7 +2226,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
     (`costo` o `cost` como palabra de la clave) cubre además las que hoy sólo aparecen en rutas de `costos.ver`, `margen` o `logs`:
     `default_cost`, `unit_cost_snapshot`, `costo_actual`, `costo_nuevo`, `costo_estimado`, `sin_costo`. `/auth/captcha` trae un `cost` que es
     la dificultad de la prueba de trabajo: no es un costo y no está bajo ningún prefijo.
-  - **Lo que el rol restringido sí recibe**: todo lo demás, idéntico. El depósito ve producto, cantidad pedida, recibida y pendiente de
+  - **Lo que el rol restringido sí recibe**: todo lo demás, idéntico. El depósito lee producto, cantidad pedida, recibida y pendiente de
     cada línea de una orden, y la cantidad de cada línea de una recepción, sin importes. El POS y las promociones no necesitan el costo
     (el de la venta lo toma el servidor) y siguen igual.
   - **Una ruta nueva fuera de esos prefijos no queda cubierta sola.** Por eso el test recorre TODOS los GET de `openapi.json`
@@ -2240,6 +2241,17 @@ decisión explícita del humano, y no forman parte de esta ADR.
     «No autorizado», también si el turno ajeno sigue abierto: el 409 del motor contaría que existe). Ver los turnos ajenos es de
     `turnos.todos` (admin y encargado) y de `cierre_diario`: el staff heredado no tiene la primera, pero su vista previa del cierre diario
     ya trae el arqueo de cada turno del día, así que negárselo no protegía nada. Un turno que no existe sigue siendo el 404 del motor.
+  - *El depósito no recibe compras* (decisión del humano, 2026-09-29): `compras.recibir` es de admin, encargado y el staff heredado. Confirmar
+    una recepción deja el `unit_cost` recibido como `default_cost` del producto (último costo), o sea que **quien recibe fija costos**: un
+    depósito, que no ve plata, podía cambiar el costo de cualquier producto con una recepción arbitraria (hallazgo de la revisión de
+    Codex). Recibe el encargado; el depósito conserva `stock.ver`, `stock.ajustar`, `stock.transferir` y `compras.ver` (leer órdenes y
+    recepciones, siempre sin costos por `costos.ver`). Esto cierra también el problema de que la pantalla «Recibir mercadería» del kit
+    manda `unit_cost` y sin el campo en la respuesta el motor la rechazaba (422): ese rol ya no recibe.
+  - *El cajero fía, pero no ve la cuenta corriente* (decisión del humano, 2026-09-29): el POS sólo usa `GET /api/clientes` (elegir a quién,
+    `clientes.ver`) y `POST /api/ventas` con el medio `cuenta_corriente` y el cliente (`ventas.pos`): la deuda la asienta el servidor. Ninguna
+    de las dos abre la cuenta corriente, así que **no hizo falta una capacidad nueva**: el cajero ya fiaba (medido: 200) y `cuenta_corriente`
+    (saldos, cobrar y recibos) sigue siendo del vendedor, el encargado y el staff heredado; la baja de un pago y la anulación de un recibo
+    (`cobranzas.anular`), de admin y encargado. Lo custodia `test_el_mostrador_puede_fiar_desde_el_pos_...`.
   - *Anular y devolver ventas* sigue abierto a todo el mostrador (decisión del humano del 2026-09-15: «dejá anular y devolver para el
     cajero también»).
   - *Asignar la lista de precio de un cliente* es una decisión de precio: admin, encargado y staff heredado; no el vendedor.
@@ -2277,7 +2289,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 | `cobranzas.anular` | Baja de un pago de cuenta corriente y anulación de un recibo | ✓ | ✓ |  |  |  |  |
 | `compras.ver` | Leer proveedores, órdenes y recepciones de compra | ✓ | ✓ |  |  | ✓ | ✓ |
 | `compras.escribir` | Órdenes de compra; alta, edición y baja de proveedores | ✓ | ✓ |  |  |  | ✓ |
-| `compras.recibir` | Recepción de mercadería (crear, cargar líneas, confirmar) | ✓ | ✓ |  |  | ✓ | ✓ |
+| `compras.recibir` | Recepción de mercadería (crear, cargar líneas, confirmar). No la tiene el depósito | ✓ | ✓ |  |  |  | ✓ |
 | `costos.ver` | Ver el costo: `precio_costo` de productos, stock y listas de precio; `unit_cost` y subtotal de las compras. No abre rutas: decide qué campos viajan | ✓ | ✓ |  |  |  | ✓ |
 | `egresos` | Egresos | ✓ | ✓ |  |  |  | ✓ |
 | `tesoreria` | Tesorería: cuentas y movimientos | ✓ | ✓ |  |  |  |  |
@@ -2322,23 +2334,18 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - **Mutación**: dejarle `reportes` al cajero pone en rojo su columna de la tabla (6 operaciones), `/auth/me`, el archivo de capacidades
     del frontend y, en vitest, el menú y el ruteo del cajero.
 - Consecuencias y **lo que NO resuelve** (a decidir):
-  - **El costo ya no viaja a quien no tiene `costos.ver`, pero el kit (`libra-ui`) no sabe que puede faltar** (el filtro está hecho; quedan
-    dos consecuencias en las pantallas del kit, medidas):
+  - **El costo ya no viaja a quien no tiene `costos.ver`, pero el kit (`libra-ui`) no sabe que puede faltar** (el filtro está hecho; queda
+    una consecuencia en las pantallas del kit, medida):
     - En **Productos** la columna «Precio costo» de un vendedor, un cajero o un depósito muestra `$ NaN` (el kit formatea el campo
       ausente): no se rompe, pero es feo. Se arregla con una prop del kit para no dibujar la columna (`conCosto={false}`); en el detalle de
       una orden de compra, costo unitario y subtotal muestran `NaN` igual.
-    - 🔴 **El depósito no puede recibir mercadería desde la pantalla «Recibir mercadería» del kit**: precarga el costo de cada línea desde
-      la orden y lo manda como `unit_cost`; sin el campo en la respuesta manda la línea sin él y el motor la rechaza con 422 (`unit_cost`
-      es obligatorio en `RecepcionItemPayload`; medido). Por la API sí recibe (con un `unit_cost` en el cuerpo). Cerrarlo pide que el motor
-      acepte la línea sin costo cuando quien recibe no lo ve (usar el de la línea de la orden, o el del producto) **sin pisar** el costo del
-      producto: `confirm` deja el `unit_cost` recibido como nuevo costo (último costo), así que un depósito que mande un importe cualquiera
-      lo cambia. Es un pedido a `libracommerce` y al kit; hasta entonces la recepción desde la pantalla la hace un encargado.
   - **El kit (`libra-ui`) no tiene modo de sólo lectura** en Productos, Stock, Clientes, Proveedores ni Compras: un rol que lee pero no
     escribe ve los botones de alta y edición y recibe el 403 del backend al usarlos. Queda como pedido al kit (una prop `soloLectura` por
     pantalla, como ya tienen Sucursales y Depósitos). Y la ficha de un cliente le muestra al cajero la tarjeta de cuenta corriente con un
     error (no tiene `cuenta_corriente`).
-  - **El cajero no tiene cuenta corriente ni recibos**: la matriz aprobada no se los da (sí al vendedor). Hasta hoy el cajero (`staff`)
-    cobraba fiado en el mostrador (ADR-031); con el rol nuevo lo hace el vendedor. Es una línea (`cuenta_corriente`) si no era la intención.
+  - **El cajero no tiene cuenta corriente ni recibos** (la matriz aprobada no se los da; sí al vendedor): no ve saldos, no cobra deudas ni
+    ve recibos. Sí **fía** desde el POS (ver «Lo que hubo que decidir»). Lo que cambia respecto de hoy es que ya no cobra deudas de
+    cuenta corriente en el mostrador: lo hace el vendedor o el encargado.
   - **El cajero pierde el cierre diario** (ADR de 2026-09-13: «admin o cajero»): ahora es del encargado y del admin. El `staff` heredado
     lo conserva.
   - Una ruta nueva que el motor publique con `include_in_schema=False` no la ve el test de cobertura: hoy son tres y están en `OCULTAS`.

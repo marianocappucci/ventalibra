@@ -204,7 +204,7 @@ def test_sin_costos_ver_llega_lo_mismo_que_al_admin_menos_el_costo(datos, rol):
 
 
 def test_el_deposito_ve_las_cantidades_de_la_recepcion_sin_importes(datos):
-    """Lo que el depósito necesita para recibir: qué producto, cuánto se pidió, cuánto llegó y cuánto falta."""
+    """Lo que el depósito lee de una compra: qué producto, cuánto se pidió, cuánto llegó y cuánto falta, sin importes."""
     deposito = datos["usuarios"]["deposito"]
     orden = deposito.get(f"/api/purchase-orders/{datos['orden']}").json()
     (linea,) = orden["items"]
@@ -216,27 +216,36 @@ def test_el_deposito_ve_las_cantidades_de_la_recepcion_sin_importes(datos):
     assert recepcion["status"] == "draft" and recepcion["purchase_order_id"] == datos["orden"]
 
 
-def test_el_deposito_recibe_y_ni_las_respuestas_de_escritura_le_traen_el_costo(datos):
-    """La escritura sigue con sus guardas y el cuerpo del pedido no se filtra (el kit manda `unit_cost`); la RESPUESTA sí."""
-    deposito = datos["usuarios"]["deposito"]
-    nueva = deposito.post("/api/purchase-receipts", json={"proveedor_id": datos["proveedor"]})
-    assert nueva.status_code == 200, nueva.text
-    rid = nueva.json()["id"]
+def test_el_deposito_no_puede_recibir_ni_fijar_el_costo_con_una_recepcion(datos):
+    """Confirmar una recepción deja el `unit_cost` recibido como `default_cost` del producto: quien recibe fija costos. Un depósito
+    (que no ve plata) podía cambiar el costo de cualquier producto con una recepción arbitraria (hallazgo de la revisión de Codex);
+    con `compras.recibir` sólo de encargado, staff y admin, cada paso es 403 y el costo no se mueve."""
+    admin, deposito = datos["usuarios"]["admin"], datos["usuarios"]["deposito"]
+
+    def costo_del_producto():
+        return admin.get(f"/api/stock/{datos['yerba']}").json()["producto"]["precio_costo"]
+
+    assert costo_del_producto() == float(COSTO_DEL_PRODUCTO)
+    assert deposito.post("/api/purchase-receipts", json={"proveedor_id": datos["proveedor"]}).status_code == 403
+    # Ni siquiera sobre la recepción en borrador que ya existe: cargar una línea y confirmarla.
+    rid = datos["recepcion"]
     linea = deposito.post(f"/api/purchase-receipts/{rid}/items", json={
-        "item_id": datos["yerba"], "quantity": "5", "unit_cost": "777.77",
+        "item_id": datos["yerba"], "quantity": "5", "unit_cost": "1.00",
     })
-    assert linea.status_code == 200, linea.text
-    assert float(linea.json()["items"][0]["quantity"]) == 5.0 and not _claves_de_costo(linea.json(), "/api/purchase-receipts")
+    assert linea.status_code == 403, linea.text
     confirmada = deposito.post(f"/api/purchase-receipts/{rid}/confirm", json={"deposito_id": datos["deposito"]})
-    assert confirmada.status_code == 200, confirmada.text
-    assert confirmada.json()["status"] == "confirmed" and not _claves_de_costo(confirmada.json(), "/api/purchase-receipts")
-    # Se recibió de verdad: el costo se grabó (lo ve el admin) y el depósito no lo ve.
-    yerba = datos["usuarios"]["admin"].get(f"/api/stock/{datos['yerba']}").json()
-    assert yerba["producto"]["precio_costo"] == 777.77
-    assert "777.77" not in deposito.get(f"/api/stock/{datos['yerba']}").text
-    # Y las escrituras que no eran suyas siguen cerradas.
+    assert confirmada.status_code == 403, confirmada.text
+    assert costo_del_producto() == float(COSTO_DEL_PRODUCTO)
+    assert admin.get(f"/api/purchase-receipts/{rid}").json()["status"] == "draft"
+    # Lo demás que no era suyo sigue cerrado.
     assert deposito.post("/api/purchase-orders", json={"proveedor_id": datos["proveedor"]}).status_code == 403
     assert deposito.put(f"/api/productos/{datos['yerba']}", json={"nombre": "X", "precio_costo": "1"}).status_code == 403
+    # Y quien sí recibe (el encargado) no ve su respuesta filtrada: él tiene `costos.ver`.
+    encargado = datos["usuarios"]["encargado"]
+    confirmada = encargado.post(f"/api/purchase-receipts/{rid}/confirm", json={"deposito_id": datos["deposito"]})
+    assert confirmada.status_code == 200, confirmada.text
+    assert confirmada.json()["items"][0]["unit_cost"] == COSTO_DE_LA_RECEPCION
+    assert costo_del_producto() == float(COSTO_DE_LA_RECEPCION)
 
 
 # ── Cobertura: todos los GET, con datos reales ───────────────────────────────

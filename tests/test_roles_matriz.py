@@ -196,7 +196,7 @@ POST   /api/promociones/calcular                                        MOSTRADO
 POST   /api/actualizacion-masiva/precios/preview                        GERENCIA
 POST   /api/actualizacion-masiva/precios/aplicar                        GERENCIA
 
-# Proveedores y compras: ver `compras.ver`, escribir `compras.escribir`, recibir `compras.recibir`
+# Proveedores y compras: ver `compras.ver` (también el depósito), escribir `compras.escribir`, recibir `compras.recibir` (no el depósito)
 GET    /api/proveedores                                                 MERCADERIA
 POST   /api/proveedores                                                 GERENCIA_Y_STAFF
 PUT    /api/proveedores/{pid}                                           GERENCIA_Y_STAFF
@@ -205,11 +205,11 @@ GET    /api/purchase-orders                                             MERCADER
 POST   /api/purchase-orders                                             GERENCIA_Y_STAFF
 GET    /api/purchase-orders/{orden_id}                                  MERCADERIA
 POST   /api/purchase-orders/{orden_id}/items                            GERENCIA_Y_STAFF
-POST   /api/purchase-receipts                                           MERCADERIA
+POST   /api/purchase-receipts                                           GERENCIA_Y_STAFF
 GET    /api/purchase-receipts                                           MERCADERIA
 GET    /api/purchase-receipts/{recepcion_id}                            MERCADERIA
-POST   /api/purchase-receipts/{recepcion_id}/items                      MERCADERIA
-POST   /api/purchase-receipts/{recepcion_id}/confirm                    MERCADERIA
+POST   /api/purchase-receipts/{recepcion_id}/items                      GERENCIA_Y_STAFF
+POST   /api/purchase-receipts/{recepcion_id}/confirm                    GERENCIA_Y_STAFF
 
 # Clientes: ver `clientes.ver`, alta `clientes.alta`, resto `clientes.escribir`, lista `clientes.lista_precio`
 GET    /api/clientes                                                    MOSTRADOR
@@ -560,8 +560,9 @@ def test_auth_me_y_login_traen_las_capacidades_del_rol(instancia):
     assert "ventas.pos" in cajero and "caja.propia" in cajero
     assert not cajero & {"reportes", "margen", "dashboard", "cierre_diario", "tesoreria", "cuenta_corriente"}
     deposito = set(instancia["deposito"].get("/auth/me").json()["capacidades"])
-    assert {"stock.ver", "stock.ajustar", "stock.transferir", "compras.recibir"} <= deposito
-    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "tesoreria", "clientes.ver"}
+    assert {"stock.ver", "stock.ajustar", "stock.transferir", "compras.ver"} <= deposito
+    # No recibe compras: confirmar una recepción fija el costo del producto, y el depósito no maneja plata.
+    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver"}
     login = https_client(instancia["admin"].app).post(
         "/auth/login", json={"username": "u-cajero", "password": "clave-larga-1"},
     )

@@ -1,7 +1,7 @@
 """Lo que cada rol HACE, de punta a punta (ADR-049).
 
 `test_roles_matriz.py` prueba a quién deja pasar cada guarda. Acá, con permiso en la mano, que el flujo funciona de
-verdad para ese rol —vender, llevar el turno, mover mercadería, recibir una compra— y que lo ajeno sigue cerrado. Un
+verdad para ese rol —vender, llevar el turno, mover mercadería, recibir una compra (el encargado)— y que lo ajeno sigue cerrado. Un
 permiso bien puesto en la tabla que rompe el flujo del rol (el POS que necesita un turno, el ticket del cierre del propio
 turno, el precio de la lista) se ve acá y no con un cliente.
 """
@@ -135,7 +135,7 @@ def test_el_ticket_de_un_turno_es_de_quien_lo_abrio_y_de_quien_ve_los_de_todos(a
     assert ticket(https_client(admin_client.app), del_cajero).status_code == 401
 
 
-def test_el_deposito_maneja_mercaderia_y_recibe_compras_pero_no_vende_ni_toca_plata(admin_client):
+def test_el_deposito_maneja_mercaderia_y_lee_compras_pero_no_las_recibe_ni_vende_ni_toca_plata(admin_client):
     item = crear_item(admin_client, price="1000.00")
     principal = deposito_default(admin_client)
     segundo = crear_deposito(admin_client, "Depósito chico")["id"]
@@ -150,16 +150,13 @@ def test_el_deposito_maneja_mercaderia_y_recibe_compras_pero_no_vende_ni_toca_pl
     assert mover.status_code == 200, mover.text
     assert float(stock(admin_client, item, segundo)) == 4.0
 
-    # Recibe mercadería contra una compra: crea, carga, confirma.
-    recepcion = deposito.post("/api/purchase-receipts", json={"proveedor_id": proveedor})
-    assert recepcion.status_code == 200, recepcion.text
-    rid = recepcion.json()["id"]
-    linea = deposito.post(f"/api/purchase-receipts/{rid}/items", json={"item_id": item, "quantity": "5", "unit_cost": "700"})
-    assert linea.status_code == 200, linea.text
-    assert deposito.post(f"/api/purchase-receipts/{rid}/confirm", json={"deposito_id": principal}).status_code == 200
-    # Lee productos y proveedores.
+    # Lee productos, proveedores y las órdenes y recepciones de compra, pero NO las recibe (lo hace el encargado: confirmar
+    # una recepción fija el costo del producto). El ciclo completo de recibir está en `test_el_encargado_recibe_compras`.
     assert deposito.get("/api/productos").status_code == 200
     assert deposito.get("/api/proveedores").status_code == 200
+    assert deposito.get("/api/purchase-orders").status_code == 200
+    assert deposito.get("/api/purchase-receipts").status_code == 200
+    assert deposito.post("/api/purchase-receipts", json={"proveedor_id": proveedor}).status_code == 403
 
     # Pero no vende, no tiene caja, no emite órdenes de compra ni mueve plata ni edita productos.
     assert deposito.post("/api/ventas", json={"items": [], "pagos": []}).status_code == 403
@@ -169,6 +166,69 @@ def test_el_deposito_maneja_mercaderia_y_recibe_compras_pero_no_vende_ni_toca_pl
     assert deposito.post("/api/productos", json={"nombre": "X", "unidad": "u", "precio_venta": "1"}).status_code == 403
     for prohibido in ("/api/ventas", "/api/clientes", "/api/tesoreria", "/api/egresos", "/api/reportes", "/api/dashboard"):
         assert deposito.get(prohibido).status_code == 403, prohibido
+
+
+def test_el_encargado_recibe_compras_y_el_costo_queda_en_el_producto(admin_client):
+    """Recibir mercadería es del encargado (y del staff heredado): crea la recepción, carga la línea y confirma, y el stock sube y
+    el costo recibido queda como costo del producto."""
+    item = crear_item(admin_client)
+    principal = deposito_default(admin_client)
+    proveedor = admin_client.post("/api/proveedores", json={"nombre": "Distribuidora SA"}).json()["id"]
+    for rol in ("encargado", "staff"):
+        usuario = _entrar(admin_client, rol)
+        recepcion = usuario.post("/api/purchase-receipts", json={"proveedor_id": proveedor})
+        assert recepcion.status_code == 200, recepcion.text
+        rid = recepcion.json()["id"]
+        linea = usuario.post(f"/api/purchase-receipts/{rid}/items", json={"item_id": item, "quantity": "5", "unit_cost": "700"})
+        assert linea.status_code == 200, linea.text
+        assert usuario.post(f"/api/purchase-receipts/{rid}/confirm", json={"deposito_id": principal}).status_code == 200
+    assert float(stock(admin_client, item, principal)) == 10.0
+    assert admin_client.get(f"/api/stock/{item}").json()["producto"]["precio_costo"] == 700.0
+
+
+@pytest.mark.parametrize("rol", ["cajero", "vendedor"])
+def test_el_mostrador_puede_fiar_desde_el_pos_y_el_cajero_no_ve_saldos_recibos_ni_cobranzas(admin_client, rol):
+    """Decisión del humano (2026-09-29): el cajero SIGUE fiando en el mostrador (ADR-031), pero no ve saldos, recibos ni cobranzas.
+
+    Para fiar, el POS sólo usa `GET /api/clientes` (elegir a quién, `clientes.ver`) y `POST /api/ventas` con el medio
+    `cuenta_corriente` y el cliente (`ventas.pos`): la deuda la asienta el servidor. Ninguna de las dos abre la cuenta corriente,
+    así que no hace falta una capacidad más: `cuenta_corriente` (saldos, cobrar, recibos) sigue siendo del vendedor, el encargado y el
+    staff heredado. Medido: el cajero fiaba con 200 antes de este test y su lectura de saldos era 403."""
+    item = crear_item(admin_client)
+    con_stock(admin_client, item, deposito_default(admin_client), "20")
+    cliente = admin_client.post("/api/clientes", json={"name": "Doña Rosa"}).json()["id"]
+    usuario = _entrar(admin_client, rol)
+    abrir_turno(usuario)
+    assert any(c["id"] == cliente for c in usuario.get("/api/clientes").json())
+
+    venta = registrar_venta(
+        usuario, item, cantidad="2", cliente_id=cliente, pagos=[{"medio": "cuenta_corriente", "monto": 3000.0}],
+    )
+    assert venta["estado"] == "cobrada"
+    saldos = admin_client.get("/api/cuenta-corriente").json()
+    assert next(c for c in saldos["clientes"] if c["id"] == cliente)["saldo"] == 3000.0  # la deuda quedó asentada
+
+    lectura = [
+        "/api/cuenta-corriente", f"/api/cuenta-corriente/{cliente}", "/api/cuenta-corriente/cajas", "/api/recibos",
+        "/api/recibos/999999", "/api/recibos/999999/pdf",
+    ]
+    escritura = [
+        ("POST", f"/api/cuenta-corriente/{cliente}/pagar", {"monto": 100, "medio": "efectivo"}),
+        ("DELETE", "/api/cuenta-corriente/pagos/999999", None),
+        ("POST", "/api/recibos/999999/anular", {"motivo": "x"}),
+        ("POST", f"/api/recibos/venta/{venta['id']}", {}),
+    ]
+    if rol == "cajero":
+        for url in lectura:
+            assert usuario.get(url).status_code == 403, url
+        for metodo, url, cuerpo in escritura:
+            assert usuario.request(metodo, url, json=cuerpo).status_code == 403, (metodo, url)
+    else:  # el vendedor no cambia: ve y cobra la cuenta corriente, pero no da de baja pagos ni anula recibos
+        assert usuario.get("/api/cuenta-corriente").status_code == 200
+        assert usuario.get(f"/api/cuenta-corriente/{cliente}").status_code == 200
+        assert usuario.get("/api/recibos").status_code == 200
+        assert usuario.request("DELETE", "/api/cuenta-corriente/pagos/999999").status_code == 403
+        assert usuario.post("/api/recibos/999999/anular", json={"motivo": "x"}).status_code == 403
 
 
 @pytest.mark.parametrize("rol", ["cajero", "vendedor"])
