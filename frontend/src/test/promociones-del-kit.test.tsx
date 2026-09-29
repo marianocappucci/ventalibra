@@ -1,6 +1,6 @@
 // Las promociones son la pantalla del kit (`libra-ui/comercio/Promociones`) sobre los routers del motor
 // (ADR-043), sin wrapper ni variantes. El detalle de la pantalla lo prueban los tests del kit; acá, que se
-// monta con las rutas de este producto y que la ruta y el menú son de admin.
+// monta con las rutas de este producto y que la ruta y el menú piden `precios.escribir`.
 import { render, screen } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,10 +28,10 @@ it('lista las promociones del motor', async () => {
   expect(screen.getByText(/Llevá 2 pagá 1/)).toBeInTheDocument()
 })
 
-it('la ruta y la entrada del menú son de admin', () => {
+it('la ruta y la entrada del menú piden `precios.escribir` (admin y encargado)', () => {
   const app = readFileSync(join(cwd(), 'src/App.tsx'), 'utf8')
-  const ruta = app.match(/path="\/promociones"\s+element=\{\s*<ProtectedRoute( adminOnly)?>/)
-  expect(ruta?.[1]).toBe(' adminOnly')
+  const ruta = app.match(/path="\/promociones"\s+element=\{\s*<ProtectedRoute cap="([^"]+)">/)
+  expect(ruta?.[1]).toBe('precios.escribir')
   const layout = readFileSync(join(cwd(), 'src/components/Layout.tsx'), 'utf8')
-  expect(layout).toMatch(/to: '\/promociones'[^}]*adminOnly: true/)
+  expect(layout).toMatch(/to: '\/promociones'[^}]*hideFor: sinCapacidad\('precios.escribir'\)/)
 })

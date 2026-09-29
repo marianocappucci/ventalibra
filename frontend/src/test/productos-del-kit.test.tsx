@@ -102,3 +102,22 @@ it('el detalle abre los códigos y las variantes del producto', async () => {
   expect(await within(dialogo).findByText('Balanza: 0012')).toBeInTheDocument()
   expect(within(dialogo).getByText('Y-500 — 500 g')).toBeInTheDocument()
 })
+
+// Sin `costos.ver` (vendedor, cajero, depósito) el backend saca `precio_costo` de la respuesta (`app/costos.py`, ADR-049).
+// La pantalla del kit no tiene un modo «sin costos»: acá se comprueba que con el campo AUSENTE no se rompe (sigue listando,
+// buscando y abriendo el detalle) y que el costo real no aparece en ningún lado. Lo que se ve en la columna «Precio costo»
+// (sin dato) es una limitación del kit, anotada en ADR-049.
+it('con la respuesta de un rol sin costos.ver (sin precio_costo) la pantalla no se rompe y no muestra ningún costo', async () => {
+  const { precio_costo: _costo, ...sinCosto } = YERBA
+  respuestas['GET /api/productos'] = [sinCosto, { ...sinCosto, id: 2, codigo: 'Y2', nombre: 'Azúcar Ledesma' }]
+  const user = userEvent.setup()
+  render(<MemoryRouter><Productos /></MemoryRouter>)
+  const fila = (await screen.findByText('Yerba Playadito')).closest('tr')!
+  expect(screen.getByText('Azúcar Ledesma')).toBeInTheDocument()
+  expect(within(fila).getByText(/3\.000/)).toBeInTheDocument()   // el precio de venta sigue
+  expect(document.body.textContent).not.toMatch(/2\.000/)         // y el costo que tenía el dato completo no está
+  // La edición abre (aunque guardar dé 403 a este rol: el kit no tiene modo de sólo lectura) y no inventa un costo.
+  await user.click(within(fila).getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  expect(within(dialogo).getByLabelText(/Nombre/)).toHaveValue('Yerba Playadito')
+})

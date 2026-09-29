@@ -5,6 +5,25 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Roles de usuario: admin, encargado, vendedor, cajero y depósito** (2026-09-29, ADR-049). Además de `admin` y `staff`, la
+  pantalla de Usuarios ofrece **encargado** (todo menos usuarios, configuración, logs, estructura del local y reabrir un día),
+  **vendedor** (POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y precios), **cajero** (POS, su turno y su caja,
+  consulta de stock y precios, clientes en lectura y alta) y **depósito** (stock, ajustes y transferencias, y lectura de órdenes y recepciones
+  de compra sin importes; **no recibe compras**, lo hace el encargado; sin POS y sin plata). Cada rol ve en el menú sólo lo suyo, y una ruta que no es suya lo lleva a su pantalla inicial (el POS, o el stock
+  para el depósito). **`staff` no se migra ni se borra**: sigue siendo un rol válido con exactamente los permisos de siempre («heredado;
+  migrar a un rol concreto»), y el visitante de la demo conserva la lectura de todo. La matriz vive en `app/permisos.py`;
+  `/auth/login` y `/auth/me` traen `capacidades`. Un rol inválido es 422 al crear o editar un usuario; sigue sin poderse dejar la
+  instancia sin admin ni sacarse el rol a uno mismo. Sin migración. **Cambios para quien ya usaba el mostrador**: el cajero nuevo
+  sigue fiando desde el POS pero no ve saldos, recibos ni cobranzas (cobrar deudas es del vendedor y el encargado), y no tiene cierre
+  diario (el `staff` de antes conserva todo).
+  **Costos**: la capacidad nueva `costos.ver` (admin, encargado y el `staff` heredado) decide quién ve lo que cuesta la mercadería. Sin
+  ella, la API no manda `precio_costo` (productos, stock, listas de precio) ni `unit_cost` y subtotal (órdenes y recepciones de compra):
+  el vendedor y el cajero no ven costos y el depósito ve las cantidades de la recepción sin importes. **El ticket de un turno**
+  (`/api/cierre-diario/turno/{id}/ticket`) es de quien lo abrió (o de quien ve los turnos de todos): un cajero o un vendedor ya no puede
+  pedir el de otro. **Recibir compras** es del encargado (y del `staff` heredado): confirmar una recepción fija el costo del producto,
+  y un depósito, que no ve plata, podía cambiarlo con una recepción arbitraria. **Pendiente conocido** (ADR-049): la columna «Precio
+  costo» de Productos muestra `$ NaN` a los roles sin `costos.ver`.
+
 - **El mapa `VENTALIBRA_DEPOSITOS_A_SUCURSAL` también se aplica al arrancar y al restaurar un respaldo anterior a la jerarquía** (2026-09-29, ADR-044).
   Antes sólo lo leía la revisión `0007`, y `db.connect()` mandaba los depósitos sin sucursal a la predeterminada aunque el mapa dijera otra.
   Con un mapa mal escrito o que apunta a una sucursal inexistente, `connect()` ahora falla igual que la `0007`, pero sólo si hay depósitos huérfanos que asignar.

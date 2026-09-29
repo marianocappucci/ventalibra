@@ -25,10 +25,26 @@ HTTP, auth propia y la orquestación de casos de uso entre motores.
   no se reusa `libracore.db.usuarios` en esta fase.
 - **Motor de catálogo/inventario/ventas**: `libracommerce.db.repository.SqliteCommerceRepository`,
   compartiendo la misma conexión sqlite3 que el resto de la app.
-- **Auth**: `libracore.auth.SessionAuth` (cookie firmada `tl_session`),
+- **Auth**: `libraauth.session_auth.SessionAuth` (cookie firmada `vl_session`),
   igual mecánica que GestioLibra/MedLibra — dependencias propias
   (`get_current_user`/`require_role`) devuelven 401/403 JSON en vez de
   redirect, porque es una API sin páginas HTML.
+- **Roles y permisos** (ADR-049): `app/permisos.py` es la ÚNICA matriz. Seis
+  roles (`admin`, `encargado`, `vendedor`, `cajero`, `deposito` y el `staff`
+  heredado) y capacidades nombradas (`reportes`, `stock.ajustar`,
+  `caja.propia`...). Cada router se monta en `app/main.py` con
+  `Depends(requiere("capacidad"))` —que es `json_api_require_role` de libraauth
+  con los roles de esa capacidad, así que la demo y el gate de Términos siguen
+  valiendo— o, si mezcla rutas de gente distinta, con `requiere_segun_metodo` /
+  `requiere_segun_ruta`. De la misma tabla salen el vocabulario de roles de
+  `UserRepository` y del router de usuarios y la lista `capacidades` de
+  `/auth/me`, que la SPA (`frontend/src/lib/permisos.ts`) usa para el menú y las
+  rutas. `admin` tiene todas las capacidades por construcción. El token de
+  servicio del backoffice sólo entra al router de usuarios
+  (`requiere_o_servicio`). El costo de la mercadería lo decide `costos.ver`: un
+  middleware (`app/costos.py`) saca `precio_costo`, `unit_cost` y el subtotal
+  de compras de las RESPUESTAS bajo los prefijos de catálogo, stock y compras
+  para quien no la tiene.
 - **Integraciones futuras**: LibraCore (`caja`, `arca_facturacion`) en Fase 3,
   sobre una segunda base SQLite dedicada — ver `ROADMAP.md`.
 

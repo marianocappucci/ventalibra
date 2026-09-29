@@ -1,11 +1,12 @@
 // Margen y rotación es la pantalla del kit (`libra-ui/comercio/Margen`) sobre el router del motor (`/api/reportes/margen`, ADR-046).
 // La cuenta (qué es una venta, las devoluciones, el costo, el descuento) es del motor y se prueba allá; acá, que la ruta existe, que
-// es de admin y que la pantalla habla con la API que el kit espera.
+// es de quien tiene `margen` (admin y encargado) y que la pantalla habla con la API que el kit espera.
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { AuthProvider } from '../context/AuthContext'
+import CAPACIDADES_POR_ROL from './capacidades-por-rol.json'
 
 let llamadas: string[]
 
@@ -32,7 +33,7 @@ function conSesion(role: 'admin' | 'staff') {
     if (u.includes('/auth/me')) {
       return Promise.resolve(json({
         id: '1', username: 'ana', name: 'Ana', role, active: true,
-        nombre: 'Ana', modulos: [], empresa_nombre: 'Prueba', mp_pending_count: 0,
+        nombre: 'Ana', modulos: [], capacidades: CAPACIDADES_POR_ROL[role], empresa_nombre: 'Prueba', mp_pending_count: 0,
       }))
     }
     if (u.startsWith('/api/reportes/margen')) return Promise.resolve(json(MARGEN))
@@ -62,7 +63,7 @@ describe('ruta /margen', () => {
     expect(screen.getAllByRole('link', { name: /Margen y rotación/ })[0]).toHaveAttribute('href', '/margen')
   })
 
-  it('un cajero no llega: la ruta es de admin y ni siquiera pide el reporte', async () => {
+  it('un cajero no llega: la ruta pide `margen` y ni siquiera pide el reporte', async () => {
     conSesion('staff')
     abrir('/margen')
     await screen.findByRole('link', { name: /Ventas/ })

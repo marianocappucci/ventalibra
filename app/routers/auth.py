@@ -18,32 +18,39 @@ from libraauth.session_auth import build_json_api_auth_router
 
 from plans import ADDONS, TODOS_LOS_MODULOS
 
+from ..permisos import capacidades_de
+
 logger = logging.getLogger(__name__)
 
 
-def _extras(request, _user) -> dict:
-    """Los modulos habilitados de ESTA instancia, para que la SPA decida que ofrecer.
+def _extras(request, user) -> dict:
+    """Lo que la SPA necesita saber de ESTA instancia y de quien entró, mas alla de `role`.
 
-    `modulos` es la lista de los prendidos (los del plan en `TODOS_LOS_MODULOS`
-    y los add-ons encendidos), la misma forma que ya usan LibraDesk y Contalibra.
-    Sale en el usuario de `/auth/login` y `/auth/me` (ADR-048): sin esto la SPA
-    no sabia que la facturacion ni las sucursales de mas son del plan Premium.
+    **`capacidades`**: lo que el usuario puede hacer, segun su rol (ADR-049, `app/permisos.py`). La SPA decide
+    con esto el menu y las rutas (`frontend/src/lib/permisos.ts`); antes miraba `user.role === 'admin'`, que con
+    cinco roles no alcanza. Es la MISMA matriz que las guardas del backend (una sola fuente), asi que menu y
+    403 no pueden discrepar. Sale de un diccionario en memoria: no puede fallar como la consulta de modulos.
+    Sirve para decidir que mostrar, no para autorizar: el que corta es cada endpoint.
 
-    Se lee en cada request y no al importar: el plan se cambia con la app
-    corriendo (`aplicar_plan_en_db`) y un valor cacheado dejaria la pantalla
-    ofreciendo lo que el backend ya rechaza.
+    **`modulos`**: los habilitados de ESTA instancia (los del plan en `TODOS_LOS_MODULOS` y los add-ons
+    encendidos), la misma forma que ya usan LibraDesk y Contalibra. Sale en el usuario de `/auth/login` y
+    `/auth/me` (ADR-048): sin esto la SPA no sabia que la facturacion ni las sucursales de mas son del plan
+    Premium.
 
-    🔑 **Ante una falla NO devuelve una lista vacia: omite el campo.** Es el
-    reves de LibraDesk, y a proposito: aca el gate de verdad es del backend (un
-    403 por endpoint) y la SPA tolera la falta del campo ofreciendo todo (ver
-    `frontend/src/lib/modulos.ts`). Una lista vacia le esconderia a un cliente
-    Premium la facturacion que pago porque una consulta fallo un instante."""
+    Los modulos se leen en cada request y no al importar: el plan se cambia con la app corriendo
+    (`aplicar_plan_en_db`) y un valor cacheado dejaria la pantalla ofreciendo lo que el backend ya rechaza.
+
+    🔑 **Ante una falla NO devuelve una lista vacia de modulos: omite el campo.** Es el reves de LibraDesk, y a
+    proposito: aca el gate de verdad es del backend (un 403 por endpoint) y la SPA tolera la falta del campo
+    ofreciendo todo (ver `frontend/src/lib/modulos.ts`). Una lista vacia le esconderia a un cliente Premium la
+    facturacion que pago porque una consulta fallo un instante."""
+    extras: dict = {"capacidades": capacidades_de((user or {}).get("role"))}
     try:
         modulos = request.app.state.modules
-        return {"modulos": sorted(m for m in TODOS_LOS_MODULOS | ADDONS if modulos.is_enabled(m))}
+        extras["modulos"] = sorted(m for m in TODOS_LOS_MODULOS | ADDONS if modulos.is_enabled(m))
     except Exception:
         logger.warning("No se pudieron leer los modulos para /auth: la SPA ofrece todo", exc_info=True)
-        return {}
+    return extras
 
 
 # `incluir_demo=True` NO enciende nada por si solo: `POST /auth/demo` se

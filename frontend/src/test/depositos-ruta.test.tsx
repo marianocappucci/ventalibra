@@ -1,11 +1,12 @@
 // `/depositos/:id` (el stock de un depósito, al que llega «Ver stock» desde el detalle de una sucursal) lleva el mismo
-// gate que `/sucursales/:id`: lo mira también el cajero. Sin `adminOnly`, que lo mandaría de vuelta al POS. El
+// gate que `/sucursales/:id`: lo mira también el cajero. Sin esa capacidad lo mandarían de vuelta al POS. El
 // backend rechaza sus escrituras y la pantalla no se las ofrece (eso lo prueba `sucursales-del-kit.test.tsx`).
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { AuthProvider } from '../context/AuthContext'
+import CAPACIDADES_POR_ROL from './capacidades-por-rol.json'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -17,7 +18,7 @@ function conSesion(role: 'admin' | 'staff') {
     if (u.includes('/auth/me')) {
       return Promise.resolve(json({
         id: '1', username: 'ana', name: 'Ana', role, active: true,
-        nombre: 'Ana', modulos: [], empresa_nombre: 'Prueba', mp_pending_count: 0,
+        nombre: 'Ana', modulos: [], capacidades: CAPACIDADES_POR_ROL[role], empresa_nombre: 'Prueba', mp_pending_count: 0,
       }))
     }
     if (u === '/api/depositos') {

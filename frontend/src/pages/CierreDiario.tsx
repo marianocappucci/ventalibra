@@ -17,6 +17,7 @@ import { CalendarCheck, Printer, Undo2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha, fechaHora, hora } from '@/lib/fechas'
 import { abrirTicket } from '@/lib/tickets'
+import { puede } from '@/lib/permisos'
 import { money, pesos } from '@/lib/dinero'
 
 function describeError(err: unknown): string {
@@ -25,11 +26,10 @@ function describeError(err: unknown): string {
 }
 
 export function CierreDiario() {
-  // Reabrir día (LibraCore v1.107.0) es sólo de admin -- el backend ya lo
-  // exige (`autorizar_reabrir=Depends(require_admin)` en app/main.py), esto
-  // es sólo para no ofrecer un botón que va a dar 403.
+  // Reabrir día (LibraCore v1.107.0) es sólo de admin (`cierre_diario.reabrir`) -- el backend ya lo
+  // exige (`autorizar_reabrir` en app/main.py), esto es sólo para no ofrecer un botón que va a dar 403.
   const { user } = useAuth()
-  const esAdmin = user?.role === 'admin'
+  const esAdmin = puede(user, 'cierre_diario.reabrir')
   // Las sucursales activas: las que se ofrecen en el selector.
   const [locations, setLocations] = useState<Sucursal[]>([])
   // Todas, con las dadas de baja: para nombrar cierres viejos (si no, una sucursal de baja se vería «Sucursal #N»).
