@@ -52,6 +52,8 @@ export const Layout = createLayout({
     // Roadmap de producto (2026-09-29, ADR-047): las etiquetas de góndola se arman con los precios ya cargados.
     { to: '/etiquetas', label: 'Etiquetas', icon: ScanBarcode, adminOnly: true },
     { to: '/stock', label: 'Stock', icon: Boxes },
+    // Sin `module`: en Básico sirve entre los depósitos de la misma sucursal; lo que cruza de sucursal lo corta el
+    // backend y la pantalla avisa (ADR-048).
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft },
     { to: '/cajas', label: 'Cajas', icon: Landmark, adminOnly: true },
     // Fase 10 de la adopción de los motores (ADR-037): cuentas bancarias y transferencias, sin gate de plan.
@@ -60,8 +62,8 @@ export const Layout = createLayout({
     { to: '/turnos', label: 'Turnos', icon: Clock },
     // Admin y cajero: el cierre diario lo puede hacer cualquiera de los dos.
     { to: '/cierre-diario', label: 'Cierre diario', icon: CalendarCheck },
-    // Fase 13 de la adopción de los motores (ADR-039): gateado a "premium" (plans.py), a diferencia de
-    // Tesorería/Egresos/Libros IVA. Sin nav-hiding por módulo: un admin de otro plan ve el 403 del motor.
+    // Fase 13 de la adopción de los motores (ADR-039). Libre en todos los planes desde ADR-048: el plan se
+    // distingue por facturación ARCA y multisucursal, no por el tablero.
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: true },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, adminOnly: true },
     // Roadmap de producto, tanda 1 (2026-09-29, ADR-046): margen y rotación por producto y por período.

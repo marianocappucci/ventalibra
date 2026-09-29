@@ -96,10 +96,9 @@ def test_un_cajero_no_ve_el_costo_ni_el_margen(staff_client):
     assert staff_client.get("/api/reportes/margen/export/periodos").status_code == 403
 
 
-def test_sin_decision_de_plan_esta_disponible_para_todo_admin(admin_client):
-    """🔴 Documenta una decisión PENDIENTE, no la toma: en qué plan cae el margen no lo decidió el humano (`plans.py` anticipa
-    "Premium con margen para reportes"). Hoy no hay `require_module` sobre esta ruta, igual que Reportes. Cuando se decida gatearla,
-    este test cambia junto con `plans.py` y el `dependencies=` de `main.py`."""
-    for modulo in ("facturacion", "dashboard"):
+def test_el_margen_esta_libre_en_todos_los_planes(admin_client):
+    """Decidido el 2026-09-29 (ADR-048, que resuelve el pendiente de ADR-046): el margen y la rotación son libres en Básico
+    y en Premium. El plan se distingue por facturación y multisucursal; no hay `require_module` sobre esta ruta."""
+    for modulo in ("facturacion", "multisucursal"):
         admin_client.app.state.modules.set_enabled(modulo, False)
     assert admin_client.get("/api/reportes/margen").status_code == 200

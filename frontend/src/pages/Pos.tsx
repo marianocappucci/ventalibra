@@ -45,6 +45,8 @@ import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'luc
 import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
 import { money } from '@/lib/dinero'
+import { EmitirFactura } from '../components/emitir-factura'
+import { FACTURACION, useTieneModulo } from '../lib/modulos'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -1183,6 +1185,9 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
     { medio: 'efectivo', monto: total.toFixed(2), recibido: '' },
   ])
   const [factura, setFactura] = useState(false)
+  // La facturación ARCA es del plan Premium (ADR-048): sin el módulo el backend contesta 403 a `/facturar`, así que
+  // el casillero se ofrece apagado y con el motivo en vez de dejar la venta cobrada con un error de factura.
+  const facturacion = useTieneModulo(FACTURACION)
   const [registrando, setRegistrando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const mixto = pagos.length > 1
@@ -1263,7 +1268,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
    *  igual -- el error se muestra y el detalle de la venta tiene el botón
    *  para reintentar. */
   async function conFacturaSiHaceFalta(venta: Venta): Promise<[Venta, string | null]> {
-    if (!factura || venta.factura_id) return [venta, null]
+    if (!factura || !facturacion || venta.factura_id) return [venta, null]
     let mensaje: string | null = null
     try {
       await api.post(`/api/ventas/${venta.id}/facturar`)
@@ -1684,10 +1689,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
 
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={factura} onChange={(e) => setFactura(e.target.checked)} />
-            Emitir factura
-          </label>
+          <EmitirFactura marcado={factura} disponible={facturacion} onChange={setFactura} />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={cerrar}>Cancelar</Button>

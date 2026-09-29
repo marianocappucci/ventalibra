@@ -2,8 +2,8 @@
 
 `libracore.dashboard_router.build_dashboard_router`, el mismo que Contalibra, con `sin_fiado=True`
 (libracore v1.114.0): una venta a cuenta corriente no es plata en el cajón, mismo criterio que Reportes
-(fase 8). A diferencia de Tesorería/Egresos/Libros IVA, éste sí está gateado por plan: `plans.py` ya
-anticipaba "dashboard" en premium desde antes de construirse. De admin.
+(fase 8). Estuvo gateado a Premium (ADR-039) y **desde ADR-048 es libre en los dos planes**: lo que distingue un
+plan es la facturación y la multisucursal, no el tablero. De admin.
 """
 from ventas_helpers import caja_default, registrar_venta
 
@@ -48,9 +48,12 @@ def test_fiar_no_es_cobrar_en_el_tablero(admin_client):
     assert [m["medio_pago"] for m in d["ultimos_movimientos"]] == ["efectivo"]
 
 
-def test_sin_el_modulo_el_tablero_da_403(admin_client):
-    admin_client.app.state.modules.set_enabled("dashboard", False)
-    assert admin_client.get("/api/dashboard").status_code == 403
+def test_sin_ningun_modulo_el_tablero_se_abre(admin_client):
+    """ADR-048: el dashboard ya no es de ningún plan. Con todos los módulos apagados (Básico) sigue libre; la
+    versión vieja de este test (`set_enabled("dashboard", False)` -> 403) se retiró junto con el gate."""
+    for modulo in ("facturacion", "multisucursal"):
+        admin_client.app.state.modules.set_enabled(modulo, False)
+    assert admin_client.get("/api/dashboard").status_code == 200
 
 
 def test_un_cajero_no_ve_el_tablero(staff_client):
