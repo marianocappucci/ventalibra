@@ -45,6 +45,7 @@ Una lectura nueva de F4 (no reemplaza nada de `/sales`, que nunca la tuvo):
   cuenta server-side.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from libracommerce.erp import promociones as promos
 from libracore.db import clients as db_clients
 from pydantic import BaseModel
 
@@ -82,7 +83,9 @@ def ticket(sale_id: int, request: Request):
         cliente = db_clients.get_client(sale.customer_party_id)  # id del cliente == id del party
         nombre = (cliente or {}).get("name", "")
 
-    pdf = ticket_de_venta(sale, nombre)
+    # Qué promociones se aplicaron a esta venta (`sale_promotions`): el ticket las imprime una por fila.
+    promociones = promos.promociones_de_venta(request.app.state.conn, sale_id)
+    pdf = ticket_de_venta(sale, nombre, promociones)
     return Response(
         content=pdf,
         media_type="application/pdf",

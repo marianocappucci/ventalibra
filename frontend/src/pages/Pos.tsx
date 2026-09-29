@@ -1756,6 +1756,15 @@ function VentaCobrada({ venta, facturaError, aviso, onNueva }: {
       <div className="rounded-md border p-6 text-center">
         <p className="text-sm text-muted-foreground">Venta {venta.numero} cobrada</p>
         <p className="mt-1 text-2xl font-medium tabular-nums">${money(venta.total)}</p>
+        {(venta.promociones ?? []).length > 0 && (
+          <div className="mt-2 grid gap-0.5 text-sm text-emerald-700 dark:text-emerald-400">
+            {(venta.promociones ?? []).map((promo, i) => (
+              <p key={i}>
+                {promo.nombre}{promo.veces > 1 ? ` × ${promo.veces}` : ''}: ahorro ${money(promo.ahorro)}
+              </p>
+            ))}
+          </div>
+        )}
         {vuelto > 0 && (
           <div className="mt-5 border-t pt-5">
             <p className="text-sm text-muted-foreground">Vuelto</p>
