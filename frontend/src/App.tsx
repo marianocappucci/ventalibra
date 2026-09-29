@@ -11,6 +11,7 @@ import { ListasPrecio } from './pages/ListasPrecio'
 import { ListaPrecioDetalle } from './pages/ListaPrecioDetalle'
 import { ActualizacionMasivaPrecios } from 'libra-ui/comercio/ActualizacionMasivaPrecios'
 import { Promociones } from 'libra-ui/comercio/Promociones'
+import { EtiquetasGondola } from 'libra-ui/comercio/EtiquetasGondola'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
 import { SucursalDetalle } from './pages/SucursalDetalle'
@@ -39,6 +40,7 @@ import { LibrosIva } from 'libra-ui/comercio/LibrosIva'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
+import { Margen } from './pages/Margen'
 import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
@@ -252,6 +254,16 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* Etiquetas de góndola (roadmap de producto, 2026-09-29, ADR-047): la pantalla del kit sin wrapper, de sólo
+          lectura sobre productos y listas de precio. De admin: las listas lo son. */}
+      <Route
+        path="/etiquetas"
+        element={
+          <ProtectedRoute adminOnly>
+            <EtiquetasGondola />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/cajas"
         element={
@@ -349,6 +361,14 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <Reportes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/margen"
+        element={
+          <ProtectedRoute adminOnly>
+            <Margen />
           </ProtectedRoute>
         }
       />
