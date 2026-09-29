@@ -39,6 +39,7 @@ import { LibrosIva } from 'libra-ui/comercio/LibrosIva'
 import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
+import { Margen } from './pages/Margen'
 import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
@@ -349,6 +350,14 @@ export default function App() {
         element={
           <ProtectedRoute adminOnly>
             <Reportes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/margen"
+        element={
+          <ProtectedRoute adminOnly>
+            <Margen />
           </ProtectedRoute>
         }
       />

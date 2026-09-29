@@ -37,6 +37,7 @@ from libracommerce.web.listas_router import (
     build_precios_vigentes_router,
     build_quiebres_router,
 )
+from libracommerce.web.margen_router import build_margen_router
 from libracommerce.web.planillas_router import build_actualizacion_precios_router
 from libracommerce.web.promociones_router import (
     build_promociones_calculo_router,
@@ -732,6 +733,17 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(
         build_reportes_export_router(sesion=require_admin, reportes=reportes, sin_fiado=True),
     )
+    # Margen y rotación (tanda 1 del roadmap de producto, ADR-046): el router del motor (`libracommerce.web.margen_router`, sólo
+    # lectura sobre las líneas de venta: ingreso, costo, margen y unidades por producto y por período, con export CSV). Sólo admin,
+    # como Reportes: el costo y el margen son del dueño, no del cajero. Una venta anulada o pendiente de cobro no cuenta y las
+    # devoluciones se restan (lo resuelve el motor); fiar SÍ es vender, así que acá no hay `sin_fiado`. Los CSV cuelgan del mismo
+    # prefijo, bajo `/api`: no hace falta una ruta más en el proxy de Vite.
+    #
+    # 🔴 **Sin gate de plan, a propósito (decisión de negocio pendiente).** `require_module("margen")` haría falta si el margen fuera
+    # de un plan (`plans.py` anticipa que Premium "tiene margen para reportes"); no se asignó ninguno porque no lo decidió el humano.
+    # Mientras tanto queda disponible para todo admin, igual que Reportes. Para gatearlo: sumar `"margen"` al plan elegido en
+    # `plans.py` y `Depends(require_module("margen"))` en este `dependencies=`.
+    app.include_router(build_margen_router(conexion=lc_get_connection), dependencies=admin_only)
     # Configurar la balanza es del dueno del local, no del cajero: el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=admin_only)
