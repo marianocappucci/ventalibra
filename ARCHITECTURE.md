@@ -41,7 +41,10 @@ HTTP, auth propia y la orquestación de casos de uso entre motores.
   `/auth/me`, que la SPA (`frontend/src/lib/permisos.ts`) usa para el menú y las
   rutas. `admin` tiene todas las capacidades por construcción. El token de
   servicio del backoffice sólo entra al router de usuarios
-  (`requiere_o_servicio`).
+  (`requiere_o_servicio`). El costo de la mercadería lo decide `costos.ver`: un
+  middleware (`app/costos.py`) saca `precio_costo`, `unit_cost` y el subtotal
+  de compras de las RESPUESTAS bajo los prefijos de catálogo, stock y compras
+  para quien no la tiene.
 - **Integraciones futuras**: LibraCore (`caja`, `arca_facturacion`) en Fase 3,
   sobre una segunda base SQLite dedicada — ver `ROADMAP.md`.
 

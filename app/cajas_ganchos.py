@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from libracommerce.erp import ventas as erp_ventas
 from libracore.caja_router import AbrirPayload, CajaPayload, CajaUpdatePayload, OpcionesCajas
 from libracore.db import caja as db_caja
@@ -71,6 +71,32 @@ def usuario_de_turnos(user: dict = Depends(usuario_actual)) -> dict:
     (que corren antes y sobre la sesión verdadera), ni ningún otro router.
     """
     return {**user, "role": "admin"} if _VE_TODOS_LOS_TURNOS(user) else user
+
+
+#: Quién puede pedir el arqueo de un turno que NO abrió: quien ve los turnos de todos (`turnos.todos`) y quien ya recibe
+#: el arqueo de todos los turnos en el cierre diario (`cierre_diario`: su vista previa trae uno por turno del día; es el
+#: staff heredado, que no tiene `turnos.todos`).
+_VE_ARQUEOS_AJENOS = (condicion("turnos.todos"), condicion("cierre_diario"))
+
+
+def solo_su_turno_o_todos(request: Request, user: dict = Depends(usuario_actual)) -> None:
+    """Guarda de `GET /api/cierre-diario/turno/{turno_id}/ticket`: el arqueo de un turno es de quien lo abrió.
+
+    🔴 **El handler del motor imprime el arqueo de CUALQUIER turno por id** (`libracore.caja_router.ticket_turno`, sin
+    mirar la sesión), y la guarda de la ruta (`caja.propia`) sólo dice «este rol tiene turno propio»: un cajero o un
+    vendedor podía pedir el ticket de los turnos de otro. Acá se compara `turnos_caja.usuario_id` con la sesión ANTES de
+    llegar al handler. Un turno que no existe se deja pasar: el 404 es del motor. El resto de las rutas del router
+    (`{cierre_id}`) no traen `turno_id` y no las toca.
+    """
+    try:
+        turno_id = int(request.path_params.get("turno_id"))
+    except (TypeError, ValueError):
+        return
+    if any(puede(user) for puede in _VE_ARQUEOS_AJENOS):
+        return
+    turno = db_turnos.get_turno(turno_id)
+    if turno is not None and turno["usuario_id"] != user["id"]:
+        raise HTTPException(403, "No autorizado")
 
 
 def _validar_medios(medios: list[str]) -> None:

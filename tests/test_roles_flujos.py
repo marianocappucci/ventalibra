@@ -98,6 +98,43 @@ def test_el_encargado_ve_y_cierra_los_turnos_de_otros_y_los_demas_no(admin_clien
     assert encargado.get("/api/config/empresa").status_code == 403
 
 
+def test_el_ticket_de_un_turno_es_de_quien_lo_abrio_y_de_quien_ve_los_de_todos(admin_client):
+    """`GET /api/cierre-diario/turno/{id}/ticket`: el handler del motor imprime el arqueo de CUALQUIER turno por id, y la
+    guarda de la ruta (`caja.propia`) no mira de quién es. Antes un cajero o un vendedor pedía el arqueo de los turnos de
+    otro (medido con dos usuarios reales); ahora `solo_su_turno_o_todos` compara `turnos_caja.usuario_id` con la sesión
+    ANTES de llegar al handler. Lo ajeno sólo lo ven `turnos.todos` (admin, encargado) y `cierre_diario` (el staff heredado,
+    que ya recibe el arqueo de todos los turnos en la vista previa del cierre diario)."""
+    cajero = _entrar(admin_client, "cajero")
+    vendedor = _entrar(admin_client, "vendedor")
+    del_cajero = abrir_turno(cajero)
+    assert cajero.post(f"/api/turnos/{del_cajero}/cerrar", json={"monto_declarado": 0}).status_code == 200
+    del_vendedor = abrir_turno(vendedor)
+    assert vendedor.post(f"/api/turnos/{del_vendedor}/cerrar", json={"monto_declarado": 0}).status_code == 200
+    abierto_de_otro = abrir_turno(vendedor)  # sigue abierto: el motor daría 409 y contaría que existe
+
+    def ticket(cliente, turno):
+        return cliente.get(f"/api/cierre-diario/turno/{turno}/ticket")
+
+    # Lo propio: sí.
+    assert ticket(cajero, del_cajero).status_code == 200
+    assert ticket(vendedor, del_vendedor).status_code == 200
+    # Lo ajeno, con dos usuarios reales: no, en los dos sentidos (y el motor ni se entera de si está abierto).
+    assert ticket(cajero, del_vendedor).status_code == 403
+    assert ticket(vendedor, del_cajero).status_code == 403
+    assert ticket(cajero, abierto_de_otro).status_code == 403
+    assert ticket(vendedor, del_vendedor + 1000).status_code == 404  # turno inexistente: el 404 del motor
+    assert ticket(cajero, del_cajero).headers["content-type"] == "application/pdf"
+    # Quien ve los turnos de todos, sí.
+    for rol in ("encargado", "staff"):
+        otro = _entrar(admin_client, rol)
+        assert ticket(otro, del_cajero).status_code == 200, rol
+        assert ticket(otro, del_vendedor).status_code == 200, rol
+    assert ticket(admin_client, del_cajero).status_code == 200
+    # El depósito no tiene turnos (403 por rol) y sin sesión, 401.
+    assert ticket(_entrar(admin_client, "deposito"), del_cajero).status_code == 403
+    assert ticket(https_client(admin_client.app), del_cajero).status_code == 401
+
+
 def test_el_deposito_maneja_mercaderia_y_recibe_compras_pero_no_vende_ni_toca_plata(admin_client):
     item = crear_item(admin_client, price="1000.00")
     principal = deposito_default(admin_client)

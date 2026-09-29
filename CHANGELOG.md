@@ -14,8 +14,13 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   migrar a un rol concreto»), y el visitante de la demo conserva la lectura de todo. La matriz vive en `app/permisos.py`;
   `/auth/login` y `/auth/me` traen `capacidades`. Un rol inválido es 422 al crear o editar un usuario; sigue sin poderse dejar la
   instancia sin admin ni sacarse el rol a uno mismo. Sin migración. **Cambios para quien ya usaba el mostrador**: el cajero nuevo no
-  tiene cuenta corriente ni cierre diario (el `staff` de antes sí). **Pendiente conocido**: el costo unitario de los productos sigue
-  visible en la API para todo rol que lee productos (ver ADR-049).
+  tiene cuenta corriente ni cierre diario (el `staff` de antes sí).
+  **Costos**: la capacidad nueva `costos.ver` (admin, encargado y el `staff` heredado) decide quién ve lo que cuesta la mercadería. Sin
+  ella, la API no manda `precio_costo` (productos, stock, listas de precio) ni `unit_cost` y subtotal (órdenes y recepciones de compra):
+  el vendedor y el cajero no ven costos y el depósito ve las cantidades de la recepción sin importes. **El ticket de un turno**
+  (`/api/cierre-diario/turno/{id}/ticket`) es de quien lo abrió (o de quien ve los turnos de todos): un cajero o un vendedor ya no puede
+  pedir el de otro. **Pendientes conocidos** (ADR-049): la columna «Precio costo» de Productos muestra `$ NaN` a esos roles y el depósito
+  no puede recibir mercadería desde la pantalla del kit (pide `unit_cost`); recibe por la API.
 
 - **Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)** (2026-09-29, ADR-048). Básico ($20.000) es un
   solo local —una sucursal con los depósitos que necesite— y tiene todo lo demás libre; Premium ($55.000) suma la facturación ARCA y la

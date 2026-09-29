@@ -38,6 +38,7 @@ export const CAPACIDADES = [
   'compras.ver',
   'compras.escribir',
   'compras.recibir',
+  'costos.ver',
   'egresos',
   'tesoreria',
   'libros_iva',

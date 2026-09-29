@@ -64,13 +64,16 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   datos. Ver DECISIONS.md ADR-017 — responsable: LLM.
 - [x] Roles de usuario (admin, encargado, vendedor, cajero, depósito + `staff` heredado): matriz única en `app/permisos.py`,
   guardas por capacidad en todos los routers, `capacidades` en `/auth/me`, menú y rutas de la SPA por rol, tests de la tabla
-  rol × endpoint. Ver DECISIONS.md ADR-049 — responsable: LLM.
+  rol × endpoint; el costo sólo para `costos.ver` (filtro de respuesta por prefijo, `app/costos.py`) y el ticket de un turno sólo para
+  quien lo abrió o ve los de todos. Ver DECISIONS.md ADR-049 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Roles: ocultar el costo unitario (`precio_costo`) a vendedor, cajero y depósito — hoy lo devuelve la API de productos, stock y
-  compras (ADR-049, «lo que NO resuelve»). Pide un gancho de `libracommerce` o una capa de respuesta, y un modo de sólo lectura en las
-  pantallas del kit (`libra-ui`).
+- [ ] Roles: que el kit (`libra-ui`) sepa que el costo puede faltar y que hay roles de sólo lectura. El costo ya no viaja a quien no
+  tiene `costos.ver` (`app/costos.py`), pero Productos muestra `$ NaN` en «Precio costo» (pide una prop para ocultar la columna) y la
+  pantalla «Recibir mercadería» de Compras manda la línea sin `unit_cost` y el motor la rechaza (422): el depósito no puede recibir desde
+  ahí. Pide un cambio en `libracommerce` (línea de recepción sin costo: usar el de la orden o el del producto, sin pisar el costo del
+  producto) y en el kit; más una prop `soloLectura` por pantalla (ADR-049).
 - [ ] Roles: migrar los usuarios `staff` existentes a un rol concreto (hoy siguen con los permisos de siempre) y, cuando no quede
   ninguno, retirar el rol y `catalogo.configurar`.
 

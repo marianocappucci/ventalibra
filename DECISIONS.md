@@ -2210,12 +2210,36 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - Una capacidad mal escrita es un `KeyError` al armar la app, no una ruta abierta.
   - Los routers de correo (`/admin/smtp`) y de códigos de la demo (`/admin/demo-codigos`) los arma `libraauth` y exigen `admin` por
     dentro: no pasan por `permisos.py`, pero coinciden con `config` (sólo admin) y la tabla los cubre.
+- **El costo, un filtro de respuesta** (`app/costos.py`, capacidad `costos.ver`). «El vendedor y el cajero no ven costos ni márgenes; el
+  depósito, sin plata»: los márgenes, reportes y dashboard ya estaban cerrados por su capacidad, pero el costo unitario viajaba en rutas
+  que esos roles sí leen. Los routers del motor lo escriben ellos y no hay guarda por campo, así que un middleware ASGI mira el
+  **prefijo** de la ruta (`/api/productos`, `/api/stock`, `/api/depositos`, `/api/proveedores`, `/api/listas-precio`,
+  `/api/actualizacion-masiva`, `/api/purchase-orders`, `/api/purchase-receipts`: cubre variantes, escaneo, `?incluir_variantes`, la barra
+  final y lo codificado, y todos los métodos) y, si la respuesta es JSON y quien la pidió no tiene `costos.ver`, saca las claves de costo
+  en cualquier profundidad. Lee el rol de la base en cada pedido, como la guarda, y **cierra por defecto** (sin sesión, usuario inactivo o
+  JSON ilegible: el costo no sale). **No toca los cuerpos de los pedidos**: las escrituras siguen con sus guardas.
+  - **Claves de costo medidas** en las respuestas reales: `precio_costo` (lista de productos, detalle de producto en
+    `GET /api/stock/{id}`, escaneo `GET /api/productos/escanear`, ítems de `GET /api/listas-precio/{id}/items`), `unit_cost` (líneas de
+    órdenes y recepciones de compra, también en la respuesta de `POST .../items` y `.../confirm`) y `subtotal` (líneas de órdenes de
+    compra: es cantidad × costo, y se saca sólo bajo `/api/purchase-*`; en una venta es un importe de venta). El patrón general
+    (`costo` o `cost` como palabra de la clave) cubre además las que hoy sólo aparecen en rutas de `costos.ver`, `margen` o `logs`:
+    `default_cost`, `unit_cost_snapshot`, `costo_actual`, `costo_nuevo`, `costo_estimado`, `sin_costo`. `/auth/captcha` trae un `cost` que es
+    la dificultad de la prueba de trabajo: no es un costo y no está bajo ningún prefijo.
+  - **Lo que el rol restringido sí recibe**: todo lo demás, idéntico. El depósito ve producto, cantidad pedida, recibida y pendiente de
+    cada línea de una orden, y la cantidad de cada línea de una recepción, sin importes. El POS y las promociones no necesitan el costo
+    (el de la venta lo toma el servidor) y siguen igual.
+  - **Una ruta nueva fuera de esos prefijos no queda cubierta sola.** Por eso el test recorre TODOS los GET de `openapi.json`
+    (ver «Cómo se prueba»).
 - **Lo que hubo que decidir con criterio** (cada uno se cambia en una línea de `_ROLES_DE`):
   - *Categorías y unidades* (`/catalog/*`) son **configuración**: sólo admin (y el staff heredado, que ya podía: `catalogo.configurar`).
   - *El POS exige turno propio abierto* (`exigir_turno=True`), así que quien vende necesita `caja.propia`: el vendedor la tiene aunque el
     pedido no la nombraba.
   - *El ticket del cierre del propio turno* (`/api/cierre-diario/turno/{id}/ticket`) lo imprime el POS al cerrar el turno: es de
-    `caja.propia`, no de `cierre_diario` (el cajero nuevo no tiene cierre diario pero sí necesita ese ticket).
+    `caja.propia`, no de `cierre_diario` (el cajero nuevo no tiene cierre diario pero sí necesita ese ticket). **Y es del turno propio de verdad**: el handler del motor imprime el arqueo de cualquier turno por id, así que
+    `solo_su_turno_o_todos` (`app/cajas_ganchos.py`) compara `turnos_caja.usuario_id` con la sesión antes de llegar a él (403 con
+    «No autorizado», también si el turno ajeno sigue abierto: el 409 del motor contaría que existe). Ver los turnos ajenos es de
+    `turnos.todos` (admin y encargado) y de `cierre_diario`: el staff heredado no tiene la primera, pero su vista previa del cierre diario
+    ya trae el arqueo de cada turno del día, así que negárselo no protegía nada. Un turno que no existe sigue siendo el 404 del motor.
   - *Anular y devolver ventas* sigue abierto a todo el mostrador (decisión del humano del 2026-09-15: «dejá anular y devolver para el
     cajero también»).
   - *Asignar la lista de precio de un cliente* es una decisión de precio: admin, encargado y staff heredado; no el vendedor.
@@ -2254,6 +2278,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 | `compras.ver` | Leer proveedores, órdenes y recepciones de compra | ✓ | ✓ |  |  | ✓ | ✓ |
 | `compras.escribir` | Órdenes de compra; alta, edición y baja de proveedores | ✓ | ✓ |  |  |  | ✓ |
 | `compras.recibir` | Recepción de mercadería (crear, cargar líneas, confirmar) | ✓ | ✓ |  |  | ✓ | ✓ |
+| `costos.ver` | Ver el costo: `precio_costo` de productos, stock y listas de precio; `unit_cost` y subtotal de las compras. No abre rutas: decide qué campos viajan | ✓ | ✓ |  |  |  | ✓ |
 | `egresos` | Egresos | ✓ | ✓ |  |  |  | ✓ |
 | `tesoreria` | Tesorería: cuentas y movimientos | ✓ | ✓ |  |  |  |  |
 | `libros_iva` | Libros IVA y sus exportaciones | ✓ | ✓ |  |  |  |  |
@@ -2283,7 +2308,12 @@ decisión explícita del humano, y no forman parte de esta ADR.
     en `OCULTAS`. Además: coherencia de la matriz, que toda capacidad tenga una guarda montada, `/auth/me`, que la SPA y el backend
     conozcan las mismas capacidades y roles, y el heredado por nombre.
   - `tests/test_roles_flujos.py`: lo que cada rol hace de punta a punta (vender con turno propio, ver y cerrar turnos ajenos, mover y
-    recibir mercadería, el ticket del propio cierre...). `tests/test_usuarios_roles.py`: el router de usuarios con el vocabulario nuevo.
+    recibir mercadería, el ticket del propio cierre y que el de un turno ajeno sea 403 con dos usuarios reales...). `tests/test_usuarios_roles.py`: el router de usuarios con el vocabulario nuevo.
+  - `tests/test_roles_costos.py`: con datos reales (producto con costo, orden y recepción de compra con costo, listas, ventas), cada GET del
+    `openapi.json` con el vendedor, el cajero y el depósito: falla si en el JSON aparece una clave de costo **o un valor que sólo el costo tiene**
+    (así también atrapa un costo bajo otro nombre); lo que reciben es exactamente la respuesta del admin sin esas claves; admin, encargado y
+    staff lo siguen viendo; y no se saltea por barra final, `%70`, HEAD ni rutas hermanas. Sin el middleware, 14 de sus 22 tests se ponen
+    rojos.
   - Frontend: `roles-menu-y-rutas.test.tsx` (el menú y el ruteo de cada rol, con las capacidades de `capacidades-por-rol.json`, generado
     desde `permisos.py`: `python -m app.permisos > frontend/src/test/capacidades-por-rol.json`) y `usuarios.test.tsx`.
   - **Verificación diferencial, de una sola vez**: las 209 operaciones privadas que se pueden llamar sin efecto, contra el árbol anterior
@@ -2292,11 +2322,17 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - **Mutación**: dejarle `reportes` al cajero pone en rojo su columna de la tabla (6 operaciones), `/auth/me`, el archivo de capacidades
     del frontend y, en vitest, el menú y el ruteo del cajero.
 - Consecuencias y **lo que NO resuelve** (a decidir):
-  - 🔴 **El costo de los productos sigue viajando a quien no debería verlo.** `GET /api/productos`, `GET /api/stock/{id}` y las
-    respuestas de compras traen `precio_costo` para todo el que puede leerlas: el vendedor, el cajero y el depósito lo ven en la API y la
-    pantalla de Productos del kit lo muestra. El pedido era «no ve costos ni márgenes»: márgenes, reportes y dashboard están cerrados,
-    **el costo unitario no**. Cerrarlo pide un gancho de `libracommerce` que quite campos por rol (o una capa de respuesta acá); no se hizo
-    porque cambia la forma de las respuestas y no se puede verificar contra las pantallas del kit.
+  - **El costo ya no viaja a quien no tiene `costos.ver`, pero el kit (`libra-ui`) no sabe que puede faltar** (el filtro está hecho; quedan
+    dos consecuencias en las pantallas del kit, medidas):
+    - En **Productos** la columna «Precio costo» de un vendedor, un cajero o un depósito muestra `$ NaN` (el kit formatea el campo
+      ausente): no se rompe, pero es feo. Se arregla con una prop del kit para no dibujar la columna (`conCosto={false}`); en el detalle de
+      una orden de compra, costo unitario y subtotal muestran `NaN` igual.
+    - 🔴 **El depósito no puede recibir mercadería desde la pantalla «Recibir mercadería» del kit**: precarga el costo de cada línea desde
+      la orden y lo manda como `unit_cost`; sin el campo en la respuesta manda la línea sin él y el motor la rechaza con 422 (`unit_cost`
+      es obligatorio en `RecepcionItemPayload`; medido). Por la API sí recibe (con un `unit_cost` en el cuerpo). Cerrarlo pide que el motor
+      acepte la línea sin costo cuando quien recibe no lo ve (usar el de la línea de la orden, o el del producto) **sin pisar** el costo del
+      producto: `confirm` deja el `unit_cost` recibido como nuevo costo (último costo), así que un depósito que mande un importe cualquiera
+      lo cambia. Es un pedido a `libracommerce` y al kit; hasta entonces la recepción desde la pantalla la hace un encargado.
   - **El kit (`libra-ui`) no tiene modo de sólo lectura** en Productos, Stock, Clientes, Proveedores ni Compras: un rol que lee pero no
     escribe ve los botones de alta y edición y recibe el 403 del backend al usarlos. Queda como pedido al kit (una prop `soloLectura` por
     pantalla, como ya tienen Sucursales y Depósitos). Y la ficha de un cliente le muestra al cajero la tarjeta de cuenta corriente con un
@@ -2306,7 +2342,5 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - **El cajero pierde el cierre diario** (ADR de 2026-09-13: «admin o cajero»): ahora es del encargado y del admin. El `staff` heredado
     lo conserva.
   - Una ruta nueva que el motor publique con `include_in_schema=False` no la ve el test de cobertura: hoy son tres y están en `OCULTAS`.
-  - `GET /api/cierre-diario/turno/{id}/ticket` no comprueba de quién es el turno (tampoco lo hacía antes): cualquiera con `caja.propia`
-    puede pedir el ticket de cualquier turno por id.
 - Depende de: nada externo —cambio contenido en este repo—; `libraauth` (`get_extras`, `build_users_router(roles=...)`) y `libra-ui`
   v0.88.0 (`Usuarios` con la prop `roles`).

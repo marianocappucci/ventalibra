@@ -136,6 +136,12 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "compras.escribir": frozenset({_E, _S}),
     # Recepción de mercadería contra una compra (crear, cargar líneas, confirmar).
     "compras.recibir": frozenset({_E, _D, _S}),
+    # ── Costos ──
+    # Ver lo que cuesta la mercadería: el `precio_costo` de un producto (productos, stock, listas de precio) y el costo
+    # y el subtotal de cada línea de las órdenes y recepciones de compra. Sin ella la API no manda esos campos
+    # (`app/costos.py`, un filtro de RESPUESTA por prefijo de ruta). No abre ninguna ruta: sólo decide qué campos viajan.
+    # El vendedor y el cajero no ven costos y el depósito no ve plata; el staff heredado los sigue viendo.
+    "costos.ver": frozenset({_E, _S}),
     # ── Plata y reportes ──
     "egresos": frozenset({_E, _S}),
     "tesoreria": frozenset({_E}),

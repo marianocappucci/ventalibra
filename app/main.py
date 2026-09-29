@@ -84,11 +84,13 @@ from .cajas_ganchos import (
     enriquecer_turno_de,
     opciones_de_cajas,
     resumen_del_turno,
+    solo_su_turno_o_todos,
     usuario_actual,
     usuario_de_turnos,
     validar_apertura_de,
 )
 from .compras_ganchos import OPCIONES_DE_COMPRAS
+from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import (
     OPCIONES_DE_STOCK,
@@ -378,6 +380,10 @@ def create_app(db_path: str) -> FastAPI:
     # Sella el usuario de la cookie para que la auditoria sepa quien escribio.
     # Sin esto todo queda a nombre de "Sistema", que no es un error visible.
     agregar_middleware_de_usuario(app)
+
+    # Sin `costos.ver` no se ve el costo (ADR-049): filtra las RESPUESTAS de catálogo, stock y compras. Por prefijo de
+    # ruta y a prueba de olvidos: ver `app/costos.py`.
+    app.add_middleware(SinCostos)
 
     # 🔴 Los headers de seguridad. Se agrega **al final** a proposito: en
     # Starlette el ultimo middleware agregado es el mas externo, asi que asi
@@ -812,10 +818,14 @@ def create_app(db_path: str) -> FastAPI:
             resolver_sucursal_nombre=_resolver_sucursal_nombre,
             autorizar_reabrir=Depends(requiere("cierre_diario.reabrir")),
         ),
-        dependencies=[Depends(requiere_segun_ruta(
-            ("GET", r"/api/cierre-diario/turno/\d+/ticket", "caja.propia"),
-            por_defecto="cierre_diario",
-        ))],
+        dependencies=[
+            Depends(requiere_segun_ruta(
+                ("GET", r"/api/cierre-diario/turno/\d+/ticket", "caja.propia"),
+                por_defecto="cierre_diario",
+            )),
+            # El ticket de un turno es de quien lo abrió (o de quien ve los de todos): ver `solo_su_turno_o_todos`.
+            Depends(solo_su_turno_o_todos),
+        ],
     )
     # Reportes (fase 8, ADR-035): el router del motor sobre las ventas de LibraCommerce (`libracommerce.erp.reportes`), el mismo que
     # monta Contalibra, con dos variantes: una venta anulada o pendiente de cobro no es una venta (`solo_confirmadas`) y **fiar no es
