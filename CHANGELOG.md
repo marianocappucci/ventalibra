@@ -5,6 +5,14 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Sucursal y depósito son entidades distintas** (2026-09-28, ADR-044). Hasta hoy una sucursal y un depósito eran la
+  misma fila y cualquiera de las dos tenía stock; ahora una sucursal agrupa depósitos y **el stock vive sólo en el
+  depósito**. Toda sucursal nace con su primer depósito (que es el de venta), puede tener varios, y no se da de baja
+  con existencias. La venta descuenta del depósito de venta de la sucursal del turno. La migración conserva los ids de
+  las sucursales, así que cajas, turnos, precios y stock no se reescriben; `scripts/preflight_jerarquia.py` audita antes de
+  migrar. Pantallas nuevas del kit (`Sucursales`, `SucursalDetalle`) y `/depositos/:id` para el stock de un depósito.
+  Requiere `libracommerce` v0.25.0 o posterior y `libra-ui` v0.85.0.
+
 - **Cuentas corrientes con la pantalla del kit** (2026-09-24). Hasta hoy este
   producto era el único de la familia sin la normalización P9-M4: su pantalla
   propia (`/cuentas-corrientes`) era una copia vieja, sin el detalle por
