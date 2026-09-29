@@ -12,8 +12,9 @@ existencias en sus depósitos. Acá quedan las reglas de este producto:
 - **una sucursal con un turno de caja abierto no se desactiva** (409);
 - una sucursal que se da de alta **recibe su primera caja** (sin ella nadie puede abrir turno ahí y el alta de
   cajas es de admin);
-- alta, edición, predeterminada y baja son **de admin**; la lectura y **la transferencia son de staff y admin**:
-  quien mueve la mercadería entre locales es el encargado del mostrador, no el dueño (2026-09-21);
+- alta, edición, predeterminada y baja son **de admin** (capacidad `sucursales.admin`); la lectura es de todos los
+  roles (`catalogo.ver`/`stock.ver`) y **la transferencia** de quien mueve mercadería (`stock.transferir`: encargado,
+  depósito y el staff heredado): quien mueve la mercadería entre locales no es el dueño (2026-09-21, ADR-049);
 - **un solo local sin el módulo `multisucursal`** (plan Básico, ADR-048): no se da de alta ni se reactiva una segunda
   sucursal activa, y no se transfiere mercadería entre depósitos de sucursales distintas (403, con el mismo texto
   que `require_module`). La unidad es la **sucursal** y no el depósito: un local con dos depósitos sigue siendo un
@@ -39,7 +40,7 @@ from libracommerce.web.catalogo_router import (
     SucursalUpdatePayload,
 )
 
-from .auth import require_admin
+from .permisos import requiere
 from .services import cajas as cajas_service
 from .services.sucursales import SucursalService
 
@@ -67,7 +68,7 @@ def opciones_de_depositos() -> OpcionesDepositos:
         if payload.branch_id is None:
             raise HTTPException(422, "Elegí la sucursal a la que pertenece el depósito.")
 
-    return OpcionesDepositos(autorizar_escritura=Depends(require_admin), validar_alta=validar_alta)
+    return OpcionesDepositos(autorizar_escritura=Depends(requiere("sucursales.admin")), validar_alta=validar_alta)
 
 
 def opciones_de_sucursales(sucursales: Sucursales, modulos: Modulos) -> OpcionesSucursales:
@@ -101,7 +102,7 @@ def opciones_de_sucursales(sucursales: Sucursales, modulos: Modulos) -> Opciones
             cajas_service.asegurar_caja_de(sucursal["id"])
 
     return OpcionesSucursales(
-        autorizar_escritura=Depends(require_admin), validar_alta=validar_alta, validar_edicion=validar_edicion,
+        autorizar_escritura=Depends(requiere("sucursales.admin")), validar_alta=validar_alta, validar_edicion=validar_edicion,
         al_guardar=al_guardar,
     )
 

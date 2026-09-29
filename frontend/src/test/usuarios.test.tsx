@@ -9,7 +9,8 @@
 // (no un valor fijo) -- que es justo lo que un `git show`/lectura del código
 // no distingue de "está todo bien" si nadie lo corre contra un usuario de
 // verdad.
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../context/AuthContext', () => ({
@@ -54,3 +55,24 @@ describe('Usuarios (shim de VentaLibra)', () => {
     expect(screen.queryByRole('button', { name: 'Eliminar Yo Misma' })).not.toBeInTheDocument()
   })
 })
+
+describe('Usuarios: los roles (ADR-049)', () => {
+  // El kit ya acepta la lista de roles por prop (`roles`), así que el shim la pasa: hasta acá el default del kit
+  // (`admin`/`staff`) dejaba al alta sin los roles nuevos.
+  it('el alta ofrece los cinco roles y el heredado, con el cajero por defecto', async () => {
+    render(<Usuarios />)
+    await waitFor(() => expect(screen.getByText('Otra Persona')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Nuevo usuario' }))
+    const selector = await screen.findByRole('combobox', { name: 'Rol' })
+    // El primero de la lista es el que trae el formulario: el de menos privilegio que sirve para trabajar.
+    expect(selector).toHaveTextContent('Cajero')
+
+    await userEvent.click(selector)
+    const opciones = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(opciones).toEqual([
+      'Cajero', 'Vendedor', 'Depósito', 'Encargado', 'Admin', 'Staff (heredado: migrar a un rol concreto)',
+    ])
+  })
+})
+

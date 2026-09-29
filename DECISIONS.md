@@ -2170,3 +2170,143 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - `MercadoPago` sigue montando su configuración (`build_mp_config_router`) con `require_module("facturacion")`, un acoplamiento
     anterior a esta decisión: en Básico esa pantalla da 403. Queda como pendiente de decisión (el cobro por QR del POS no lo tiene).
 - Depende de: nada externo —cambio contenido en este repo—; `libraauth` ya trae `get_extras`.
+
+## ADR-049 — Roles de usuario: admin, encargado, vendedor, cajero y depósito (más el `staff` heredado), con la matriz en un solo lugar
+
+- Estado: aceptada (decisión del humano, 2026-09-29)
+- Fecha: 2026-09-29
+- Contexto: hasta hoy el producto sólo tenía `admin` y `staff` (el vocabulario por defecto de la factory de usuarios de
+  `libraauth`), los routers se montaban con `admin_only`/`staff_or_admin` en `app/main.py` y la SPA decidía con
+  `user.role !== 'admin'` y `adminOnly`. Un comercio real tiene gente que vende, gente que cobra, gente que maneja la mercadería y
+  un encargado que hace todo menos administrar el sistema: «admin o no» no alcanza y el dueño terminaba dándole `admin` a todos.
+- Decisión: cinco roles, y `staff` sigue.
+  - **`admin`**: todo.
+  - **`encargado`**: todo menos usuarios, configuración, logs, la estructura del local (sucursales, depósitos y cajas) y reabrir un día
+    cerrado.
+  - **`vendedor`**: mostrador con clientes: POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y de precios. No ve
+    reportes ni márgenes ni el cierre diario.
+  - **`cajero`**: POS, su turno y su caja, consulta de stock y de precios, clientes en lectura y alta. No tiene cuenta corriente, cierre
+    diario ni reportes.
+  - **`deposito`** (sin tilde: es un valor de base y de URL; en pantalla, «Depósito»): stock, ajustes, transferencias y recepción de
+    compras; lee productos y proveedores. Sin POS y sin plata: nada de caja, ventas, tesorería, reportes ni márgenes.
+  - **`staff`: heredado, migrar a un rol concreto.** Los usuarios que ya existían **no se migran ni se borran**: siguen siendo un rol
+    válido con **exactamente** lo que tenían. La pantalla de Usuarios lo ofrece marcado como heredado. El visitante de la demo entra
+    como `staff` y conserva su lectura abierta de todas las pantallas.
+- **La matriz vive en UN solo archivo: `app/permisos.py`.** Un rol tiene **capacidades** nombradas (`reportes`, `stock.ajustar`,
+  `caja.propia`...) y cada router de `app/main.py` se monta con la capacidad que le corresponde (`Depends(requiere("reportes"))`). De esa
+  única tabla salen las guardas del backend, el vocabulario de roles de `UserRepository` y del router de usuarios (`roles=ROLES`) y la
+  lista `capacidades` que `/auth/login` y `/auth/me` le mandan a la SPA (`get_extras` de `libraauth`, como `modulos` en ADR-048).
+  `admin` tiene todas por construcción: una capacidad nueva la trae puesta y la fila dice a quién más se le abre (para un permiso nuevo,
+  el error seguro es que lo tenga sólo el admin).
+- **Cómo se implementan las guardas** (`app/permisos.py`):
+  - `requiere(cap)` es `json_api_require_role(*roles_con(cap))` de `libraauth`, **no una reescritura**: hereda la lectura abierta a la demo
+    y el gate de Términos. `requiere_o_servicio(cap)` suma el token de servicio del backoffice y sólo lo usa el router de usuarios
+    (`usuarios.admin`): el backoffice sigue sin tocar nada más.
+  - Los routers del motor se montan enteros y no admiten una guarda por endpoint: cuando mezclan gente distinta se usa
+    `requiere_segun_metodo(lectura=..., escritura=...)` o `requiere_segun_ruta((método, patrón, cap), ..., por_defecto=...)`. Es lo mismo
+    que ya hacían `require_staff_lectura_admin_escritura` y `require_staff_precio_admin_resto`, que se retiran de `app/auth.py`.
+  - Los ganchos `autorizar_escritura` de cajas, sucursales y depósitos, `solo_admin` de cuenta corriente y recibos, `sesion=` de los
+    exports de reportes y `autorizar_reabrir` del cierre diario pasan a las mismas capacidades.
+  - Una capacidad mal escrita es un `KeyError` al armar la app, no una ruta abierta.
+  - Los routers de correo (`/admin/smtp`) y de códigos de la demo (`/admin/demo-codigos`) los arma `libraauth` y exigen `admin` por
+    dentro: no pasan por `permisos.py`, pero coinciden con `config` (sólo admin) y la tabla los cubre.
+- **Lo que hubo que decidir con criterio** (cada uno se cambia en una línea de `_ROLES_DE`):
+  - *Categorías y unidades* (`/catalog/*`) son **configuración**: sólo admin (y el staff heredado, que ya podía: `catalogo.configurar`).
+  - *El POS exige turno propio abierto* (`exigir_turno=True`), así que quien vende necesita `caja.propia`: el vendedor la tiene aunque el
+    pedido no la nombraba.
+  - *El ticket del cierre del propio turno* (`/api/cierre-diario/turno/{id}/ticket`) lo imprime el POS al cerrar el turno: es de
+    `caja.propia`, no de `cierre_diario` (el cajero nuevo no tiene cierre diario pero sí necesita ese ticket).
+  - *Anular y devolver ventas* sigue abierto a todo el mostrador (decisión del humano del 2026-09-15: «dejá anular y devolver para el
+    cajero también»).
+  - *Asignar la lista de precio de un cliente* es una decisión de precio: admin, encargado y staff heredado; no el vendedor.
+  - *Baja de un pago de cuenta corriente y anulación de un recibo* (`cobranzas.anular`): admin y encargado (eran de admin).
+  - *Libros IVA, dashboard, tesorería, reportes y margen*: admin y encargado.
+  - *Logs* y *la estructura del local* (alta, edición y baja de sucursales, depósitos y cajas): sólo admin (mínimo privilegio).
+- **La matriz** (`✓` = tiene la capacidad; `admin` las tiene todas):
+
+| Capacidad | Qué abre | admin | encargado | vendedor | cajero | depósito | staff (heredado) |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| `usuarios.admin` | Alta, edición, baja y contraseña de usuarios (`/users`); además el token de servicio del backoffice | ✓ |  |  |  |  |  |
+| `config` | Datos de empresa y logo, correo (SMTP), ARCA, MercadoPago, backup y resguardo, balanza, ticket | ✓ |  |  |  |  |  |
+| `logs` | Log de auditoría (`/logs`) | ✓ |  |  |  |  |  |
+| `sucursales.admin` | Alta, edición y baja de sucursales y depósitos | ✓ |  |  |  |  |  |
+| `caja.admin` | ABM de cajas | ✓ |  |  |  |  |  |
+| `cierre_diario.reabrir` | Reabrir un día cerrado | ✓ |  |  |  |  |  |
+| `catalogo.ver` | Leer productos (códigos, variantes), sucursales, depósitos, categorías y unidades | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `catalogo.configurar` | Crear y editar unidades y categorías (`/catalog/*`); el staff la conserva por herencia | ✓ |  |  |  |  | ✓ |
+| `productos.escribir` | Alta, edición y baja de productos, códigos y variantes | ✓ | ✓ |  |  |  | ✓ |
+| `stock.ver` | Consultar stock, stock por depósito e historial de movimientos | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `stock.ajustar` | Ajustar el stock de un producto | ✓ | ✓ |  |  | ✓ | ✓ |
+| `stock.transferir` | Transferir mercadería entre depósitos | ✓ | ✓ |  |  | ✓ | ✓ |
+| `precios.consultar` | Leer listas de precio y el precio de una línea (POS) | ✓ | ✓ | ✓ | ✓ |  | ✓ |
+| `precios.escribir` | Escribir listas, quiebres, vigencias, promociones y actualización masiva | ✓ | ✓ |  |  |  |  |
+| `etiquetas` | Pantalla de etiquetas de góndola (sólo SPA, sin endpoint propio) | ✓ | ✓ |  |  |  |  |
+| `ventas.pos` | POS: registrar y cobrar, facturar, QR, tickets, ver, anular y devolver ventas; calcular promociones | ✓ | ✓ | ✓ | ✓ |  | ✓ |
+| `caja.propia` | Turno propio (abrir, ver, cerrar), elegir caja y ticket del propio cierre | ✓ | ✓ | ✓ | ✓ |  | ✓ |
+| `turnos.todos` | Ver y cerrar los turnos de otros | ✓ | ✓ |  |  |  |  |
+| `cierre_diario` | Cierre diario: vista previa, cerrar, historial y tickets | ✓ | ✓ |  |  |  | ✓ |
+| `clientes.ver` | Leer clientes y la lista asignada | ✓ | ✓ | ✓ | ✓ |  | ✓ |
+| `clientes.alta` | Alta de cliente y consulta de CUIT | ✓ | ✓ | ✓ | ✓ |  | ✓ |
+| `clientes.escribir` | Editar, activar y desactivar, alias de facturación, auto-facturar | ✓ | ✓ | ✓ |  |  | ✓ |
+| `clientes.lista_precio` | Asignarle a un cliente su lista de precio | ✓ | ✓ |  |  |  | ✓ |
+| `cuenta_corriente` | Cuenta corriente y recibos: ver, cobrar y emitir | ✓ | ✓ | ✓ |  |  | ✓ |
+| `cobranzas.anular` | Baja de un pago de cuenta corriente y anulación de un recibo | ✓ | ✓ |  |  |  |  |
+| `compras.ver` | Leer proveedores, órdenes y recepciones de compra | ✓ | ✓ |  |  | ✓ | ✓ |
+| `compras.escribir` | Órdenes de compra; alta, edición y baja de proveedores | ✓ | ✓ |  |  |  | ✓ |
+| `compras.recibir` | Recepción de mercadería (crear, cargar líneas, confirmar) | ✓ | ✓ |  |  | ✓ | ✓ |
+| `egresos` | Egresos | ✓ | ✓ |  |  |  | ✓ |
+| `tesoreria` | Tesorería: cuentas y movimientos | ✓ | ✓ |  |  |  |  |
+| `libros_iva` | Libros IVA y sus exportaciones | ✓ | ✓ |  |  |  |  |
+| `dashboard` | Dashboard | ✓ | ✓ |  |  |  |  |
+| `reportes` | Reportes, caja por medio y exportaciones CSV | ✓ | ✓ |  |  |  |  |
+| `margen` | Margen y rotación | ✓ | ✓ |  |  |  |  |
+
+- **Turnos ajenos.** El router de turnos de `libracore` decide quién ve y cierra los turnos de otros con `role == "admin"` escrito a mano
+  (`caja_router._puede_ver`), sin ganchos. Para que el encargado los vea (`turnos.todos`), `usuario_de_turnos` (`app/cajas_ganchos.py`)
+  le presenta `role="admin"` **sólo a ese router**; la sesión real y las guardas (que corren antes, sobre la sesión verdadera) no
+  cambian. Cuando el motor reciba esa decisión por parámetro, se muda a él.
+- **Usuarios.** `build_users_router(roles=ROLES)` y `UserRepository(roles=ROLES)`: un rol fuera del vocabulario es 422 en el alta y en la
+  edición. **No se reimplementó nada de lo que ya trae la factory** de `libraauth`: no dejar la instancia sin admin activo, no sacarse el
+  rol de admin ni desactivarse a uno mismo y no borrarse. Sólo el admin (o el token de servicio) administra usuarios. No hay migración de
+  datos: `usuarios.role` es `VARCHAR(20)` sin restricción y el más largo, `encargado`, tiene 9.
+- **La SPA** (`frontend/src/lib/permisos.ts`): las rutas (`ProtectedRoute cap=...`), el menú (`hideFor: sinCapacidad(...)` en lugar de
+  `adminOnly`) y las pantallas con `soloLectura`/`esAdmin` (`Turnos`, `Sucursales`, `SucursalDetalle`, `DepositoDetalle`,
+  `CuentaCorrienteDetalle`, `CierreDiario`) miran `puede(user, capacidad)`. La SPA **no tiene una tabla de roles**: sólo los nombres de
+  las capacidades (un test del backend falla si se separan de `permisos.py`) y lo que llega en `/auth/me`. Una ruta que no es del rol
+  lleva a su pantalla inicial (POS para quien vende, stock para el depósito); un rol sin ninguna de las dos ve un aviso, no un bucle.
+  El visitante de la demo (`demo_readonly`) ve todos los menús, como hasta ahora. La pantalla de Usuarios ofrece los roles con la prop
+  `roles` que `libra-ui/Usuarios` **ya tenía**: no hizo falta tocar el kit.
+- **Cómo se prueba** (una tabla escrita a mano, independiente de `permisos.py`, para que aflojar una capacidad la contradiga):
+  - `tests/test_roles_matriz.py`: cada operación que publica `openapi.json` × cada rol (admin, encargado, vendedor, cajero, depósito,
+    staff), el visitante de la demo y un anónimo. Una operación nueva sin fila hace fallar el test (un router montado sin decidir quién
+    entra se nota), y una fila sin ruta también. Tres rutas que el motor no publica en el esquema (`include_in_schema=False`) van aparte
+    en `OCULTAS`. Además: coherencia de la matriz, que toda capacidad tenga una guarda montada, `/auth/me`, que la SPA y el backend
+    conozcan las mismas capacidades y roles, y el heredado por nombre.
+  - `tests/test_roles_flujos.py`: lo que cada rol hace de punta a punta (vender con turno propio, ver y cerrar turnos ajenos, mover y
+    recibir mercadería, el ticket del propio cierre...). `tests/test_usuarios_roles.py`: el router de usuarios con el vocabulario nuevo.
+  - Frontend: `roles-menu-y-rutas.test.tsx` (el menú y el ruteo de cada rol, con las capacidades de `capacidades-por-rol.json`, generado
+    desde `permisos.py`: `python -m app.permisos > frontend/src/test/capacidades-por-rol.json`) y `usuarios.test.tsx`.
+  - **Verificación diferencial, de una sola vez**: las 209 operaciones privadas que se pueden llamar sin efecto, contra el árbol anterior
+    a los roles (sólo `admin` y `staff`) y contra el nuevo, para `admin`, `staff` y el visitante de la demo: **0 diferencias**. Es la
+    evidencia de que el heredado conserva lo de hoy.
+  - **Mutación**: dejarle `reportes` al cajero pone en rojo su columna de la tabla (6 operaciones), `/auth/me`, el archivo de capacidades
+    del frontend y, en vitest, el menú y el ruteo del cajero.
+- Consecuencias y **lo que NO resuelve** (a decidir):
+  - 🔴 **El costo de los productos sigue viajando a quien no debería verlo.** `GET /api/productos`, `GET /api/stock/{id}` y las
+    respuestas de compras traen `precio_costo` para todo el que puede leerlas: el vendedor, el cajero y el depósito lo ven en la API y la
+    pantalla de Productos del kit lo muestra. El pedido era «no ve costos ni márgenes»: márgenes, reportes y dashboard están cerrados,
+    **el costo unitario no**. Cerrarlo pide un gancho de `libracommerce` que quite campos por rol (o una capa de respuesta acá); no se hizo
+    porque cambia la forma de las respuestas y no se puede verificar contra las pantallas del kit.
+  - **El kit (`libra-ui`) no tiene modo de sólo lectura** en Productos, Stock, Clientes, Proveedores ni Compras: un rol que lee pero no
+    escribe ve los botones de alta y edición y recibe el 403 del backend al usarlos. Queda como pedido al kit (una prop `soloLectura` por
+    pantalla, como ya tienen Sucursales y Depósitos). Y la ficha de un cliente le muestra al cajero la tarjeta de cuenta corriente con un
+    error (no tiene `cuenta_corriente`).
+  - **El cajero no tiene cuenta corriente ni recibos**: la matriz aprobada no se los da (sí al vendedor). Hasta hoy el cajero (`staff`)
+    cobraba fiado en el mostrador (ADR-031); con el rol nuevo lo hace el vendedor. Es una línea (`cuenta_corriente`) si no era la intención.
+  - **El cajero pierde el cierre diario** (ADR de 2026-09-13: «admin o cajero»): ahora es del encargado y del admin. El `staff` heredado
+    lo conserva.
+  - Una ruta nueva que el motor publique con `include_in_schema=False` no la ve el test de cobertura: hoy son tres y están en `OCULTAS`.
+  - `GET /api/cierre-diario/turno/{id}/ticket` no comprueba de quién es el turno (tampoco lo hacía antes): cualquiera con `caja.propia`
+    puede pedir el ticket de cualquier turno por id.
+- Depende de: nada externo —cambio contenido en este repo—; `libraauth` (`get_extras`, `build_users_router(roles=...)`) y `libra-ui`
+  v0.88.0 (`Usuarios` con la prop `roles`).

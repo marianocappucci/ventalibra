@@ -62,11 +62,17 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   real de migraciones en LibraCommerce (`v0.1.5`, 8 tests nuevos),
   verificado contra la base real del cliente `prueba` sin pérdida de
   datos. Ver DECISIONS.md ADR-017 — responsable: LLM.
+- [x] Roles de usuario (admin, encargado, vendedor, cajero, depósito + `staff` heredado): matriz única en `app/permisos.py`,
+  guardas por capacidad en todos los routers, `capacidades` en `/auth/me`, menú y rutas de la SPA por rol, tests de la tabla
+  rol × endpoint. Ver DECISIONS.md ADR-049 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Ninguna por ahora — próximo hito de VentaLibra a definir (fuera
-  de Fase 5).
+- [ ] Roles: ocultar el costo unitario (`precio_costo`) a vendedor, cajero y depósito — hoy lo devuelve la API de productos, stock y
+  compras (ADR-049, «lo que NO resuelve»). Pide un gancho de `libracommerce` o una capa de respuesta, y un modo de sólo lectura en las
+  pantallas del kit (`libra-ui`).
+- [ ] Roles: migrar los usuarios `staff` existentes a un rol concreto (hoy siguen con los permisos de siempre) y, cuando no quede
+  ninguno, retirar el rol y `catalogo.configurar`.
 
 ## Bloqueadas
 

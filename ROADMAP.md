@@ -164,5 +164,8 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 
 ## Futuro
 
+- Roles (ADR-049, 2026-09-29): hecho el reparto de permisos por rol. Falta cerrar el costo unitario a los roles sin acceso a la plata (gancho
+  de `libracommerce` que quite campos por rol) y pedirle al kit un modo de sólo lectura por pantalla. Ver `TASKS.md`.
+
 - Modo offline (mini PC local) reusando `libraedge`/la integración ya
   construida en LibraCommerce — evaluar una vez validado con un comercio real.

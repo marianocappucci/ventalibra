@@ -1,7 +1,7 @@
 // Las etiquetas de góndola son la pantalla del kit (`libra-ui/comercio/EtiquetasGondola`) sobre los endpoints que el
 // motor ya expone (ADR-047), sin wrapper ni endpoint propio. El detalle de la pantalla —el precio, la hoja, el CSS de
 // impresión— lo prueban los tests del kit; acá, que se monta con las rutas de este producto y que la ruta y el menú
-// son de admin.
+// piden `etiquetas`.
 import { render, screen } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -29,10 +29,10 @@ it('lista los productos del motor para elegir sus etiquetas', async () => {
   expect(screen.getByText('Etiquetas de góndola')).toBeInTheDocument()
 })
 
-it('la ruta y la entrada del menú son de admin', () => {
+it('la ruta y la entrada del menú piden la capacidad `etiquetas` (admin y encargado)', () => {
   const app = readFileSync(join(cwd(), 'src/App.tsx'), 'utf8')
-  const ruta = app.match(/path="\/etiquetas"\s+element=\{\s*<ProtectedRoute( adminOnly)?>/)
-  expect(ruta?.[1]).toBe(' adminOnly')
+  const ruta = app.match(/path="\/etiquetas"\s+element=\{\s*<ProtectedRoute cap="([^"]+)">/)
+  expect(ruta?.[1]).toBe('etiquetas')
   const layout = readFileSync(join(cwd(), 'src/components/Layout.tsx'), 'utf8')
-  expect(layout).toMatch(/to: '\/etiquetas'[^}]*adminOnly: true/)
+  expect(layout).toMatch(/to: '\/etiquetas'[^}]*hideFor: sinCapacidad\('etiquetas'\)/)
 })

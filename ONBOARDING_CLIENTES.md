@@ -203,12 +203,26 @@ aplicación.
 
 ## 8. Usuarios
 
-- [ ] Crear el usuario **admin** para el dueño o encargado
-- [ ] Crear un usuario por cada persona que atienda el mostrador
+- [ ] Crear el usuario **admin** para el dueño
+- [ ] Crear un usuario por cada persona, **con el rol que le corresponde** (tabla de abajo)
 - [ ] Comunicar las credenciales de forma segura
 
 El admin inicial de la instancia sale de las variables `VENTALIBRA_ADMIN_*` que fija el alta;
-los demás se crean desde la pantalla de usuarios.
+los demás se crean desde la pantalla de usuarios (**Usuarios → + Nuevo usuario**, elegir el rol).
+Sólo un admin (o el backoffice) crea y edita usuarios, y el rol se puede cambiar después: rige en el
+pedido siguiente, sin que la persona tenga que volver a entrar.
+
+| Rol | Para quién | Qué hace |
+|---|---|---|
+| **Admin** | El dueño | Todo, incluidos usuarios, configuración, logs, sucursales, depósitos y cajas |
+| **Encargado** | Quien maneja el local | Todo menos lo del admin: precios y listas, stock, compras, tesorería, cierre diario, turnos de todos, reportes, margen y dashboard |
+| **Vendedor** | Mostrador con clientes | POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y de precios |
+| **Cajero** | Quien cobra | POS, su turno y su caja, consulta de stock y de precios, clientes (ver y dar de alta). No ve cuenta corriente, cierre diario ni reportes |
+| **Depósito** | Quien recibe y mueve mercadería | Stock, ajustes, transferencias y recepción de compras; ve productos y proveedores. Sin POS ni plata |
+| **Staff** *(heredado)* | Usuarios de antes de los roles | Lo mismo que siempre. **Migrarlo a un rol concreto** cuando se pueda |
+
+**Regla práctica:** dar el rol más chico que le alcance. Un cajero que necesita ver el cierre diario es un encargado;
+alguien que sólo mueve mercadería es depósito. La matriz completa está en `DECISIONS.md` (ADR-049).
 
 ---
 
@@ -264,7 +278,7 @@ CONFIGURACIÓN
 
 USUARIOS
 [ ] admin creado
-[ ] Usuarios de mostrador creados
+[ ] Usuarios creados, cada uno con su rol (admin, encargado, vendedor, cajero, depósito)
 
 CAPACITACIÓN
 [ ] Handoff hecho

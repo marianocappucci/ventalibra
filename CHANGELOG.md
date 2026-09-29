@@ -5,6 +5,18 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Roles de usuario: admin, encargado, vendedor, cajero y depósito** (2026-09-29, ADR-049). Además de `admin` y `staff`, la
+  pantalla de Usuarios ofrece **encargado** (todo menos usuarios, configuración, logs, estructura del local y reabrir un día),
+  **vendedor** (POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y precios), **cajero** (POS, su turno y su caja,
+  consulta de stock y precios, clientes en lectura y alta) y **depósito** (stock, ajustes, transferencias y recepción de compras, sin
+  POS y sin plata). Cada rol ve en el menú sólo lo suyo, y una ruta que no es suya lo lleva a su pantalla inicial (el POS, o el stock
+  para el depósito). **`staff` no se migra ni se borra**: sigue siendo un rol válido con exactamente los permisos de siempre («heredado;
+  migrar a un rol concreto»), y el visitante de la demo conserva la lectura de todo. La matriz vive en `app/permisos.py`;
+  `/auth/login` y `/auth/me` traen `capacidades`. Un rol inválido es 422 al crear o editar un usuario; sigue sin poderse dejar la
+  instancia sin admin ni sacarse el rol a uno mismo. Sin migración. **Cambios para quien ya usaba el mostrador**: el cajero nuevo no
+  tiene cuenta corriente ni cierre diario (el `staff` de antes sí). **Pendiente conocido**: el costo unitario de los productos sigue
+  visible en la API para todo rol que lee productos (ver ADR-049).
+
 - **Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)** (2026-09-29, ADR-048). Básico ($20.000) es un
   solo local —una sucursal con los depósitos que necesite— y tiene todo lo demás libre; Premium ($55.000) suma la facturación ARCA y la
   multisucursal. El Dashboard **deja de ser de un plan**: se abre en los dos, igual que Margen, Etiquetas, Tesorería, Egresos y Libros

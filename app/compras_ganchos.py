@@ -12,9 +12,9 @@ montado: `libracommerce` v0.21.0). Lo que hace distinto a VentaLibra son dos gan
   sentidos, ya vivía en `app/services/proveedores.py` (`party_de_proveedor`/`proveedor_de_party`,
   offset `+100.000`) y se reusa acá tal cual.
 
-`autorizar_escritura` no se pasa: como en depósitos y productos, el `dependencies=staff_or_admin` con el
-que este producto monta el router entero ya cubre lectura y escritura (a diferencia de cuenta corriente,
-donde sólo la baja es admin-only).
+`autorizar_escritura` no se pasa: como en depósitos y productos, el `requiere_segun_ruta(...)` con el
+que este producto monta el router entero ya cubre lectura y escritura por capacidad (`compras.ver`,
+`compras.escribir` y `compras.recibir`, ADR-049).
 """
 from __future__ import annotations
 

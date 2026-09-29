@@ -7,8 +7,8 @@ declara acá lo que lo hace distinto (`libracore` v1.112.0). Son las reglas de l
 routers propios (`/shifts`, `app/routers/cajas.py`):
 
 **Cajas**
-- alta, edición, baja y predeterminada son **de admin** (dar de alta un mostrador es configurar el local); la
-  lectura es de staff, que elige la caja al abrir turno;
+- alta, edición, baja y predeterminada son **de admin** (capacidad `caja.admin`: dar de alta un mostrador es
+  configurar el local); la lectura es de quien tiene turno propio (`caja.propia`), que elige la caja al abrir turno;
 - toda caja pertenece a una sucursal **activa** (`branches`); un depósito no tiene cajas;
 - los medios de pago tienen que ser de `libracore.medios_pago.ELEGIBLES` (422);
 - la caja predeterminada es **por sucursal** (el motor la tiene global);
@@ -37,7 +37,8 @@ from libracore.db import caja as db_caja
 from libracore.db import turnos as db_turnos
 from libracore.db.core import get_connection
 
-from .auth import get_current_user, require_admin
+from .auth import get_current_user
+from .permisos import condicion, requiere
 from .services import cajas as cajas_service
 from .services.sucursales import SucursalService
 
@@ -54,6 +55,22 @@ def usuario_actual(user: dict = Depends(get_current_user)) -> dict:
     compara con `turnos_caja.usuario_id` (un entero) para decidir quién ve qué turno: sin esto, un cajero no
     vería ni el suyo."""
     return {**user, "id": int(user["id"])}
+
+
+_VE_TODOS_LOS_TURNOS = condicion("turnos.todos")
+
+
+def usuario_de_turnos(user: dict = Depends(usuario_actual)) -> dict:
+    """La sesión, tal como la lee `build_turnos_router`.
+
+    🔴 **El router de turnos del motor decide «quién ve y cierra los turnos ajenos» con `role == "admin"`
+    escrito a mano** (`libracore.caja_router._puede_ver` y `listar`), sin ganchos. Con los roles nuevos el
+    encargado tiene que ver y cerrar los turnos de todos (capacidad `turnos.todos`), y no es admin. Mientras el
+    motor no reciba esa decisión por parámetro, se la damos por el único lado que tiene: a quien tiene la
+    capacidad se le presenta `role="admin"` **sólo ante ese router**. La sesión real no cambia, ni las guardas
+    (que corren antes y sobre la sesión verdadera), ni ningún otro router.
+    """
+    return {**user, "role": "admin"} if _VE_TODOS_LOS_TURNOS(user) else user
 
 
 def _validar_medios(medios: list[str]) -> None:
@@ -87,7 +104,7 @@ def opciones_de_cajas(sucursales: Sucursales) -> OpcionesCajas:
         return {**caja, "sucursal_nombre": sede.name if sede else None}
 
     return OpcionesCajas(
-        autorizar_escritura=Depends(require_admin),
+        autorizar_escritura=Depends(requiere("caja.admin")),
         validar_alta=validar_alta,
         validar_edicion=validar_edicion,
         al_desactivar=cajas_service.pasar_predeterminada_a_otra_activa,

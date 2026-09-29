@@ -2,7 +2,7 @@
 // (`/api/sucursales`, modelo jerárquico sucursal → depósitos). Una sucursal agrupa depósitos: el stock vive en
 // éstos, y «Ver depósitos» lleva al detalle de la sucursal.
 //
-// Variantes de VentaLibra, todas props del kit: el título propio, **sólo lectura** para el cajero (el backend igual
+// Variantes de VentaLibra, todas props del kit: el título propio, **sólo lectura** para quien no administra la estructura (el backend igual
 // rechaza sus escrituras con 403) y las rutas del detalle y de la transferencia, que son las de este producto.
 //
 // **Plan Básico (ADR-048): un solo local.** Sin el módulo `multisucursal` el backend rechaza el alta de una segunda
@@ -13,10 +13,12 @@ import { Sucursales as SucursalesComercio } from 'libra-ui/comercio/Sucursales'
 import { AvisoPremium } from '../components/aviso-premium'
 import { useAuth } from '../context/AuthContext'
 import { MULTISUCURSAL, useTieneModulo } from '../lib/modulos'
+import { puede } from '../lib/permisos'
 
 export function Sucursales() {
   const { user } = useAuth()
-  const esAdmin = user?.role === 'admin'
+  // El alta, la edición y la baja son de quien administra la estructura (`sucursales.admin`, sólo admin).
+  const esAdmin = puede(user, 'sucursales.admin')
   const multisucursal = useTieneModulo(MULTISUCURSAL)
   return (
     <div className="grid gap-4">
