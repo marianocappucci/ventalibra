@@ -62,12 +62,22 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   real de migraciones en LibraCommerce (`v0.1.5`, 8 tests nuevos),
   verificado contra la base real del cliente `prueba` sin pérdida de
   datos. Ver DECISIONS.md ADR-017 — responsable: LLM.
+- [x] Roles de usuario (admin, encargado, vendedor, cajero, depósito + `staff` heredado): matriz única en `app/permisos.py`,
+  guardas por capacidad en todos los routers, `capacidades` en `/auth/me`, menú y rutas de la SPA por rol, tests de la tabla
+  rol × endpoint; el depósito no recibe compras y el cajero fía pero no ve cuenta corriente; el costo sólo para `costos.ver` (filtro de respuesta por prefijo, `app/costos.py`) y el ticket de un turno sólo para
+  quien lo abrió o ve los de todos. Ver DECISIONS.md ADR-049 — responsable: LLM.
 
 ## Próximas
 
-- [ ] Ninguna por ahora — próximo hito de VentaLibra a definir (fuera
-  de Fase 5).
+- [ ] Roles: que el kit (`libra-ui`) sepa que el costo puede faltar y que hay roles de sólo lectura. El costo ya no viaja a quien no
+  tiene `costos.ver` (`app/costos.py`), pero Productos muestra `$ NaN` en «Precio costo» (pide una prop para ocultar la columna, y lo mismo el costo y el
+  subtotal del detalle de una orden de compra), más una prop `soloLectura` por pantalla (ADR-049). Recibir compras es del encargado
+  (el depósito no: decisión del humano, 2026-09-29).
+- [ ] Roles: migrar los usuarios `staff` existentes a un rol concreto (hoy siguen con los permisos de siempre) y, cuando no quede
+  ninguno, retirar el rol y `catalogo.configurar`.
 
 ## Bloqueadas
 
 - [ ] Ninguna por ahora.
+
+- [ ] **Roles: que el cajero vea sólo su turno.** Filtrar `GET /api/ventas` y `GET /api/ventas/{id}` por turno propio para los roles sin `turnos.todos` (motor `libracommerce`, router de ventas) y una vista de cliente reducida para el POS (sin facturas, presupuestos ni remitos). Hoy el cajero ve lo mismo que veía como `staff` (ADR-049).
