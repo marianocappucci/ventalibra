@@ -14,6 +14,7 @@ import { Promociones } from 'libra-ui/comercio/Promociones'
 import { Stock } from './pages/Stock'
 import { Sucursales } from './pages/Sucursales'
 import { SucursalDetalle } from './pages/SucursalDetalle'
+import { DepositoDetalle } from './pages/DepositoDetalle'
 import { Transferencias } from './pages/Transferencias'
 import { Cajas } from './pages/Cajas'
 import { CierreDiario } from './pages/CierreDiario'
@@ -204,6 +205,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SucursalDetalle />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/depositos/:id"
+        element={
+          <ProtectedRoute>
+            <DepositoDetalle />
           </ProtectedRoute>
         }
       />

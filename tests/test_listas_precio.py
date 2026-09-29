@@ -7,7 +7,7 @@ Contalibra (más el de precios con vigencia y por sucursal, que armó VentaLibra
 Lo que no pasó: la **lista predeterminada** (`is_default`, con su 409 si había dos y `resolve` sin lista). Nadie la usaba y el motor
 no la tiene; el precio por defecto sigue siendo el del producto (`precio_venta`).
 """
-from ventas_helpers import crear_item
+from ventas_helpers import crear_item, sucursal_default
 
 
 def _lista(client, nombre="General", **extra):
@@ -84,7 +84,7 @@ def test_los_precios_por_sucursal_y_por_cantidad(admin_client):
     """Lo que la lista de VentaLibra tiene y la de Contalibra no: un precio para una sucursal y quiebres por cantidad."""
     item_id = crear_item(admin_client, "Fideos")
     lista = _lista(admin_client)
-    sucursal = next(d for d in admin_client.get("/api/depositos").json() if d["tipo"] == "store")
+    sucursal = sucursal_default(admin_client)
     assert _vigente(admin_client, lista["id"], item_id, 1000.0, desde="2026-01-01T00:00:00").status_code == 200
     assert _vigente(admin_client, lista["id"], item_id, 900.0, desde="2026-01-01T00:00:00",
                     sucursal_id=sucursal["id"]).status_code == 200

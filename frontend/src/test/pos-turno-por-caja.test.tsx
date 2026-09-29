@@ -18,10 +18,18 @@ function json(body: unknown, status = 200) {
 
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
+// Sucursales como las devuelve `GET /api/sucursales`. El depósito de venta nunca comparte id con su sucursal.
 const LOCATIONS = [
-  { id: 1, nombre: 'Sucursal Centro', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
-  { id: 2, nombre: 'Sucursal Norte', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
+  { id: 1, nombre: 'Sucursal Centro', codigo: null, direccion: null, activa: true, es_default: true,
+    deposito_predeterminado_id: 11, depositos: 1 },
+  { id: 2, nombre: 'Sucursal Norte', codigo: null, direccion: null, activa: true, es_default: false,
+    deposito_predeterminado_id: 22, depositos: 2 },
 ]
+
+const ITEM = {
+  id: 3, nombre: 'Yerba 1kg', sku: 'YER1', barcode: '779000001',
+  unidad: 'u', precio_venta: 3000, activo: 1,
+}
 
 const CAJAS_SUCURSAL_1 = [
   { id: 10, nombre: 'Caja 1', descripcion: '', medios_pago: ['efectivo'], punto_venta: null,
@@ -56,7 +64,18 @@ function montarRedBase(opciones: { turno?: unknown; aperturaBody?: unknown; aper
     if (u.endsWith('/api/turnos/abrir') && metodo === 'POST') {
       return Promise.resolve(json(opciones.aperturaBody ?? TURNO_CON_CAJA, opciones.aperturaStatus ?? 200))
     }
-    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/sucursales')) return Promise.resolve(json(LOCATIONS))
+    if (u.endsWith('/api/ventas') && metodo === 'POST') {
+      return Promise.resolve(json({
+        id: 9, numero: 'POS-000009', fecha: '2026-09-16', estado: 'cobrada', status: 'confirmed', items: [],
+        subtotal: 3000, descuento: 0, total: 3000, cliente_id: null, cliente_nombre: '', observaciones: '',
+        pagos: [], factura_id: null, factura_display: null, remito_id: null, mp_order_id: '', mp_payment_id: '',
+        created_at: '2026-09-16T10:05:00',
+      }))
+    }
+    if (u.includes('/api/productos/escanear')) {
+      return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))
+    }
     if (u.includes('/customers')) return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   })
@@ -156,16 +175,27 @@ describe('Con turno abierto en una caja, la sucursal queda fija', () => {
     expect(screen.queryByRole('combobox', { name: 'Sucursal' })).not.toBeInTheDocument()
   })
 
-  it('la venta sale con el deposito_id de la sucursal de la caja del turno', async () => {
-    const { llamadas } = montarRedBase({ turno: TURNO_CON_CAJA })
-    // Sólo hace falta comprobar que el POS fija `locationId` a la sucursal
-    // del turno -- lo que realmente viaja en `POST /api/ventas` ya lo cubre
-    // `pos-registrar-venta.test.tsx`. Acá se verifica que NINGÚN pedido de
-    // apertura de turno ocurre (ya hay uno) y que el badge fijo reemplaza al
-    // selector, que es lo que garantiza que no se pueda desalinear a mano.
+  it('la venta sale con el depósito de venta de la sucursal de la caja del turno, no con el id de la sucursal', async () => {
+    // El turno es de la sucursal 2 (Norte), que vende del depósito 22; la predeterminada del sistema es la 1
+    // (depósito 11): ni el 1, ni el 2, ni el 11 son un `deposito_id` válido para esta venta.
+    const turnoNorte = { ...TURNO_CON_CAJA, sucursal: { id: 2, nombre: 'Sucursal Norte' } }
+    const { llamadas } = montarRedBase({ turno: turnoNorte })
     montar()
-    await screen.findByText(/Sucursal Centro · Caja 1/)
+    await screen.findByText(/Sucursal Norte · Caja 1/)
     expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/abrir'))).toBe(false)
+
+    const user = userEvent.setup()
+    await user.type(await screen.findByPlaceholderText(/scane|Escane|código|codigo/i), '779000001{Enter}')
+    await screen.findByText(/Yerba 1kg/)
+    await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
+    await user.click(screen.getByRole('button', { name: /Cobrar/ }))
+
+    const registro = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(registro.body).toMatchObject({ deposito_id: 22 })
   })
 
   it('el badge indica cómo trabajar en otra sucursal sin agregar un botón nuevo', async () => {

@@ -3,23 +3,23 @@
 Desde la fase 5 de la adopción de los motores (2026-09-26, ADR-032) VentaLibra monta
 `libracore.caja_router.build_cajas_router` y `build_turnos_router`, los mismos de Contalibra y Restolibra, y
 declara acá lo que lo hace distinto (`libracore` v1.112.0). Son las reglas de las cajas por sucursal
-(2026-09-16), de «sólo `store` vende» (2026-09-25) y de la baja de cajas (2026-09-26), que ya no viven en
+(2026-09-16) y de la baja de cajas (2026-09-26), que ya no viven en
 routers propios (`/shifts`, `app/routers/cajas.py`):
 
 **Cajas**
 - alta, edición, baja y predeterminada son **de admin** (dar de alta un mostrador es configurar el local); la
   lectura es de staff, que elige la caja al abrir turno;
-- toda caja pertenece a una sucursal **activa que vende** (`store`): un depósito no tiene cajas nuevas;
+- toda caja pertenece a una sucursal **activa** (`branches`); un depósito no tiene cajas;
 - los medios de pago tienen que ser de `libracore.medios_pago.ELEGIBLES` (422);
 - la caja predeterminada es **por sucursal** (el motor la tiene global);
 - una caja se **desactiva** en vez de borrarse (si tiene movimientos no se puede eliminar), y no se puede
-  desactivar con un turno abierto ni si es la única activa de una sucursal que vende (409); si era la
+  desactivar con un turno abierto ni si es la única activa de su sucursal (409); si era la
   predeterminada, la predeterminada pasa a otra activa.
 
 **Turnos**
 - el turno es **por usuario y por caja**: se abre sobre UNA caja, y esa caja no admite un segundo turno mientras
   el primero siga abierto (el motor no impone «una caja, un turno»);
-- la caja tiene que existir, estar activa y ser de una sucursal que vende;
+- la caja tiene que existir y estar activa;
 - abrir con un turno propio ya abierto es 409 (no devuelve el mismo, como hace el motor por defecto: el arqueo
   del primero quedaría partido);
 - el arqueo es **sobre `caja_movimientos`** (no sobre las ventas) y **sin la cuenta corriente**: fiar no es
@@ -39,14 +39,14 @@ from libracore.db.core import get_connection
 
 from .auth import get_current_user, require_admin
 from .services import cajas as cajas_service
-from .services.locations import LocationService, vende
+from .services.sucursales import SucursalService
 
 #: El medio de pago que marca una venta a crédito: no es plata que entra en la caja.
 MEDIO_CUENTA_CORRIENTE = "cuenta_corriente"
 
-#: Cómo se llega al `LocationService` de la conexión del dominio. Un callable y no la conexión: la app la
+#: Cómo se llega al `SucursalService` de la conexión del dominio. Un callable y no la conexión: la app la
 #: reemplaza al restaurar un respaldo (`app.state.conn`), así que se lee en cada pedido.
-Sucursales = Callable[[], LocationService]
+Sucursales = Callable[[], SucursalService]
 
 
 def usuario_actual(user: dict = Depends(get_current_user)) -> dict:
@@ -71,8 +71,6 @@ def opciones_de_cajas(sucursales: Sucursales) -> OpcionesCajas:
         sede = sucursales().get(payload.sucursal_id)
         if sede is None or not sede.active:
             raise HTTPException(422, f"No existe una sucursal activa con id {payload.sucursal_id}.")
-        if not vende(sede):
-            raise HTTPException(422, "Sólo una sucursal de venta puede tener cajas; un depósito no vende.")
 
     def validar_edicion(payload: CajaUpdatePayload, actual: dict) -> None:
         _validar_medios(payload.medios_pago)
@@ -80,7 +78,7 @@ def opciones_de_cajas(sucursales: Sucursales) -> OpcionesCajas:
             return  # sólo la baja tiene guardas
         sede = sucursales().get(actual["sucursal_id"]) if actual.get("sucursal_id") else None
         try:
-            cajas_service.validar_baja(actual, sucursal_vende=sede is not None and vende(sede))
+            cajas_service.validar_baja(actual, sucursal_vende=sede is not None)
         except cajas_service.BajaNoPermitida as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -134,11 +132,6 @@ def validar_apertura_de(sucursales: Sucursales) -> Callable[[AbrirPayload, dict]
             raise HTTPException(404, "La caja no existe.")
         if not caja.get("activo", True):
             raise HTTPException(422, f"La caja {caja['nombre']!r} está dada de baja.")
-        # Sólo vende una sucursal `store` (2026-09-25): la caja histórica de un depósito se conserva con su
-        # movimiento, pero ya no abre turnos.
-        sede = sucursales().get(caja["sucursal_id"]) if caja.get("sucursal_id") else None
-        if sede is not None and not vende(sede):
-            raise HTTPException(422, f"La caja {caja['nombre']!r} es de un depósito, que no vende.")
 
         propio = db_turnos.get_turno_activo(int(user["id"]))
         if propio:

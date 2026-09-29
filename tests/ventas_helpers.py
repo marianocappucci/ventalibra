@@ -128,11 +128,34 @@ def producto_de(client, item_id) -> dict:
     return r.json()["producto"]
 
 
-def crear_ubicacion(client, nombre, tipo="warehouse") -> dict:
-    """Una sucursal (`store`) o un depósito (`warehouse`), por `POST /api/depositos`."""
-    r = client.post("/api/depositos", json={"nombre": nombre, "tipo": tipo})
+def sucursal_default(client) -> dict:
+    return next(s for s in client.get("/api/sucursales").json() if s["es_default"])
+
+
+def crear_sucursal(client, nombre, deposito="") -> dict:
+    """Una sucursal, por `POST /api/sucursales`: nace con su primer depósito (`deposito_predeterminado_id`)."""
+    r = client.post("/api/sucursales", json={"nombre": nombre, "deposito": deposito})
     assert r.status_code == 200, r.text
     return r.json()
+
+
+def crear_deposito(client, nombre, sucursal_id=None) -> dict:
+    """Un depósito extra en una sucursal (la predeterminada, si no se dice), por `POST /api/depositos`."""
+    branch_id = sucursal_id if sucursal_id is not None else sucursal_default(client)["id"]
+    r = client.post("/api/depositos", json={"nombre": nombre, "branch_id": branch_id})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def crear_ubicacion(client, nombre, tipo="warehouse") -> dict:
+    """Un lugar donde cargar stock: `warehouse` es un depósito extra de la sucursal predeterminada; `store` es una
+    sucursal nueva y se devuelve **su depósito** (el que recibe el stock y las ventas), con `sucursal_id` aparte:
+    ya no son el mismo id."""
+    if tipo == "store":
+        sucursal = crear_sucursal(client, nombre, deposito=nombre)
+        deposito = next(d for d in client.get("/api/depositos").json() if d["id"] == sucursal["deposito_predeterminado_id"])
+        return {**deposito, "sucursal_id": sucursal["id"]}
+    return crear_deposito(client, nombre)
 
 
 def registrar_venta(client, item_id=None, *, precio="1500.00", cantidad="2", items=None,

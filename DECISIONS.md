@@ -1664,7 +1664,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 
 ## ADR-033 — Sucursales, depósitos, stock y transferencias con los routers del motor y las pantallas del kit (fase 6 de la adopción)
 
-- Estado: aceptada
+- Estado: aceptada; **las reglas de los dos tipos `store`/`warehouse` y de «sólo `store` vende» quedaron reemplazadas por ADR-044**
 - Fecha: 2026-09-26
 - Contexto: VentaLibra tenía `/locations` (`app/routers/locations.py`, `services/locations.py`), `/stock` (`app/routers/stock.py`,
   `services/stock.py`, unas 400 líneas con la transferencia, el historial y la grilla por depósito) y tres pantallas propias
@@ -2004,3 +2004,30 @@ decisión explícita del humano, y no forman parte de esta ADR.
   promociones aplicadas en el detalle de la venta y en el ticket.
 - Depende de: `libracommerce` v0.25.0 (ADR-014) y `libra-ui` v0.84.0 (`comercio/Promociones`)
   publicados y los pines de este repo subidos.
+
+## ADR-044 — Sucursal y depósito son entidades distintas: el stock vive sólo en el depósito
+
+- Estado: aceptada (decisión del humano, 2026-09-28); reemplaza los dos tipos `store`/`warehouse` de ADR-033
+- Fecha: 2026-09-28
+- Contexto: desde ADR-033 una sucursal y un depósito eran la misma fila de `locations`, distinguidas por
+  `location_type`, y cualquiera de las dos podía tener stock. Al entrar a Sucursales el humano esperaba lo
+  contrario: que el stock viva sólo en el depósito, que toda sucursal tenga al menos uno y que pueda tener varios.
+  LibraDesk ya tenía esa jerarquía en su capa de producto; se subió al motor (`libracommerce` ADR-012 y ADR-013) para que
+  la reciban todos los consumidores en vez de portarla cada uno.
+- Decisión: una sucursal es una fila de `branches` y sus depósitos son `locations` con `branch_id`. El motor impone que toda
+  sucursal tenga un depósito activo, que uno sea el de venta (`deposito_predeterminado_id`), que no se desactive ni se
+  elimine el último y que la baja de una sucursal exija que no queden existencias. Aquí quedan como ganchos: todo
+  depósito pertenece a una sucursal; la última sucursal activa y una con turno abierto no se desactivan; la sucursal nueva
+  recibe su primera caja. La venta y la devolución tienen que mover stock de un depósito de la **sucursal de la caja**
+  del turno (`validar_deposito`), y el POS manda el depósito de venta de la sucursal elegida. `location_type` queda sin uso.
+  - **La migración conserva los ids** (`app/sucursales_migracion.py`, revisión `0006`, y `db.connect()` en cada arranque y al
+    restaurar un respaldo viejo): cada `store` pasa a ser la sucursal con su mismo id y su fila queda como su depósito, así
+    que `cajas.sucursal_id`, los turnos, los precios por sucursal y el stock no se reescriben ni se transfiere nada. Los
+    depósitos sin dueño van a la sucursal predeterminada, o a la que diga `VENTALIBRA_DEPOSITOS_A_SUCURSAL="2:1,5:3"`; las
+    cajas de un depósito pasan a la sucursal de ese depósito. `scripts/preflight_jerarquia.py` audita antes, de sólo lectura.
+- Consecuencias: los cierres diarios de un depósito (posibles hasta el 2026-09-25, cuando cualquier ubicación tenía cajas) no
+  se reasignan porque su numeración es única por sucursal: quedan como estaban y el preflight los cuenta. La migración no
+  se revierte con datos (el `downgrade` es de mejor esfuerzo): el camino de vuelta es el respaldo previo al deploy. Backend
+  y frontend salen juntos: la API de sucursales cambia y el POS depende de ella.
+- Depende de: `libracommerce` v0.25.0 o posterior (PR #106 y #109; el pin de este repo ya está en v0.25.1) y `libra-ui` v0.85.0
+  (`comercio/Sucursales` y `SucursalDetalle`, PR #207), ambos publicados.
