@@ -34,10 +34,20 @@ const ITEM = {
   unidad: 'u', precio_venta: 3000, activo: 1,
 }
 
+// Una sucursal como la devuelve `GET /api/sucursales`. Sucursal y depósito son entidades distintas: el depósito de
+// venta (`deposito_predeterminado_id`) NUNCA tiene el mismo id que la sucursal en estos tests, a propósito, para que
+// mandar el id equivocado se note.
+function sucursal(id: number, nombre: string, depositoDeVenta: number | null, esDefault = false) {
+  return {
+    id, nombre, codigo: null, direccion: null, activa: true, es_default: esDefault,
+    deposito_predeterminado_id: depositoDeVenta, depositos: 1,
+  }
+}
+
 // Dos sucursales: sirve para afirmar que viaja la elegida, no "la primera".
 const LOCATIONS = [
-  { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
-  { id: 2, nombre: 'Sucursal Norte', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
+  sucursal(1, 'Salón', 11, true),
+  sucursal(7, 'Sucursal Norte', 12),
 ]
 
 function venta(overrides: Record<string, unknown> = {}) {
@@ -87,7 +97,7 @@ function montarRed(opciones: {
       return Promise.resolve(json(venta()))
     }
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/api/depositos')) return Promise.resolve(json(opciones.locations ?? LOCATIONS))
+    if (u.includes('/api/sucursales')) return Promise.resolve(json(opciones.locations ?? LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/api/productos/escanear')) {
       return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))
@@ -117,7 +127,7 @@ beforeEach(() => {
 })
 
 describe('Registrar la venta (D1: una sola llamada)', () => {
-  it('manda deposito_id de la sucursal elegida en el POS', async () => {
+  it('manda como deposito_id el depósito de venta de la sucursal elegida, no el id de la sucursal', async () => {
     const { llamadas } = montarRed()
     const user = userEvent.setup()
     montar()
@@ -136,7 +146,44 @@ describe('Registrar la venta (D1: una sola llamada)', () => {
       expect(encontrada).toBeDefined()
       return encontrada!
     })
-    expect(registro.body).toMatchObject({ deposito_id: 2 })
+    // La sucursal 7 vende del depósito 12: el 7 sería un depósito de otra sucursal (el backend lo rechaza con 422).
+    expect(registro.body).toMatchObject({ deposito_id: 12 })
+    expect(registro.body).not.toMatchObject({ deposito_id: 7 })
+  })
+
+  it('la sucursal predeterminada (preseleccionada) también manda su depósito de venta, no su id', async () => {
+    const { llamadas } = montarRed()
+    const user = userEvent.setup()
+    montar()
+    await escanear(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
+    await user.click(screen.getByRole('button', { name: /Cobrar/ }))
+
+    const registro = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(registro.body).toMatchObject({ deposito_id: 11 })
+  })
+
+  it('la sucursal recordada en localStorage (misma clave de siempre) vende de su depósito de venta', async () => {
+    localStorage.setItem('ventalibra.pos.location', '7')
+    const { llamadas } = montarRed()
+    const user = userEvent.setup()
+    montar()
+    await escanear(user)
+    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Sucursal Norte')
+    await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
+    await user.click(screen.getByRole('button', { name: /Cobrar/ }))
+
+    const registro = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(registro.body).toMatchObject({ deposito_id: 12 })
+    expect(localStorage.getItem('ventalibra.pos.location')).toBe('7')
   })
 
   it('un doble click en Cobrar manda un solo POST', async () => {
@@ -228,13 +275,13 @@ describe('Registrar la venta (D1: una sola llamada)', () => {
 
 describe('La sucursal inicial del POS', () => {
   it('preselecciona la marcada is_default, no la primera de la lista', async () => {
-    // La primera que devuelve el backend es "Depósito" (no default); la
-    // marcada `is_default` es la segunda -- si el POS tomara `items[0]` como
-    // antes, mostraría "Depósito" en vez de "Salón".
+    // La primera que devuelve el backend es "Sucursal Sur" (no default); la
+    // marcada `es_default` es la segunda -- si el POS tomara `items[0]`,
+    // mostraría "Sucursal Sur" en vez de "Salón".
     montarRed({
       locations: [
-        { id: 2, nombre: 'Depósito', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
-        { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
+        sucursal(2, 'Sucursal Sur', 22),
+        sucursal(1, 'Salón', 11, true),
       ],
     })
     const user = userEvent.setup()
@@ -249,32 +296,28 @@ describe('La sucursal inicial del POS', () => {
   it('sin ninguna marcada is_default, cae a la primera de la lista', async () => {
     montarRed({
       locations: [
-        { id: 2, nombre: 'Depósito', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
-        { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
+        sucursal(2, 'Sucursal Sur', 22),
+        sucursal(1, 'Salón', 11),
       ],
     })
     const user = userEvent.setup()
     montar()
     await escanear(user)
 
-    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Depósito')
+    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Sucursal Sur')
   })
 
-  it('no ofrece los depósitos: sólo una sucursal `store` vende', async () => {
-    montarRed({
-      locations: [
-        { id: 3, nombre: 'Depósito', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 },
-        { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 0 },
-      ],
-    })
+  it('la lista sale de /api/sucursales: no se le piden los depósitos al motor para elegir dónde vender', async () => {
+    const { llamadas } = montarRed()
     const user = userEvent.setup()
     montar()
     await escanear(user)
 
-    // El depósito es el default del sistema, pero no vende: queda Salón.
     const combo = await screen.findByRole('combobox', { name: 'Sucursal' })
-    expect(combo).toHaveTextContent('Salón')
     await user.click(combo)
-    expect(screen.queryByRole('option', { name: 'Depósito' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: 'Salón' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Sucursal Norte' })).toBeInTheDocument()
+    expect(llamadas.some((l) => l.url === '/api/sucursales')).toBe(true)
+    expect(llamadas.some((l) => l.url.includes('/api/depositos'))).toBe(false)
   })
 })

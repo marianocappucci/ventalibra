@@ -155,10 +155,10 @@ PROVEEDORES = [
     {"nombre": "Lácteos del Valle", "cuit_dni": "30-70444555-6", "email": "ventas@example.com.ar"},
 ]
 
-DEPOSITOS = [
-    {"nombre": "Salón", "tipo": "store"},
-    {"nombre": "Depósito", "tipo": "warehouse"},
-]
+#: Una sucursal más (con su depósito) y un depósito extra en la sucursal de siempre: lo justo para que las pantallas
+#: de sucursales y depósitos no queden vacías. El stock y las ventas van contra el depósito predeterminado.
+SUCURSALES = [{"nombre": "Salón"}]
+DEPOSITOS = [{"nombre": "Depósito"}]
 
 #: Stock inicial por artículo. **No todos tienen**: uno queda en cero y otro
 #: bajo, porque la pantalla de stock existe justamente para mostrar eso. Con
@@ -220,11 +220,15 @@ def sembrar(api: Api) -> None:
         _, nuevo = obtener_o_crear(api, "/api/proveedores", "nombre", p["nombre"], p)
         contar("proveedores", nuevo)
 
-    print("Depósitos…")
-    depositos = {}
+    print("Sucursales y depósitos…")
+    for s in SUCURSALES:
+        _, nuevo = obtener_o_crear(api, "/api/sucursales", "nombre", s["nombre"], s)
+        contar("sucursales", nuevo)
+    sucursal_default = _sucursal_default(api)
     for d in DEPOSITOS:
-        registro, nuevo = obtener_o_crear(api, "/api/depositos", "nombre", d["nombre"], d)
-        depositos[d["nombre"]] = registro["id"]
+        _, nuevo = obtener_o_crear(
+            api, "/api/depositos", "nombre", d["nombre"], {**d, "branch_id": sucursal_default}
+        )
         contar("depósitos", nuevo)
 
     # 🔴 Portado a F3 (2026-09-14, ADR-025): el depósito de stock y ventas NO
@@ -241,7 +245,7 @@ def sembrar(api: Api) -> None:
     # quedan creadas pero sin confirmar: no descuentan stock, no mueven caja y
     # ni siquiera aparecen en el listado. Es la primera cosa que rompió al
     # escribir este seed, y es correcta — así funciona un mostrador.
-    _abrir_turno(api, deposito_ventas, contar)
+    _abrir_turno(api, sucursal_default, contar)
 
     print("Ventas…")
     _sembrar_ventas(api, articulos, clientes, deposito_ventas, contar)
@@ -318,6 +322,12 @@ def _sembrar_stock(api: Api, articulos: dict, deposito: int, contar) -> None:
             contar("stock", True)
         except RuntimeError as e:
             print(f"  -- {nombre}: {e}")
+
+
+def _sucursal_default(api: Api) -> int:
+    """La sucursal predeterminada: la que `db.connect()` garantiza y a la que pertenece el depósito del que
+    descuentan las ventas."""
+    return next(s["id"] for s in api.get("/api/sucursales") if s.get("es_default"))
 
 
 def _deposito_default(api: Api) -> int:

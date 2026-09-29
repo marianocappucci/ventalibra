@@ -92,17 +92,24 @@ def test_preflight_postgres_real_es_de_solo_lectura(admin_client):
     """Ejercita el driver de producción sobre la base local EXCLUSIVA de tests."""
     import psycopg
 
-    origen_r = admin_client.post("/api/depositos", json={"nombre": "Depósito test", "tipo": "warehouse"})
-    assert origen_r.status_code == 200, origen_r.text
-    # El escenario previo a la transición: el depósito es el predeterminado.
-    hecho = admin_client.post(f"/api/depositos/{origen_r.json()['id']}/set-default")
-    assert hecho.status_code == 200, hecho.text
-    origen = hecho.json()
-    destino_r = admin_client.post("/api/depositos", json={"nombre": "Salón test", "tipo": "store"})
-    assert destino_r.status_code == 200, destino_r.text
+    # El escenario previo a la transición, con el modelo VIEJO de ubicaciones (`store`/`warehouse` como pares, sin
+    # jerarquía): ya no se puede armar por la API, así que se siembra por SQL.
+    dominio = admin_client.app.state.conn
+    dominio.execute("UPDATE locations SET is_default = 0")
+    for nombre, tipo, default in (("Depósito test", "warehouse", 1), ("Salón test", "store", 0)):
+        dominio.execute(
+            "INSERT INTO locations (name, location_type, is_default, active) VALUES (?, ?, ?, 1)",
+            (nombre, tipo, default),
+        )
+    dominio.commit()
+    origen, destino = (
+        dominio.execute("SELECT id FROM locations WHERE name = ?", (n,)).fetchone()[0]
+        for n in ("Depósito test", "Salón test")
+    )
+    antes = dominio.execute("SELECT COUNT(*) FROM locations").fetchone()[0]
     with preflight._abrir(sqlite_path=None, pg_url=TEST_DATABASE_URL) as conn:
-        informe = preflight.auditar(conn, origen["id"], destino_r.json()["id"])
+        informe = preflight.auditar(conn, origen, destino)
         assert informe["apto_para_planificar"] is True
         with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
             conn.execute("DELETE FROM locations")
-    assert len(admin_client.get("/api/depositos").json()) == 4
+    assert dominio.execute("SELECT COUNT(*) FROM locations").fetchone()[0] == antes

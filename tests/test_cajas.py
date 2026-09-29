@@ -10,21 +10,26 @@ from ventas_helpers import (
     abrir_turno,
     caja_default,
     con_stock,
+    crear_deposito,
     crear_item,
+    crear_sucursal,
     crear_ubicacion,
     hoy,
     registrar_venta,
+    sucursal_default,
 )
 
 
 def _crear_sucursal(client, nombre="Sucursal Norte") -> dict:
-    return crear_ubicacion(client, nombre, "store")
+    """La sucursal (`POST /api/sucursales`): su `id` es el que llevan las cajas; el depósito donde vive su stock es
+    `deposito_predeterminado_id`."""
+    return crear_sucursal(client, nombre)
 
 
 def _sembrada(client) -> dict:
-    """La sucursal que siembra `app/db.py::connect()` (`store`, predeterminada).
-    No es `json()[0]`: el listado va por nombre y ahora también hay un depósito."""
-    return next(loc for loc in client.get("/api/depositos").json() if loc["es_default"])
+    """La sucursal que siembra `app/db.py::connect()` (predeterminada). No es `json()[0]`: el listado va por
+    nombre y puede haber más de una."""
+    return sucursal_default(client)
 
 
 def _cajas_de(client, sucursal_id: int) -> list:
@@ -402,63 +407,37 @@ def test_el_movimiento_de_caja_de_la_venta_toma_la_caja_del_turno(admin_client):
     assert filas[0]["caja_id"] == caja["id"]
 
 
-# ── Sólo vende una sucursal `store` (decisión del humano, 2026-09-25) ───────
+# ── Las cajas son de una sucursal, no de un depósito (jerarquía, 2026-09-28) ─
 
 
-def _crear_deposito(client, nombre="Depósito Norte") -> dict:
-    return crear_ubicacion(client, nombre, "warehouse")
-
-
-def test_una_base_nueva_nace_con_una_sucursal_que_vende(admin_client):
-    """El Location sembrado por `app/db.py::connect()` es `store`: si fuera un
-    depósito, una instancia nueva no tendría ni dónde abrir turno."""
-    sembrada = next(l for l in admin_client.get("/api/depositos").json() if l["es_default"])
-    assert sembrada["tipo"] == "store"
+def test_una_base_nueva_nace_con_una_sucursal_con_caja_y_con_deposito(admin_client):
+    """`db.connect()` siembra una sucursal predeterminada con su depósito: si no, una instancia nueva no tendría
+    ni dónde abrir turno ni de dónde descontar la primera venta."""
+    sembrada = _sembrada(admin_client)
     assert len(_cajas_de(admin_client, sembrada["id"])) == 1
+    depositos = admin_client.get("/api/depositos").json()
+    assert [d["id"] for d in depositos if d["branch_id"] == sembrada["id"]] == [sembrada["deposito_predeterminado_id"]]
 
 
 def test_un_deposito_nuevo_no_recibe_caja(admin_client):
-    deposito = _crear_deposito(admin_client)
-    assert _cajas_de(admin_client, deposito["id"]) == []
+    sembrada = _sembrada(admin_client)
+    crear_deposito(admin_client, "Depósito Norte", sembrada["id"])
+    assert len(_cajas_de(admin_client, sembrada["id"])) == 1
 
 
-def test_no_se_da_de_alta_una_caja_en_un_deposito(admin_client):
-    deposito = _crear_deposito(admin_client)
-    r = admin_client.post("/api/cajas", json={"nombre": "Mostrador", "sucursal_id": deposito["id"]})
+def test_no_se_da_de_alta_una_caja_en_una_sucursal_inexistente(admin_client):
+    r = admin_client.post("/api/cajas", json={"nombre": "Mostrador", "sucursal_id": 9999})
     assert r.status_code == 422, r.text
-    assert "depósito" in r.json()["detail"]
-    assert _cajas_de(admin_client, deposito["id"]) == []
+    assert "No existe una sucursal activa" in r.json()["detail"]
 
 
-def test_una_caja_historica_de_un_deposito_no_abre_turno(admin_client):
-    """La caja de un depósito (de antes de la regla) se conserva, pero no opera."""
-    from libracore.db import caja as db_caja
-
-    deposito = _crear_deposito(admin_client)
-    caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=deposito["id"])
-    r = admin_client.post("/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id})
+def test_no_se_da_de_alta_una_caja_en_una_sucursal_dada_de_baja(admin_client):
+    sucursal = _crear_sucursal(admin_client)
+    baja = admin_client.put(f"/api/sucursales/{sucursal['id']}", json={"nombre": sucursal["nombre"], "activa": False})
+    assert baja.status_code == 200, baja.text
+    r = admin_client.post("/api/cajas", json={"nombre": "Mostrador", "sucursal_id": sucursal["id"]})
     assert r.status_code == 422, r.text
-    assert "depósito" in r.json()["detail"]
-
-
-def test_una_ubicacion_de_tipo_viejo_no_vende_ni_recibe_caja(admin_client):
-    """Una fila de un tipo que no es `store` ni `warehouse` (p. ej. `Negocio`, de antes del modelo de dos tipos) no
-    vende: no tiene caja y no admite cajas nuevas. Desde la fase 6 el tipo no se edita (el `PUT` del motor ni lo trae):
-    un dato así se corrige en la base, como se hizo con dev."""
-    conn = admin_client.app.state.conn
-    conn.execute(
-        "INSERT INTO locations (name, description, location_type, is_default, active)"
-        " VALUES ('Local viejo', '', 'Negocio', 0, 1)"
-    )
-    conn.commit()
-    vieja = next(l for l in admin_client.get("/api/depositos").json() if l["tipo"] == "Negocio")
-    assert _cajas_de(admin_client, vieja["id"]) == []
-    r = admin_client.post("/api/cajas", json={"nombre": "Caja", "sucursal_id": vieja["id"]})
-    assert r.status_code == 422, r.text
-    # Guardarla (renombrarla) tampoco le inventa una caja.
-    r = admin_client.put(f"/api/depositos/{vieja['id']}", json={"nombre": "Local viejo 2", "activo": True})
-    assert r.status_code == 200, r.text
-    assert _cajas_de(admin_client, vieja["id"]) == []
+    assert "No existe una sucursal activa" in r.json()["detail"]
 
 
 # ── Desactivar una caja (2026-09-26): con movimientos no se puede eliminar ──
@@ -497,13 +476,13 @@ def test_al_desactivar_la_predeterminada_pasa_a_otra_activa(admin_client):
     assert bool(cajas[otra["id"]]["activo"]) is True
 
 
-def test_la_caja_de_un_deposito_se_puede_desactivar(admin_client):
-    """Un depósito no vende: su caja histórica (con movimientos, no se puede
-    borrar) se desactiva sin la guarda de «al menos una activa»."""
+def test_una_caja_sin_sucursal_que_la_resuelva_se_puede_desactivar(admin_client):
+    """Una caja histórica cuya `sucursal_id` ya no apunta a ninguna sucursal (dato de antes de la jerarquía, que la
+    migración no pudo reasignar) no se puede borrar si tiene movimientos: se desactiva sin la guarda de «al menos
+    una activa», porque no hay sucursal a la que dejarle una."""
     from libracore.db import caja as db_caja
 
-    deposito = _crear_deposito(admin_client, "Depósito Sur")
-    caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=deposito["id"])
+    caja_id = db_caja.create_caja_config("Caja vieja", "", [], sucursal_id=9999)
     r = _desactivar(admin_client, {"id": caja_id, "nombre": "Caja vieja"})
     assert r.status_code == 200, r.text
     assert bool(r.json()["activo"]) is False

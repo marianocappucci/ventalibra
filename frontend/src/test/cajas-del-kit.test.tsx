@@ -1,7 +1,7 @@
 // Las cajas son la pantalla del kit (`libra-ui/comercio/Cajas`) con las variantes de VentaLibra (ADR-032): la
 // caja es de una sucursal, sólo las que venden admiten cajas nuevas, se activa y desactiva desde la tarjeta y no
 // hay pantalla de movimientos. El detalle de la pantalla lo prueban los tests del kit; acá, que el wrapper
-// arma bien las variantes y que el contrato de la API (`/api/depositos`, `/api/cajas`) es el que el kit espera.
+// arma bien las variantes y que el contrato de la API (`/api/sucursales`, `/api/cajas`) es el que el kit espera.
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -16,8 +16,11 @@ const base = {
   descripcion: '', medios_pago: ['efectivo'], punto_venta: 3, mp_pos_id: 'POS1',
   es_default: 0, sucursal_id: 1, sucursal_nombre: 'Sucursal', tiene_turno_abierto: false,
 }
-const SUCURSAL = { id: 1, nombre: 'Sucursal', descripcion: '', tipo: 'store', activo: 1, es_default: 1 }
-const DEPOSITO = { id: 2, nombre: 'Depósito', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 0 }
+// Sucursales como las devuelve `GET /api/sucursales` (sólo las activas, salvo `solo_activas=false`).
+const SUCURSAL = {
+  id: 1, nombre: 'Sucursal', codigo: null, direccion: null, activa: true, es_default: true,
+  deposito_predeterminado_id: 11, depositos: 1,
+}
 
 let cajas: Record<string, unknown>[]
 let locations: Record<string, unknown>[]
@@ -28,7 +31,7 @@ beforeEach(() => {
   _resetCacheDeMedios()
   llamadas = []
   putStatus = 200
-  locations = [SUCURSAL, DEPOSITO]
+  locations = [SUCURSAL]
   cajas = [
     { ...base, id: 2, nombre: 'Mostrador', activo: 1 },
     { ...base, id: 3, nombre: 'Vieja', activo: 0 },
@@ -44,7 +47,7 @@ beforeEach(() => {
       return putStatus === 200 ? json({}) : json({ detail: 'La sucursal necesita al menos una caja activa.' }, putStatus)
     }
     if (metodo === 'POST') return json({})
-    if (ruta === '/api/depositos') return json(locations)
+    if (ruta === '/api/sucursales') return json(locations)
     if (ruta === '/api/cajas/medios-disponibles') return json([{ id: 'efectivo', label: 'Efectivo' }])
     if (ruta === '/api/cajas') return json(cajas)
     return json([])
@@ -104,8 +107,15 @@ it('el alta va a la sucursal que vende (preseleccionada) y manda sucursal_id', a
   expect(llamadas.find((l) => l.metodo === 'POST')!.body).toMatchObject({ nombre: 'Mostrador 2', sucursal_id: 1 })
 })
 
-it('sin ninguna sucursal que venda (sólo depósitos o inactivas) no se puede crear una caja', async () => {
-  locations = [DEPOSITO, { ...SUCURSAL, activo: 0 }]
+it('la lista de sucursales sale de /api/sucursales (sólo activas), no de /api/depositos', async () => {
+  render(<Cajas />)
+  await screen.findByText('Mostrador')
+  expect(llamadas.some((l) => l.url === '/api/sucursales')).toBe(true)
+  expect(llamadas.some((l) => l.url.includes('/api/depositos'))).toBe(false)
+})
+
+it('sin ninguna sucursal activa no se puede crear una caja', async () => {
+  locations = []
   render(<Cajas />)
   await screen.findByText('Mostrador')
   expect(screen.getByRole('button', { name: /Nueva caja/ })).toBeDisabled()

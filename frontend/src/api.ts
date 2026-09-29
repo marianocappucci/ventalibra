@@ -129,18 +129,27 @@ export type ScaleFormat = {
   total_digits: number
 }
 
-/** Una sucursal (`store`) o un depósito (`warehouse`), como los devuelve `GET /api/depositos` del motor (ADR-033).
- *  `activo` y `es_default` viajan como 1/0: se leen con `!!`. `es_default` es el depósito del que descuenta una venta
- *  que no declara `deposito_id` (F4, ADR-025). */
+/** Un depósito, como lo devuelve `GET /api/depositos` del motor (ADR-033). Desde el modelo jerárquico sucursal →
+ *  depósitos cada depósito pertenece a una sucursal (`branch_id`); el stock, las transferencias y los ajustes siguen
+ *  por depósito. `activo` y `es_default` viajan como 1/0: se leen con `!!`. `es_default` es el depósito del que
+ *  descuenta una venta que no declara `deposito_id` (F4, ADR-025). */
 export type Deposito = {
   id: number
   nombre: string
   descripcion: string | null
-  tipo: string
+  /** La sucursal a la que pertenece. */
+  branch_id?: number | null
+  /** Ya no significa nada (siempre `warehouse`): la sucursal es otra entidad, `Sucursal`. */
+  tipo?: string
   activo: number
   es_default: number
   total_productos?: number
 }
+
+/** Una sucursal, como la devuelve `GET /api/sucursales` del motor: agrupa depósitos y es lo que eligen el POS, las
+ *  cajas, los turnos y el cierre diario. `deposito_predeterminado_id` es el depósito de venta: el `deposito_id` que
+ *  tiene que mandar una venta hecha en esa sucursal. Es el mismo tipo que usa el kit. */
+export type { Sucursal } from 'libra-ui/comercio/tipos'
 
 export type ShiftCaja = { id: number; nombre: string; punto_venta: number | null }
 export type ShiftSucursal = { id: number; nombre: string }

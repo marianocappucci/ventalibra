@@ -27,7 +27,7 @@ import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
 import type { CalculoPromociones, ListaPrecio } from 'libra-ui/comercio/tipos'
 import {
-  api, ApiError, type Caja, type Cliente, type Deposito, type Escaneo, type Producto, type VarianteProducto,
+  api, ApiError, type Caja, type Cliente, type Escaneo, type Producto, type Sucursal, type VarianteProducto,
   type MpDisponible, type MpEstado, type Venta, type VentaPagoConRecibido,
   type Shift, type ShiftState, type ShiftSummary,
 } from '../api'
@@ -233,7 +233,9 @@ function lineaVacia(item: Producto, cantidad: string, variante?: VarianteProduct
 }
 
 export function Pos() {
-  const [locations, setLocations] = useState<Deposito[]>([])
+  // Las sucursales activas (`/api/sucursales`); `locationId` es el id de la SUCURSAL elegida. El depósito del que
+  // descuenta la venta es otro id: el de venta de esa sucursal (`depositoDeVenta`, más abajo).
+  const [locations, setLocations] = useState<Sucursal[]>([])
   const [locationId, setLocationId] = useState<string>(
     () => localStorage.getItem(LOCATION_KEY) ?? '',
   )
@@ -371,16 +373,14 @@ export function Pos() {
   }, [query, hayDialogo])
 
   useEffect(() => {
-    api.get<Deposito[]>('/api/depositos')
-      .then((todas) => {
-        // Sólo vende una sucursal `store` y activa; los depósitos no se ofrecen.
-        const items = todas.filter((l) => l.tipo === 'store' && !!l.activo)
+    // Sólo vende una sucursal activa (`/api/sucursales` ya trae sólo esas); los depósitos no se ofrecen.
+    api.get<Sucursal[]>('/api/sucursales')
+      .then((items) => {
         setLocations(items)
         setLocationId((actual) => {
           if (actual && items.some((l) => String(l.id) === actual)) return actual
-          // El depósito default del sistema (mismo criterio que la
-          // devolución, `Ventas.tsx::DevolucionDeVenta`) -- no "la primera de
-          // la lista", que puede no ser la que el motor usa cuando el POS no
+          // La sucursal default del sistema -- no "la primera de la
+          // lista", que puede no ser la que el motor usa cuando el POS no
           // manda `deposito_id`.
           const porDefecto = items.find((l) => !!l.es_default)
           if (porDefecto) return String(porDefecto.id)
@@ -393,9 +393,9 @@ export function Pos() {
   // Con turno abierto EN UNA CAJA, la sucursal de la venta queda atada a la
   // de esa caja -- no a lo último elegido a mano ni a lo que haya en
   // localStorage. Esto es lo que garantiza, del lado del POS, que
-  // `deposito_id` viaje siempre igual a la sucursal del turno. Desde el
-  // 2026-09-17 el backend además lo valida (`app/ganchos.py::
-  // validar_deposito`, libracommerce v0.17.0): si no coincide, 422.
+  // `deposito_id` viaje siempre de un depósito de la sucursal del turno.
+  // El backend además lo valida (`app/ganchos.py::validar_deposito`): un
+  // depósito de otra sucursal es un 422.
   useEffect(() => {
     if (turno?.sucursal) setLocationId(String(turno.sucursal.id))
   }, [turno])
@@ -618,6 +618,9 @@ export function Pos() {
   const ahorro = promosAplicadas.length > 0 ? Number(promos?.ahorro) || 0 : 0
   const totalConPromos = Math.max(0, Math.round((total - ahorro) * 100) / 100)
   const puedeCobrar = cart.length > 0 && Boolean(locationId) && !calculandoPromos
+  // 🔴 El `deposito_id` de la venta NO es el id de la sucursal: es su depósito de venta. Son entidades distintas
+  // (la sucursal 7 puede vender del depósito 12) y el backend rechaza con 422 un depósito de otra sucursal.
+  const depositoDeVenta = locations.find((l) => String(l.id) === locationId)?.deposito_predeterminado_id ?? null
 
   // Atajos globales. preventDefault en las F porque el navegador se las
   // queda (F3 abre buscar, F6 mueve el foco a la barra de direcciones).
@@ -897,7 +900,7 @@ export function Pos() {
         <Cobro
           cart={cart}
           total={totalConPromos}
-          depositoId={locationId ? Number(locationId) : null}
+          depositoId={depositoDeVenta}
           cliente={cliente}
           mp={mp}
           onPedirCliente={() => setClienteOpen(true)}
@@ -1817,7 +1820,7 @@ function imprimirTicket(saleId: number) {
  *  -- sin las cajas que ya tienen un turno abierto, para no toparse con el
  *  409 recién al mandar el formulario. */
 function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
-  const [locations, setLocations] = useState<Deposito[]>([])
+  const [locations, setLocations] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState('')
   const [cajas, setCajas] = useState<Caja[]>([])
   const [cajaId, setCajaId] = useState('')
@@ -1833,8 +1836,7 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
   const montoInvalido = monto !== '' && montoInicial === null
 
   useEffect(() => {
-    api.get<Deposito[]>('/api/depositos').then((todas) => {
-      const items = todas.filter((l) => l.tipo === 'store' && !!l.activo)
+    api.get<Sucursal[]>('/api/sucursales').then((items) => {
       setLocations(items)
       const porDefecto = items.find((l) => !!l.es_default)
       setSucursalId(String((porDefecto ?? items[0])?.id ?? ''))

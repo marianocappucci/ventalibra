@@ -30,7 +30,7 @@ const ITEM = {
 }
 
 const LOCATIONS = [
-  { id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
+  { id: 1, nombre: 'Salón', codigo: null, direccion: null, activa: true, es_default: true, deposito_predeterminado_id: 11, depositos: 1 },
 ]
 
 const VENTA = {
@@ -56,7 +56,7 @@ function montarRed() {
     if (u.endsWith('/api/ventas') && metodo === 'POST') return Promise.resolve(json(VENTA))
     if (u.match(/\/api\/ventas\/9$/)) return Promise.resolve(json(VENTA))
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/sucursales')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/api/productos/escanear')) {
       return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))

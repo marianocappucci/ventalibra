@@ -19,7 +19,11 @@ const TURNO = {
   monto_inicial: 0, monto_declarado_cierre: null, monto_esperado_cierre: null, estado: 'abierto', notas: '',
 }
 const ITEM = { id: 3, nombre: 'Alfajor', sku: 'ALF1', barcode: '779000001', unidad: 'u', precio_venta: 100, activo: 1 }
-const LOCATIONS = [{ id: 1, nombre: 'Salón', descripcion: '', tipo: 'store', activo: 1, es_default: 1 }]
+// Una sucursal como la devuelve `GET /api/sucursales`; su depósito de venta tiene OTRO id a propósito.
+const LOCATIONS = [{
+  id: 1, nombre: 'Salón', codigo: null, direccion: null, activa: true, es_default: true,
+  deposito_predeterminado_id: 11, depositos: 1,
+}]
 
 const DOS_POR_UNO = { aplicadas: [{ promocion_id: 7, nombre: '2x1 alfajores', veces: 1, ahorro: 100 }], ahorro: 100 }
 
@@ -34,7 +38,7 @@ function montarRed(calculo: Calculo) {
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
-    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/sucursales')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     if (u.includes('/api/productos/escanear')) {
       return Promise.resolve(json({ producto: ITEM, cantidad: 1, precio_unitario: null, de_balanza: false }))

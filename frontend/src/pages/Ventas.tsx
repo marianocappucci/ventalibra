@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import { Ventas as VentasComercio } from 'libra-ui/comercio/Ventas'
 import type { VentaDetalleAccionesExtraCtx } from 'libra-ui/comercio/VentaDetalle'
 import {
-  api, ApiError, type Deposito, type ShiftState, type VentaDevuelto,
+  api, ApiError, type Deposito, type ShiftState, type Sucursal, type VentaDevuelto,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -78,19 +78,26 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
     Promise.all([
       api.get<VentaDevuelto>(`/ventas/${detalle.id}/devuelto`),
       api.get<Deposito[]>('/api/depositos'),
+      // Sólo para saber cuál es el depósito de venta: si falla, la devolución sigue con el default del sistema.
+      api.get<Sucursal[]>('/api/sucursales').catch(() => [] as Sucursal[]),
       api.get<ShiftState>('/api/turnos/actual').catch(() => ({ turno: null }) as ShiftState),
-    ]).then(([d, ls, estado]) => {
+    ]).then(([d, ds, sucursales, estado]) => {
       setDevuelto(d)
-      setLocations(ls.filter((l) => !!l.activo))
-      // Default: la sucursal de la caja del turno de quien devuelve --
-      // el backend rechaza cualquier otra (422, `app/ganchos.py::
-      // validar_deposito`). Sin turno en una caja con sucursal: el depósito
-      // de la venta original si se pudo saber; si no, el default del sistema
-      // (o el primero, si tampoco hay uno marcado).
-      const sugerido = estado.turno?.sucursal?.id
-        ?? d.deposito_id
-        ?? ls.find((l) => !!l.es_default)?.id
-        ?? ls[0]?.id
+      // Se repone stock en un depósito, y el backend rechaza (422, `app/ganchos.py::validar_deposito`) uno que no
+      // sea de la sucursal del turno de quien devuelve: con turno en una caja, sólo se ofrecen los depósitos activos
+      // de esa sucursal; sin turno, todos los activos.
+      const sucursalDelTurno = estado.turno?.sucursal?.id
+      const opciones = ds.filter((x) => !!x.activo && (sucursalDelTurno == null || x.branch_id === sucursalDelTurno))
+      setLocations(opciones)
+      // Default: el depósito de la venta original si se pudo saber y está entre las opciones; si no, el depósito de
+      // venta de la sucursal (la del turno o, sin turno, la predeterminada); si tampoco, el default del sistema (o
+      // el primero, si no hay uno marcado).
+      const sucursal = sucursales.find((x) => x.id === sucursalDelTurno)
+        ?? sucursales.find((x) => !!x.es_default)
+      const esOpcion = (id: number | null | undefined) => id != null && opciones.some((x) => x.id === id)
+      const sugerido = [d.deposito_id, sucursal?.deposito_predeterminado_id].find(esOpcion)
+        ?? opciones.find((x) => !!x.es_default)?.id
+        ?? opciones[0]?.id
       setLocationId(sugerido ? String(sugerido) : '')
     }).catch((err) => setError(describeError(err)))
     // eslint-disable-next-line react-hooks/exhaustive-deps

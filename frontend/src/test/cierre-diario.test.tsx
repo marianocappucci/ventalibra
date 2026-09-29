@@ -22,8 +22,14 @@ function json(body: unknown, status = 200) {
   })
 }
 
+// Sucursales como las devuelve `GET /api/sucursales`: la 9 está dada de baja (sólo llega con `solo_activas=false`).
+const sucursal = (id: number, nombre: string, activa: boolean, es_default = false) => (
+  { id, nombre, codigo: null, direccion: null, activa, es_default, deposito_predeterminado_id: id * 10, depositos: 1 }
+)
 const LOCATIONS = [
-  { id: 1, nombre: 'Sucursal Centro', descripcion: '', tipo: 'warehouse', activo: 1, es_default: 1 },
+  sucursal(1, 'Sucursal Centro', true, true),
+  sucursal(7, 'Sucursal Norte', true),
+  sucursal(9, 'Sucursal Cerrada', false),
 ]
 
 const PREVIEW_BLOQUEADO = {
@@ -76,7 +82,7 @@ const CIERRE_ANULADO = {
 
 function montarRed(opciones: {
   preview?: unknown; cerrarStatus?: number; cerrarBody?: unknown
-  historial?: unknown[]; reabrirStatus?: number; reabrirBody?: unknown
+  historial?: unknown[]; reabrirStatus?: number; reabrirBody?: unknown; turnoEnSucursal?: number
 } = {}) {
   const llamadas: { metodo: string; url: string; body: unknown }[] = []
 
@@ -86,8 +92,18 @@ function montarRed(opciones: {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     llamadas.push({ metodo, url: u, body })
 
-    if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: null }))
-    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/turnos/actual')) {
+      const sucursalId = opciones.turnoEnSucursal
+      return Promise.resolve(json({ turno: sucursalId == null ? null : {
+        id: 5, usuario_id: 1, usuario_nombre: 'Ana', apertura: '2026-09-16T10:00:00', cierre: null, monto_inicial: 0,
+        estado: 'abierto', notas: '', caja_id: 10, caja: { id: 10, nombre: 'Caja 1', punto_venta: null },
+        sucursal: { id: sucursalId, nombre: 'Sucursal' },
+      } }))
+    }
+    // Sin `solo_activas=false` el backend devuelve sólo las activas.
+    if (u.includes('/api/sucursales')) {
+      return Promise.resolve(json(u.includes('solo_activas=false') ? LOCATIONS : LOCATIONS.filter((l) => l.activa)))
+    }
     if (u.includes('/api/cierre-diario/preview')) return Promise.resolve(json(opciones.preview ?? PREVIEW_BLOQUEADO))
     if (u.endsWith('/api/cierre-diario/cerrar') && metodo === 'POST') {
       return Promise.resolve(json(opciones.cerrarBody ?? { id: 1 }, opciones.cerrarStatus ?? 200))
@@ -113,6 +129,40 @@ beforeEach(() => {
 })
 
 describe('Cierre diario', () => {
+  it('el selector ofrece las sucursales activas y preselecciona la predeterminada', async () => {
+    const { llamadas } = montarRed({ preview: PREVIEW_LISTO })
+    const user = userEvent.setup()
+    montar()
+
+    const combo = await screen.findByRole('combobox')
+    await waitFor(() => expect(combo).toHaveTextContent('Sucursal Centro'))
+    await user.click(combo)
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Sucursal Centro', 'Sucursal Norte'])
+    // Las sucursales vienen de /api/sucursales, no de /api/depositos.
+    expect(llamadas.some((l) => l.url.includes('/api/depositos'))).toBe(false)
+    await waitFor(() => expect(llamadas.some((l) => l.url.includes('/api/cierre-diario/preview?sucursal_id=1'))).toBe(true))
+  })
+
+  it('con turno en una sucursal, preselecciona la del turno (su id de sucursal)', async () => {
+    const { llamadas } = montarRed({ preview: PREVIEW_LISTO, turnoEnSucursal: 7 })
+    montar()
+
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveTextContent('Sucursal Norte'))
+    await waitFor(() => expect(llamadas.some((l) => l.url.includes('/api/cierre-diario/preview?sucursal_id=7'))).toBe(true))
+  })
+
+  it('un cierre viejo de una sucursal dada de baja se nombra, no sale «Sucursal #N»', async () => {
+    const { llamadas } = montarRed({
+      preview: PREVIEW_LISTO,
+      historial: [{ ...CIERRE_ACTIVO, sucursal_id: 9 }],
+    })
+    montar()
+
+    expect(await screen.findByText(/Sucursal Cerrada/)).toBeInTheDocument()
+    expect(screen.queryByText(/Sucursal #9/)).not.toBeInTheDocument()
+    expect(llamadas.some((l) => l.url === '/api/sucursales?solo_activas=false')).toBe(true)
+  })
+
   it('con turnos abiertos, los lista y no deja cerrar', async () => {
     montarRed({ preview: PREVIEW_BLOQUEADO })
     montar()

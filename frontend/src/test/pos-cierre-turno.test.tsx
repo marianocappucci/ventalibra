@@ -19,7 +19,7 @@ function json(body: unknown, status = 200) {
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
 const LOCATIONS = [
-  { id: 1, nombre: 'Sucursal Centro', descripcion: '', tipo: 'store', activo: 1, es_default: 1 },
+  { id: 1, nombre: 'Sucursal Centro', codigo: null, direccion: null, activa: true, es_default: true, deposito_predeterminado_id: 11, depositos: 1 },
 ]
 
 const TURNO = {
@@ -54,7 +54,7 @@ function montarRed() {
     if (u.match(/\/api\/turnos\/5\/cerrar$/) && metodo === 'POST') {
       return Promise.resolve(json({ ...TURNO, estado: 'cerrado' }))
     }
-    if (u.includes('/api/depositos')) return Promise.resolve(json(LOCATIONS))
+    if (u.includes('/api/sucursales')) return Promise.resolve(json(LOCATIONS))
     if (u.includes('/customers')) return Promise.resolve(json([]))
     return Promise.resolve(json([]))
   })
