@@ -79,3 +79,5 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 ## Bloqueadas
 
 - [ ] Ninguna por ahora.
+
+- [ ] **Roles: que el cajero vea sólo su turno.** Filtrar `GET /api/ventas` y `GET /api/ventas/{id}` por turno propio para los roles sin `turnos.todos` (motor `libracommerce`, router de ventas) y una vista de cliente reducida para el POS (sin facturas, presupuestos ni remitos). Hoy el cajero ve lo mismo que veía como `staff` (ADR-049).

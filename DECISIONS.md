@@ -2349,5 +2349,11 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - **El cajero pierde el cierre diario** (ADR de 2026-09-13: «admin o cajero»): ahora es del encargado y del admin. El `staff` heredado
     lo conserva.
   - Una ruta nueva que el motor publique con `include_in_schema=False` no la ve el test de cobertura: hoy son tres y están en `OCULTAS`.
+  - **El cajero y el vendedor leen el historial de ventas completo y las fichas de cliente con sus documentos** (tercera revisión de Codex,
+    2026-09-29): `ventas.pos` cubre `GET /api/ventas` y `GET /api/ventas/{id}`, que no filtran por usuario ni por turno, y `clientes.ver`
+    cubre el detalle de cliente, que trae facturas, presupuestos y remitos. **No es una regresión: es lo que el `staff` de hoy ya hace.** Lo
+    que no se cumple todavía es «el cajero ve sólo su turno». Cerrarlo pide filtrar por turno propio en el router de ventas del motor
+    (`libracommerce`) y una vista de cliente reducida para el POS; queda en `TASKS.md`. Sí están cerrados el ticket de un turno ajeno, los
+    costos, la recepción de compras y la cuenta corriente.
 - Depende de: nada externo —cambio contenido en este repo—; `libraauth` (`get_extras`, `build_users_router(roles=...)`) y `libra-ui`
   v0.88.0 (`Usuarios` con la prop `roles`).
