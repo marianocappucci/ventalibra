@@ -1,5 +1,6 @@
 """Gating por módulo del plan (ADR-009): catálogo, stock y venta/POS nunca se
-gatean; sólo `facturacion` está condicionado.
+gatean; sólo `facturacion` y `multisucursal` están condicionados (ADR-048; `test_planes_y_sucursales.py` cubre
+`multisucursal`).
 
 Portado a F3 (2026-09-14, DECISIONS.md ADR-025): registrar una venta ya no es
 `POST /sales` (borrador) + `.../items` + `.../confirm` -- es una sola llamada,
@@ -25,8 +26,8 @@ def _disable(client, modulo: str) -> None:
 
 
 def test_all_modules_enabled_by_default(admin_client):
-    # Fase 13 (ADR-039): "dashboard" se sumó a TODOS_LOS_MODULOS junto con "facturacion".
-    assert admin_client.app.state.modules.get_all() == {"facturacion": True, "dashboard": True}
+    # ADR-048: los dos módulos gateables son "facturacion" y "multisucursal" ("dashboard" ya no lo es).
+    assert admin_client.app.state.modules.get_all() == {"facturacion": True, "multisucursal": True}
 
 
 def test_billing_router_requires_facturacion_module(admin_client):

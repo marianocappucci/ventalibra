@@ -94,7 +94,12 @@ from .cajas_ganchos import (
 )
 from .compras_ganchos import OPCIONES_DE_COMPRAS
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
-from .depositos_ganchos import OPCIONES_DE_STOCK, opciones_de_depositos, opciones_de_sucursales
+from .depositos_ganchos import (
+    OPCIONES_DE_STOCK,
+    gate_de_transferencias,
+    opciones_de_depositos,
+    opciones_de_sucursales,
+)
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .productos_ganchos import OPCIONES_DE_CATALOGO
@@ -569,10 +574,16 @@ def create_app(db_path: str) -> FastAPI:
     # VentaLibra como ganchos (`app/depositos_ganchos.py`). Reemplazan a `/locations` y a `/stock`. Una sucursal es
     # una entidad propia y el stock vive en sus depósitos. Leer y transferir es de staff y admin; crear, editar,
     # predeterminar y borrar, de admin (`autorizar_escritura`).
+    # Un solo local sin el módulo `multisucursal` (plan Básico, ADR-048): el alta de una segunda sucursal y la transferencia
+    # entre sucursales dan 403 (`app/depositos_ganchos.py`). `_modulos` lee `app.state.modules` en cada pedido, como
+    # `require_module` y `_facturacion_habilitada`: un cambio de plan a mitad de proceso se ve en el pedido siguiente.
+    def _modulos():
+        return app.state.modules
+
     app.include_router(
         build_sucursales_router(
             conexion=lc_get_connection, usuario_actual=usuario_actual,
-            opciones=opciones_de_sucursales(_sucursales),
+            opciones=opciones_de_sucursales(_sucursales, _modulos),
         ),
         dependencies=staff_or_admin,
     )
@@ -580,7 +591,7 @@ def create_app(db_path: str) -> FastAPI:
         build_depositos_router(
             conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=opciones_de_depositos(),
         ),
-        dependencies=staff_or_admin,
+        dependencies=staff_or_admin + [Depends(gate_de_transferencias(lc_get_connection, _modulos))],
     )
     app.include_router(
         build_stock_router(conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_STOCK),
@@ -687,13 +698,13 @@ def create_app(db_path: str) -> FastAPI:
     # `API_PATHS`: `/libros-iva` a secas sigue siendo la pantalla de la SPA).
     app.include_router(build_libros_iva_router(), dependencies=admin_only)
     app.include_router(build_libros_iva_export_router(solo_admin=require_admin))
-    # Dashboard (fase 13, ADR-039): a diferencia de Tesorería/Egresos/Libros IVA, éste sí es el módulo que
-    # `plans.py` venía anticipando desde antes de construirse ("Premium queda con margen para dashboard").
+    # Dashboard (fase 13, ADR-039). Libre en todos los planes desde ADR-048 (decisión del humano, 2026-09-29): el plan
+    # se distingue por facturación ARCA y multisucursal, no por el tablero, así que ya no lleva `require_module`.
     # `sin_fiado=True`: mismo motivo que Reportes (fase 8) -- sin esto, "Cobrado del mes" y "Saldo de caja"
     # cuentan una venta a cuenta corriente como plata ya entrada. De admin, como Reportes y Caja por medio.
     app.include_router(
         build_dashboard_router(usuario_actual=get_current_user, sin_fiado=True),
-        dependencies=admin_only + [Depends(require_module("dashboard"))],
+        dependencies=admin_only,
     )
     # Cierre diario: acto registrado y numerado por sucursal (LibraCore
     # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).

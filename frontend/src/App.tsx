@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
 import { REDIRECCIONES_DE_CATALOGO, REDIRECCIONES_DE_CONFIGURACION, REDIRECCIONES_DEL_KIT } from './rutas-viejas'
 import { Layout } from './components/Layout'
+import { ModulosContext, modulosDe } from './lib/modulos'
 import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
@@ -56,7 +57,12 @@ function ProtectedRoute({ children, adminOnly = false }: { children: ReactNode; 
   }
   if (!user) return <Navigate to="/login" replace />
   if (adminOnly && user.role !== 'admin') return <Navigate to="/pos" replace />
-  return <Layout>{children}</Layout>
+  // Los módulos del plan que la SPA lee para ofrecer (o no) lo que es de Premium; ver `lib/modulos.ts`.
+  return (
+    <ModulosContext.Provider value={modulosDe(user)}>
+      <Layout>{children}</Layout>
+    </ModulosContext.Provider>
+  )
 }
 
 export default function App() {

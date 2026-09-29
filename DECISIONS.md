@@ -283,7 +283,8 @@ reemplazadas.
 
 ## ADR-009 — Fase 5: planes y gating por módulo (onboarding multi-cliente)
 
-- Estado: aceptada
+- Estado: aceptada; **el esquema de tres planes y el módulo `facturacion` «desde Estándar» quedaron reemplazados por
+  ADR-048** (dos planes: Básico y Premium). El mecanismo (tabla `modulos`, `require_module`) sigue vigente.
 - Fecha: 2026-07-26
 - Contexto: para poder onboardear clientes reales hace falta un modelo de
   planes (mismo patrón que Gestiolibra/MedLibra) que gatee qué funciona
@@ -1854,7 +1855,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 
 ## ADR-039 — Dashboard con el router del motor y la pantalla del kit, gateado a premium (fase 13 de la adopción)
 
-- Estado: aceptada
+- Estado: aceptada; **el gate a Premium se retiró en ADR-048**: el dashboard es libre en los dos planes.
 - Fecha: 2026-09-27
 - Contexto: a diferencia de Tesorería/Egresos/Libros IVA (fases 10–12), acá **sí hubo que construir**:
   `libracore.dashboard_router.build_dashboard_router` no tenía `sin_fiado` (el mismo problema que Reportes
@@ -2079,6 +2080,9 @@ decisión explícita del humano, y no forman parte de esta ADR.
   `app/main.py`. Segundo pendiente, de motor: guardar el costo de la línea al vender (`crear_venta`), lo que vuelve exacto el margen de ahí en más.
 - Depende de: `libracommerce` v0.26.0 y `libra-ui` v0.87.0; los pines de `pyproject.toml` y `frontend/package.json` se subieron en el mismo
   PR (#360).
+- **Actualización 2026-09-29 (ADR-048):** el plan de Margen quedó decidido: **libre en Básico y en Premium**. No lleva `require_module`
+  y `tests/test_margen.py::test_el_margen_esta_libre_en_todos_los_planes` lo fija. Sigue abierto el segundo pendiente (guardar el costo
+  de la línea al vender).
 
 ## ADR-047 — Etiquetas de góndola: una pantalla del kit de sólo lectura, sin endpoint nuevo
 
@@ -2102,3 +2106,67 @@ decisión explícita del humano, y no forman parte de esta ADR.
   gate de verdad requeriría un endpoint propio; queda como decisión de negocio abierta.
 - Depende de: `libra-ui` v0.88.0 (`comercio/EtiquetasGondola`) publicado y el pin de `frontend/package.json` subido de
   v0.85.0 a v0.88.0. Hasta entonces `App.tsx` no compila ni pasa el test nuevo.
+
+## ADR-048 — Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)
+
+- Estado: aceptada (decisión del humano, 2026-09-29); reemplaza el esquema de planes de ADR-009, el gate de Dashboard de ADR-039 y
+  la propuesta del PR #344 (rama `feature/planes-dos-niveles`), que queda superada
+- Fecha: 2026-09-29
+- Contexto: ADR-009 fijó tres planes diferenciados sólo por `facturacion`; ADR-039 le sumó `dashboard` a Premium y dejó a Estándar y
+  Premium separados por un tablero. El PR #344 (2026-09-28) fusionaba Estándar en Premium dejando `facturacion` + `dashboard`, pero un
+  tablero no es lo que separa a un comercio chico de uno grande. El humano lo redefinió el 2026-09-29: la diferencia sustancial es
+  **lo fiscal y lo multisucursal**. (El PR #344 llamaba a su ADR «ADR-042», número que `develop` ya ocupa con otro tema —promociones—:
+  no debe mergearse, y este ADR es el que queda.)
+- Decisión: dos planes, precios los de #344.
+  - **Básico ($20.000): un solo local** —una sucursal, con los depósitos que necesite—. Todo lo demás libre: POS, stock, compras, caja,
+    clientes y proveedores, cuenta corriente, promociones, margen, dashboard, etiquetas, tesorería, egresos y libros IVA.
+  - **Premium ($55.000)**: suma `facturacion` (ARCA) y el módulo nuevo `multisucursal` (más de una sucursal y la transferencia de
+    mercadería entre sucursales).
+  - `plans.py`: `PLANES = ["basico", "premium"]`, `_PREMIUM = _BASICO | {"facturacion", "multisucursal"}`, `TODOS_LOS_MODULOS` =
+    esos dos. **`dashboard` deja de ser un módulo gateable**: se retira su `require_module` de `app/main.py`. Margen, Etiquetas, Tesorería,
+    Egresos y Libros IVA ya eran libres y siguen igual.
+- **El gate de «un solo local»** (`app/depositos_ganchos.py`, chequeo por request contra `app.state.modules`, como `require_module`):
+  - **La unidad es la sucursal, no el depósito.** La jerarquía es sucursal → depósitos (ADR-044): un local con dos depósitos sigue siendo
+    un local, así que agregar depósitos y transferir entre depósitos **de la misma sucursal** es libre en Básico.
+  - Sin `multisucursal`: `POST /api/sucursales` da **403** si ya hay una sucursal activa (gancho `validar_alta`), y reactivar una
+    sucursal dada de baja mientras hay otra activa también (`validar_edicion`); `POST /api/depositos/transferir` da **403** cuando el
+    origen y el destino son de sucursales distintas. El mensaje sigue el de `require_module` («módulo 'multisucursal' no incluido en el
+    plan actual») y agrega qué falta. El 403 nunca se dispara ante un cuerpo mal formado o un depósito inexistente: eso lo contesta el
+    endpoint con su 422 de siempre.
+  - **La transferencia es una dependencia del router de depósitos y no un gancho**, porque el motor (`libracommerce` v0.26.0) no tiene
+    ninguno para ella: reconoce la ruta por su forma (`POST …/transferir`) y lee el cuerpo sólo en esa. Si el motor suma un gancho, se
+    muda a él; un test falla si la ruta cambiara de nombre.
+  - **No rompe lo que ya existe.** Una instalación con varias sucursales creadas antes (la demo tiene tres) en Básico sigue
+    leyéndose, editándose, dando de baja y vendiendo: el gate sólo impide crear más, reactivar y cruzar mercadería. Nada se borra ni se
+    oculta.
+- **Lo que ya no existe, y las instancias que lo tienen guardado** (el estado vive en la tabla `modulos`: `modulo`, `habilitado`, `plan`;
+  el gate lee sólo `habilitado`):
+  - **Plan `estandar`** (`plans.PLANES_RETIRADOS = {"estandar": "premium"}`): se lo trata como Premium —tenía facturación y las
+    sucursales eran libres, así que no pierde nada—, **con aviso**: `modulos_de_plan`, `aplicar_plan_en_db` y el arranque de la app
+    dejan un `WARNING` en el log, y `aplicar_plan_en_db("estandar")` reescribe la etiqueta guardada a `premium`. Al 2026-09-29 sólo
+    `demo` podía tenerlo. Antes de este cambio `modulos_de_plan("estandar")` habría dado un conjunto vacío y reaplicar ese plan habría
+    apagado la facturación sin decirlo (la falla que dejaba abierta #344).
+  - **Plan desconocido** (un typo): `aplicar_plan_en_db` levanta `ValueError` en vez de apagar todos los módulos de la instancia.
+  - **Módulo `dashboard`**: la fila que quede en `modulos` no se borra ni se lee (`ModuleRepository.is_enabled` da `True` para todo
+    módulo fuera de `TODOS_LOS_MODULOS`), aunque diga `habilitado=0`. `plans.MODULOS_RETIRADOS` lo deja escrito.
+  - **Instancias ya desplegadas y el módulo nuevo**: `init_modules_schema` corre en cada arranque y sólo agrega lo que falta. Con «todo
+    prendido» `multisucursal` habría quedado abierto en cada Básico existente hasta que alguien reaplicara el plan. Ahora, si las filas
+    de plan dicen un solo plan conocido (los add-ons no cuentan), el módulo nuevo se siembra según ese plan: apagado en Básico,
+    prendido en Premium y en `estandar`. Una base nueva, o con planes mezclados o desconocidos, se siembra como siempre.
+- **La SPA** (`frontend/src/lib/modulos.ts`): `/auth/login` y `/auth/me` traen `modulos`, la lista de los módulos prendidos
+  (`get_extras` de `libraauth`, mismo formato que LibraDesk). Si el campo falta —un backend viejo, o una falla al leerlo, en cuyo caso se
+  omite y no se manda una lista vacía— la SPA ofrece todo y corta el 403 del backend. Con `multisucursal` apagado avisa «disponible en
+  Premium» en Sucursales (arriba de la pantalla y en el botón de alta) y en Transferencias; con `facturacion` apagado, en la sección
+  ARCA de Configuración (que no llama a `/config/arca`) y en el casillero «Emitir factura» del POS (apagado y sin marcar). El
+  Dashboard no depende del plan.
+- Consecuencias:
+  - El alta de sucursal en Básico **no se puede apagar del todo en la pantalla**: el kit (`libra-ui/comercio/Sucursales`) no tiene una prop
+    para esconder sólo ese botón —`soloLectura` esconde también la edición—, así que el botón sigue, dice «(Premium)» y el 403 del backend
+    llega al formulario. Queda como pedido al kit (un `sinAlta`).
+  - Transferencias no se esconde del menú en Básico: sirve entre los depósitos de la misma sucursal y muestra el historial.
+  - **Acción de deploy**: reaplicar el plan a las instancias que corresponda no hace falta para que el gate funcione (el arranque siembra
+    `multisucursal` según el plan guardado), pero **conviene reaplicar `premium` a `demo`** (`aplicar_plan_en_db`) para que su etiqueta
+    deje de decir `estandar`. No verificado desde este repo: es una acción sobre una instancia corriendo.
+  - `MercadoPago` sigue montando su configuración (`build_mp_config_router`) con `require_module("facturacion")`, un acoplamiento
+    anterior a esta decisión: en Básico esa pantalla da 403. Queda como pendiente de decisión (el cobro por QR del POS no lo tiene).
+- Depende de: nada externo —cambio contenido en este repo—; `libraauth` ya trae `get_extras`.
