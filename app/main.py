@@ -44,6 +44,7 @@ from libracommerce.web.promociones_router import (
     build_promociones_router,
 )
 from libracommerce.web.reposicion_router import build_reposicion_router
+from libracommerce.web.vencimientos_router import build_vencimientos_escritura_router, build_vencimientos_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
@@ -861,6 +862,27 @@ def create_app(db_path: str) -> FastAPI:
     # sugiere: no genera la orden de compra. No lleva costos: `/api/reportes` no está en los prefijos de `SinCostos` (`app/costos.py`)
     # y `tests/test_reposicion.py` fija que ninguna clave de costo viaja.
     app.include_router(build_reposicion_router(conexion=lc_get_connection), dependencies=[Depends(requiere("reposicion.ver"))])
+    # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.29.0,
+    # ADR-018 del motor), que cuelgan de `/api/vencimientos`. Sin gate de plan (libre en Básico y Premium, ADR-048). Sólo la parte
+    # informativa: las ventas siguen descontando «sin lote» hasta A-4 (ver el ADR).
+    #   - Lectura (`GET ""`, `/export`, `/productos/{id}/lotes`): `vencimientos.ver` (encargado y depósito). No trae costos.
+    #   - Escritura: `usuario_actual` (con `id` entero: sale como `created_by` de los movimientos) y una guarda POR OPERACIÓN, porque el
+    #     motor no monta escrituras del ledger sin ellas (la factory falla al construirse): marcar un producto es `vencimientos.marcar`
+    #     (sólo el encargado) y asignar un vencimiento y dar de baja un lote, `vencimientos.mover` (encargado y depósito). Encima, a nivel
+    #     include, la de lectura: quien escribe tiene que poder ver.
+    # 🔴 Sin la revisión Alembic `0002_vencimientos_lotes` del motor el router contesta 503: se aplica con
+    # `libracommerce-migrar upgrade --prefijo ventalibra` (compose, `panel_admin.py`, smoke y suite: ver ADR-052).
+    app.include_router(
+        build_vencimientos_router(conexion=lc_get_connection), dependencies=[Depends(requiere("vencimientos.ver"))],
+    )
+    app.include_router(
+        build_vencimientos_escritura_router(
+            conexion=lc_get_connection, usuario_actual=usuario_actual,
+            dependencias_marcar=[Depends(requiere("vencimientos.marcar"))],
+            dependencias_movimientos=[Depends(requiere("vencimientos.mover"))],
+        ),
+        dependencies=[Depends(requiere("vencimientos.ver"))],
+    )
     # Configurar la balanza y el ticket es `config` (sólo admin): el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=[Depends(requiere("config"))])

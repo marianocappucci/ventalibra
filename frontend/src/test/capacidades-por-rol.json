@@ -35,6 +35,9 @@
     "tesoreria",
     "turnos.todos",
     "usuarios.admin",
+    "vencimientos.marcar",
+    "vencimientos.mover",
+    "vencimientos.ver",
     "ventas.pos"
   ],
   "encargado": [
@@ -66,6 +69,9 @@
     "stock.ver",
     "tesoreria",
     "turnos.todos",
+    "vencimientos.marcar",
+    "vencimientos.mover",
+    "vencimientos.ver",
     "ventas.pos"
   ],
   "vendedor": [
@@ -93,7 +99,9 @@
     "compras.ver",
     "stock.ajustar",
     "stock.transferir",
-    "stock.ver"
+    "stock.ver",
+    "vencimientos.mover",
+    "vencimientos.ver"
   ],
   "staff": [
     "caja.propia",

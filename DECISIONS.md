@@ -2301,6 +2301,9 @@ decisión explícita del humano, y no forman parte de esta ADR.
 | `reportes` | Reportes, caja por medio y exportaciones CSV | ✓ | ✓ |  |  |  |  |
 | `margen` | Margen y rotación | ✓ | ✓ |  |  |  |  |
 | `reposicion.ver` | Reposición sugerida (agregada por ADR-051) | ✓ | ✓ |  |  |  |  |
+| `vencimientos.ver` | Vencimientos y lotes: ver qué vence, el stock sin lote y los lotes de un producto (agregada por ADR-052) | ✓ | ✓ |  |  | ✓ |  |
+| `vencimientos.marcar` | Marcar qué productos vencen (`PUT /api/vencimientos/productos/{id}`); sólo el encargado (ADR-052) | ✓ | ✓ |  |  |  |  |
+| `vencimientos.mover` | Ponerle lote y vencimiento a stock que no lo tiene y dar de baja un lote por merma; el encargado y el depósito (ADR-052) | ✓ | ✓ |  |  | ✓ |  |
 
 - **Turnos ajenos.** El router de turnos de `libracore` decide quién ve y cierra los turnos de otros con `role == "admin"` escrito a mano
   (`caja_router._puede_ver`), sin ganchos. Para que el encargado los vea (`turnos.todos`), `usuario_de_turnos` (`app/cajas_ganchos.py`)
@@ -2432,3 +2435,88 @@ decisión explícita del humano, y no forman parte de esta ADR.
   (`[]`) se cae (se vio al montarla con un `fetch` genérico en los tests de ruteo, que por eso la reemplazan por una marca).
 - Depende de: `libracommerce` v0.28.0 y `libra-ui` v0.90.0 (pines subidos en este cambio). **Numeración:** el 051 es el siguiente libre en
   este árbol (el último es el 050); puede requerir renumerar al mergear si otra rama tomó el 051.
+
+## ADR-052 — Vencimientos y lotes: los dos routers del motor y la pantalla del kit, tres capacidades, sin gate de plan y con una revisión de migración nueva
+
+- Estado: aceptada (decisión del humano, 2026-09-30: vencimientos y lotes en VentaLibra; roadmap de producto A-3, después de A-1 en el motor y
+  A-2 en el kit)
+- Fecha: 2026-09-30
+- Contexto: el comercio que vende perecederos (una despensa, un almacén) necesita saber qué lote vence antes, qué ya venció y sacarlo.
+  El motor lo publicó como `libracommerce` v0.29.0 (`erp.vencimientos` y `web.vencimientos_router`, ADR-018 del motor) y el kit como
+  `libra-ui` v0.91.0 (`comercio/Vencimientos`, con las props opcionales `puedeMover` y `puedeMarcar`, por defecto `true`). **Es la parte
+  informativa**: avisa lo que vence, muestra los lotes, le pone lote y vencimiento al stock que no lo tiene y da de baja un lote. **No toca
+  el camino de ventas** (eso es A-4, ver la limitación).
+- Decisión: VentaLibra sólo monta y prende, como con la reposición (ADR-051), con tres diferencias: hay **dos** routers (leer y escribir),
+  el de escritura exige usuario y una guarda por operación, y **hay una revisión de migración nueva del motor**.
+  - Pines: `libracommerce` v0.28.0 -> v0.29.0 y `libra-ui` v0.90.0 -> v0.91.0. La pantalla es `libra-ui/comercio/Vencimientos` con un
+    wrapper mínimo (`frontend/src/pages/Vencimientos.tsx`) en `/vencimientos`, entrada de menú «Vencimientos y lotes» (ícono `CalendarClock`).
+  - **Backend** (`app/main.py`): `build_vencimientos_router(conexion=lc_get_connection)` con `Depends(requiere("vencimientos.ver"))` (`GET
+    /api/vencimientos`, `/export` y `/productos/{id}/lotes`) y `build_vencimientos_escritura_router(...)`, que **falla al construirse
+    (`ValueError`) si falta `usuario_actual` o alguna de las dos listas de dependencias**: recibe `usuario_actual` (el de `app/cajas_ganchos.py`,
+    el mismo de los demás routers que escriben el ledger; devuelve la sesión con `id` entero, que sale como `created_by` de los
+    movimientos), `dependencias_marcar=[Depends(requiere("vencimientos.marcar"))]` (el `PUT` de marcar un producto) y
+    `dependencias_movimientos=[Depends(requiere("vencimientos.mover"))]` (`POST /asignar` y `POST /merma`, las dos que mueven el ledger); y
+    además, a nivel `include_router`, la de lectura (quien escribe tiene que poder ver).
+  - **Capacidades nuevas** (en `app/permisos.py`, `frontend/src/lib/permisos.ts`, `capacidades-por-rol.json` y la matriz de ADR-049):
+    - **`vencimientos.ver`: encargado y depósito** (más el admin). Quien maneja la mercadería mira qué vence.
+    - **`vencimientos.marcar`: sólo el encargado** (más el admin). Marcar un producto como perecedero decide qué entra al control y qué
+      aparece en el reporte: es una decisión de catálogo, como `productos.escribir` (que el depósito tampoco tiene).
+    - **`vencimientos.mover`: encargado y depósito** (más el admin). Asignar un vencimiento a stock que no lo tiene y dar de baja un lote
+      (merma) son movimientos de mercadería, como `stock.ajustar`, que el depósito ya tiene. No llevan plata.
+    - **No el `staff` heredado** (es una pantalla nueva, no algo que ya tuviera: una capacidad nueva no se abre por herencia; mismo criterio
+      que `margen` y `reposicion.ver`) **ni el vendedor ni el cajero** (no manejan la mercadería). El visitante de la demo sí lo ve (lee todo).
+  - **Sin gate de plan**: libre en Básico y en Premium (ADR-048); no lleva `require_module`. Lo fija
+    `tests/test_vencimientos.py::test_los_vencimientos_estan_libres_en_todos_los_planes`.
+  - **La revisión de migración del motor.** 🔴 `libracommerce` v0.29.0 trae la **primera revisión real** de su cadena Alembic,
+    `0002_vencimientos_lotes`: `catalog_items.tracks_expiry INTEGER NOT NULL DEFAULT 0` (la marca «vence» de cada producto) y el índice
+    `idx_stock_item_location_lot` del ledger. **No reescribe ninguna fila** (todos los productos quedan sin marcar) y un producto sin
+    marcar sigue escribiendo el mismo movimiento de siempre. `create_app()` sólo corre la baseline congelada del motor, así que **una base
+    que sólo arrancó no tiene la columna** y el router contesta **503** con el comando que falta (`libracommerce-migrar upgrade`). Cómo
+    queda cubierta en los cuatro lugares:
+    - **Deploy**: `libracommerce-migrar upgrade --prefijo ventalibra` ya estaba declarado en `scripts/panel_admin.py` (`migraciones=`),
+      que es lo que corre `panel_admin.py actualizar` (leído del commit de la imagen, `libracore.provisioning`) y `scripts/nuevo_cliente.py`, y
+      en el `command` del `docker-compose.yml`. No hizo falta cambiar nada ahí: la revisión nueva viaja con el pin.
+    - **Smoke del CI** (`.github/workflows/smoke-navegador.yml`): arma su lista de migraciones desde `scripts/panel_admin.py`, no de una copia:
+      corre la misma.
+    - **Suite**: `tests/conftest.py::_migrar_libracommerce` corre `libracommerce.migrar.upgrade` sobre la base del dominio en la fixture
+      `admin_client` (como ya se hacía con la de LibraCore). Sin ese paso la instancia de pruebas no tenía la columna.
+      `test_la_instancia_de_pruebas_tiene_la_revision_0002_del_motor` fija la columna, el índice y la versión estampada, y
+      `test_sin_la_revision_el_motor_contesta_503_con_el_comando` fija el 503 de una instancia que sólo arrancó.
+    - **Antes de desplegar** en una instancia con datos: backup y `libracommerce-migrar upgrade` (es una operación de schema, aunque
+      aditiva); el orden con `alembic upgrade head` ya lo dice `panel_admin.py`.
+  - **No revela costos.** Ninguna de las seis rutas trae una clave ni un valor de costo (medido con el `precio_costo` del producto y el
+    `unit_cost` de la recepción, en el JSON, el CSV y las respuestas de escritura). `/api/vencimientos` **no** está en los prefijos de
+    `SinCostos` (`app/costos.py`) y no hace falta: el depósito, que no tiene `costos.ver`, recibe exactamente el mismo JSON que el admin.
+    `tests/test_vencimientos.py::test_ningun_endpoint_de_vencimientos_revela_costos` mira lo que ve el admin (que tiene `costos.ver`, así que
+    el filtro no le sacaría nada) y lo compara con el depósito.
+  - **Lo que la pantalla del kit pide al abrir**: además del reporte, `GET /api/sucursales` y `GET /api/productos/categorias` (los filtros;
+    `catalogo.ver`, que tiene el depósito) y, en «Productos que vencen», `GET /api/productos` (`catalogo.ver`; al depósito le llega sin
+    `precio_costo` por `SinCostos`). Medido en `test_lo_que_la_pantalla_del_kit_pide_al_abrir_lo_lee_el_deposito`.
+- **La limitación, que hay que decir antes de venderlo (hasta A-4, FEFO en ventas).** 🔴 Las ventas, las devoluciones, los ajustes y las
+  transferencias **siguen descontando del stock «sin lote»**, no del lote del que salió la mercadería. En un producto marcado, el saldo de
+  cada lote **sobreestima** lo que hay: el «sin lote» queda negativo y los lotes siguen enteros. La pantalla lo avisa (permanente y sin
+  botón para cerrarlo) y el reporte lista esos saldos como `salidas_sin_lote`. `tests/test_vencimientos.py::
+  test_hasta_a4_una_venta_de_un_producto_marcado_descuenta_del_sin_lote` mide el caso (8 sin lote, se venden 10: queda -2 sin lote y los
+  lotes intactos) y **tiene que cambiar a propósito cuando A-4 descuente por lote**. Mientras tanto la forma segura de usarlo es marcar el
+  producto, asignar vencimiento a lo que hay y dar de baja lo que vence, y contrastar con el conteo físico. Un producto que nadie marca
+  **no cambia en nada** (`test_un_producto_sin_marcar_no_cambia_nada_en_el_ledger_de_una_venta`).
+- **Defaults de producto decididos (2026-09-30), para A-4** (A-3 no los usa; el aviso a 15 días sí lo usa el reporte, `dias`, tope 365):
+  1. un producto vencido **se vende con aviso**, no se bloquea;
+  2. el stock «sin lote» **sale último** (primero vence, primero sale);
+  3. la devolución de un perecedero **va a merma**, no vuelve al lote;
+  4. aviso de vencimiento con **15 días** de anticipación por defecto.
+- Lo que **no** cubre:
+  - **No hay listado de los productos marcados**: el motor sólo muestra en el reporte los que tienen stock (con o sin lote); «Productos que
+    vencen» se consulta de a uno. Un producto marcado sin stock no aparece.
+  - **El stock entra con lote por la recepción de compra** (que hace el encargado, `compras.recibir`, no el depósito: ADR-049) o se le asigna
+    después. Los ajustes de entrada, las devoluciones, las transferencias y el alta manual siguen entrando «sin lote».
+  - **Idempotencia**: `asignar` y `merma` exigen una `clave_operacion` por intento (la pantalla la genera); un reintento con la misma clave
+    devuelve `repetida: true` y no vuelve a escribir. No hay expiración de claves (límite del motor).
+  - `proximos_a_vencer` suma cantidades de productos con unidades distintas (kg y u): es un total de cantidades, no de pesos.
+- Deuda: **no se probó en un navegador**: el kit se probó con `fetch` simulado y el backend con la suite y con un `uvicorn` real sobre una
+  base PostgreSQL descartable (migraciones de `scripts/panel_admin.py`, login con captcha: el encargado marca, carga stock con lote y
+  vencimiento por una recepción, ve el reporte, asigna, da de baja y reintenta con la misma clave; el depósito ve pero no marca; el
+  cajero, 403; el anónimo, 401; la revisión `0002_vencimientos_lotes` quedó estampada). La pantalla del kit guarda los intentos inciertos en `sessionStorage` (otra
+  pestaña no los ve; ahí protege el motor con la clave).
+- Depende de: `libracommerce` v0.29.0 (con la revisión `0002_vencimientos_lotes`) y `libra-ui` v0.91.0 (pines subidos en este cambio).
+  **Numeración:** el 052 es el siguiente libre en este árbol (el último es el 051); puede requerir renumerar al mergear si otra rama tomó el 052.
