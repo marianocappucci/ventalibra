@@ -43,6 +43,7 @@ import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
 import { Margen } from './pages/Margen'
+import { Reposicion } from './pages/Reposicion'
 import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
@@ -397,6 +398,14 @@ export default function App() {
         element={
           <ProtectedRoute cap="margen">
             <Margen />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reposicion"
+        element={
+          <ProtectedRoute cap="reposicion.ver">
+            <Reposicion />
           </ProtectedRoute>
         }
       />

@@ -21,6 +21,7 @@ import { CAPACIDADES, inicioDe, puede } from '../lib/permisos'
 vi.mock('../pages/Pos', () => ({ Pos: () => <div>PANTALLA-POS</div> }))
 vi.mock('../pages/Stock', () => ({ Stock: () => <div>PANTALLA-STOCK</div> }))
 vi.mock('../pages/Reportes', () => ({ Reportes: () => <div>PANTALLA-REPORTES</div> }))
+vi.mock('../pages/Reposicion', () => ({ Reposicion: () => <div>PANTALLA-REPOSICION</div> }))
 vi.mock('../pages/Usuarios', () => ({ Usuarios: () => <div>PANTALLA-USUARIOS</div> }))
 
 type Rol = keyof typeof CAPACIDADES_POR_ROL
@@ -29,7 +30,7 @@ type Rol = keyof typeof CAPACIDADES_POR_ROL
 const MENU = [
   'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
   'Sucursales', 'Listas de precio', 'Actualización de precios', 'Promociones', 'Etiquetas', 'Stock', 'Transferencias',
-  'Cajas', 'Tesorería', 'Turnos', 'Cierre diario', 'Dashboard', 'Reportes', 'Margen y rotación', 'Libros IVA',
+  'Cajas', 'Tesorería', 'Turnos', 'Cierre diario', 'Dashboard', 'Reportes', 'Margen y rotación', 'Reposición sugerida', 'Libros IVA',
   'Caja por medio', 'Usuarios', 'Logs', 'Configuración',
 ]
 
@@ -116,8 +117,8 @@ describe('el ruteo por rol', () => {
   }
 
   it.each([
-    ['cajero', '/reportes'], ['cajero', '/usuarios'], ['cajero', '/cierre-diario'], ['cajero', '/configuracion'],
-    ['vendedor', '/margen'], ['vendedor', '/tesoreria'], ['vendedor', '/logs'], ['vendedor', '/'],
+    ['cajero', '/reportes'], ['cajero', '/reposicion'], ['cajero', '/usuarios'], ['cajero', '/cierre-diario'], ['cajero', '/configuracion'],
+    ['vendedor', '/margen'], ['vendedor', '/reposicion'], ['vendedor', '/tesoreria'], ['vendedor', '/logs'], ['vendedor', '/'],
     ['encargado', '/usuarios'], ['encargado', '/configuracion'], ['encargado', '/logs'], ['encargado', '/cajas'],
   ] as [Rol, string][])('%s en %s vuelve al POS', async (rol, ruta) => {
     expect(await iraDe(rol, ruta)).toBe('/pos')
@@ -125,13 +126,14 @@ describe('el ruteo por rol', () => {
 
   it.each([
     ['deposito', '/pos'], ['deposito', '/ventas'], ['deposito', '/reportes'], ['deposito', '/clientes'],
-    ['deposito', '/turnos'], ['deposito', '/'], ['deposito', '/una-ruta-que-no-existe'],
+    ['deposito', '/turnos'], ['deposito', '/reposicion'], ['deposito', '/'], ['deposito', '/una-ruta-que-no-existe'],
   ] as [Rol, string][])('%s en %s va al stock', async (rol, ruta) => {
     expect(await iraDe(rol, ruta)).toBe('/stock')
   })
 
   it.each([
     ['deposito', '/stock'], ['cajero', '/pos'], ['vendedor', '/stock'], ['encargado', '/reportes'], ['admin', '/usuarios'],
+    ['encargado', '/reposicion'], ['admin', '/reposicion'],
   ] as [Rol, string][])('%s entra a %s sin que lo muevan', async (rol, ruta) => {
     entrar(usuarioDe(rol), ruta)
     await waitFor(() => expect(screen.getByTestId('ruta')).toHaveTextContent(ruta))
@@ -172,7 +174,7 @@ describe('permisos.ts', () => {
   it('puede() acepta una lista y alcanza con una', () => {
     const cajero = usuarioDe('cajero')
     expect(puede(cajero, ['reportes', 'ventas.pos'])).toBe(true)
-    expect(puede(cajero, ['reportes', 'margen'])).toBe(false)
+    expect(puede(cajero, ['reportes', 'margen', 'reposicion.ver'])).toBe(false)
     expect(puede(null, 'ventas.pos')).toBe(false)
   })
 

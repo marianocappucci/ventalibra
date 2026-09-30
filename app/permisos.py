@@ -153,6 +153,9 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "reportes": frozenset({_E}),
     # Margen y rotación: costo y margen son de quien maneja el negocio, no del mostrador.
     "margen": frozenset({_E}),
+    # Reposición sugerida: qué pedir y cuánto (ADR-051). Sólo lectura y sin costos. Como `margen`: admin y encargado; NO el staff
+    # heredado (es una pantalla nueva, no algo que ya tuviera) y NO el depósito (no ve compras ni plata).
+    "reposicion.ver": frozenset({_E}),
 }
 
 #: Capacidades que sólo mira la SPA: ningún endpoint las exige. `requiere()` no las usa y el test que revisa
