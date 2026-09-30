@@ -13,9 +13,15 @@ recepción con tres lotes (uno vencido hace 3 días con 4 unidades, uno que venc
 8 unidades sin lote por un ajuste de entrada. Con la ventana de 15 días el reporte trae el vencido (4) y el que vence en 5 días (10); el
 de 60 días entra sólo con `dias=90`; y las 8 sin lote salen en `sin_lote` como `sin_fecha`.
 
-🔴 **Lo que este archivo fija y va a cambiar en A-4 (FEFO en ventas):** hoy una venta de un producto marcado descuenta del stock «sin
-lote», no de un lote (`test_hasta_a4_una_venta_de_un_producto_marcado_descuenta_del_sin_lote`). Cuando las ventas descuenten por lote,
-ese test tiene que cambiar a propósito.
+🔴 **Lo que este archivo fija y va a cambiar en A-4 (FEFO en ventas):**
+- Hoy una venta de un producto marcado descuenta del stock «sin lote», no de un lote
+  (`test_hasta_a4_una_venta_de_un_producto_marcado_descuenta_del_sin_lote`). Cuando las ventas descuenten por lote, ese test tiene que
+  cambiar a propósito.
+- 🔴 **La baja de un lote (`POST /api/vencimientos/merma`) está DESHABILITADA hasta A-4** (`app/vencimientos_guarda.py`, ADR-052): 409 para
+  todos los roles, admin incluido. Los tests de ese 409 están juntos en el bloque «Deshabilitada hasta A-4» y se saltean solos si se
+  pone `MERMA_DESHABILITADA = False`. El resto del flujo de merma del motor (saldo, idempotencia, `created_by`, costos, plan) sigue
+  probado con la fixture `merma_habilitada`, que apaga esa dependencia. **Reactivarla:** quitar la dependencia de `app/main.py`,
+  poner `MERMA_DESHABILITADA = False` (o borrar el bloque y la fixture) y listo.
 """
 import re
 from datetime import date, timedelta
@@ -28,10 +34,14 @@ from ventas_helpers import abrir_turno, deposito_default, hoy, registrar_venta
 from app import permisos
 from app.costos import extras_de
 from app.main import create_app
+from app.vencimientos_guarda import MENSAJE, merma_deshabilitada
 
 #: Costos que ninguna otra cifra del escenario repite: si aparecen en una respuesta, se filtraron.
 COSTO = "731.42"
 COSTO_DE_LA_RECEPCION = "543.21"
+
+#: 🔴 El ÚNICO lugar donde se reactivan los tests de la baja de un lote: `True` mientras `app/main.py` ponga `merma_deshabilitada` (hasta A-4).
+MERMA_DESHABILITADA = True
 
 ROLES_SIN_ACCESO = ("staff", "vendedor", "cajero")
 #: Las tres rutas de lectura, con `{p}` por el id del producto.
@@ -126,6 +136,15 @@ def escenario(admin_client):
         "modo": "entrada", "cantidad": 20, "deposito_id": deposito, "referencia": "carga",
     }).status_code == 200
     return {"leche": leche, "sal": sal, "deposito": deposito, "clientes": clientes}
+
+
+@pytest.fixture
+def merma_habilitada(admin_client):
+    """La baja de un lote funcionando: apaga `merma_deshabilitada` (ADR-052) para seguir probando el camino del motor (saldo, idempotencia,
+    `created_by`). Con la dependencia ya retirada de `app/main.py` (A-4) es un no-op."""
+    admin_client.app.dependency_overrides[merma_deshabilitada] = lambda: None
+    yield
+    admin_client.app.dependency_overrides.pop(merma_deshabilitada, None)
 
 
 @pytest.fixture(params=["admin", "encargado", "deposito"])
@@ -297,7 +316,7 @@ def test_el_mostrador_no_asigna_ni_da_de_baja(escenario):
     assert _movimientos(escenario["clientes"]["admin"], escenario["leche"]) == antes
 
 
-def test_dar_de_baja_un_lote_vencido_es_una_merma_a_nombre_de_quien_la_hizo(mueve, escenario):
+def test_dar_de_baja_un_lote_vencido_es_una_merma_a_nombre_de_quien_la_hizo_con_la_baja_habilitada(mueve, escenario, merma_habilitada):
     quien = int(mueve.get("/auth/me").json()["id"])
     antes = _movimientos(mueve, escenario["leche"])
     r = _merma(mueve, escenario, "merma-1")
@@ -312,7 +331,7 @@ def test_dar_de_baja_un_lote_vencido_es_una_merma_a_nombre_de_quien_la_hizo(muev
     assert r.status_code == 409, r.text
 
 
-def test_un_reintento_con_la_misma_clave_no_vuelve_a_escribir(mueve, escenario):
+def test_un_reintento_con_la_misma_clave_no_vuelve_a_escribir(mueve, escenario, merma_habilitada):
     """La idempotencia es del motor (`clave_operacion`), acá se prueba que llega por el camino real: la respuesta del reintento es
     la de la primera vez con `repetida: true`, y el ledger tiene UN solo movimiento (o un solo par) de esa operación."""
     antes = len(_movimientos(mueve, escenario["leche"]))
@@ -332,7 +351,7 @@ def test_un_reintento_con_la_misma_clave_no_vuelve_a_escribir(mueve, escenario):
     assert len(_movimientos(mueve, escenario["leche"])) == antes + 1 + 2
 
 
-def test_cuerpos_invalidos_son_422_y_no_escriben(admin_client, escenario):
+def test_cuerpos_invalidos_son_422_y_no_escriben(admin_client, escenario, merma_habilitada):
     antes = _movimientos(admin_client, escenario["leche"])
     assert _asignar(admin_client, escenario, "").status_code == 422  # la clave es obligatoria
     assert _asignar(admin_client, escenario, "k", cantidad=0).status_code == 422
@@ -341,6 +360,42 @@ def test_cuerpos_invalidos_son_422_y_no_escriben(admin_client, escenario):
     assert admin_client.put(f"/api/vencimientos/productos/{escenario['leche']}", json={"vence": "si"}).status_code == 422
     assert admin_client.put("/api/vencimientos/productos/999999", json={"vence": True}).status_code == 404
     assert _movimientos(admin_client, escenario["leche"]) == antes
+
+
+# ── Deshabilitada hasta A-4: la baja de un lote (ADR-052) ────────────────────
+#
+# 🔴 Todo este bloque se saltea solo con `MERMA_DESHABILITADA = False`. El flujo de la merma del motor sigue probado más arriba con
+# `merma_habilitada`.
+
+deshabilitada = pytest.mark.skipif(not MERMA_DESHABILITADA, reason="la baja de un lote ya está habilitada (A-4)")
+
+
+@deshabilitada
+def test_la_baja_de_un_lote_es_409_para_admin_encargado_y_deposito_y_no_toca_el_ledger(mueve, escenario):
+    antes = _movimientos(mueve, escenario["leche"])
+    for cuerpo in ({}, {"cantidad": 1, "clave_operacion": "otra"}, {"lote": "no-existe"}):
+        r = _merma(mueve, escenario, "rechazada-1", **cuerpo)
+        assert r.status_code == 409 and r.json()["detail"] == MENSAJE, r.text
+    # Ni con un cuerpo que ni siquiera es un objeto: la dependencia corre antes de validar el cuerpo y no llega al motor.
+    r = mueve.post("/api/vencimientos/merma", content=b"[]", headers={"content-type": "application/json"})
+    assert r.status_code == 409 and r.json()["detail"] == MENSAJE
+    assert "ajuste de stock" in MENSAJE and "descontaría dos veces" in MENSAJE
+    assert _movimientos(mueve, escenario["leche"]) == antes
+    assert {f["lote"]: f["saldo"] for f in _reporte(mueve, dias=90)["lotes"]} == {"L-VENCIDO": 4, "L-PRONTO": 10, "L-LEJANO": 6}
+
+
+@deshabilitada
+def test_el_resto_recibe_el_mismo_rechazo_de_siempre_y_asignar_sigue_andando(escenario):
+    """El permiso corre ANTES que el 409: el mostrador sigue con 403 y el anónimo con 401. Y la asignación, que conserva el total, no
+    cambia: 200 para los tres roles que pueden, en la misma ruta de escritura."""
+    for rol in ROLES_SIN_ACCESO:
+        r = _merma(escenario["clientes"][rol], escenario, f"sin-permiso-{rol}")
+        assert r.status_code == 403 and r.json()["detail"] == "forbidden", (rol, r.text)
+    assert _merma(https_client(escenario["clientes"]["admin"].app), escenario, "anonimo").status_code == 401
+    for i, rol in enumerate(("admin", "encargado", "deposito")):
+        r = _asignar(escenario["clientes"][rol], escenario, f"asignar-sigue-{i}", cantidad=1)
+        assert r.status_code == 200 and r.json()["repetida"] is False, (rol, r.text)
+        assert _merma(escenario["clientes"][rol], escenario, f"merma-sigue-{i}").status_code == 409
 
 
 # ── Hasta A-4: las ventas no saben de lotes ──────────────────────────────────
@@ -372,7 +427,7 @@ def test_hasta_a4_una_venta_de_un_producto_marcado_descuenta_del_sin_lote(admin_
 # ── Sin costos, sin gate de plan, y lo que pide la pantalla ──────────────────
 
 
-def test_ningun_endpoint_de_vencimientos_revela_costos(escenario):
+def test_ningun_endpoint_de_vencimientos_revela_costos(escenario, merma_habilitada):
     """`/api/vencimientos` no está en los prefijos de `SinCostos` (`app/costos.py`): no hace falta si el endpoint no manda costos. Se
     prueba mirando lo que ve el ADMIN, que tiene `costos.ver` (el filtro no le sacaría nada aunque los hubiera): ni una clave con
     costo ni el valor del costo del producto (`precio_costo`) ni el de la recepción (`unit_cost`), en ninguna de las seis rutas. Y el
@@ -413,7 +468,7 @@ def test_ningun_endpoint_de_vencimientos_revela_costos(escenario):
     assert admin.get("/api/vencimientos").json() == deposito.get("/api/vencimientos").json()
 
 
-def test_los_vencimientos_estan_libres_en_todos_los_planes(admin_client, escenario):
+def test_los_vencimientos_estan_libres_en_todos_los_planes(admin_client, escenario, merma_habilitada):
     """ADR-048: Básico y Premium se distinguen por facturación y multisucursal; no hay `require_module` sobre estas rutas."""
     for modulo in ("facturacion", "multisucursal"):
         admin_client.app.state.modules.set_enabled(modulo, False)

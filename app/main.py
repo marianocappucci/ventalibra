@@ -125,6 +125,7 @@ from .services import cajas as cajas_service
 from .services.modules import ModuleRepository
 from .services.sucursales import SucursalService
 from .services.users import UserRepository, ensure_default_admin
+from .vencimientos_guarda import merma_deshabilitada
 
 
 def _carpeta_de_backups(libracore_db_path: str) -> str:
@@ -862,13 +863,13 @@ def create_app(db_path: str) -> FastAPI:
     # sugiere: no genera la orden de compra. No lleva costos: `/api/reportes` no está en los prefijos de `SinCostos` (`app/costos.py`)
     # y `tests/test_reposicion.py` fija que ninguna clave de costo viaja.
     app.include_router(build_reposicion_router(conexion=lc_get_connection), dependencies=[Depends(requiere("reposicion.ver"))])
-    # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.29.0,
+    # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.29.1,
     # ADR-018 del motor), que cuelgan de `/api/vencimientos`. Sin gate de plan (libre en Básico y Premium, ADR-048). Sólo la parte
     # informativa: las ventas siguen descontando «sin lote» hasta A-4 (ver el ADR).
     #   - Lectura (`GET ""`, `/export`, `/productos/{id}/lotes`): `vencimientos.ver` (encargado y depósito). No trae costos.
     #   - Escritura: `usuario_actual` (con `id` entero: sale como `created_by` de los movimientos) y una guarda POR OPERACIÓN, porque el
     #     motor no monta escrituras del ledger sin ellas (la factory falla al construirse): marcar un producto es `vencimientos.marcar`
-    #     (sólo el encargado) y asignar un vencimiento y dar de baja un lote, `vencimientos.mover` (encargado y depósito). Encima, a nivel
+    #     (sólo el encargado) y asignar un vencimiento (y dar de baja un lote, hoy deshabilitado), `vencimientos.mover` (encargado y depósito). Encima, a nivel
     #     include, la de lectura: quien escribe tiene que poder ver.
     # 🔴 Sin la revisión Alembic `0002_vencimientos_lotes` del motor el router contesta 503: se aplica con
     # `libracommerce-migrar upgrade --prefijo ventalibra` (compose, `panel_admin.py`, smoke y suite: ver ADR-052).
@@ -879,7 +880,9 @@ def create_app(db_path: str) -> FastAPI:
         build_vencimientos_escritura_router(
             conexion=lc_get_connection, usuario_actual=usuario_actual,
             dependencias_marcar=[Depends(requiere("vencimientos.marcar"))],
-            dependencias_movimientos=[Depends(requiere("vencimientos.mover"))],
+            # 🔴 La baja de un lote (`POST /merma`) está DESHABILITADA hasta A-4: 409 para todos los roles, admin incluido, sin tocar el
+            # motor (`app/vencimientos_guarda.py`). Va DESPUÉS de la guarda de permisos, así que 401/403 siguen igual. Reactivarla: quitarla.
+            dependencias_movimientos=[Depends(requiere("vencimientos.mover")), Depends(merma_deshabilitada)],
         ),
         dependencies=[Depends(requiere("vencimientos.ver"))],
     )
