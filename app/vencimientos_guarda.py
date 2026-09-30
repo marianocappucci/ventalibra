@@ -25,7 +25,16 @@ MENSAJE = (
 )
 
 
+def _es_la_merma(request: Request) -> bool:
+    """¿La petición va al endpoint de la merma? Se mira la RUTA RESUELTA por el router (`scope["route"]`) **y** la URL pedida:
+    bajo un `root_path` (un prefijo ASGI de un proxy) Starlette lo descarta para elegir el endpoint, pero `request.url.path` lo
+    conserva, y comparar sólo la URL dejaba pasar `POST /<prefijo>/api/vencimientos/merma` (hallazgo de Codex, 2026-09-30)."""
+    ruta_resuelta = str(getattr(request.scope.get("route"), "path", "") or "").rstrip("/")
+    url = request.url.path.rstrip("/")
+    return ruta_resuelta == RUTA_DE_LA_MERMA or url == RUTA_DE_LA_MERMA or url.endswith(RUTA_DE_LA_MERMA)
+
+
 def merma_deshabilitada(request: Request) -> None:
     """409 con `MENSAJE` para `POST /api/vencimientos/merma`; no hace nada en ninguna otra ruta."""
-    if request.method == "POST" and request.url.path.rstrip("/") == RUTA_DE_LA_MERMA:
+    if request.method == "POST" and _es_la_merma(request):
         raise HTTPException(409, MENSAJE)

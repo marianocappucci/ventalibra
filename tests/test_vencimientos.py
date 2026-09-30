@@ -505,3 +505,28 @@ def test_las_capacidades_llegan_a_la_sesion_de_cada_rol(escenario):
     for rol, capacidades in esperado.items():
         recibidas = set(escenario["clientes"][rol].get("/auth/me").json()["capacidades"])
         assert recibidas & {"vencimientos.ver", "vencimientos.marcar", "vencimientos.mover"} == capacidades, rol
+
+
+def test_la_guarda_de_la_merma_no_se_salta_con_un_prefijo_asgi():
+    """Hallazgo de Codex: bajo un `root_path` Starlette lo descarta para elegir el endpoint pero `request.url.path` lo conserva;
+    la guarda tiene que mirar también la ruta resuelta (y nunca dejar pasar la merma)."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    def pedido(metodo, url, ruta_resuelta):
+        return Request({"type": "http", "method": metodo, "path": url, "root_path": "/venta", "headers": [],
+                        "query_string": b"", "route": SimpleNamespace(path=ruta_resuelta)})
+
+    for url in ("/venta/api/vencimientos/merma", "/venta/api/vencimientos/merma/", "/api/vencimientos/merma"):
+        with pytest.raises(HTTPException) as e:
+            merma_deshabilitada(pedido("POST", url, "/api/vencimientos/merma"))
+        assert e.value.status_code == 409
+    # La URL pedida engaña pero el router resolvió la merma: también se bloquea.
+    with pytest.raises(HTTPException):
+        merma_deshabilitada(pedido("POST", "/otra/cosa", "/api/vencimientos/merma"))
+    # Asignar, lecturas y otros métodos pasan.
+    merma_deshabilitada(pedido("POST", "/venta/api/vencimientos/asignar", "/api/vencimientos/asignar"))
+    merma_deshabilitada(pedido("GET", "/venta/api/vencimientos", "/api/vencimientos"))
+    merma_deshabilitada(pedido("PUT", "/venta/api/vencimientos/productos/1", "/api/vencimientos/productos/{producto_id}"))
