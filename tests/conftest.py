@@ -123,6 +123,21 @@ def _migrar_libracore(db_path: str) -> None:
     _upgrade_libracore(db_path)
 
 
+def _migrar_libracommerce(db_path: str) -> None:
+    """Deja la base del DOMINIO con la cadena de Alembic de LibraCommerce en `head`, como en producción (ADR-052).
+
+    `create_app()` sólo corre `init_commerce_schema()`, la baseline CONGELADA del motor: una revisión posterior (la
+    `0002_vencimientos_lotes` de v0.29.0: `catalog_items.tracks_expiry` y el índice del ledger) no la trae. En una instancia real
+    la aplica `libracommerce-migrar upgrade --prefijo ventalibra` (compose, `scripts/panel_admin.py` y el smoke del CI); sin ella
+    el router de vencimientos contesta 503. Sin este paso la suite no tendría la columna y no probaría lo que corre en producción.
+    Idempotente sobre lo que el arranque ya creó, como la de LibraCore. La cadena PROPIA de VentaLibra sigue sin correrse acá (ver
+    `_migrar_libracore`).
+    """
+    from libracommerce.migrar import upgrade as _upgrade_libracommerce
+
+    _upgrade_libracommerce(db_path)
+
+
 @pytest.fixture
 def admin_client(tmp_path):
     """App nueva contra un archivo SQLite temporal real (no :memory:, no
@@ -133,6 +148,7 @@ def admin_client(tmp_path):
     # contra PostgreSQL (ver `motor_de_test.py`) -- las dos bases conviven en
     # un schema.
     _migrar_libracore(destino_libracore(tmp_path / "ventalibra_libracore.db"))
+    _migrar_libracommerce(db_path)
     with https_client(app) as client:
         response = client.post("/auth/login", json={"username": "admin", "password": "admin"})
         assert response.status_code == 200, response.text

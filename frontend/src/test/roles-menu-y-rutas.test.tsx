@@ -22,6 +22,7 @@ vi.mock('../pages/Pos', () => ({ Pos: () => <div>PANTALLA-POS</div> }))
 vi.mock('../pages/Stock', () => ({ Stock: () => <div>PANTALLA-STOCK</div> }))
 vi.mock('../pages/Reportes', () => ({ Reportes: () => <div>PANTALLA-REPORTES</div> }))
 vi.mock('../pages/Reposicion', () => ({ Reposicion: () => <div>PANTALLA-REPOSICION</div> }))
+vi.mock('../pages/Vencimientos', () => ({ Vencimientos: () => <div>PANTALLA-VENCIMIENTOS</div> }))
 vi.mock('../pages/Usuarios', () => ({ Usuarios: () => <div>PANTALLA-USUARIOS</div> }))
 
 type Rol = keyof typeof CAPACIDADES_POR_ROL
@@ -30,7 +31,7 @@ type Rol = keyof typeof CAPACIDADES_POR_ROL
 const MENU = [
   'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
   'Sucursales', 'Listas de precio', 'Actualización de precios', 'Promociones', 'Etiquetas', 'Stock', 'Transferencias',
-  'Cajas', 'Tesorería', 'Turnos', 'Cierre diario', 'Dashboard', 'Reportes', 'Margen y rotación', 'Reposición sugerida', 'Libros IVA',
+  'Cajas', 'Tesorería', 'Turnos', 'Cierre diario', 'Dashboard', 'Reportes', 'Margen y rotación', 'Reposición sugerida', 'Vencimientos y lotes', 'Libros IVA',
   'Caja por medio', 'Usuarios', 'Logs', 'Configuración',
 ]
 
@@ -42,7 +43,7 @@ const MENU_ESPERADO: Record<Rol, string[]> = {
   encargado: TODO.filter((m) => !['Cajas', 'Usuarios', 'Logs', 'Configuración'].includes(m)),
   vendedor: ['POS (Caja)', 'Ventas', 'Productos', 'Clientes', 'Cuentas corrientes', 'Stock', 'Turnos'],
   cajero: ['POS (Caja)', 'Ventas', 'Productos', 'Clientes', 'Stock', 'Turnos'],
-  deposito: ['Productos', 'Compras', 'Proveedores', 'Sucursales', 'Stock', 'Transferencias'],
+  deposito: ['Productos', 'Compras', 'Proveedores', 'Sucursales', 'Stock', 'Vencimientos y lotes', 'Transferencias'],
   // El heredado ve lo que veía antes de los roles: todo lo que no era `adminOnly`.
   staff: [
     'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
@@ -117,8 +118,8 @@ describe('el ruteo por rol', () => {
   }
 
   it.each([
-    ['cajero', '/reportes'], ['cajero', '/reposicion'], ['cajero', '/usuarios'], ['cajero', '/cierre-diario'], ['cajero', '/configuracion'],
-    ['vendedor', '/margen'], ['vendedor', '/reposicion'], ['vendedor', '/tesoreria'], ['vendedor', '/logs'], ['vendedor', '/'],
+    ['cajero', '/reportes'], ['cajero', '/reposicion'], ['cajero', '/vencimientos'], ['cajero', '/usuarios'], ['cajero', '/cierre-diario'], ['cajero', '/configuracion'],
+    ['vendedor', '/margen'], ['vendedor', '/reposicion'], ['vendedor', '/vencimientos'], ['vendedor', '/tesoreria'], ['vendedor', '/logs'], ['vendedor', '/'],
     ['encargado', '/usuarios'], ['encargado', '/configuracion'], ['encargado', '/logs'], ['encargado', '/cajas'],
   ] as [Rol, string][])('%s en %s vuelve al POS', async (rol, ruta) => {
     expect(await iraDe(rol, ruta)).toBe('/pos')
@@ -134,6 +135,8 @@ describe('el ruteo por rol', () => {
   it.each([
     ['deposito', '/stock'], ['cajero', '/pos'], ['vendedor', '/stock'], ['encargado', '/reportes'], ['admin', '/usuarios'],
     ['encargado', '/reposicion'], ['admin', '/reposicion'],
+    // Las tres capacidades de vencimientos: el depósito llega a la pantalla (que ve y mueve, pero no marca).
+    ['encargado', '/vencimientos'], ['admin', '/vencimientos'], ['deposito', '/vencimientos'],
   ] as [Rol, string][])('%s entra a %s sin que lo muevan', async (rol, ruta) => {
     entrar(usuarioDe(rol), ruta)
     await waitFor(() => expect(screen.getByTestId('ruta')).toHaveTextContent(ruta))

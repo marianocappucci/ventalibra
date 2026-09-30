@@ -163,7 +163,7 @@ multisucursal**, no un tablero. El plan Estándar ya no existe.
 
 | Plan | Precio | Qué habilita |
 |------|--------|--------------|
-| Básico | $20.000 | **Un solo local** (una sucursal, con los depósitos que necesite): POS, stock, compras, caja, clientes y proveedores, cuenta corriente, promociones, margen, reposición sugerida, dashboard, etiquetas, tesorería, egresos y libros IVA |
+| Básico | $20.000 | **Un solo local** (una sucursal, con los depósitos que necesite): POS, stock, compras, caja, clientes y proveedores, cuenta corriente, promociones, margen, reposición sugerida, vencimientos y lotes, dashboard, etiquetas, tesorería, egresos y libros IVA |
 | Premium | $55.000 | Todo lo anterior + **facturación ARCA** + **multisucursal** (más de una sucursal y transferencias de mercadería entre sucursales) |
 
 > **El core no se gatea**: catálogo, inventario, ventas, compras y caja están en todos los
@@ -215,10 +215,10 @@ pedido siguiente, sin que la persona tenga que volver a entrar.
 | Rol | Para quién | Qué hace |
 |---|---|---|
 | **Admin** | El dueño | Todo, incluidos usuarios, configuración, logs, sucursales, depósitos y cajas |
-| **Encargado** | Quien maneja el local | Todo menos lo del admin: precios y listas, stock, compras, tesorería, cierre diario, turnos de todos, reportes, margen, reposición sugerida y dashboard |
+| **Encargado** | Quien maneja el local | Todo menos lo del admin: precios y listas, stock, compras, tesorería, cierre diario, turnos de todos, reportes, margen, reposición sugerida, vencimientos y lotes (incluido marcar qué productos vencen; la baja de un lote, deshabilitada por ahora) y dashboard |
 | **Vendedor** | Mostrador con clientes | POS, ventas, clientes, cuenta corriente y recibos, consulta de stock y de precios |
 | **Cajero** | Quien cobra | POS, su turno y su caja, consulta de stock y de precios, clientes (ver y dar de alta). No ve cuenta corriente, cierre diario ni reportes |
-| **Depósito** | Quien recibe y mueve mercadería | Stock, ajustes, transferencias y recepción de compras; ve productos y proveedores. Sin POS ni plata |
+| **Depósito** | Quien recibe y mueve mercadería | Stock, ajustes, transferencias y recepción de compras; ve productos y proveedores; **vencimientos y lotes** (ve qué vence, le pone lote y vencimiento al stock, pero no marca qué productos vencen; la baja de un lote está deshabilitada hasta que las ventas descuenten por lote: lo vencido se da de baja con el ajuste de stock). Sin POS ni plata |
 | **Staff** *(heredado)* | Usuarios de antes de los roles | Lo mismo que siempre. **Migrarlo a un rol concreto** cuando se pueda |
 
 **Regla práctica:** dar el rol más chico que le alcance. Un cajero que necesita ver el cierre diario es un encargado;

@@ -4,7 +4,7 @@
 import {
   ArrowRightLeft,
   Boxes,
-  BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, FileSpreadsheet, HandCoins, Landmark,
+  BarChart3, Banknote, BookText, Building2, CalendarCheck, CalendarClock, Clock, Coins, FileSpreadsheet, HandCoins, Landmark,
   LayoutDashboard, Package, PackagePlus, Percent, ReceiptText, ScanBarcode, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, TrendingUp, Truck,
   Users, Wallet, Warehouse,
 } from 'lucide-react'
@@ -56,6 +56,8 @@ export const Layout = createLayout({
     // Roadmap de producto (2026-09-29, ADR-047): las etiquetas de góndola se arman con los precios ya cargados.
     { to: '/etiquetas', label: 'Etiquetas', icon: ScanBarcode, hideFor: sinCapacidad('etiquetas') },
     { to: '/stock', label: 'Stock', icon: Boxes, hideFor: sinCapacidad('stock.ver') },
+    // Roadmap de producto, A-3 (2026-09-30, ADR-052): qué vence y qué lote sacar. Del encargado y del depósito (que entra por acá desde el stock).
+    { to: '/vencimientos', label: 'Vencimientos y lotes', icon: CalendarClock, hideFor: sinCapacidad('vencimientos.ver') },
     // Sin `module`: en Básico sirve entre los depósitos de la misma sucursal; lo que cruza de sucursal lo corta el
     // backend y la pantalla avisa (ADR-048).
     { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft, hideFor: sinCapacidad('stock.transferir') },

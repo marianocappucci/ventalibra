@@ -5,6 +5,22 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Vencimientos y lotes: qué vence, qué lote sacar y qué stock no tiene fecha** (2026-09-30, ADR-052). Pantalla nueva `/vencimientos` (menú
+  «Vencimientos y lotes»): los lotes que vencen en los próximos días (15 por defecto) o ya vencieron, con los días que faltan, y el stock
+  «sin lote» de los productos marcados; filtra por sucursal y categoría y se exporta a CSV. Se puede **ponerle lote y vencimiento** al stock que
+  no lo tiene y **marcar qué productos vencen** (los que no se marcan no cambian en nada). Las escrituras piden
+  una clave por intento: un reintento no descuenta dos veces. El **encargado** hace todo; el **depósito** ve y asigna vencimiento pero
+  no marca; el mostrador no lo ve (capacidades nuevas `vencimientos.ver`, `vencimientos.marcar` y `vencimientos.mover`). Libre en Básico y
+  Premium; no muestra costos. 🔴 **Limitación hasta que las ventas descuenten por lote (A-4):** las ventas, devoluciones, ajustes y
+  transferencias siguen restando del stock «sin lote», así que en un producto marcado el saldo por lote **puede ser mayor al real** (la
+  pantalla lo avisa); la forma segura de usarlo es marcar el producto, asignar vencimiento a lo que hay y dar de baja lo que vence con el ajuste de stock.
+  🔴 **La baja de un lote está deshabilitada hasta esa etapa:** la pantalla muestra el botón «Dar de baja (merma)» pero el servidor contesta 409 con
+  el motivo (hoy el saldo de un lote puede incluir unidades ya vendidas y mermarlo las descontaría dos veces); se habilita cuando las ventas
+  descuenten por lote. Los CSV neutralizan fórmulas.
+  **Con migración:** una revisión nueva de `libracommerce` (`0002_vencimientos_lotes`: una columna en productos y un índice del ledger) que el
+  deploy aplica con `libracommerce-migrar upgrade --prefijo ventalibra` (ya está declarado); sin ella la pantalla contesta 503. Requiere
+  `libracommerce` v0.29.1 y `libra-ui` v0.91.0 (pines subidos).
+
 - **Reposición sugerida: qué pedir y cuánto, por producto** (2026-09-30, ADR-051). Pantalla nueva `/reposicion` (menú «Reposición sugerida»,
   admin y encargado, capacidad nueva `reposicion.ver`): según lo que se vendió en los últimos días (30 por defecto), lo que hay y lo que
   ya se pidió en órdenes de compra abiertas, sugiere cuánto reponer de cada producto, cuidando el stock mínimo; filtra por sucursal y
