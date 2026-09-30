@@ -41,6 +41,7 @@ GRUPOS = {
     "MOSTRADOR": frozenset({"admin", "encargado", "vendedor", "cajero", "staff"}),
     "SIN_CAJERO": frozenset({"admin", "encargado", "vendedor", "staff"}),
     "MERCADERIA": frozenset({"admin", "encargado", "deposito", "staff"}),
+    "GERENCIA_Y_DEPOSITO": frozenset({"admin", "encargado", "deposito"}),
     "TODOS": TODOS,
 }
 PUBLICA = "PUBLICA"
@@ -291,6 +292,15 @@ GET    /api/reportes/margen/export/productos                            GERENCIA
 GET    /api/reportes/margen/export/periodos                             GERENCIA
 GET    /api/reportes/reposicion                                         GERENCIA
 GET    /api/reportes/reposicion/export                                  GERENCIA
+
+# Vencimientos y lotes: ver `vencimientos.ver` y mover (asignar, dar de baja) `vencimientos.mover`, el encargado y el depósito; marcar
+# un producto `vencimientos.marcar`, sólo el encargado. NO el staff heredado (pantalla nueva), ni el mostrador.
+GET    /api/vencimientos                                                GERENCIA_Y_DEPOSITO
+GET    /api/vencimientos/export                                         GERENCIA_Y_DEPOSITO
+GET    /api/vencimientos/productos/{producto_id}/lotes                  GERENCIA_Y_DEPOSITO
+PUT    /api/vencimientos/productos/{producto_id}                        GERENCIA
+POST   /api/vencimientos/asignar                                        GERENCIA_Y_DEPOSITO
+POST   /api/vencimientos/merma                                          GERENCIA_Y_DEPOSITO
 
 # Balanza, ticket, empresa, backup y resguardo: `config`
 GET    /settings/scale                                                  ADMIN
@@ -560,11 +570,12 @@ def test_auth_me_y_login_traen_las_capacidades_del_rol(instancia):
     # Escrito a mano: lo que NO le llega al cajero ni al depósito.
     cajero = set(instancia["cajero"].get("/auth/me").json()["capacidades"])
     assert "ventas.pos" in cajero and "caja.propia" in cajero
-    assert not cajero & {"reportes", "margen", "reposicion.ver", "dashboard", "cierre_diario", "tesoreria", "cuenta_corriente"}
+    assert not cajero & {"reportes", "margen", "reposicion.ver", "dashboard", "cierre_diario", "tesoreria", "cuenta_corriente",
+                         "vencimientos.ver", "vencimientos.marcar", "vencimientos.mover"}
     deposito = set(instancia["deposito"].get("/auth/me").json()["capacidades"])
-    assert {"stock.ver", "stock.ajustar", "stock.transferir", "compras.ver"} <= deposito
+    assert {"stock.ver", "stock.ajustar", "stock.transferir", "compras.ver", "vencimientos.ver", "vencimientos.mover"} <= deposito
     # No recibe compras: confirmar una recepción fija el costo del producto, y el depósito no maneja plata.
-    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "reposicion.ver", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver"}
+    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "reposicion.ver", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver", "vencimientos.marcar"}
     login = https_client(instancia["admin"].app).post(
         "/auth/login", json={"username": "u-cajero", "password": "clave-larga-1"},
     )
@@ -627,7 +638,9 @@ STAFF_NO_PUEDE = [
     ("POST", "/api/listas-precio"), ("PUT", "/api/listas-precio/999999/items/999999/quiebres"),
     ("POST", "/api/promociones"), ("POST", "/api/actualizacion-masiva/precios/aplicar"),
     ("GET", "/api/tesoreria"), ("GET", "/api/libros-iva"), ("GET", "/api/dashboard"), ("GET", "/api/reportes"),
-    ("GET", "/api/reportes/margen"), ("GET", "/api/reportes/reposicion"), ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
+    ("GET", "/api/reportes/margen"), ("GET", "/api/reportes/reposicion"), ("GET", "/api/vencimientos"),
+    ("PUT", "/api/vencimientos/productos/999999"), ("POST", "/api/vencimientos/asignar"), ("POST", "/api/vencimientos/merma"),
+    ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
     ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/logs"), ("POST", "/api/cajas"),
     ("POST", "/api/sucursales"), ("POST", "/api/depositos"), ("POST", "/api/cierre-diario/999999/reabrir"),
     ("DELETE", "/api/cuenta-corriente/pagos/999999"), ("POST", "/api/recibos/999999/anular"),

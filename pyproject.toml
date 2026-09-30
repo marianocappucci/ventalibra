@@ -79,7 +79,15 @@ dependencies = [
     # v0.27.0 -> v0.28.0 (2026-09-30): `web.reposicion_router.build_reposicion_router` (reposición sugerida: qué pedir y cuánto,
     # por producto, `GET /api/reportes/reposicion` y `/export`; ADR-017 del motor; ADR-051 de este producto). Sólo lectura, no
     # genera ninguna orden de compra. Sin migración.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.28.0",
+    # v0.28.0 -> v0.29.0 (2026-09-30): vencimientos y lotes, la parte informativa (`erp.vencimientos` y `web.vencimientos_router`:
+    # `build_vencimientos_router` de lectura y `build_vencimientos_escritura_router`, que falla al construirse si falta
+    # `usuario_actual` o alguna de las dos listas de dependencias; ADR-018 del motor; ADR-052 de este producto). 🔴 CON MIGRACIÓN:
+    # la revisión Alembic `0002_vencimientos_lotes` (`catalog_items.tracks_expiry` y un índice del ledger); sin ella el motor
+    # responde 503. Se aplica con `libracommerce-migrar upgrade --prefijo ventalibra`, como las demás.
+    # v0.29.0 -> v0.29.1 (2026-09-30, revisión de Codex sobre el montaje): los CSV de margen, reposición y vencimientos neutralizan
+    # fórmulas (`csv_seguro`) y la merma de un lote mira también el stock total y las salidas sin conciliar. Sin migración. La merma
+    # sigue siendo de mejor esfuerzo hasta A-4: VentaLibra NO expone la baja de un lote (ADR-052).
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.29.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

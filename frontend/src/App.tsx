@@ -44,6 +44,7 @@ import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
 import { Margen } from './pages/Margen'
 import { Reposicion } from './pages/Reposicion'
+import { Vencimientos } from './pages/Vencimientos'
 import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
@@ -406,6 +407,14 @@ export default function App() {
         element={
           <ProtectedRoute cap="reposicion.ver">
             <Reposicion />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/vencimientos"
+        element={
+          <ProtectedRoute cap="vencimientos.ver">
+            <Vencimientos />
           </ProtectedRoute>
         }
       />

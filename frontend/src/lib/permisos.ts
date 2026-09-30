@@ -46,6 +46,9 @@ export const CAPACIDADES = [
   'reportes',
   'margen',
   'reposicion.ver',
+  'vencimientos.ver',
+  'vencimientos.marcar',
+  'vencimientos.mover',
 ] as const
 
 export type Capacidad = (typeof CAPACIDADES)[number]

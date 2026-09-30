@@ -5,7 +5,12 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 ## En curso
 
-- [ ] Ninguna por ahora.
+- [ ] Vencimientos y lotes, etapa siguiente (A-4, FEFO en ventas): que la venta, la devolución, el ajuste y la transferencia descuenten del
+  lote del que sale la mercadería. Al llegar, **reactivar la baja de un lote** (`POST /api/vencimientos/merma`, hoy 409 para todos por
+  `app/vencimientos_guarda.py`): ver «Cómo reactivarla» en ADR-052 (`DECISIONS.md`).
+- [ ] Pedido al kit (`libra-ui`): una prop `puedeMermar` en `comercio/Vencimientos`, separada de `puedeMover` (que oculta también «asignar
+  vencimiento»). Hoy la pantalla muestra «Dar de baja (merma)» y el servidor contesta 409; con la prop VentaLibra la pasa en `false` hasta A-4
+  (ADR-052).
 
 ## Completadas
 

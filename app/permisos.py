@@ -156,6 +156,16 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     # Reposición sugerida: qué pedir y cuánto (ADR-051). Sólo lectura y sin costos. Como `margen`: admin y encargado; NO el staff
     # heredado (es una pantalla nueva, no algo que ya tuviera) y NO el depósito (no ve compras ni plata).
     "reposicion.ver": frozenset({_E}),
+    # ── Vencimientos y lotes (ADR-052) ──
+    # Ver qué lotes vencen, qué stock no tiene lote y los lotes de un producto (`/api/vencimientos`, sólo lectura, sin costos). Es de
+    # quien maneja la mercadería: el encargado y el depósito. NO el staff heredado (pantalla nueva: una capacidad nueva no se abre por
+    # herencia) ni el mostrador.
+    "vencimientos.ver": frozenset({_E, _D}),
+    # Marcar qué productos vencen (`PUT /api/vencimientos/productos/{id}`): decide qué productos entran al control. Sólo el encargado.
+    "vencimientos.marcar": frozenset({_E}),
+    # Mover el ledger por lote: ponerle lote y vencimiento a stock que no lo tiene (`POST /asignar`) y dar de baja un lote por merma
+    # (`POST /merma`). Como `stock.ajustar`, es de quien maneja la mercadería: el encargado y el depósito; no lleva plata.
+    "vencimientos.mover": frozenset({_E, _D}),
 }
 
 #: Capacidades que sólo mira la SPA: ningún endpoint las exige. `requiere()` no las usa y el test que revisa
