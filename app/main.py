@@ -43,6 +43,7 @@ from libracommerce.web.promociones_router import (
     build_promociones_calculo_router,
     build_promociones_router,
 )
+from libracommerce.web.reposicion_router import build_reposicion_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
@@ -854,6 +855,12 @@ def create_app(db_path: str) -> FastAPI:
     # Mientras tanto queda disponible para todo el que tenga `margen`, igual que Reportes. Para gatearlo: sumar `"margen"` al plan elegido en
     # `plans.py` y `Depends(require_module("margen"))` en este `dependencies=`.
     app.include_router(build_margen_router(conexion=lc_get_connection), dependencies=[Depends(requiere("margen"))])
+    # Reposición sugerida (roadmap de producto, B-3, ADR-051): el router del motor (`libracommerce.web.reposicion_router`, v0.28.0; sólo
+    # lectura: por producto, cuánto conviene pedir según lo que se vende, lo que hay y lo que ya viene en órdenes abiertas, con export
+    # CSV). Capacidad `reposicion.ver` (admin y encargado, como `margen`); sin gate de plan (libre en Básico y Premium, ADR-048). Sólo
+    # sugiere: no genera la orden de compra. No lleva costos: `/api/reportes` no está en los prefijos de `SinCostos` (`app/costos.py`)
+    # y `tests/test_reposicion.py` fija que ninguna clave de costo viaja.
+    app.include_router(build_reposicion_router(conexion=lc_get_connection), dependencies=[Depends(requiere("reposicion.ver"))])
     # Configurar la balanza y el ticket es `config` (sólo admin): el POS no
     # necesita leer este router, resuelve las etiquetas contra el backend.
     app.include_router(settings_router.router, dependencies=[Depends(requiere("config"))])

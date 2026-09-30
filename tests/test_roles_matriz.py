@@ -279,7 +279,7 @@ GET    /api/cierre-diario/{cierre_id}                                   GERENCIA
 GET    /api/cierre-diario/{cierre_id}/ticket                            GERENCIA_Y_STAFF
 GET    /api/cierre-diario/turno/{turno_id}/ticket                       MOSTRADOR
 
-# Reportes y margen: `reportes`, `margen`
+# Reportes, margen y reposición: `reportes`, `margen`, `reposicion.ver`
 GET    /api/reportes                                                    GERENCIA
 GET    /api/reportes/caja-medios                                        GERENCIA
 GET    /reportes/export/ventas                                          GERENCIA
@@ -289,6 +289,8 @@ GET    /reportes/caja-medios/export                                     GERENCIA
 GET    /api/reportes/margen                                             GERENCIA
 GET    /api/reportes/margen/export/productos                            GERENCIA
 GET    /api/reportes/margen/export/periodos                             GERENCIA
+GET    /api/reportes/reposicion                                         GERENCIA
+GET    /api/reportes/reposicion/export                                  GERENCIA
 
 # Balanza, ticket, empresa, backup y resguardo: `config`
 GET    /settings/scale                                                  ADMIN
@@ -558,11 +560,11 @@ def test_auth_me_y_login_traen_las_capacidades_del_rol(instancia):
     # Escrito a mano: lo que NO le llega al cajero ni al depósito.
     cajero = set(instancia["cajero"].get("/auth/me").json()["capacidades"])
     assert "ventas.pos" in cajero and "caja.propia" in cajero
-    assert not cajero & {"reportes", "margen", "dashboard", "cierre_diario", "tesoreria", "cuenta_corriente"}
+    assert not cajero & {"reportes", "margen", "reposicion.ver", "dashboard", "cierre_diario", "tesoreria", "cuenta_corriente"}
     deposito = set(instancia["deposito"].get("/auth/me").json()["capacidades"])
     assert {"stock.ver", "stock.ajustar", "stock.transferir", "compras.ver"} <= deposito
     # No recibe compras: confirmar una recepción fija el costo del producto, y el depósito no maneja plata.
-    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver"}
+    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "reposicion.ver", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver"}
     login = https_client(instancia["admin"].app).post(
         "/auth/login", json={"username": "u-cajero", "password": "clave-larga-1"},
     )
@@ -625,7 +627,7 @@ STAFF_NO_PUEDE = [
     ("POST", "/api/listas-precio"), ("PUT", "/api/listas-precio/999999/items/999999/quiebres"),
     ("POST", "/api/promociones"), ("POST", "/api/actualizacion-masiva/precios/aplicar"),
     ("GET", "/api/tesoreria"), ("GET", "/api/libros-iva"), ("GET", "/api/dashboard"), ("GET", "/api/reportes"),
-    ("GET", "/api/reportes/margen"), ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
+    ("GET", "/api/reportes/margen"), ("GET", "/api/reportes/reposicion"), ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
     ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/logs"), ("POST", "/api/cajas"),
     ("POST", "/api/sucursales"), ("POST", "/api/depositos"), ("POST", "/api/cierre-diario/999999/reabrir"),
     ("DELETE", "/api/cuenta-corriente/pagos/999999"), ("POST", "/api/recibos/999999/anular"),

@@ -76,7 +76,10 @@ dependencies = [
     # v0.25.1 -> v0.27.0 (2026-09-29): v0.26.0 sumó `web.margen_router` (margen y rotación, ADR-015 del motor; ADR-046 de este
     # producto) y v0.27.0 `OpcionesVentas.guardar_costo` (opt-in): la venta guarda `sale_items.unit_cost_snapshot` con el
     # `default_cost` vigente (ADR-016 del motor; ADR-050 de este producto). Sin migración.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.27.0",
+    # v0.27.0 -> v0.28.0 (2026-09-30): `web.reposicion_router.build_reposicion_router` (reposición sugerida: qué pedir y cuánto,
+    # por producto, `GET /api/reportes/reposicion` y `/export`; ADR-017 del motor; ADR-051 de este producto). Sólo lectura, no
+    # genera ninguna orden de compra. Sin migración.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.28.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

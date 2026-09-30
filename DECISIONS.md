@@ -2300,6 +2300,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 | `dashboard` | Dashboard | ✓ | ✓ |  |  |  |  |
 | `reportes` | Reportes, caja por medio y exportaciones CSV | ✓ | ✓ |  |  |  |  |
 | `margen` | Margen y rotación | ✓ | ✓ |  |  |  |  |
+| `reposicion.ver` | Reposición sugerida (agregada por ADR-051) | ✓ | ✓ |  |  |  |  |
 
 - **Turnos ajenos.** El router de turnos de `libracore` decide quién ve y cierra los turnos de otros con `role == "admin"` escrito a mano
   (`caja_router._puede_ver`), sin ganchos. Para que el encargado los vea (`turnos.todos`), `usuario_de_turnos` (`app/cajas_ganchos.py`)
@@ -2386,3 +2387,48 @@ decisión explícita del humano, y no forman parte de esta ADR.
   a gatearse (ADR-046/048), esto no cambia.
 - Depende de: `libracommerce` v0.27.0. **Numeración:** se tomó el 050 porque `develop` termina en ADR-048 y `feature/roles-de-usuario`
   ya usa el 049; puede requerir renumerar al mergear.
+
+## ADR-051 — Reposición sugerida: el router del motor y la pantalla del kit, capacidad `reposicion.ver` y sin gate de plan
+
+- Estado: aceptada (decisión del humano, 2026-09-29: reposición sugerida en VentaLibra; roadmap de producto B-3)
+- Fecha: 2026-09-30
+- Contexto: el roadmap de producto (`wiki/analyses/ventalibra-gaps-despensa.md`) tenía «reposición sugerida» pendiente: qué pedir, por
+  producto, según lo que se vende, lo que hay y lo que ya se pidió. El motor la publicó como `libracommerce` v0.28.0
+  (`erp.reposicion` y `web.reposicion_router.build_reposicion_router`, ADR-017 del motor) y el kit como `libra-ui` v0.90.0
+  (`comercio/Reposicion`, sin props). Sin migración: sólo lee.
+- Decisión: VentaLibra sólo monta y prende, como con el margen (ADR-046). Sube los pines (`libracommerce` v0.27.0 -> v0.28.0, `libra-ui`
+  v0.89.0 -> v0.90.0), monta `build_reposicion_router(conexion=lc_get_connection)` en `app/main.py` (cuelga de `/api/reportes/reposicion`
+  y `/api/reportes/reposicion/export`) y la pantalla es `libra-ui/comercio/Reposicion`, con un wrapper mínimo
+  (`frontend/src/pages/Reposicion.tsx`) en `/reposicion`, entrada de menú «Reposición sugerida». Sin adaptadores ni parámetros propios.
+  - **Capacidad nueva `reposicion.ver`: admin y encargado.** Mismo criterio que `margen`: **no** el `staff` heredado (es una pantalla
+    nueva, no algo que ya tuviera: una capacidad nueva no se abre por herencia) y **no** el vendedor, el cajero ni el depósito (no manejan
+    las compras ni la plata; el depósito lee órdenes y recepciones sin importes). Está en la matriz de ADR-049, en `app/permisos.py`, en
+    `frontend/src/lib/permisos.ts` y en `capacidades-por-rol.json`, y `tests/test_roles_matriz.py` tiene sus dos rutas.
+  - **Sin gate de plan**: libre en Básico y en Premium (ADR-048); no lleva `require_module`. Lo fija
+    `tests/test_reposicion.py::test_la_reposicion_esta_libre_en_todos_los_planes`.
+  - **No revela costos.** La respuesta no trae ninguna clave ni valor de costo (medido: ni el `precio_costo` del producto ni el `unit_cost` de
+    la orden de compra abierta). `/api/reportes` **no** está en los prefijos de `SinCostos` (`app/costos.py`), y no hace falta: el
+    endpoint no manda costos por sí mismo. Como admin y encargado tienen `costos.ver`, el filtro no les sacaría nada aunque los mandara,
+    por eso `tests/test_reposicion.py::test_la_reposicion_no_revela_costos` los busca en el JSON y en el CSV de esos dos roles (por la clave
+    y por el valor).
+  - **Lo que pide la pantalla del kit al abrir**: además del reporte, `GET /api/sucursales` y `GET /api/productos/categorias` (los
+    filtros de sucursal y de categoría). Los dos son `catalogo.ver`, que tienen admin y encargado (medido en
+    `test_lo_que_la_pantalla_del_kit_pide_al_abrir_lo_leen_el_admin_y_el_encargado`). Si alguno falla, la pantalla sigue y sólo pierde ese
+    filtro (lo cubre `frontend/src/test/reposicion-del-kit.test.tsx`).
+- Lo que **no** cubre (es lo que hay que decir antes de venderlo):
+  - **Es una sola pantalla de sólo lectura y sólo sugiere: no genera la orden de compra.** Quien decide pide a mano en Compras. Convertir
+    una sugerencia en una orden (por proveedor) es otra tanda.
+  - **`min_stock` es global**: un único mínimo por producto (`catalog_items.min_stock`), no uno por sucursal ni por depósito. Con una
+    sucursal elegida el piso sigue siendo ese mismo número.
+  - **Lo «en camino» son las órdenes de compra abiertas, `draft` incluido** (el motor no tiene operación que las pase a `sent`), así que
+    una orden abandonada en borrador cuenta como pedido; y con una sucursal elegida se cuentan también las órdenes sin sucursal (la
+    pantalla lo avisa fila por fila). La cuenta completa —rotación, cobertura, el sesgo por quiebres con `posible_quiebre`— es del motor
+    y se documenta y prueba allá.
+  - En una instancia recién cargada, casi toda la ventana de rotación no tiene stock: el motor lo detecta (`posible_quiebre`) y divide por
+    un mínimo de 7 días, así que la sugerencia de un producto nuevo es una estimación (visto en el escenario de la suite).
+- Deuda: **la pantalla del kit no tiene debounce** —cada tecla en un parámetro numérico válido dispara un pedido al motor— y **no se probó
+  en un navegador ni contra un backend real levantado**: la verificación fue la suite (backend contra PostgreSQL de prueba y frontend con
+  `fetch` simulado). Además, la pantalla asume que el motor contesta la forma esperada: con una respuesta que no es un objeto
+  (`[]`) se cae (se vio al montarla con un `fetch` genérico en los tests de ruteo, que por eso la reemplazan por una marca).
+- Depende de: `libracommerce` v0.28.0 y `libra-ui` v0.90.0 (pines subidos en este cambio). **Numeración:** el 051 es el siguiente libre en
+  este árbol (el último es el 050); puede requerir renumerar al mergear si otra rama tomó el 051.
