@@ -5,6 +5,14 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Reposición sugerida: qué pedir y cuánto, por producto** (2026-09-30, ADR-051). Pantalla nueva `/reposicion` (menú «Reposición sugerida»,
+  admin y encargado, capacidad nueva `reposicion.ver`): según lo que se vendió en los últimos días (30 por defecto), lo que hay y lo que
+  ya se pidió en órdenes de compra abiertas, sugiere cuánto reponer de cada producto, cuidando el stock mínimo; filtra por sucursal y
+  categoría, se puede ordenar por cualquier columna y exportar a CSV (`GET /api/reportes/reposicion` y `/export` del motor). Marca los
+  productos con posible quiebre (rotación subestimada) y los que no tienen ventas. Sólo lectura: **sugiere, no genera la orden de compra**.
+  El stock mínimo es uno por producto (no por sucursal). Libre en Básico y Premium; no muestra costos. Sin migración. Requiere
+  `libracommerce` v0.28.0 y `libra-ui` v0.90.0 (pines subidos).
+
 - **La venta guarda el costo de cada línea: el margen deja de ser estimado en las ventas nuevas** (2026-09-29, ADR-050). Cada venta
   registrada desde ahora guarda el costo vigente del producto (`sale_items.unit_cost_snapshot`), así que el margen y rotación usan el
   costo de aquella venta y un cambio posterior de costo ya no lo reescribe. Un producto sin costo cargado queda sin costo guardado (y el

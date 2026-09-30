@@ -5,7 +5,7 @@ import {
   ArrowRightLeft,
   Boxes,
   BarChart3, Banknote, BookText, Building2, CalendarCheck, Clock, Coins, FileSpreadsheet, HandCoins, Landmark,
-  LayoutDashboard, Package, Percent, ReceiptText, ScanBarcode, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, TrendingUp, Truck,
+  LayoutDashboard, Package, PackagePlus, Percent, ReceiptText, ScanBarcode, ScrollText, Settings, ShoppingBag, ShoppingCart, Tags, TrendingUp, Truck,
   Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
@@ -72,6 +72,8 @@ export const Layout = createLayout({
     { to: '/reportes', label: 'Reportes', icon: BarChart3, hideFor: sinCapacidad('reportes') },
     // Roadmap de producto, tanda 1 (2026-09-29, ADR-046): margen y rotación por producto y por período.
     { to: '/margen', label: 'Margen y rotación', icon: TrendingUp, hideFor: sinCapacidad('margen') },
+    // Roadmap de producto, B-3 (2026-09-30, ADR-051): qué pedir y cuánto, según lo que se vende, lo que hay y lo que viene.
+    { to: '/reposicion', label: 'Reposición sugerida', icon: PackagePlus, hideFor: sinCapacidad('reposicion.ver') },
     // Fase 12 de la adopción de los motores (ADR-038): ventas ya funciona, compras se completa con Egresos.
     { to: '/libros-iva', label: 'Libros IVA', icon: BookText, hideFor: sinCapacidad('libros_iva') },
     { to: '/caja-medios', label: 'Caja por medio', icon: Coins, hideFor: sinCapacidad('reportes') },
