@@ -314,6 +314,8 @@ PUT    /settings/ticket                                                 ADMIN
 GET    /api/config/empresa                                              ADMIN
 PUT    /api/config/empresa                                              ADMIN
 POST   /api/config/empresa/logo                                         ADMIN
+GET    /api/tema                                                        PUBLICA
+PUT    /api/tema                                                        ADMIN
 DELETE /api/config/empresa/logo                                         ADMIN
 GET    /api/config/backups                                              ADMIN
 POST   /api/config/backups                                              ADMIN

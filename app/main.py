@@ -71,6 +71,7 @@ from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
+from libracore.tema_router import build_tema_admin_router, build_tema_router
 from libracore.tesoreria_router import build_tesoreria_router
 from libracore.ventas_cobro_router import build_cobro_de_ventas_router
 from sqlalchemy import create_engine
@@ -903,6 +904,13 @@ def create_app(db_path: str) -> FastAPI:
     # el ticket lo arma el backend—, asi que no hay motivo para abrirla.
     app.include_router(build_empresa_router(), dependencies=[Depends(requiere("config"))])
     app.include_router(build_empresa_admin_router(), dependencies=[Depends(requiere("config"))])
+
+    # El tema de la suite (libracore ADR-012, libra-ui ADR-007/008): los colores que el backoffice de la suite empuja a esta instancia.
+    # La lectura es PÚBLICA a propósito —el login también va con los colores de la suite y no expone nada sensible—; la escritura es
+    # `config` (sólo admin) O el token de servicio del backoffice (`requiere_o_servicio`, que es quien la usa: pantalla «Apariencia»).
+    # 🔴 Con `requiere("config")` a secas el backoffice NO entraría: esa guarda no conoce el token.
+    app.include_router(build_tema_router())
+    app.include_router(build_tema_admin_router(), dependencies=[Depends(requiere_o_servicio("config"))])
 
     # 🔴 DOS bases, y las dos tienen que entrar al backup: `usuarios` vive en
     # la de LibraCore, separada de la del dominio (ver el comentario largo
