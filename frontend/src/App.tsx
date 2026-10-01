@@ -108,7 +108,7 @@ export default function App() {
       <Route
         path="/productos"
         element={
-          <ProtectedRoute cap="catalogo.ver">
+          <ProtectedRoute cap="catalogo.pantalla">
             <Productos />
           </ProtectedRoute>
         }
@@ -139,7 +139,7 @@ export default function App() {
       <Route
         path="/proveedores"
         element={
-          <ProtectedRoute cap="compras.ver">
+          <ProtectedRoute cap="proveedores.pantalla">
             <Proveedores />
           </ProtectedRoute>
         }
@@ -147,7 +147,7 @@ export default function App() {
       <Route
         path="/proveedores/:id"
         element={
-          <ProtectedRoute cap="compras.ver">
+          <ProtectedRoute cap="proveedores.pantalla">
             <ProveedorDetalle />
           </ProtectedRoute>
         }
@@ -155,7 +155,7 @@ export default function App() {
       <Route
         path="/clientes"
         element={
-          <ProtectedRoute cap="clientes.ver">
+          <ProtectedRoute cap="clientes.pantalla">
             <Clientes />
           </ProtectedRoute>
         }
@@ -163,7 +163,7 @@ export default function App() {
       <Route
         path="/clientes/:id"
         element={
-          <ProtectedRoute cap="clientes.ver">
+          <ProtectedRoute cap="clientes.pantalla">
             <ClienteDetalle />
           </ProtectedRoute>
         }
@@ -211,7 +211,7 @@ export default function App() {
       <Route
         path="/stock"
         element={
-          <ProtectedRoute cap="stock.ver">
+          <ProtectedRoute cap="stock.pantalla">
             <Stock />
           </ProtectedRoute>
         }

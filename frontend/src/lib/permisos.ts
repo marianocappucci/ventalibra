@@ -19,6 +19,9 @@ export const CAPACIDADES = [
   'catalogo.ver',
   'catalogo.configurar',
   'productos.escribir',
+  'catalogo.pantalla',
+  'stock.pantalla',
+  'proveedores.pantalla',
   'stock.ver',
   'stock.ajustar',
   'stock.transferir',
@@ -30,6 +33,7 @@ export const CAPACIDADES = [
   'turnos.todos',
   'cierre_diario',
   'clientes.ver',
+  'clientes.pantalla',
   'clientes.alta',
   'clientes.escribir',
   'clientes.lista_precio',
@@ -80,11 +84,12 @@ export function sinCapacidad(capacidad: Capacidad | readonly Capacidad[]) {
   return (user: unknown) => !puede(user, capacidad)
 }
 
-/** La pantalla a la que se lleva a quien entra a una ruta que no es suya, o a la raíz: el POS para quien vende, el
- *  stock para el depósito. `null` si el usuario no tiene ninguna de las dos (un rol nuevo sin inicio: la app avisa en
+/** La pantalla a la que se lleva a quien entra a una ruta que no es suya, o a la raíz: el tablero para el encargado y el
+ *  admin (ADR-054), el POS para quien vende y no administra (el cajero), el stock para el depósito. `null` si el usuario no tiene ninguna de las dos (un rol nuevo sin inicio: la app avisa en
  *  vez de rebotar en círculo). Cada destino exige justo la capacidad que se mira acá, así que nunca es una ruta que el
  *  propio usuario no pueda abrir. */
 export function inicioDe(user: unknown): string | null {
+  if (puede(user, 'dashboard')) return '/dashboard'
   if (puede(user, 'ventas.pos')) return '/pos'
   if (puede(user, 'stock.ver')) return '/stock'
   return null

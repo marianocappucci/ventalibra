@@ -679,14 +679,16 @@ export function Pos() {
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+      {/* Color (ADR-054, pedido del humano 2026-10-01): el POS es la pantalla que el cajero mira todo el día y no tiene que
+          parecerse al resto. Encabezado azul, total sobre fondo de marca y «Cobrar» verde; el resto de la app queda sobrio. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2.5 text-sm text-sky-50 shadow-sm">
         <span className="flex items-center gap-2">
-          <Scan className="size-4 text-primary" />
+          <Scan className="size-4 text-white" />
           {/* Identificación sobria de la pantalla (pedido del humano,
               2026-09-17): sin bloque propio -- éste es el único renglón de
               encabezado que tiene el POS, y robarle alto es justo lo que no
               hay que hacer acá (ver TituloPantalla, que sí lo haría). */}
-          <span className="font-medium text-foreground">POS (Caja)</span>
+          <span className="text-base font-semibold text-white">POS (Caja)</span>
           <span aria-hidden="true">·</span>
           Nueva venta
         </span>
@@ -695,7 +697,7 @@ export function Pos() {
               sucursal/caja, y "Cerrar turno" al final -- el más a la
               derecha, porque es la acción y no una etiqueta. */}
           {turno && (
-            <span className="rounded border px-2 py-0.5 text-xs">
+            <span className="rounded border border-white/30 bg-white/15 px-2 py-0.5 text-xs text-white">
               Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
             </span>
           )}
@@ -712,7 +714,7 @@ export function Pos() {
             // "Cerrar turno" -- ya está ahí, a un click. Pedido del
             // humano (2026-09-17): "un botón «Cambiar»... o un tooltip".
             <span
-              className="rounded border bg-muted px-2 py-0.5 text-xs"
+              className="rounded border border-white/30 bg-white/15 px-2 py-0.5 text-xs text-white"
               title="Para trabajar en otra sucursal, cerrá el turno."
             >
               {conPrefijo('Sucursal', turno.sucursal.nombre)}
@@ -737,7 +739,7 @@ export function Pos() {
             </>
           )}
           {turno && (
-            <Button size="sm" variant="outline" onClick={() => setCierreOpen(true)}>
+            <Button size="sm" variant="secondary" onClick={() => setCierreOpen(true)}>
               Cerrar turno
             </Button>
           )}
@@ -745,14 +747,14 @@ export function Pos() {
       </div>
 
       <form onSubmit={buscar} className="flex items-center gap-2">
-        <Scan className="size-5 shrink-0 text-primary" aria-hidden="true" />
+        <Scan className="size-6 shrink-0 text-sky-600" aria-hidden="true" />
         <div className="relative flex-1">
           <Input
             ref={escaneoRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Escaneá o escribí código / nombre…    (3 * código para 3 unidades)"
-            className="h-11 w-full text-base"
+            className="h-12 w-full border-2 border-sky-300 bg-sky-50/60 text-base focus-visible:border-sky-500 dark:border-sky-800 dark:bg-sky-950/30"
             autoFocus
             autoComplete="off"
             aria-label="Código o nombre del producto"
@@ -791,7 +793,7 @@ export function Pos() {
             </ul>
           )}
         </div>
-        <Button type="submit" disabled={busy} className="h-11">Agregar</Button>
+        <Button type="submit" disabled={busy} className="h-12 bg-sky-600 px-6 text-white hover:bg-sky-700">Agregar</Button>
       </form>
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
@@ -806,7 +808,7 @@ export function Pos() {
         />
 
         <div className="grid content-start gap-2">
-          <div className="rounded-md border p-4">
+          <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
             {ahorro > 0 && (
               <div className="mb-2 grid gap-0.5 border-b pb-2 text-sm">
                 <p className="flex justify-between text-muted-foreground">
@@ -820,8 +822,8 @@ export function Pos() {
                 ))}
               </div>
             )}
-            <p className="text-xs text-muted-foreground">Total</p>
-            <p className="text-4xl font-medium tabular-nums">${money(totalConPromos)}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Total</p>
+            <p className="text-5xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400">${money(totalConPromos)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {cart.length} producto{cart.length === 1 ? '' : 's'}
             </p>
@@ -837,14 +839,14 @@ export function Pos() {
             <span className="ml-auto text-xs opacity-70">F7</span>
           </Button>
           <Button
-            className="h-14 text-base"
+            className="h-16 bg-emerald-600 text-lg font-semibold text-white shadow hover:bg-emerald-700 disabled:bg-emerald-600/40"
             disabled={!puedeCobrar || busy}
             onClick={() => setCobroOpen(true)}
           >
             Cobrar <span className="ml-2 text-xs opacity-70">F2</span>
           </Button>
           {cart.length > 0 && (
-            <Button variant="outline" onClick={cancelarVenta} disabled={busy}>
+            <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40" onClick={cancelarVenta} disabled={busy}>
               <Ban />Cancelar venta <span className="ml-1 text-xs opacity-70">Esc</span>
             </Button>
           )}
@@ -933,15 +935,15 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
 }) {
   if (items.length === 0) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+      <div className="flex min-h-56 items-center justify-center rounded-lg border-2 border-dashed border-sky-300 bg-sky-50/50 p-6 text-sm text-sky-800 dark:border-sky-800 dark:bg-sky-950/20 dark:text-sky-300">
         Escaneá el primer producto para empezar la venta.
       </div>
     )
   }
   return (
-    <div className="overflow-hidden rounded-md border">
+    <div className="overflow-hidden rounded-lg border-2 border-sky-200 dark:border-sky-900">
       <table className="w-full text-sm">
-        <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
+        <thead className="border-b bg-sky-100 text-xs font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200">
           <tr>
             <th className="w-8 p-2 text-left">#</th>
             <th className="p-2 text-left">Producto</th>
@@ -958,7 +960,7 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
               onClick={() => onMarcar(i)}
               className={[
                 'cursor-pointer border-b last:border-0',
-                i === marcada ? 'bg-accent' : '',
+                i === marcada ? 'bg-sky-100 dark:bg-sky-900/40' : '',
                 // El resaltado del escaneo pisa al de seleccion: es el acuse
                 // de que la linea entro, y dura un segundo.
                 i === reciente ? 'bg-emerald-100 dark:bg-emerald-950' : '',

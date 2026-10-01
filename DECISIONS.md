@@ -2649,3 +2649,33 @@ decisión explícita del humano, y no forman parte de esta ADR.
   `repetida`), el reporte, `plan-salida` del cajero (200; el depósito 403; el anónimo 401), venta FEFO con `avisos`, devolución (par), anulación (repone al lote), transferencia (una fila por tramo), ajuste de stock (el `lot_code` del cuerpo se ignora, también para el staff),
   baja de un lote (200) y su 409 con un «sin lote» negativo; el cajero, 403 en vencimientos.
 - Depende de: `libracommerce` v0.30.0 y `libra-ui` v0.92.0 (pines subidos en este cambio). **Numeración:** el 053 es el siguiente libre en este árbol (el último es el 052); puede requerir renumerar al mergear si otra rama tomó el 053.
+
+## ADR-054 — Menú en dos niveles, nombre del negocio, inicio por rol, POS con color y depósito con reposición
+
+- Estado: aceptada (pedido del humano, 2026-10-01)
+- Fecha: 2026-10-01
+- Contexto: el menú era una lista plana de 29 entradas, sin orden; el cajero veía Productos, Clientes y Stock aunque sólo
+  vende; el encargado y el admin entraban al POS en vez de al tablero; el depósito no tenía la reposición; el POS era
+  gris como el resto. «Stock en el depósito y depósitos en la sucursal» ya estaba resuelto por ADR-044 (no se tocó).
+- Decisión:
+  - **Menú**: `navSections` del kit (la forma de Contalibra y Restolibra). Siete secciones (Mostrador, Caja y tesorería,
+    Catálogo y precios, Inventario, Compras, Reportes, Administración) y, dentro, ítems con sus pantallas hijas anidadas.
+    Una sección sin ítems visibles no se dibuja. «Sucursales» pasa a llamarse «Sucursales y depósitos».
+  - **Nombre del negocio** debajo de «VentaLibra»: `/auth/me` y `/auth/login` mandan `empresa_nombre` (la config de
+    Configuración > Datos de empresa) y el `Layout` lo pasa en `getUserSubtitle`, como el resto de la suite.
+  - **Inicio por rol** (`inicioDe`): `dashboard` -> `/dashboard` (admin y encargado); si no, POS (`ventas.pos`: cajero,
+    vendedor); si no, `/stock` (depósito).
+  - **Cajero**: sólo POS, Ventas (donde reimprime un comprobante) y Turnos (abrir y cerrar caja). Se logra con cuatro
+    capacidades **sólo de la SPA** (`catalogo.pantalla`, `stock.pantalla`, `clientes.pantalla`, `proveedores.pantalla`):
+    el backend le sigue dejando leer catálogo, stock y clientes porque el POS los necesita; lo que no se le ofrece ni se le
+    abre por URL son las pantallas de gestión.
+  - **Depósito**: `reposicion.ver` pasa a incluirlo (la pantalla es de sólo lectura y sin costos). Su menú: Productos,
+    Compras (lectura), Stock, Vencimientos y lotes, Transferencias, Reposición sugerida y Sucursales y depósitos; ya no
+    ve Proveedores.
+  - **POS**: encabezado azul, buscador y tabla celestes, total en un panel verde, «Cobrar» verde y «Cancelar venta» rojo.
+    Sólo el POS; el resto de la app queda sobrio.
+- Consecuencias: cambia la matriz de ADR-049 (`reposicion.ver` + cuatro capacidades de SPA); el `staff` heredado conserva
+  todo lo que tenía. El color del POS **no se miró en un navegador** (sólo tipos y vitest).
+- Límite conocido (hallazgo P2 de Codex, aceptado): si el admin cambia el nombre del negocio, el subtítulo de la barra lateral
+  lo toma en el próximo login o recarga; el `AuthContext` del kit no tiene un `refresh` y es igual en toda la suite. Arreglarlo
+  es un cambio de `libra-ui`, no de este producto.
