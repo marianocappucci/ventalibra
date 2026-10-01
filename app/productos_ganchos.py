@@ -13,13 +13,18 @@ lo hace distinto (`libracommerce` v0.19.0). Son las reglas del catálogo que viv
 - **producto o servicio se elige al crear** y no se cambia (409);
 - la **unidad se bloquea** cuando el producto ya tiene movimientos —stock, ventas o compras— (409): cambiarla
   cambiaría el significado de todo lo ya registrado;
-- un producto **no se elimina**, se desactiva (409): tiene o puede tener historial.
+- un producto **no se elimina**, se desactiva (409): tiene o puede tener historial;
+- la marca **«vence»** (vencimientos y lotes, ADR-052 y ADR-053): el listado y la ficha devuelven `vence` y el alta y la edición
+  la aceptan (`libracommerce` v0.30.0). Marcarla o desmarcarla es de quien tiene `vencimientos.marcar` (el encargado y el admin:
+  `autorizar_marcar_vence`), aunque la edición del producto sea de más gente (`productos.escribir`).
 """
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException
 from libracommerce.web.catalogo_router import OpcionesCatalogo, ProductoPayload
 from libracore.db.core import get_connection
+
+from .permisos import condicion
 
 
 def categorias_se_administran_en_configuracion() -> None:
@@ -75,4 +80,9 @@ OPCIONES_DE_CATALOGO = OpcionesCatalogo(
     autorizar_categorias=Depends(categorias_se_administran_en_configuracion),
     validar_producto=validar_producto,
     validar_eliminacion=validar_eliminacion,
+    # Vencimientos y lotes (ADR-053): el producto trae y acepta `vence`. El gancho recibe el dict de la sesión (con `role`) y
+    # decide SÓLO si la marca cambia: `condicion` mira la capacidad `vencimientos.marcar`, la misma del `PUT /api/vencimientos/
+    # productos/{id}`, así que las dos vías de marcar (ésta y aquélla) no pueden discrepar.
+    con_vencimientos=True,
+    autorizar_marcar_vence=condicion("vencimientos.marcar"),
 )
