@@ -2566,12 +2566,18 @@ decisión explícita del humano, y no forman parte de esta ADR.
     de migración nueva: el tag trae las mismas dos que v0.29.1 (`0001_baseline_commerce` y `0002_vencimientos_lotes`; `git diff v0.29.1 v0.30.0 --
     libracommerce/migrations` vacío). El deploy sigue corriendo `libracommerce-migrar upgrade --prefijo ventalibra` (`scripts/panel_admin.py`,
     `scripts/nuevo_cliente.py`, el `command` del compose, el smoke del CI y la fixture de la suite: ver ADR-052). **Sin migración propia.**
-  - **Tres opciones del motor, todas opt-in** (`app/main.py`, `app/productos_ganchos.py`, `app/depositos_ganchos.py`): `OpcionesCatalogo(con_vencimientos=True,
-    autorizar_marcar_vence=condicion("vencimientos.marcar"))`, `OpcionesStock(por_deposito=True, con_lotes=True)` y `OpcionesVentas(con_avisos_de_vencimiento=True)`.
+  - **Tres opciones del motor, dos prendidas y una apagada a propósito** (`app/main.py`, `app/productos_ganchos.py`, `app/depositos_ganchos.py`): `OpcionesCatalogo(con_vencimientos=True,
+    autorizar_marcar_vence=condicion("vencimientos.marcar"))`, `OpcionesStock(por_deposito=True)` (**`con_lotes` APAGADA**, ver más abajo) y `OpcionesVentas(con_avisos_de_vencimiento=True)`.
     Los routers de productos, stock y ventas las reciben por los mismos caminos de antes (las constantes `OPCIONES_DE_CATALOGO` y `OPCIONES_DE_STOCK`
-    y el `OpcionesVentas` de `main.py`): el esquema de OpenAPI cambia sólo en esas tres (medido antes y después: rutas nuevas `POST /api/ventas/plan-salida`
-    y `POST /api/vencimientos/entrada`; campos nuevos en los cuerpos de alta/edición de producto, `vence`, y del ajuste de stock, `lot_code` y
-    `expires_at`; nada quitado).
+    y el `OpcionesVentas` de `main.py`): el esquema de OpenAPI cambia sólo por las dos prendidas (medido antes y después: rutas nuevas `POST /api/ventas/plan-salida`
+    y `POST /api/vencimientos/entrada`; campos nuevos en los cuerpos de alta/edición de producto, `vence`; nada quitado; el ajuste de stock no cambia).
+    - 🔴 **`OpcionesStock.con_lotes` queda apagada** (hallazgo de la revisión de Codex, 2026-10-01): prendida, `POST /api/stock/{id}/ajuste` aceptaría `lot_code` y `expires_at` (entrada con lote
+      y conteo de un lote) con sólo `stock.ajustar`, que conserva el staff heredado, mientras que asignar, `entrada` y merma de `/api/vencimientos` exigen `vencimientos.mover`, que el staff NO
+      tiene: el staff alteraría lotes por la ruta alternativa. El kit v0.92.0 no usa el ajuste con lote desde ninguna pantalla, así que no se activa. **Con la opción apagada el cuerpo es el de siempre y el
+      motor IGNORA `lot_code` y `expires_at`** (medido: 200 para admin, encargado, depósito y staff; se escribe la entrada de siempre SIN lote ni vencimiento y ningún lote se crea ni se toca; hay test
+      por rol que se pone rojo si se prende la opción). Cuidado: un `modo=absoluto` con `lot_code` se ignora igual y cuenta el TOTAL, no el lote. La carga con lote es sólo `POST /api/vencimientos/entrada`
+      (`vencimientos.mover`; staff 403). El FEFO de las salidas y de los ajustes SIN lote de un producto marcado **no depende de esta opción** (es del motor: confirmado por los tests de ajuste y salida manual). **Para
+      habilitarla** hace falta antes una guarda por cuerpo (que un pedido con `lot_code` o `expires_at` exija `vencimientos.mover`) y su test en la matriz de roles.
     - **`vence` en los productos.** `GET /api/productos` (y la ficha, el escaneo y las respuestas del alta y la edición) traen `vence: bool`; el alta y la edición
       lo aceptan. Quién lo cambia: el gancho **`autorizar_marcar_vence`** recibe el dict de la sesión y mira la capacidad **`vencimientos.marcar`** con
       `permisos.condicion(...)` (el mismo mecanismo de `costos.ver` y `turnos.todos`), así que marcar por la ficha del producto y por `PUT /api/vencimientos/
@@ -2583,7 +2589,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
       de `tests/test_roles_matriz.py` (la de cobertura de rutas nuevas falla si faltan) y en la del staff heredado.
     - **`avisos` en la venta**: `POST /api/ventas` y `GET /api/ventas/{id}` agregan `avisos` (`lote_vencido`, `por_vencer` a 15 días, `faltante_sin_lote`) **sólo
       si hay alguno**; un producto sin marcar no cambia la respuesta (hay test).
-  - **No revela costos** (medido por clave y por valor, como `tests/test_roles_costos.py`): `avisos`, `plan-salida`, `entrada`, el ajuste con lote y `vence` no llevan
+  - **No revela costos** (medido por clave y por valor, como `tests/test_roles_costos.py`): `avisos`, `plan-salida`, `entrada` y `vence` no llevan
     ninguna clave de costo ni el valor del `precio_costo` ni el `unit_cost` de la recepción, en lo que reciben el vendedor, el cajero y el depósito
     (`test_las_respuestas_nuevas_de_fefo_no_revelan_costos_a_quien_no_tiene_costos_ver`). `/api/ventas` y `/api/vencimientos` siguen sin estar en los
     prefijos de `SinCostos` (`app/costos.py`): no hace falta porque el motor no manda costos ahí; `/api/productos` y `/api/stock` sí lo están y siguen sacando `precio_costo` (con `vence` intacto).
@@ -2597,8 +2603,8 @@ decisión explícita del humano, y no forman parte de esta ADR.
     | anulación, `POST /api/ventas/{id}/anular` | suma | sí, al lote de origen |
     | devolución, `POST /api/ventas/{id}/devolver` | suma + merma | sí, par `devolucion` + `merma` por lote |
     | transferencia, `POST /api/depositos/transferir` (`catalogo.transferir_stock`) | resta y suma | sí, un par por tramo FEFO |
-    | ajuste, `POST /api/stock/{id}/ajuste`: `absoluto` (`ajustar_stock`), `salida` y `merma` (`salida_manual`) | resta o suma | sí: conteo del lote, FEFO si baja |
-    | `entrada` de ese mismo endpoint, sin lote | suma | entra «sin lote» (no sobreestima ningún lote); con `lot_code`, a ese bucket |
+    | ajuste, `POST /api/stock/{id}/ajuste`: `absoluto` (`ajustar_stock`), `salida` y `merma` (`salida_manual`) | resta o suma | sí: FEFO si baja (sin lote en el cuerpo: `con_lotes` apagada) |
+    | `entrada` de ese mismo endpoint (un `lot_code` en el cuerpo se ignora) | suma | entra «sin lote» (no sobreestima ningún lote) |
     | recepción de compra, `POST /api/purchase-receipts/{id}/confirm` | suma | con el lote de la línea |
     | asignar, entrada con lote y baja, `/api/vencimientos/*` | par / suma / resta | explícitas sobre un bucket |
     Ningún router montado llama a `usecases.sales`, a `transfer_stock` directo, ni a `libracore.db.stock`/`libracore.db.ventas` (código de `libracore` que sólo otros productos usan; `recibos` sólo
@@ -2609,8 +2615,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
   - **Frontend.** `frontend/src/pages/Productos.tsx` pasa `conVencimientos={puede(user, 'vencimientos.marcar')}` al kit: con la capacidad, el interruptor «Vence» se fuerza
     aunque el catálogo esté vacío (el kit lo deduce de los datos y una lista vacía no tiene de dónde); sin ella (staff) no se ofrece. `Compras` y `CompraDetalle` son del kit sin
     cambios (leen `vence` de `GET /api/productos` y ofrecen «Lote» y «Vencimiento» por línea; el backend ya los guardaba). `Vencimientos.tsx` sigue pasando `puedeMover`
-    y `puedeMarcar`; «Cargar stock con lote» de esa pantalla usa `POST /api/vencimientos/entrada`. La entrada con lote de `POST /api/stock/{id}/ajuste` (`con_lotes`) queda disponible
-    por API: el kit v0.92.0 no la usa desde la pantalla de Stock.
+    y `puedeMarcar`; «Cargar stock con lote» de esa pantalla usa `POST /api/vencimientos/entrada`. El ajuste de stock con lote (`con_lotes`) **no se habilita** (ver arriba): la pantalla de Stock del kit no lo usa.
   - **POS** (`frontend/src/pages/Pos.tsx`, con `lib/avisos-de-vencimiento.ts` y `components/avisos-de-vencimiento.tsx`), dos cambios **opt-in por la respuesta del backend** que nunca
     bloquean ni demoran una venta si fallan:
     1. **Antes de cobrar** (cobro normal y cobro por QR), `POST /api/ventas/plan-salida` con las líneas del carrito (producto, cantidad, variante) y el depósito de venta. Si trae
@@ -2641,6 +2646,6 @@ decisión explícita del humano, y no forman parte de esta ADR.
     con una prop). La prop `puedeMermar` que pedía ADR-052 **ya no hace falta** (la baja está habilitada).
 - Deuda: **no se probó en un navegador**. Se probó con la suite del backend, con vitest (`fetch` simulado) y con un `uvicorn` real sobre una base PostgreSQL descartable (migraciones de `scripts/panel_admin.py`,
   login con captcha, Términos): el encargado marca por el `PUT` del producto (el staff recibe 403 si cambia la marca), recibe una compra con lote, el depósito carga con `entrada` (y el reintento con la misma clave es
-  `repetida`), el reporte, `plan-salida` del cajero (200; el depósito 403; el anónimo 401), venta FEFO con `avisos`, devolución (par), anulación (repone al lote), transferencia (una fila por tramo), ajuste por lote,
+  `repetida`), el reporte, `plan-salida` del cajero (200; el depósito 403; el anónimo 401), venta FEFO con `avisos`, devolución (par), anulación (repone al lote), transferencia (una fila por tramo), ajuste de stock (el `lot_code` del cuerpo se ignora, también para el staff),
   baja de un lote (200) y su 409 con un «sin lote» negativo; el cajero, 403 en vencimientos.
 - Depende de: `libracommerce` v0.30.0 y `libra-ui` v0.92.0 (pines subidos en este cambio). **Numeración:** el 053 es el siguiente libre en este árbol (el último es el 052); puede requerir renumerar al mergear si otra rama tomó el 053.

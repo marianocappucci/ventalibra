@@ -11,7 +11,7 @@ Cambios funcionales y releases publicados. Para tareas internas usar
   perecedero va a merma (no vuelve al estante). **Cargar vencimientos:** el producto tiene un interruptor «Vence» (lo marca el encargado), al recibir una compra
   se carga lote y vencimiento por línea y la pantalla de Vencimientos tiene «Cargar stock con lote». **POS:** antes de cobrar avisa si el carrito lleva mercadería
   de un lote vencido o por vencer y pregunta «¿Vender igual?» (no bloquea: si la consulta falla o tarda más de 1,5 s se cobra igual), y la venta cobrada muestra esos avisos.
-  **La baja de un lote (merma) vuelve a estar habilitada** (encargado y depósito). 🔴 Límite: lo vendido **antes** de esta versión sigue «sin lote»; un producto con saldo
+  **La baja de un lote (merma) vuelve a estar habilitada** (encargado y depósito). El ajuste de stock con lote por API (`lot_code` en `POST /api/stock/{id}/ajuste`) **no se habilita**: se ignora, y la carga con lote es sólo por Vencimientos (encargado y depósito; el staff heredado no). 🔴 Límite: lo vendido **antes** de esta versión sigue «sin lote»; un producto con saldo
   «sin lote» negativo heredado no deja dar de baja sus lotes (409) hasta conciliar con el conteo físico. La pantalla de Vencimientos todavía muestra el aviso fijo de que el saldo
   por lote puede ser mayor al real (ya no es cierto para lo nuevo; pedido al kit). Sin migración nueva. Requiere `libracommerce` v0.30.0 y `libra-ui` v0.92.0 (pines subidos).
 

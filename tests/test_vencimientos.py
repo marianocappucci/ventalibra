@@ -520,32 +520,50 @@ def test_transferir_un_marcado_es_un_par_por_tramo_y_el_lote_viaja_al_destino(es
 
 
 def test_ajustar_un_marcado_sigue_el_lote(admin_client, escenario):
-    """El conteo de un lote (con `lot_code` y `expires_at`), el ajuste del total (baja por FEFO) y la salida manual (FEFO)."""
+    """El ajuste del total (baja por FEFO) y la salida manual (FEFO). El conteo de UN lote por este endpoint no está habilitado
+    (`OpcionesStock.con_lotes` apagada, ADR-053): ver `test_el_ajuste_de_stock_no_acepta_lote_para_ningun_rol`."""
     leche, dep = escenario["leche"], escenario["deposito"]
-    # Contar el lote L-PRONTO en 7 (había 10): una fila `ajuste` de -3 en ese bucket.
-    antes = len(_movimientos(admin_client, leche))
-    r = admin_client.post(f"/api/stock/{leche}/ajuste", json={
-        "modo": "absoluto", "cantidad": 7, "deposito_id": dep, "lot_code": "L-PRONTO", "expires_at": _dia(5), "referencia": "conteo"})
-    assert r.status_code == 200, r.text
-    assert _filas(admin_client, leche, antes) == [("adjustment", "ajuste", -3.0, "L-PRONTO")]
-    # Llevar el total de 25 a 20 sin indicar lote: baja 5 por FEFO (los 4 del vencido y 1 de L-PRONTO), no del «sin lote».
+    # Llevar el total de 28 a 20 sin indicar lote: baja 8 por FEFO (los 4 del vencido y 4 de L-PRONTO), no del «sin lote».
     antes = len(_movimientos(admin_client, leche))
     r = admin_client.post(f"/api/stock/{leche}/ajuste", json={"modo": "absoluto", "cantidad": 20, "deposito_id": dep, "referencia": "conteo"})
     assert r.status_code == 200, r.text
-    assert _filas(admin_client, leche, antes) == [("adjustment", "ajuste", -4.0, "L-VENCIDO"), ("adjustment", "ajuste", -1.0, "L-PRONTO")]
+    assert _filas(admin_client, leche, antes) == [("adjustment", "ajuste", -4.0, "L-VENCIDO"), ("adjustment", "ajuste", -4.0, "L-PRONTO")]
     # Una salida manual también sale por lote: 2 más de L-PRONTO.
     antes = len(_movimientos(admin_client, leche))
     r = admin_client.post(f"/api/stock/{leche}/ajuste", json={"modo": "salida", "cantidad": 2, "deposito_id": dep, "referencia": "rotura"})
     assert r.status_code == 200, r.text
     assert _filas(admin_client, leche, antes) == [("adjustment", "salida", -2.0, "L-PRONTO")]
     assert _saldos(admin_client) == ({"L-PRONTO": 4, "L-LEJANO": 6}, 8) and _stock(admin_client, leche) == 18
-    # Un producto sin marcar sigue ajustándose como siempre, y un lote sobre él es 422.
+    # Un producto sin marcar sigue ajustándose como siempre.
     sal = escenario["sal"]
-    assert admin_client.post(f"/api/stock/{sal}/ajuste", json={
-        "modo": "absoluto", "cantidad": 15, "deposito_id": dep, "lot_code": "X", "expires_at": _dia(3)}).status_code == 422
     antes = len(_movimientos(admin_client, sal))
     assert admin_client.post(f"/api/stock/{sal}/ajuste", json={"modo": "absoluto", "cantidad": 15, "deposito_id": dep}).status_code == 200
     assert _filas(admin_client, sal, antes) == [("adjustment", "ajuste", -5.0, None)]
+
+
+@pytest.mark.parametrize("rol", ["admin", "encargado", "deposito", "staff"])
+def test_el_ajuste_de_stock_no_acepta_lote_para_ningun_rol(escenario, rol):
+    """`OpcionesStock.con_lotes` está APAGADA (ADR-053): `POST /api/stock/{id}/ajuste` no maneja lotes. Con la opción apagada el cuerpo es el de
+    siempre y el motor IGNORA `lot_code` y `expires_at` (pydantic descarta lo que no declara): no se crea ni se toca ningún lote por esa
+    ruta, ni siquiera por el staff heredado, que tiene `stock.ajustar` pero NO `vencimientos.mover` (la carga con lote es sólo
+    `POST /api/vencimientos/entrada`). Lo que se escribe es la entrada de siempre, SIN lote, y el reporte no ve ningún lote nuevo."""
+    leche, dep = escenario["leche"], escenario["deposito"]
+    cliente = escenario["clientes"][rol]
+    admin = escenario["clientes"]["admin"]
+    lotes_antes = _saldos(admin)
+    antes = len(_movimientos(admin, leche))
+    r = cliente.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "entrada", "cantidad": 5, "deposito_id": dep, "lot_code": "L-COLADO", "expires_at": _dia(30), "referencia": "carga"})
+    assert r.status_code == 200, (rol, r.text)
+    (fila,) = _movimientos(admin, leche)[antes:]
+    assert (fila[1], float(fila[2]), fila[3], fila[4]) == ("entrada", 5.0, None, None), (rol, fila)  # sin lote ni vencimiento
+    lotes, sin_lote = _saldos(admin)
+    assert "L-COLADO" not in lotes and lotes == lotes_antes[0] and sin_lote == lotes_antes[1] + 5
+    # El camino con lote es el de vencimientos: el staff no entra (403); los demás sí.
+    cuerpo = {"producto_id": leche, "deposito_id": dep, "lote": "L-COLADO", "vence": _dia(30), "cantidad": 1, "clave_operacion": f"carga-{rol}"}
+    r = cliente.post("/api/vencimientos/entrada", json=cuerpo)
+    assert r.status_code == (403 if rol == "staff" else 200), (rol, r.text)
+    assert ("L-COLADO" in _saldos(admin)[0]) == (rol != "staff")
 
 
 def test_un_marcado_con_stock_por_variante_exige_la_variante_en_el_ajuste(admin_client, escenario):
@@ -562,8 +580,8 @@ def test_un_marcado_con_stock_por_variante_exige_la_variante_en_el_ajuste(admin_
     assert _movimientos(admin_client, leche) == antes
 
 
-def test_cargar_stock_con_lote_por_entrada_y_por_el_ajuste_de_entrada(mueve, escenario):
-    """`POST /api/vencimientos/entrada` (`vencimientos.mover`: encargado y depósito) y la entrada con lote del ajuste de stock: stock
+def test_cargar_stock_con_lote_por_entrada(mueve, escenario):
+    """`POST /api/vencimientos/entrada` (`vencimientos.mover`: encargado y depósito): stock
     nuevo en ESE lote, a nombre de quien lo cargó; un reintento con la misma clave no vuelve a sumar."""
     leche, dep = escenario["leche"], escenario["deposito"]
     quien = int(mueve.get("/auth/me").json()["id"])
@@ -582,11 +600,6 @@ def test_cargar_stock_con_lote_por_entrada_y_por_el_ajuste_de_entrada(mueve, esc
     assert mueve.post("/api/vencimientos/entrada", json={**cuerpo, "clave_operacion": ""}).status_code == 422
     assert mueve.post("/api/vencimientos/entrada", json={**cuerpo, "clave_operacion": "y", "cantidad": 0}).status_code == 422
     assert len(_movimientos(mueve, leche)) == antes + 1
-    # La misma carga por el ajuste de stock (la que usa «Cargar stock con lote» en la pantalla de stock).
-    r = mueve.post(f"/api/stock/{leche}/ajuste", json={
-        "modo": "entrada", "cantidad": 5, "deposito_id": dep, "lot_code": "L-OTRO", "expires_at": _dia(30), "referencia": "carga"})
-    assert r.status_code == 200, r.text
-    assert _saldos(mueve)[0]["L-OTRO"] == 5 and _stock(mueve, leche) == 45
 
 
 def test_el_mostrador_no_carga_stock_con_lote(escenario):
@@ -755,8 +768,6 @@ def test_las_respuestas_nuevas_de_fefo_no_revelan_costos_a_quien_no_tiene_costos
     limpia(deposito.post("/api/vencimientos/entrada", json={
         "producto_id": leche, "deposito_id": dep, "lote": "L-SC", "vence": _dia(25), "cantidad": 3, "clave_operacion": "sc-entrada"}),
         "deposito entrada")
-    limpia(deposito.post(f"/api/stock/{leche}/ajuste", json={
-        "modo": "entrada", "cantidad": 2, "deposito_id": dep, "lot_code": "L-SC2", "expires_at": _dia(26)}), "deposito ajuste con lote")
     limpia(deposito.get(f"/api/vencimientos/productos/{leche}/lotes"), "deposito lotes")
     limpia(deposito.get("/api/productos"), "deposito productos")
     # El encargado (que sí tiene `costos.ver`) marca por la ficha: la respuesta trae `vence` y nada de lo que no es suyo.

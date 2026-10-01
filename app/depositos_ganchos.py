@@ -47,9 +47,15 @@ from .services.sucursales import SucursalService
 
 _ENTERO = TypeAdapter(int)  # mismo modo laxo que los campos `int` del cuerpo de la transferencia
 
-#: `con_lotes` (ADR-053, libracommerce v0.30.0): el ajuste de stock acepta `lot_code` y `expires_at` para un producto marcado «vence»
-#: («Cargar stock con lote», el conteo de un lote). Un producto sin marcar no cambia: sin lote es el ajuste de siempre.
-OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True, con_lotes=True)
+#: 🔴 `con_lotes` queda APAGADA a propósito (ADR-053, hallazgo de la revisión de Codex): con ella `POST /api/stock/{id}/ajuste` aceptaría `lot_code` y
+#: `expires_at` (entrada con lote y conteo de UN lote) con sólo `stock.ajustar`, capacidad que conserva el staff heredado, mientras que las
+#: operaciones de lote de `/api/vencimientos` (asignar, entrada, merma) exigen `vencimientos.mover`, que el staff NO tiene: el staff alteraría lotes
+#: por la ruta alternativa. El kit v0.92.0 no usa el ajuste con lote desde ninguna pantalla («Cargar stock con lote» va por `POST
+#: /api/vencimientos/entrada`), así que no se activa. Apagada, el cuerpo es el de siempre y el motor IGNORA `lot_code`/`expires_at`. El FEFO de las
+#: salidas y de los ajustes SIN lote de un producto marcado NO depende de esta opción (es del motor). **Para habilitarla** hace falta antes una
+#: guarda por cuerpo: que un pedido con `lot_code` o `expires_at` exija `vencimientos.mover` (p. ej. una dependencia del router de stock que
+#: lea el cuerpo y llame a `condicion("vencimientos.mover")`), y un test en `tests/test_roles_matriz.py` que lo fije para el staff.
+OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True)
 
 Sucursales = Callable[[], SucursalService]
 #: Quien dice qué módulos tiene la instancia (`ModuleRepository`): se pide en cada request, no al armar el router.

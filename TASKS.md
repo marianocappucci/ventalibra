@@ -14,6 +14,9 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 - [ ] Vencimientos: los productos con un saldo «sin lote» negativo heredado (ventas anteriores a A-4) no dejan dar de baja sus lotes hasta conciliar con el conteo físico (un
   ajuste que lleve ese bucket a cero): avisar a los comercios que ya marcaron productos con ADR-052 (ADR-053).
 
+- [ ] Ajuste de stock con lote por API (`OpcionesStock.con_lotes`, hoy APAGADA, ADR-053): el kit v0.92.0 no lo usa. Si hace falta, antes de prenderla agregar una guarda
+  por cuerpo que exija `vencimientos.mover` cuando el pedido trae `lot_code` o `expires_at` (con sólo `stock.ajustar`, que tiene el staff heredado, se alterarían lotes por la ruta alternativa) y su test en `tests/test_roles_matriz.py`.
+
 ## Completadas
 
 - [x] Scaffold Fase 1: persistencia (`app/db.py`), auth
