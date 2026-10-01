@@ -15,10 +15,9 @@ endpoint es opt-in porque no todo consumidor tiene landing; **sin este flag el
 import logging
 
 from libraauth.session_auth import build_json_api_auth_router
+from libracore import config_manager
 
 from plans import ADDONS, TODOS_LOS_MODULOS
-
-from libracore import config_manager
 
 from ..permisos import capacidades_de
 
