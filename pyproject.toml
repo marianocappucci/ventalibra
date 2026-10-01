@@ -92,7 +92,7 @@ dependencies = [
     # vencimientos (`POST /api/vencimientos/entrada`, la marca `vence` en el producto con `OpcionesCatalogo.con_vencimientos`,
     # `OpcionesStock.con_lotes`, que NO se prende: ADR-053); y los avisos opt-in de la venta (`OpcionesVentas.con_avisos_de_vencimiento`, `POST
     # /api/ventas/plan-salida`). Sin migración nueva (sigue la 0002). ADR-053 de este producto.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.30.0",
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.30.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
