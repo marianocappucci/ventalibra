@@ -678,7 +678,9 @@ export function Pos() {
   }
 
   return (
-    <div className="grid gap-3">
+    // En pantallas anchas la pantalla mide lo que la ventana (menos el padding de `Layout`): el que scrollea es el listado
+    // de productos y NO la página, así que el total y «Cobrar» quedan siempre a la vista (pedido del humano, 2026-10-01).
+    <div className="grid gap-3 lg:flex lg:h-[calc(100svh-3rem)] lg:flex-col">
       {/* Color (ADR-054, pedido del humano 2026-10-01): el POS es la pantalla que el cajero mira todo el día y no tiene que
           parecerse al resto. Encabezado azul, total sobre fondo de marca y «Cobrar» verde; el resto de la app queda sobrio. */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2.5 text-sm text-sky-50 shadow-sm">
@@ -798,7 +800,16 @@ export function Pos() {
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      {/* Los atajos van ARRIBA de los productos, no abajo (pedido del humano, 2026-10-01). */}
+      <div className="flex flex-wrap gap-1.5">
+        {ATAJOS.map(([tecla, que]) => (
+          <span key={tecla} className="rounded border px-2 py-0.5 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{tecla}</span> {que}
+          </span>
+        ))}
+      </div>
+
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         <Ticket
           items={cart}
           marcada={marcada}
@@ -856,14 +867,6 @@ export function Pos() {
             </p>
           )}
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {ATAJOS.map(([tecla, que]) => (
-          <span key={tecla} className="rounded border px-2 py-0.5 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{tecla}</span> {que}
-          </span>
-        ))}
       </div>
 
       <ElegirCandidato
@@ -941,9 +944,9 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
     )
   }
   return (
-    <div className="overflow-hidden rounded-lg border-2 border-sky-200 dark:border-sky-900">
+    <div className="overflow-hidden rounded-lg border-2 border-sky-200 lg:max-h-full lg:self-start lg:overflow-y-auto dark:border-sky-900">
       <table className="w-full text-sm">
-        <thead className="border-b bg-sky-100 text-xs font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200">
+        <thead className="sticky top-0 z-10 border-b bg-sky-100 text-xs font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200">
           <tr>
             <th className="w-8 p-2 text-left">#</th>
             <th className="p-2 text-left">Producto</th>
