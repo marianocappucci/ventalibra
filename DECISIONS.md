@@ -2676,3 +2676,6 @@ decisión explícita del humano, y no forman parte de esta ADR.
     Sólo el POS; el resto de la app queda sobrio.
 - Consecuencias: cambia la matriz de ADR-049 (`reposicion.ver` + cuatro capacidades de SPA); el `staff` heredado conserva
   todo lo que tenía. El color del POS **no se miró en un navegador** (sólo tipos y vitest).
+- Límite conocido (hallazgo P2 de Codex, aceptado): si el admin cambia el nombre del negocio, el subtítulo de la barra lateral
+  lo toma en el próximo login o recarga; el `AuthContext` del kit no tiene un `refresh` y es igual en toda la suite. Arreglarlo
+  es un cambio de `libra-ui`, no de este producto.
