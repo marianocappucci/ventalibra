@@ -1,5 +1,5 @@
 // Los botones de función del POS (F3 dividir pago abre el cobro ya dividido; F2 lo abre con un solo medio).
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
