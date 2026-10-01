@@ -127,3 +127,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Ítem activo del menú lateral (pedido del humano, 2026-10-01): fondo #ECFDF5 y borde #5EE9B5, sólo en el activo. El borde es un
+   `box-shadow` inset y no un `border` para que el ítem no se corra 1 px respecto de los demás. El texto va oscuro también en modo
+   oscuro porque el fondo es claro en los dos. Sin capa a propósito: tiene que ganarle a las utilidades `data-[active=true]:` del kit. */
+[data-sidebar="menu-button"][data-active="true"],
+[data-sidebar="menu-button"][data-active="true"]:hover,
+[data-sidebar="menu-sub-button"][data-active="true"],
+[data-sidebar="menu-sub-button"][data-active="true"]:hover {
+  background-color: #ecfdf5;
+  color: #064e3b;
+  box-shadow: inset 0 0 0 1px #5ee9b5;
+}
