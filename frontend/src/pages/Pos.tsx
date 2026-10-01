@@ -297,6 +297,8 @@ export function Pos() {
   const secuenciaSugerenciasRef = useRef(0)
 
   const [cobroOpen, setCobroOpen] = useState(false)
+  // F3 abre el cobro ya dividido en dos medios; F2 lo abre con uno solo.
+  const [cobroDividido, setCobroDividido] = useState(false)
   const [cantidadOpen, setCantidadOpen] = useState(false)
   const escaneoRef = useRef<HTMLInputElement>(null)
 
@@ -658,8 +660,8 @@ export function Pos() {
   // queda (F3 abre buscar, F6 mueve el foco a la barra de direcciones).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'F2') { e.preventDefault(); if (puedeCobrar) setCobroOpen(true) }
-      else if (e.key === 'F3') { e.preventDefault(); if (puedeCobrar) setCobroOpen(true) }
+      if (e.key === 'F2') { e.preventDefault(); if (puedeCobrar) { setCobroDividido(false); setCobroOpen(true) } }
+      else if (e.key === 'F3') { e.preventDefault(); if (puedeCobrar) { setCobroDividido(true); setCobroOpen(true) } }
       else if (e.key === 'F4') {
         e.preventDefault()
         if (marcada !== null && cart.length) quitarLinea(marcada)
@@ -674,7 +676,8 @@ export function Pos() {
         if (ultimaVentaId !== null) imprimirTicket(ultimaVentaId)
       } else if (e.key === 'F9' && !confirmada) {
         e.preventDefault()
-        if (ultimaVentaId !== null && facturacionActiva) navigate(`/ventas/${ultimaVentaId}`)
+        // Sólo con el carrito vacío y sin diálogos: ir al detalle de la venta anterior desmonta el POS y perdería la venta en curso.
+        if (ultimaVentaId !== null && facturacionActiva && cart.length === 0 && !hayDialogo) navigate(`/ventas/${ultimaVentaId}`)
       } else if (e.key === 'Escape' && !hayDialogo) {
         e.preventDefault()
         if (cart.length) setCancelarOpen(true)
@@ -867,7 +870,7 @@ export function Pos() {
           <Button
             className="h-16 bg-emerald-600 text-lg font-semibold text-white shadow hover:bg-emerald-700 disabled:bg-emerald-600/40"
             disabled={!puedeCobrar || busy}
-            onClick={() => setCobroOpen(true)}
+            onClick={() => { setCobroDividido(false); setCobroOpen(true) }}
           >
             Cobrar <span className="ml-2 text-xs opacity-70">F2</span>
           </Button>
@@ -875,7 +878,7 @@ export function Pos() {
           <div className="grid grid-cols-6 gap-2">
             <BotonFuncion tecla="F3" etiqueta="Dividir pago" icono={Split} className="col-span-2"
               color="border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 focus-visible:ring-sky-500 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
-              disabled={!puedeCobrar || busy} onClick={() => setCobroOpen(true)} />
+              disabled={!puedeCobrar || busy} onClick={() => { setCobroDividido(true); setCobroOpen(true) }} />
             <BotonFuncion tecla="F4" etiqueta="Quitar línea" icono={Trash2} className="col-span-2"
               color="border-red-300 bg-red-50 text-red-800 hover:bg-red-100 focus-visible:ring-red-500 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
               disabled={marcada === null || cart.length === 0 || busy} onClick={() => marcada !== null && quitarLinea(marcada)} />
@@ -890,7 +893,7 @@ export function Pos() {
               disabled={ultimaVentaId === null} onClick={() => ultimaVentaId !== null && imprimirTicket(ultimaVentaId)} />
             <BotonFuncion tecla="F9" etiqueta="Factura" detalle="última venta" icono={FileText} className="col-span-2"
               color="border-teal-300 bg-teal-50 text-teal-800 hover:bg-teal-100 focus-visible:ring-teal-500 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300"
-              disabled={ultimaVentaId === null || !facturacionActiva} onClick={() => ultimaVentaId !== null && navigate(`/ventas/${ultimaVentaId}`)} />
+              disabled={ultimaVentaId === null || !facturacionActiva || cart.length > 0} onClick={() => ultimaVentaId !== null && navigate(`/ventas/${ultimaVentaId}`)} />
             <BotonFuncion tecla="Esc" etiqueta="Cancelar venta" icono={Ban} className="col-span-6"
               color="border-rose-400 bg-white text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-500 dark:border-rose-800 dark:bg-transparent dark:text-rose-300"
               disabled={cart.length === 0 || busy} onClick={() => setCancelarOpen(true)} />
@@ -950,6 +953,7 @@ export function Pos() {
 
       {cobroOpen && (
         <Cobro
+          dividir={cobroDividido}
           cart={cart}
           total={totalConPromos}
           depositoId={depositoDeVenta}
@@ -1216,12 +1220,14 @@ type QrEstado = 'idle' | 'creando' | 'esperando' | 'acreditado'
  *  - "Cobrar con QR" (`cobrarConQr`): registra con `cobrar_con_qr: true`
  *    (nace `pendiente`, D2), pone el monto en el QR de la caja y pollea hasta
  *    que MercadoPago avisa. */
-function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente, onRegistrado }: {
+function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar, onPedirCliente, onRegistrado }: {
   cart: CartLine[]
   total: number
   depositoId: number | null
   cliente: Cliente | null
   mp: MpDisponible | null
+  /** Arranca con el pago ya dividido en dos medios (la mitad en efectivo y el resto en tarjeta; se editan): es el F3. */
+  dividir?: boolean
   onCerrar: () => void
   onPedirCliente: () => void
   /** `aviso` es sólo para el caso de `verificarYAnular`: el pago se acreditó
@@ -1230,11 +1236,18 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   onRegistrado: (venta: Venta, facturaError: string | null, aviso?: string | null) => void
 }) {
   const { medios } = useMediosPago()
-  const [pagos, setPagos] = useState<PagoForm[]>([
+  const [pagos, setPagos] = useState<PagoForm[]>(() => {
+    if (dividir) {
+      const mitad = Math.floor((total / 2) * 100) / 100
+      return [
+        { medio: 'efectivo', monto: mitad.toFixed(2), recibido: '' },
+        { medio: 'tarjeta_debito', monto: Math.max(0, total - mitad).toFixed(2), recibido: '' },
+      ]
+    }
     // Con dos decimales y no `String(total)`: un total de pesada como 125.125
     // se leería con `parseMonto` como 125.125 pesos con puntos de miles.
-    { medio: 'efectivo', monto: total.toFixed(2), recibido: '' },
-  ])
+    return [{ medio: 'efectivo', monto: total.toFixed(2), recibido: '' }]
+  })
   const [factura, setFactura] = useState(false)
   // La facturación ARCA es del plan Premium (ADR-048): sin el módulo el backend contesta 403 a `/facturar`, así que
   // el casillero se ofrece apagado y con el motivo en vez de dejar la venta cobrada con un error de factura.
