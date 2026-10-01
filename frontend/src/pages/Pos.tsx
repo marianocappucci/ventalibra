@@ -22,7 +22,7 @@
 //   la familia). Cancelar ese cobro es anular esa venta pendiente -- no hay
 //   "bajar del QR" en el modelo nuevo.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
 import { hora } from '@/lib/fechas'
 import type { CalculoPromociones, ListaPrecio } from 'libra-ui/comercio/tipos'
@@ -41,7 +41,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Ban, LockKeyhole, Plus, Printer, QrCode, Scan, Trash2, User } from 'lucide-react'
+import { Ban, FileText, Hash, LockKeyhole, Plus, Printer, QrCode, Scan, Split, Trash2, User } from 'lucide-react'
+import type { ComponentType } from 'react'
 import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
 import { money } from '@/lib/dinero'
@@ -124,11 +125,32 @@ function etiquetaEnElPos(medio: { id: string; label: string }): string {
   return medio.id === CUENTA_CORRIENTE ? 'Cuenta corriente (fiado)' : medio.label
 }
 
-const ATAJOS = [
-  ['F2', 'cobrar'], ['F3', 'dividir pago'], ['F4', 'quitar línea'],
-  ['F6', 'cantidad'], ['F7', 'cliente'], ['F8', 'imprimir'], ['F9', 'factura'],
-  ['Esc', 'cancelar venta'],
-]
+/** Un botón de la grilla de funciones del POS: la misma acción que su tecla, grande y de color (pedido del humano, 2026-10-01). */
+function BotonFuncion({ tecla, etiqueta, detalle, icono: Icono, color, onClick, disabled, className = '' }: {
+  tecla: string
+  etiqueta: string
+  detalle?: string
+  icono: ComponentType<{ className?: string }>
+  color: string
+  onClick: () => void
+  disabled?: boolean
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative flex h-20 min-w-0 flex-col items-center justify-center gap-1 rounded-lg border-2 px-2 text-sm font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40 ${color} ${className}`}
+    >
+      <span className="absolute right-1.5 top-1 text-[10px] font-bold opacity-70">{tecla}</span>
+      <Icono className="size-6" />
+      <span className="max-w-full truncate leading-none">{etiqueta}</span>
+      {detalle && <span className="max-w-full truncate text-[11px] font-normal leading-none opacity-80">{detalle}</span>}
+    </button>
+  )
+}
+
 
 // La sucursal se elige una vez y queda: en el mostrador no cambia entre
 // ventas, y preguntarla en cada uno era ruido puro.
@@ -275,6 +297,8 @@ export function Pos() {
   const secuenciaSugerenciasRef = useRef(0)
 
   const [cobroOpen, setCobroOpen] = useState(false)
+  // F3 abre el cobro ya dividido en dos medios; F2 lo abre con uno solo.
+  const [cobroDividido, setCobroDividido] = useState(false)
   const [cantidadOpen, setCantidadOpen] = useState(false)
   const escaneoRef = useRef<HTMLInputElement>(null)
 
@@ -288,6 +312,12 @@ export function Pos() {
   const [turno, setTurno] = useState<Shift | null>(null)
   const [turnoCargado, setTurnoCargado] = useState(false)
   const [cierreOpen, setCierreOpen] = useState(false)
+  // Confirmación de «cancelar venta» (Esc o el botón): con muchos ítems cargados, un Esc sin querer no puede tirar todo.
+  const [cancelarOpen, setCancelarOpen] = useState(false)
+  // La última venta cobrada: F8 reimprime su ticket y F9 abre su detalle (donde se factura) sin salir del POS.
+  const [ultimaVentaId, setUltimaVentaId] = useState<number | null>(null)
+  const navigate = useNavigate()
+  const facturacionActiva = useTieneModulo(FACTURACION)
 
   // Si este mostrador puede cobrar por QR, y si eso factura solo. Se pregunta
   // una vez al abrir la pantalla: son dos booleanos de configuración, no algo
@@ -335,7 +365,7 @@ export function Pos() {
 
   useEffect(() => { cargarTurno() }, [cargarTurno])
 
-  const hayDialogo = cobroOpen || cantidadOpen || cierreOpen || clienteOpen || !turno
+  const hayDialogo = cobroOpen || cantidadOpen || cierreOpen || clienteOpen || cancelarOpen || !turno
     || candidatos.length > 0 || variantes.length > 0
 
   const enfocarEscaneo = useCallback(() => {
@@ -630,8 +660,8 @@ export function Pos() {
   // queda (F3 abre buscar, F6 mueve el foco a la barra de direcciones).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'F2') { e.preventDefault(); if (puedeCobrar) setCobroOpen(true) }
-      else if (e.key === 'F3') { e.preventDefault(); if (puedeCobrar) setCobroOpen(true) }
+      if (e.key === 'F2') { e.preventDefault(); if (puedeCobrar) { setCobroDividido(false); setCobroOpen(true) } }
+      else if (e.key === 'F3') { e.preventDefault(); if (puedeCobrar) { setCobroDividido(true); setCobroOpen(true) } }
       else if (e.key === 'F4') {
         e.preventDefault()
         if (marcada !== null && cart.length) quitarLinea(marcada)
@@ -641,9 +671,16 @@ export function Pos() {
       } else if (e.key === 'F7') {
         e.preventDefault()
         setClienteOpen(true)
+      } else if (e.key === 'F8' && !confirmada) {
+        e.preventDefault()
+        if (ultimaVentaId !== null) imprimirTicket(ultimaVentaId)
+      } else if (e.key === 'F9' && !confirmada) {
+        e.preventDefault()
+        // Sólo con el carrito vacío y sin diálogos: ir al detalle de la venta anterior desmonta el POS y perdería la venta en curso.
+        if (ultimaVentaId !== null && facturacionActiva && cart.length === 0 && !hayDialogo) navigate(`/ventas/${ultimaVentaId}`)
       } else if (e.key === 'Escape' && !hayDialogo) {
         e.preventDefault()
-        if (cart.length) cancelarVenta()
+        if (cart.length) setCancelarOpen(true)
       } else if (e.key === 'ArrowUp' && cart.length) {
         e.preventDefault()
         setMarcada((i) => (i === null ? cart.length - 1 : Math.max(0, i - 1)))
@@ -800,15 +837,6 @@ export function Pos() {
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
-      {/* Los atajos van ARRIBA de los productos, no abajo (pedido del humano, 2026-10-01). */}
-      <div className="flex flex-wrap gap-1.5">
-        {ATAJOS.map(([tecla, que]) => (
-          <span key={tecla} className="rounded border px-2 py-0.5 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{tecla}</span> {que}
-          </span>
-        ))}
-      </div>
-
       <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         <Ticket
           items={cart}
@@ -840,27 +868,36 @@ export function Pos() {
             </p>
           </div>
           <Button
-            variant="outline"
-            className="justify-start font-normal"
-            onClick={() => setClienteOpen(true)}
-            disabled={busy}
-          >
-            <User />
-            <span className="truncate">{cliente ? cliente.name : 'Consumidor final'}</span>
-            <span className="ml-auto text-xs opacity-70">F7</span>
-          </Button>
-          <Button
             className="h-16 bg-emerald-600 text-lg font-semibold text-white shadow hover:bg-emerald-700 disabled:bg-emerald-600/40"
             disabled={!puedeCobrar || busy}
-            onClick={() => setCobroOpen(true)}
+            onClick={() => { setCobroDividido(false); setCobroOpen(true) }}
           >
             Cobrar <span className="ml-2 text-xs opacity-70">F2</span>
           </Button>
-          {cart.length > 0 && (
-            <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40" onClick={cancelarVenta} disabled={busy}>
-              <Ban />Cancelar venta <span className="ml-1 text-xs opacity-70">Esc</span>
-            </Button>
-          )}
+          {/* Las teclas de función como botones: la misma acción que el teclado, grandes y de color (dos filas de 3 y «Cancelar venta» a todo el ancho). F2 es el «Cobrar» grande de arriba: no se repite. */}
+          <div className="grid grid-cols-6 gap-2">
+            <BotonFuncion tecla="F3" etiqueta="Dividir pago" icono={Split} className="col-span-2"
+              color="border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 focus-visible:ring-sky-500 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+              disabled={!puedeCobrar || busy} onClick={() => { setCobroDividido(true); setCobroOpen(true) }} />
+            <BotonFuncion tecla="F4" etiqueta="Quitar línea" icono={Trash2} className="col-span-2"
+              color="border-red-300 bg-red-50 text-red-800 hover:bg-red-100 focus-visible:ring-red-500 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+              disabled={marcada === null || cart.length === 0 || busy} onClick={() => marcada !== null && quitarLinea(marcada)} />
+            <BotonFuncion tecla="F6" etiqueta="Cantidad" icono={Hash} className="col-span-2"
+              color="border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 focus-visible:ring-amber-500 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+              disabled={marcada === null || cart.length === 0 || busy} onClick={() => setCantidadOpen(true)} />
+            <BotonFuncion tecla="F7" etiqueta="Cliente" detalle={cliente ? cliente.name : 'Consumidor final'} icono={User} className="col-span-2"
+              color="border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100 focus-visible:ring-violet-500 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
+              disabled={busy} onClick={() => setClienteOpen(true)} />
+            <BotonFuncion tecla="F8" etiqueta="Imprimir" detalle="última venta" icono={Printer} className="col-span-2"
+              color="border-cyan-300 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 focus-visible:ring-cyan-500 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300"
+              disabled={ultimaVentaId === null} onClick={() => ultimaVentaId !== null && imprimirTicket(ultimaVentaId)} />
+            <BotonFuncion tecla="F9" etiqueta="Factura" detalle="última venta" icono={FileText} className="col-span-2"
+              color="border-teal-300 bg-teal-50 text-teal-800 hover:bg-teal-100 focus-visible:ring-teal-500 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300"
+              disabled={ultimaVentaId === null || !facturacionActiva || cart.length > 0} onClick={() => ultimaVentaId !== null && navigate(`/ventas/${ultimaVentaId}`)} />
+            <BotonFuncion tecla="Esc" etiqueta="Cancelar venta" icono={Ban} className="col-span-6"
+              color="border-rose-400 bg-white text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-500 dark:border-rose-800 dark:bg-transparent dark:text-rose-300"
+              disabled={cart.length === 0 || busy} onClick={() => setCancelarOpen(true)} />
+          </div>
           {locations.length === 0 && (
             <p className="text-xs text-muted-foreground">
               No hay sucursales creadas todavía: sin una, no se puede cobrar.
@@ -868,6 +905,15 @@ export function Pos() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={cancelarOpen}
+        onOpenChange={(abierto) => { setCancelarOpen(abierto); if (!abierto) enfocarEscaneo() }}
+        title="¿Cancelar la venta?"
+        description={`Vas a descartar ${cart.length} producto${cart.length === 1 ? '' : 's'} por $${money(totalConPromos)}. Esta acción no se puede deshacer.`}
+        confirmLabel="Sí, cancelar venta"
+        onConfirm={cancelarVenta}
+      />
 
       <ElegirCandidato
         candidatos={candidatos}
@@ -907,6 +953,7 @@ export function Pos() {
 
       {cobroOpen && (
         <Cobro
+          dividir={cobroDividido}
           cart={cart}
           total={totalConPromos}
           depositoId={depositoDeVenta}
@@ -920,6 +967,7 @@ export function Pos() {
             setMarcada(null)
             setFacturaError(errorFactura)
             setAvisoQr(aviso ?? null)
+            setUltimaVentaId(venta.id)
             setConfirmada(venta)
           }}
         />
@@ -1172,12 +1220,14 @@ type QrEstado = 'idle' | 'creando' | 'esperando' | 'acreditado'
  *  - "Cobrar con QR" (`cobrarConQr`): registra con `cobrar_con_qr: true`
  *    (nace `pendiente`, D2), pone el monto en el QR de la caja y pollea hasta
  *    que MercadoPago avisa. */
-function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente, onRegistrado }: {
+function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar, onPedirCliente, onRegistrado }: {
   cart: CartLine[]
   total: number
   depositoId: number | null
   cliente: Cliente | null
   mp: MpDisponible | null
+  /** Arranca con el pago ya dividido en dos medios (la mitad en efectivo y el resto en tarjeta; se editan): es el F3. */
+  dividir?: boolean
   onCerrar: () => void
   onPedirCliente: () => void
   /** `aviso` es sólo para el caso de `verificarYAnular`: el pago se acreditó
@@ -1186,11 +1236,18 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   onRegistrado: (venta: Venta, facturaError: string | null, aviso?: string | null) => void
 }) {
   const { medios } = useMediosPago()
-  const [pagos, setPagos] = useState<PagoForm[]>([
+  const [pagos, setPagos] = useState<PagoForm[]>(() => {
+    if (dividir) {
+      const mitad = Math.floor((total / 2) * 100) / 100
+      return [
+        { medio: 'efectivo', monto: mitad.toFixed(2), recibido: '' },
+        { medio: 'tarjeta_debito', monto: Math.max(0, total - mitad).toFixed(2), recibido: '' },
+      ]
+    }
     // Con dos decimales y no `String(total)`: un total de pesada como 125.125
     // se leería con `parseMonto` como 125.125 pesos con puntos de miles.
-    { medio: 'efectivo', monto: total.toFixed(2), recibido: '' },
-  ])
+    return [{ medio: 'efectivo', monto: total.toFixed(2), recibido: '' }]
+  })
   const [factura, setFactura] = useState(false)
   // La facturación ARCA es del plan Premium (ADR-048): sin el módulo el backend contesta 403 a `/facturar`, así que
   // el casillero se ofrece apagado y con el motivo en vez de dejar la venta cobrada con un error de factura.
