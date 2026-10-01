@@ -21,7 +21,7 @@ from ventas_helpers import abrir_turno, crear_sucursal, deposito_default, regist
 COSTO = "731.42"
 PRECIO = "1500.00"
 
-ROLES_SIN_ACCESO = ("staff", "vendedor", "cajero", "deposito")
+ROLES_SIN_ACCESO = ("staff", "vendedor", "cajero")
 RUTAS = ("/api/reportes/reposicion", "/api/reportes/reposicion/export")
 
 
@@ -147,11 +147,20 @@ def test_export_csv_bajo_el_mismo_prefijo(gerencia, escenario):
 
 
 @pytest.mark.parametrize("rol", ROLES_SIN_ACCESO)
-def test_staff_vendedor_cajero_y_deposito_no_la_ven(admin_client, escenario, rol):
+def test_staff_vendedor_y_cajero_no_la_ven(admin_client, escenario, rol):
     cliente = _entrar(admin_client, rol)
     for ruta in RUTAS:
         r = cliente.get(ruta)
         assert r.status_code == 403 and r.json()["detail"] == "forbidden", (rol, ruta, r.text)
+
+
+def test_el_deposito_la_ve_sin_costos(admin_client, escenario):
+    """ADR-054: reponer es trabajo del depósito. La respuesta no trae costos ni importes de compra."""
+    cliente = _entrar(admin_client, "deposito")
+    for ruta in RUTAS:
+        r = cliente.get(ruta)
+        assert r.status_code == 200, (ruta, r.text)
+        assert "costo" not in r.text.lower(), ruta
 
 
 def test_un_anonimo_no_la_ve(admin_client, escenario):

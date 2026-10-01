@@ -15,6 +15,7 @@ endpoint es opt-in porque no todo consumidor tiene landing; **sin este flag el
 import logging
 
 from libraauth.session_auth import build_json_api_auth_router
+from libracore import config_manager
 
 from plans import ADDONS, TODOS_LOS_MODULOS
 
@@ -45,6 +46,11 @@ def _extras(request, user) -> dict:
     ofreciendo todo (ver `frontend/src/lib/modulos.ts`). Una lista vacia le esconderia a un cliente Premium la
     facturacion que pago porque una consulta fallo un instante."""
     extras: dict = {"capacidades": capacidades_de((user or {}).get("role"))}
+    # El nombre del negocio, para el subtítulo de la barra lateral (igual que Contalibra, Restolibra y LibraDesk). Es la config de
+    # LibraCore que edita Configuración; vacío = el campo no viaja y la SPA no dibuja subtítulo.
+    nombre = (config_manager.load().get("empresa_nombre") or "").strip()
+    if nombre:
+        extras["empresa_nombre"] = nombre
     try:
         modulos = request.app.state.modules
         extras["modulos"] = sorted(m for m in TODOS_LOS_MODULOS | ADDONS if modulos.is_enabled(m))
