@@ -98,6 +98,13 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "stock.ajustar": frozenset({_E, _D, _S}),
     # Mover mercadería entre depósitos.
     "stock.transferir": frozenset({_E, _D, _S}),
+    # Las pantallas de gestión de Productos, Stock y Proveedores (ADR-054). Son SOLO de la SPA: el cajero necesita LEER el catálogo
+    # y el stock (el POS busca productos), pero su menú es el mostrador y nada más, así que la pantalla no se le ofrece ni se le
+    # abre por URL. Lo que corta de verdad sigue siendo `catalogo.ver` / `stock.ver` / `compras.ver` en cada endpoint.
+    "catalogo.pantalla": frozenset({_E, _V, _D, _S}),
+    "stock.pantalla": frozenset({_E, _V, _D, _S}),
+    # La pantalla de Proveedores: gestión de compras. El depósito lee las órdenes (`compras.ver`) pero no administra proveedores.
+    "proveedores.pantalla": frozenset({_E, _S}),
     # ── Precios ──
     # Leer las listas de precio y el precio de una línea (el POS se lo pide a la lista predeterminada).
     "precios.consultar": frozenset({_E, _V, _C, _S}),
@@ -119,6 +126,8 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "cierre_diario": frozenset({_E, _S}),
     # ── Clientes y cuenta corriente ──
     "clientes.ver": frozenset({_E, _V, _C, _S}),
+    # La pantalla de Clientes (SOLO de la SPA, ADR-054): el cajero lee y da de alta clientes desde el POS, no entra a la ficha.
+    "clientes.pantalla": frozenset({_E, _V, _S}),
     # Alta de un cliente (y la consulta de CUIT en ARCA que la acompaña): el cajero da de alta en el mostrador.
     "clientes.alta": frozenset({_E, _V, _C, _S}),
     # Editar, activar/desactivar, alias de facturación y facturar solo (todo lo que no es el alta).
@@ -153,9 +162,10 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "reportes": frozenset({_E}),
     # Margen y rotación: costo y margen son de quien maneja el negocio, no del mostrador.
     "margen": frozenset({_E}),
-    # Reposición sugerida: qué pedir y cuánto (ADR-051). Sólo lectura y sin costos. Como `margen`: admin y encargado; NO el staff
-    # heredado (es una pantalla nueva, no algo que ya tuviera) y NO el depósito (no ve compras ni plata).
-    "reposicion.ver": frozenset({_E}),
+    # Reposición sugerida: qué pedir y cuánto (ADR-051). Sólo lectura y sin costos. Admin, encargado y depósito (decisión del
+    # humano, 2026-10-01, ADR-054: reponer es trabajo del depósito y la pantalla no muestra plata); NO el staff heredado (es una
+    # pantalla nueva, no algo que ya tuviera).
+    "reposicion.ver": frozenset({_E, _D}),
     # ── Vencimientos y lotes (ADR-052) ──
     # Ver qué lotes vencen, qué stock no tiene lote y los lotes de un producto (`/api/vencimientos`, sólo lectura, sin costos). Es de
     # quien maneja la mercadería: el encargado y el depósito. NO el staff heredado (pantalla nueva: una capacidad nueva no se abre por
@@ -172,7 +182,7 @@ _ROLES_DE: dict[str, frozenset[str]] = {
 
 #: Capacidades que sólo mira la SPA: ningún endpoint las exige. `requiere()` no las usa y el test que revisa
 #: que toda capacidad tenga una guarda las exceptúa por acá.
-SOLO_SPA: frozenset[str] = frozenset({"etiquetas"})
+SOLO_SPA: frozenset[str] = frozenset({"etiquetas", "catalogo.pantalla", "clientes.pantalla", "stock.pantalla", "proveedores.pantalla"})
 
 CAPACIDADES: tuple[str, ...] = tuple(_ROLES_DE)
 

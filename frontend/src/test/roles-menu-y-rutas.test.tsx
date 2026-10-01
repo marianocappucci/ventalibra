@@ -19,6 +19,7 @@ import { CAPACIDADES, inicioDe, puede } from '../lib/permisos'
 // Las pantallas donde caen los roles: se reemplazan por una marca, porque lo que se prueba es a dónde llega cada uno y
 // no lo que la pantalla hace (eso lo cubren los tests de cada una).
 vi.mock('../pages/Pos', () => ({ Pos: () => <div>PANTALLA-POS</div> }))
+vi.mock('../pages/Dashboard', () => ({ Dashboard: () => <div>PANTALLA-DASHBOARD</div> }))
 vi.mock('../pages/Stock', () => ({ Stock: () => <div>PANTALLA-STOCK</div> }))
 vi.mock('../pages/Reportes', () => ({ Reportes: () => <div>PANTALLA-REPORTES</div> }))
 vi.mock('../pages/Reposicion', () => ({ Reposicion: () => <div>PANTALLA-REPOSICION</div> }))
@@ -30,7 +31,7 @@ type Rol = keyof typeof CAPACIDADES_POR_ROL
 /** Todas las entradas del menú, tal como se leen en la barra lateral. */
 const MENU = [
   'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
-  'Sucursales', 'Listas de precio', 'Actualización de precios', 'Promociones', 'Etiquetas', 'Stock', 'Transferencias',
+  'Sucursales y depósitos', 'Listas de precio', 'Actualización de precios', 'Promociones', 'Etiquetas', 'Stock', 'Transferencias',
   'Cajas', 'Tesorería', 'Turnos', 'Cierre diario', 'Dashboard', 'Reportes', 'Margen y rotación', 'Reposición sugerida', 'Vencimientos y lotes', 'Libros IVA',
   'Caja por medio', 'Usuarios', 'Logs', 'Configuración',
 ]
@@ -42,12 +43,13 @@ const MENU_ESPERADO: Record<Rol, string[]> = {
   admin: TODO,
   encargado: TODO.filter((m) => !['Cajas', 'Usuarios', 'Logs', 'Configuración'].includes(m)),
   vendedor: ['POS (Caja)', 'Ventas', 'Productos', 'Clientes', 'Cuentas corrientes', 'Stock', 'Turnos'],
-  cajero: ['POS (Caja)', 'Ventas', 'Productos', 'Clientes', 'Stock', 'Turnos'],
-  deposito: ['Productos', 'Compras', 'Proveedores', 'Sucursales', 'Stock', 'Vencimientos y lotes', 'Transferencias'],
+  // ADR-054: el mostrador y nada más (POS, ventas para reimprimir, turnos para abrir y cerrar la caja).
+  cajero: ['POS (Caja)', 'Ventas', 'Turnos'],
+  deposito: ['Productos', 'Compras', 'Sucursales y depósitos', 'Stock', 'Vencimientos y lotes', 'Transferencias', 'Reposición sugerida'],
   // El heredado ve lo que veía antes de los roles: todo lo que no era `adminOnly`.
   staff: [
     'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
-    'Sucursales', 'Stock', 'Transferencias', 'Turnos', 'Cierre diario',
+    'Sucursales y depósitos', 'Stock', 'Transferencias', 'Turnos', 'Cierre diario',
   ],
 }
 
@@ -92,7 +94,7 @@ describe('el menú de cada rol', () => {
   it.each(Object.keys(MENU_ESPERADO) as Rol[])('%s ve lo suyo y nada más', async (rol) => {
     // Una ruta que todos los roles con menú alcanzan tiene una marca conocida; se espera a que cargue la sesión.
     entrar(usuarioDe(rol), inicioDe(usuarioDe(rol)) ?? '/pos')
-    await screen.findByText(/PANTALLA-(POS|STOCK)/)
+    await screen.findByText(/PANTALLA-(POS|STOCK|DASHBOARD)/)
     expect(menuVisible().sort()).toEqual([...MENU_ESPERADO[rol]].sort())
   })
 
@@ -113,28 +115,36 @@ describe('el menú de cada rol', () => {
 describe('el ruteo por rol', () => {
   async function iraDe(rol: Rol, ruta: string) {
     entrar(usuarioDe(rol), ruta)
-    await screen.findByText(/PANTALLA-(POS|STOCK)/, undefined, { timeout: 3000 }).catch(() => undefined)
+    await screen.findByText(/PANTALLA-(POS|STOCK|DASHBOARD)/, undefined, { timeout: 3000 }).catch(() => undefined)
     return screen.getByTestId('ruta').textContent
   }
 
   it.each([
     ['cajero', '/reportes'], ['cajero', '/reposicion'], ['cajero', '/vencimientos'], ['cajero', '/usuarios'], ['cajero', '/cierre-diario'], ['cajero', '/configuracion'],
     ['vendedor', '/margen'], ['vendedor', '/reposicion'], ['vendedor', '/vencimientos'], ['vendedor', '/tesoreria'], ['vendedor', '/logs'], ['vendedor', '/'],
-    ['encargado', '/usuarios'], ['encargado', '/configuracion'], ['encargado', '/logs'], ['encargado', '/cajas'],
+    // El cajero no tiene las pantallas de gestión aunque el backend le deje leer el catálogo, el stock y los clientes.
+    ['cajero', '/productos'], ['cajero', '/stock'], ['cajero', '/clientes'], ['cajero', '/proveedores'],
   ] as [Rol, string][])('%s en %s vuelve al POS', async (rol, ruta) => {
     expect(await iraDe(rol, ruta)).toBe('/pos')
   })
 
   it.each([
+    ['encargado', '/usuarios'], ['encargado', '/configuracion'], ['encargado', '/logs'], ['encargado', '/cajas'], ['admin', '/'],
+    ['encargado', '/'],
+  ] as [Rol, string][])('%s en %s va al dashboard', async (rol, ruta) => {
+    expect(await iraDe(rol, ruta)).toBe('/dashboard')
+  })
+
+  it.each([
     ['deposito', '/pos'], ['deposito', '/ventas'], ['deposito', '/reportes'], ['deposito', '/clientes'],
-    ['deposito', '/turnos'], ['deposito', '/reposicion'], ['deposito', '/'], ['deposito', '/una-ruta-que-no-existe'],
+    ['deposito', '/turnos'], ['deposito', '/proveedores'], ['deposito', '/'], ['deposito', '/una-ruta-que-no-existe'],
   ] as [Rol, string][])('%s en %s va al stock', async (rol, ruta) => {
     expect(await iraDe(rol, ruta)).toBe('/stock')
   })
 
   it.each([
     ['deposito', '/stock'], ['cajero', '/pos'], ['vendedor', '/stock'], ['encargado', '/reportes'], ['admin', '/usuarios'],
-    ['encargado', '/reposicion'], ['admin', '/reposicion'],
+    ['encargado', '/reposicion'], ['admin', '/reposicion'], ['deposito', '/reposicion'],
     // Las tres capacidades de vencimientos: el depósito llega a la pantalla (que ve y mueve, pero no marca).
     ['encargado', '/vencimientos'], ['admin', '/vencimientos'], ['deposito', '/vencimientos'],
   ] as [Rol, string][])('%s entra a %s sin que lo muevan', async (rol, ruta) => {
@@ -182,7 +192,8 @@ describe('permisos.ts', () => {
   })
 
   it('el inicio de cada rol', () => {
-    expect(inicioDe(usuarioDe('admin'))).toBe('/pos')
+    expect(inicioDe(usuarioDe('admin'))).toBe('/dashboard')
+    expect(inicioDe(usuarioDe('encargado'))).toBe('/dashboard')
     expect(inicioDe(usuarioDe('vendedor'))).toBe('/pos')
     expect(inicioDe(usuarioDe('cajero'))).toBe('/pos')
     expect(inicioDe(usuarioDe('deposito'))).toBe('/stock')
