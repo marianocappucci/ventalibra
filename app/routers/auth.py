@@ -12,6 +12,7 @@ stateless de credenciales que usa el login de `/docs/` de la landing
 endpoint es opt-in porque no todo consumidor tiene landing; **sin este flag el
 `/docs/` de la landing deja de poder validar credenciales**.
 """
+import json
 import logging
 
 from libraauth.session_auth import build_json_api_auth_router
@@ -47,8 +48,14 @@ def _extras(request, user) -> dict:
     facturacion que pago porque una consulta fallo un instante."""
     extras: dict = {"capacidades": capacidades_de((user or {}).get("role"))}
     # El nombre del negocio, para el subtítulo de la barra lateral (igual que Contalibra, Restolibra y LibraDesk). Es la config de
-    # LibraCore que edita Configuración; vacío = el campo no viaja y la SPA no dibuja subtítulo.
-    nombre = (config_manager.load().get("empresa_nombre") or "").strip()
+    # LibraCore que edita Configuración; vacío = el campo no viaja y la SPA no dibuja subtítulo. Se lee el JSON a mano y NO con
+    # `config_manager.load()`: ése resuelve además los secretos contra la base en cada login y cada `/auth/me`, y haría fallar la
+    # autenticación si el almacén de secretos tiene un error, para leer un campo que no es secreto (hallazgo de Codex).
+    try:
+        with open(config_manager.CONFIG_PATH, encoding="utf-8") as f:
+            nombre = (json.load(f).get("empresa_nombre") or "").strip()
+    except Exception:
+        nombre = ""
     if nombre:
         extras["empresa_nombre"] = nombre
     try:
