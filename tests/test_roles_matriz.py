@@ -109,6 +109,8 @@ GET    /ventas/{sale_id}/devuelto                                       MOSTRADO
 GET    /api/ventas/medios-pago                                          MOSTRADOR
 GET    /api/ventas                                                      MOSTRADOR
 POST   /api/ventas                                                      MOSTRADOR
+# La consulta previa del POS (lectura pura: de qué lote saldría cada línea y los avisos de vencimiento, ADR-053): es del POS, `ventas.pos`.
+POST   /api/ventas/plan-salida                                          MOSTRADOR
 GET    /api/ventas/{vid}                                                MOSTRADOR
 POST   /api/ventas/{vid}/anular                                         MOSTRADOR
 POST   /api/ventas/{vid}/devolver                                       MOSTRADOR
@@ -293,13 +295,14 @@ GET    /api/reportes/margen/export/periodos                             GERENCIA
 GET    /api/reportes/reposicion                                         GERENCIA
 GET    /api/reportes/reposicion/export                                  GERENCIA
 
-# Vencimientos y lotes: ver `vencimientos.ver` y mover (asignar, dar de baja) `vencimientos.mover`, el encargado y el depósito; marcar
+# Vencimientos y lotes: ver `vencimientos.ver` y mover (asignar, cargar con lote, dar de baja) `vencimientos.mover`, el encargado y el depósito; marcar
 # un producto `vencimientos.marcar`, sólo el encargado. NO el staff heredado (pantalla nueva), ni el mostrador.
 GET    /api/vencimientos                                                GERENCIA_Y_DEPOSITO
 GET    /api/vencimientos/export                                         GERENCIA_Y_DEPOSITO
 GET    /api/vencimientos/productos/{producto_id}/lotes                  GERENCIA_Y_DEPOSITO
 PUT    /api/vencimientos/productos/{producto_id}                        GERENCIA
 POST   /api/vencimientos/asignar                                        GERENCIA_Y_DEPOSITO
+POST   /api/vencimientos/entrada                                        GERENCIA_Y_DEPOSITO
 POST   /api/vencimientos/merma                                          GERENCIA_Y_DEPOSITO
 
 # Balanza, ticket, empresa, backup y resguardo: `config`
@@ -624,8 +627,8 @@ STAFF_PUEDE = [
     ("GET", "/catalog/units"), ("POST", "/catalog/units"), ("GET", "/api/productos"), ("POST", "/api/productos"),
     ("GET", "/api/stock"), ("POST", "/api/stock/999999/ajuste"), ("POST", "/api/depositos/transferir"),
     ("GET", "/api/sucursales"), ("GET", "/api/cajas"), ("POST", "/api/turnos/abrir"), ("GET", "/api/turnos"),
-    ("POST", "/api/ventas"), ("POST", "/api/ventas/999999/anular"), ("POST", "/api/ventas/999999/devolver"),
-    ("POST", "/api/promociones/calcular"), ("GET", "/api/listas-precio"), ("GET", "/api/listas-precio/999999/precio"),
+    ("POST", "/api/ventas"), ("POST", "/api/ventas/plan-salida"), ("POST", "/api/ventas/999999/anular"),
+    ("POST", "/api/ventas/999999/devolver"), ("POST", "/api/promociones/calcular"), ("GET", "/api/listas-precio"), ("GET", "/api/listas-precio/999999/precio"),
     ("GET", "/api/proveedores"), ("POST", "/api/proveedores"), ("POST", "/api/purchase-orders"),
     ("POST", "/api/purchase-receipts"), ("GET", "/api/clientes"), ("PUT", "/api/clientes/999999"),
     ("PUT", "/api/clientes/999999/lista-precio"), ("GET", "/api/cuenta-corriente"),
@@ -639,7 +642,8 @@ STAFF_NO_PUEDE = [
     ("POST", "/api/promociones"), ("POST", "/api/actualizacion-masiva/precios/aplicar"),
     ("GET", "/api/tesoreria"), ("GET", "/api/libros-iva"), ("GET", "/api/dashboard"), ("GET", "/api/reportes"),
     ("GET", "/api/reportes/margen"), ("GET", "/api/reportes/reposicion"), ("GET", "/api/vencimientos"),
-    ("PUT", "/api/vencimientos/productos/999999"), ("POST", "/api/vencimientos/asignar"), ("POST", "/api/vencimientos/merma"),
+    ("PUT", "/api/vencimientos/productos/999999"), ("POST", "/api/vencimientos/asignar"), ("POST", "/api/vencimientos/entrada"),
+    ("POST", "/api/vencimientos/merma"),
     ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
     ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/logs"), ("POST", "/api/cajas"),
     ("POST", "/api/sucursales"), ("POST", "/api/depositos"), ("POST", "/api/cierre-diario/999999/reabrir"),

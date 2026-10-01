@@ -46,6 +46,8 @@ import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
 import { money } from '@/lib/dinero'
 import { EmitirFactura } from '../components/emitir-factura'
+import { DialogoAvisosDeVencimiento } from '../components/avisos-de-vencimiento'
+import { consultarAvisosDeSalida, describirAviso, type AvisoDeVencimiento } from '../lib/avisos-de-vencimiento'
 import { FACTURACION, useTieneModulo } from '../lib/modulos'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
@@ -1201,6 +1203,12 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
   // procesarse, sin esperar al próximo render.
   const enviandoRef = useRef(false)
 
+  // «¿Vender igual?» (ADR-053): los avisos de lote vencido o por vencer que dejó el plan de salida, mientras el cajero decide. La
+  // venta espera la respuesta (`resolver`), con el guardia de arriba tomado, así que un doble clic no registra dos.
+  const [avisosPendientes, setAvisosPendientes] = useState<
+    { avisos: AvisoDeVencimiento[]; resolver: (seguir: boolean) => void } | null
+  >(null)
+
   const [qrEstado, setQrEstado] = useState<QrEstado>('idle')
   const [qrError, setQrError] = useState<string | null>(null)
   const [confirmarCancelarQr, setConfirmarCancelarQr] = useState(false)
@@ -1263,6 +1271,15 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
     }))
   }
 
+  /** Antes de registrar la venta: si el plan de salida dice que el carrito lleva mercadería de un lote vencido o por vencer,
+   *  pregunta «¿Vender igual?». `true` = seguir. **Opt-in y sin riesgo:** sin avisos, con el endpoint caído, inexistente (404/405) o
+   *  lento (más de ~1,5 s) no muestra nada y devuelve `true`: se cobra como siempre (`consultarAvisosDeSalida` nunca rechaza). */
+  async function confirmarAvisosDeVencimiento(): Promise<boolean> {
+    const avisos = await consultarAvisosDeSalida(cart, depositoId)
+    if (avisos.length === 0) return true
+    return new Promise<boolean>((resolver) => setAvisosPendientes({ avisos, resolver }))
+  }
+
   /** Si se pidió factura y todavía no la tiene, la pide DESPUÉS de
    *  registrada (nunca antes ni en el mismo POST): si falla, la venta queda
    *  igual -- el error se muestra y el detalle de la venta tiene el botón
@@ -1288,6 +1305,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
     setRegistrando(true)
     setError(null)
     try {
+      if (!(await confirmarAvisosDeVencimiento())) return  // «Volver»: nada se registró; el `finally` suelta el guardia
       const pagosPayload = pagos
         .map((p, i) => ({ p, monto: montos[i], recibido: recibidos[i] }))
         .filter(({ monto }) => monto !== null && monto > 0)
@@ -1465,6 +1483,10 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
       setQrError(null)
       setError(null)
       setQrEstado('creando')
+      if (!(await confirmarAvisosDeVencimiento())) {  // «Volver»: nada se registró
+        setQrEstado('idle')
+        return
+      }
       let venta: Venta
       try {
         venta = await api.post<Venta>('/api/ventas', {
@@ -1708,6 +1730,17 @@ function Cobro({ cart, total, depositoId, cliente, mp, onCerrar, onPedirCliente,
         </form>
       </DialogContent>
 
+      {avisosPendientes && (
+        <DialogoAvisosDeVencimiento
+          avisos={avisosPendientes.avisos}
+          onDecidir={(seguir) => {
+            const { resolver } = avisosPendientes
+            setAvisosPendientes(null)
+            resolver(seguir)
+          }}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmarCancelarQr}
         onOpenChange={setConfirmarCancelarQr}
@@ -1738,6 +1771,12 @@ function VentaCobrada({ venta, facturaError, aviso, onNueva }: {
     if (p.recibido == null || p.recibido <= p.monto) return acc
     return acc + (p.recibido - p.monto)
   }, 0)
+  // Los avisos de vencimiento (ADR-053): `POST /api/ventas` y `GET /api/ventas/{id}` traen `avisos` sólo si hay alguno y el backend
+  // tiene la opción; sin ella la clave no existe y no se muestra nada. Informan: un producto vencido se vende.
+  const avisosDeLote = (venta as Venta & { avisos?: unknown }).avisos
+  const avisosDeVencimiento = Array.isArray(avisosDeLote)
+    ? (avisosDeLote as AvisoDeVencimiento[]).filter((a) => a && typeof a.nombre === 'string')
+    : []
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1790,6 +1829,15 @@ function VentaCobrada({ venta, facturaError, aviso, onNueva }: {
       {aviso && (
         <div className="rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
           <p>{aviso}</p>
+        </div>
+      )}
+
+      {avisosDeVencimiento.length > 0 && (
+        <div role="note" aria-label="Avisos de vencimiento" className="rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+          <p className="font-medium">Esta venta incluye mercadería con vencimiento a tener en cuenta:</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {avisosDeVencimiento.map((a, i) => <li key={i}>{describirAviso(a)}</li>)}
+          </ul>
         </div>
       )}
 
