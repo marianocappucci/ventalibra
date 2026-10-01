@@ -303,8 +303,8 @@ def requiere_segun(elegir: Callable[[Request], str], posibles: Iterable[str]) ->
 def requiere_o_servicio(capacidad: str) -> Guarda:
     """`requiere` o el token de servicio del backoffice de la suite (libraauth v0.7.0).
 
-    Es lo que monta el router de usuarios y NADA más: el backoffice no tiene por qué tocar el resto del
-    dominio. El token se chequea primero y a propósito, como en `json_api_require_admin_o_servicio`: una
+    Es lo que montan el router de usuarios y la ESCRITURA del tema de la suite (`PUT /api/tema`) y NADA más: el
+    backoffice no tiene por qué tocar el resto del dominio. El token se chequea primero y a propósito, como en `json_api_require_admin_o_servicio`: una
     request del backoffice no trae cookie de sesión. Sin `LIBRA_SERVICE_TOKEN` en el entorno se comporta
     igual que `requiere`.
     """

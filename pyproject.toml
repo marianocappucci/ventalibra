@@ -223,7 +223,7 @@ dependencies = [
     # activa `conConsultaCuit` en Clientes (fase 14, ADR-040).
     # v1.115.0 -> v1.116.0 (2026-09-29): `generar_ticket_venta` acepta `promociones` (ADR-012 de libracore) y el
     # ticket imprime cada promoción aplicada; sin la clave el papel sale igual. Sin migración.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.117.0",
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.118.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
