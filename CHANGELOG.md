@@ -5,6 +5,16 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Vencimientos y lotes, etapa 2: la venta descuenta del lote que vence primero, la carga de vencimientos y los avisos en el POS** (2026-09-30, ADR-053).
+  Con `libracommerce` v0.30.0 y `libra-ui` v0.92.0: en un producto marcado «vence», la **venta, la anulación, la devolución, la transferencia, el ajuste y las
+  salidas manuales siguen el lote** (vence primero, sale primero; el stock «sin lote» sale último; un lote vencido se vende con aviso). La devolución de un
+  perecedero va a merma (no vuelve al estante). **Cargar vencimientos:** el producto tiene un interruptor «Vence» (lo marca el encargado), al recibir una compra
+  se carga lote y vencimiento por línea y la pantalla de Vencimientos tiene «Cargar stock con lote». **POS:** antes de cobrar avisa si el carrito lleva mercadería
+  de un lote vencido o por vencer y pregunta «¿Vender igual?» (no bloquea: si la consulta falla o tarda más de 1,5 s se cobra igual), y la venta cobrada muestra esos avisos.
+  **La baja de un lote (merma) vuelve a estar habilitada** (encargado y depósito). 🔴 Límite: lo vendido **antes** de esta versión sigue «sin lote»; un producto con saldo
+  «sin lote» negativo heredado no deja dar de baja sus lotes (409) hasta conciliar con el conteo físico. La pantalla de Vencimientos todavía muestra el aviso fijo de que el saldo
+  por lote puede ser mayor al real (ya no es cierto para lo nuevo; pedido al kit). Sin migración nueva. Requiere `libracommerce` v0.30.0 y `libra-ui` v0.92.0 (pines subidos).
+
 - **Vencimientos y lotes: qué vence, qué lote sacar y qué stock no tiene fecha** (2026-09-30, ADR-052). Pantalla nueva `/vencimientos` (menú
   «Vencimientos y lotes»): los lotes que vencen en los próximos días (15 por defecto) o ya vencieron, con los días que faltan, y el stock
   «sin lote» de los productos marcados; filtra por sucursal y categoría y se exporta a CSV. Se puede **ponerle lote y vencimiento** al stock que

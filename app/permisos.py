@@ -161,10 +161,12 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     # quien maneja la mercadería: el encargado y el depósito. NO el staff heredado (pantalla nueva: una capacidad nueva no se abre por
     # herencia) ni el mostrador.
     "vencimientos.ver": frozenset({_E, _D}),
-    # Marcar qué productos vencen (`PUT /api/vencimientos/productos/{id}`): decide qué productos entran al control. Sólo el encargado.
+    # Marcar qué productos vencen (`PUT /api/vencimientos/productos/{id}` y la marca `vence` del alta y la edición de un producto,
+    # `OpcionesCatalogo.autorizar_marcar_vence`): decide qué productos entran al control. Sólo el encargado.
     "vencimientos.marcar": frozenset({_E}),
-    # Mover el ledger por lote: ponerle lote y vencimiento a stock que no lo tiene (`POST /asignar`) y dar de baja un lote por merma
-    # (`POST /merma`). Como `stock.ajustar`, es de quien maneja la mercadería: el encargado y el depósito; no lleva plata.
+    # Mover el ledger por lote: ponerle lote y vencimiento a stock que no lo tiene (`POST /asignar`), cargar stock nuevo con lote
+    # (`POST /entrada`) y dar de baja un lote por merma (`POST /merma`, habilitada desde A-4: ADR-053). Como `stock.ajustar`, es de quien
+    # maneja la mercadería: el encargado y el depósito; no lleva plata.
     "vencimientos.mover": frozenset({_E, _D}),
 }
 

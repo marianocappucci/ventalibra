@@ -87,7 +87,12 @@ dependencies = [
     # v0.29.0 -> v0.29.1 (2026-09-30, revisión de Codex sobre el montaje): los CSV de margen, reposición y vencimientos neutralizan
     # fórmulas (`csv_seguro`) y la merma de un lote mira también el stock total y las salidas sin conciliar. Sin migración. La merma
     # sigue siendo de mejor esfuerzo hasta A-4: VentaLibra NO expone la baja de un lote (ADR-052).
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.29.1",
+    # v0.29.1 -> v0.30.0 (2026-09-30): A-4 completo en el motor (ADR-018 del motor): la venta, la anulación, la devolución, la
+    # transferencia, el ajuste y las salidas manuales de un producto marcado «vence» siguen el lote (FEFO); la carga de
+    # vencimientos (`POST /api/vencimientos/entrada`, la marca `vence` en el producto con `OpcionesCatalogo.con_vencimientos`,
+    # `OpcionesStock.con_lotes`); y los avisos opt-in de la venta (`OpcionesVentas.con_avisos_de_vencimiento`, `POST
+    # /api/ventas/plan-salida`). Sin migración nueva (sigue la 0002). ADR-053 de este producto.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.30.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

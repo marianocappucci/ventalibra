@@ -13,15 +13,15 @@ recepción con tres lotes (uno vencido hace 3 días con 4 unidades, uno que venc
 8 unidades sin lote por un ajuste de entrada. Con la ventana de 15 días el reporte trae el vencido (4) y el que vence en 5 días (10); el
 de 60 días entra sólo con `dias=90`; y las 8 sin lote salen en `sin_lote` como `sin_fecha`.
 
-🔴 **Lo que este archivo fija y va a cambiar en A-4 (FEFO en ventas):**
-- Hoy una venta de un producto marcado descuenta del stock «sin lote», no de un lote
-  (`test_hasta_a4_una_venta_de_un_producto_marcado_descuenta_del_sin_lote`). Cuando las ventas descuenten por lote, ese test tiene que
-  cambiar a propósito.
-- 🔴 **La baja de un lote (`POST /api/vencimientos/merma`) está DESHABILITADA hasta A-4** (`app/vencimientos_guarda.py`, ADR-052): 409 para
-  todos los roles, admin incluido. Los tests de ese 409 están juntos en el bloque «Deshabilitada hasta A-4» y se saltean solos si se
-  pone `MERMA_DESHABILITADA = False`. El resto del flujo de merma del motor (saldo, idempotencia, `created_by`, costos, plan) sigue
-  probado con la fixture `merma_habilitada`, que apaga esa dependencia. **Reactivarla:** quitar la dependencia de `app/main.py`,
-  poner `MERMA_DESHABILITADA = False` (o borrar el bloque y la fixture) y listo.
+Desde libracommerce v0.30.0 (A-4 completo en el motor, ADR-053) el producto marcado «vence» sigue el lote en TODAS sus salidas: la venta,
+la anulación, la devolución, la transferencia, el ajuste y las salidas manuales (FEFO: vence primero, sale primero; «sin lote» último; un
+vencido se vende con aviso). Este archivo prueba ese cableado de punta a punta (sección «FEFO en VentaLibra»): marcar por el `PUT` del
+producto, recibir con lote, `entrada` con lote, `plan-salida` antes de cobrar, la venta con `avisos`, la devolución (par devolución +
+merma), la anulación, la transferencia, el ajuste, la baja de un lote (que estuvo deshabilitada hasta A-4, ADR-052, y se reactivó) y que
+ninguna respuesta nueva lleva costos.
+
+Los números del FEFO, a mano: la Leche tiene L-VENCIDO 4 (vencido hace 3 días), L-PRONTO 10 (vence en 5), L-LEJANO 6 (vence en 60) y 8 sin
+lote. Vender 10 saca 4 de L-VENCIDO y 6 de L-PRONTO (queda en 4); el «sin lote» no se toca.
 """
 import re
 from datetime import date, timedelta
@@ -29,19 +29,15 @@ from datetime import date, timedelta
 import pytest
 from conftest import https_client
 from motor_de_test import destino_dominio
-from ventas_helpers import abrir_turno, deposito_default, hoy, registrar_venta
+from ventas_helpers import abrir_turno, crear_deposito, deposito_default, hoy, registrar_venta
 
 from app import permisos
 from app.costos import extras_de
 from app.main import create_app
-from app.vencimientos_guarda import MENSAJE, merma_deshabilitada
 
 #: Costos que ninguna otra cifra del escenario repite: si aparecen en una respuesta, se filtraron.
 COSTO = "731.42"
 COSTO_DE_LA_RECEPCION = "543.21"
-
-#: 🔴 El ÚNICO lugar donde se reactivan los tests de la baja de un lote: `True` mientras `app/main.py` ponga `merma_deshabilitada` (hasta A-4).
-MERMA_DESHABILITADA = True
 
 ROLES_SIN_ACCESO = ("staff", "vendedor", "cajero")
 #: Las tres rutas de lectura, con `{p}` por el id del producto.
@@ -136,15 +132,6 @@ def escenario(admin_client):
         "modo": "entrada", "cantidad": 20, "deposito_id": deposito, "referencia": "carga",
     }).status_code == 200
     return {"leche": leche, "sal": sal, "deposito": deposito, "clientes": clientes}
-
-
-@pytest.fixture
-def merma_habilitada(admin_client):
-    """La baja de un lote funcionando: apaga `merma_deshabilitada` (ADR-052) para seguir probando el camino del motor (saldo, idempotencia,
-    `created_by`). Con la dependencia ya retirada de `app/main.py` (A-4) es un no-op."""
-    admin_client.app.dependency_overrides[merma_deshabilitada] = lambda: None
-    yield
-    admin_client.app.dependency_overrides.pop(merma_deshabilitada, None)
 
 
 @pytest.fixture(params=["admin", "encargado", "deposito"])
@@ -316,7 +303,7 @@ def test_el_mostrador_no_asigna_ni_da_de_baja(escenario):
     assert _movimientos(escenario["clientes"]["admin"], escenario["leche"]) == antes
 
 
-def test_dar_de_baja_un_lote_vencido_es_una_merma_a_nombre_de_quien_la_hizo_con_la_baja_habilitada(mueve, escenario, merma_habilitada):
+def test_dar_de_baja_un_lote_vencido_es_una_merma_a_nombre_de_quien_la_hizo(mueve, escenario):
     quien = int(mueve.get("/auth/me").json()["id"])
     antes = _movimientos(mueve, escenario["leche"])
     r = _merma(mueve, escenario, "merma-1")
@@ -331,7 +318,7 @@ def test_dar_de_baja_un_lote_vencido_es_una_merma_a_nombre_de_quien_la_hizo_con_
     assert r.status_code == 409, r.text
 
 
-def test_un_reintento_con_la_misma_clave_no_vuelve_a_escribir(mueve, escenario, merma_habilitada):
+def test_un_reintento_con_la_misma_clave_no_vuelve_a_escribir(mueve, escenario):
     """La idempotencia es del motor (`clave_operacion`), acá se prueba que llega por el camino real: la respuesta del reintento es
     la de la primera vez con `repetida: true`, y el ledger tiene UN solo movimiento (o un solo par) de esa operación."""
     antes = len(_movimientos(mueve, escenario["leche"]))
@@ -351,7 +338,7 @@ def test_un_reintento_con_la_misma_clave_no_vuelve_a_escribir(mueve, escenario, 
     assert len(_movimientos(mueve, escenario["leche"])) == antes + 1 + 2
 
 
-def test_cuerpos_invalidos_son_422_y_no_escriben(admin_client, escenario, merma_habilitada):
+def test_cuerpos_invalidos_son_422_y_no_escriben(admin_client, escenario):
     antes = _movimientos(admin_client, escenario["leche"])
     assert _asignar(admin_client, escenario, "").status_code == 422  # la clave es obligatoria
     assert _asignar(admin_client, escenario, "k", cantidad=0).status_code == 422
@@ -362,43 +349,33 @@ def test_cuerpos_invalidos_son_422_y_no_escriben(admin_client, escenario, merma_
     assert _movimientos(admin_client, escenario["leche"]) == antes
 
 
-# ── Deshabilitada hasta A-4: la baja de un lote (ADR-052) ────────────────────
-#
-# 🔴 Todo este bloque se saltea solo con `MERMA_DESHABILITADA = False`. El flujo de la merma del motor sigue probado más arriba con
-# `merma_habilitada`.
-
-deshabilitada = pytest.mark.skipif(not MERMA_DESHABILITADA, reason="la baja de un lote ya está habilitada (A-4)")
+# ── FEFO en VentaLibra (ADR-053, libracommerce v0.30.0) ──────────────────────
 
 
-@deshabilitada
-def test_la_baja_de_un_lote_es_409_para_admin_encargado_y_deposito_y_no_toca_el_ledger(mueve, escenario):
-    antes = _movimientos(mueve, escenario["leche"])
-    for cuerpo in ({}, {"cantidad": 1, "clave_operacion": "otra"}, {"lote": "no-existe"}):
-        r = _merma(mueve, escenario, "rechazada-1", **cuerpo)
-        assert r.status_code == 409 and r.json()["detail"] == MENSAJE, r.text
-    # Ni con un cuerpo que ni siquiera es un objeto: la dependencia corre antes de validar el cuerpo y no llega al motor.
-    r = mueve.post("/api/vencimientos/merma", content=b"[]", headers={"content-type": "application/json"})
-    assert r.status_code == 409 and r.json()["detail"] == MENSAJE
-    assert "ajuste de stock" in MENSAJE and "descontaría dos veces" in MENSAJE
-    assert _movimientos(mueve, escenario["leche"]) == antes
-    assert {f["lote"]: f["saldo"] for f in _reporte(mueve, dias=90)["lotes"]} == {"L-VENCIDO": 4, "L-PRONTO": 10, "L-LEJANO": 6}
+def _saldos(cliente, **params):
+    """`{lote: saldo}` del reporte (sólo lo que tiene saldo > 0) y el saldo «sin lote» (`None` si no hay fila)."""
+    m = _reporte(cliente, **{"dias": 90, **params})
+    return {f["lote"]: f["saldo"] for f in m["lotes"]}, (m["sin_lote"][0]["saldo"] if m["sin_lote"] else None)
 
 
-@deshabilitada
-def test_el_resto_recibe_el_mismo_rechazo_de_siempre_y_asignar_sigue_andando(escenario):
-    """El permiso corre ANTES que el 409: el mostrador sigue con 403 y el anónimo con 401. Y la asignación, que conserva el total, no
-    cambia: 200 para los tres roles que pueden, en la misma ruta de escritura."""
-    for rol in ROLES_SIN_ACCESO:
-        r = _merma(escenario["clientes"][rol], escenario, f"sin-permiso-{rol}")
-        assert r.status_code == 403 and r.json()["detail"] == "forbidden", (rol, r.text)
-    assert _merma(https_client(escenario["clientes"]["admin"].app), escenario, "anonimo").status_code == 401
-    for i, rol in enumerate(("admin", "encargado", "deposito")):
-        r = _asignar(escenario["clientes"][rol], escenario, f"asignar-sigue-{i}", cantidad=1)
-        assert r.status_code == 200 and r.json()["repetida"] is False, (rol, r.text)
-        assert _merma(escenario["clientes"][rol], escenario, f"merma-sigue-{i}").status_code == 409
+def _stock(cliente, producto, deposito=None):
+    r = cliente.get(f"/api/stock/{producto}", params={"deposito_id": deposito} if deposito else {})
+    assert r.status_code == 200, r.text
+    return float(r.json()["stock_deposito" if deposito else "stock_actual"])
 
 
-# ── Hasta A-4: las ventas no saben de lotes ──────────────────────────────────
+def _plan(cliente, escenario, qty, **cambios):
+    cuerpo = {"items": [{"producto_id": escenario["leche"], "qty": qty}], "deposito_id": escenario["deposito"], **cambios}
+    return cliente.post("/api/ventas/plan-salida", json=cuerpo)
+
+
+def _linea_de_la_venta(cliente, venta_id):
+    return cliente.app.state.conn.execute("SELECT id FROM sale_items WHERE sale_id = ? ORDER BY id LIMIT 1", (venta_id,)).fetchone()[0]
+
+
+def _filas(cliente, producto, desde=0):
+    """Lo que el ledger escribió desde la fila `desde`: `(tipo, código, delta, lote)`."""
+    return [(f[0], f[1], float(f[2]), f[3]) for f in _movimientos(cliente, producto)[desde:]]
 
 
 def test_un_producto_sin_marcar_no_cambia_nada_en_el_ledger_de_una_venta(admin_client, escenario):
@@ -406,28 +383,291 @@ def test_un_producto_sin_marcar_no_cambia_nada_en_el_ledger_de_una_venta(admin_c
     (No se tocó el camino de ventas: lo que se prueba es que el motor nuevo no lo cambia.)"""
     abrir_turno(admin_client)
     antes = _movimientos(admin_client, escenario["sal"])
-    registrar_venta(admin_client, escenario["sal"], precio="900.00", cantidad="2")
-    (venta,) = _movimientos(admin_client, escenario["sal"])[len(antes):]
-    assert (float(venta[2]), venta[3], venta[4]) == (-2.0, None, None)
-    assert venta[0] != "waste"
+    venta = registrar_venta(admin_client, escenario["sal"], precio="900.00", cantidad="2")
+    (fila,) = _movimientos(admin_client, escenario["sal"])[len(antes):]
+    assert (float(fila[2]), fila[3], fila[4]) == (-2.0, None, None)
+    assert fila[0] != "waste"
     assert all(f["producto_id"] != escenario["sal"] for f in _reporte(admin_client, dias=365)["lotes"] + _reporte(admin_client)["sin_lote"])
+    assert "avisos" not in venta  # sin marcados, la respuesta es la de siempre
 
 
-def test_hasta_a4_una_venta_de_un_producto_marcado_descuenta_del_sin_lote(admin_client, escenario):
-    """🔴 La LIMITACIÓN de ADR-052, medida: en un producto marcado la venta resta del bucket «sin lote» y no del lote del que salió la
-    mercadería, así que el saldo por lote sobreestima. Cuando A-4 (FEFO) descuente por lote este test tiene que cambiar."""
+def test_una_venta_de_un_producto_marcado_descuenta_por_fefo_y_el_sin_lote_queda_intacto(admin_client, escenario):
+    """La conducta de A-4, medida: la venta resta del lote que vence primero (el vencido, y después el que sigue) y no del «sin lote»,
+    que se vende último. Era el test que fijaba la limitación de ADR-052 (8 sin lote, se venden 10: -2 sin lote y los lotes enteros)."""
     abrir_turno(admin_client)
-    registrar_venta(admin_client, escenario["leche"], precio="1500.00", cantidad="10")
+    venta = registrar_venta(admin_client, escenario["leche"], precio="1500.00", cantidad="10")
+    lotes, sin_lote = _saldos(admin_client)
+    assert lotes == {"L-PRONTO": 4, "L-LEJANO": 6}  # L-VENCIDO 4 -> 0 y L-PRONTO 10 -> 4: 4 + 6 = 10
+    assert sin_lote == 8  # intacto, sin el «salidas_sin_lote» de antes
     m = _reporte(admin_client)
-    assert {f["lote"]: f["saldo"] for f in m["lotes"]} == {"L-VENCIDO": 4, "L-PRONTO": 10}  # los lotes siguen enteros
-    (sin,) = m["sin_lote"]
-    assert (sin["saldo"], sin["situacion"]) == (-2, "salidas_sin_lote")  # 8 - 10: el negativo que avisa la pantalla
+    assert m["sin_lote"][0]["situacion"] == "sin_fecha" and m["resumen"]["productos_con_salidas_sin_lote"] == 0
+    assert _filas(admin_client, escenario["leche"], 4) == [("sale", "venta", -4.0, "L-VENCIDO"), ("sale", "venta", -6.0, "L-PRONTO")]
+    assert _stock(admin_client, escenario["leche"]) == 18
+    # El aviso de lote vencido (y el de por vencer) viaja en la respuesta de la venta y en su detalle.
+    assert [(a["tipo"], a["lote"], a["cantidad"], a["dias_para_vencer"]) for a in venta["avisos"]] == [
+        ("lote_vencido", "L-VENCIDO", 4, -3), ("por_vencer", "L-PRONTO", 6, 5)]
+    assert all(a["nombre"] == "Leche 1L" and a["producto_id"] == escenario["leche"] for a in venta["avisos"])
+    assert admin_client.get(f"/api/ventas/{venta['id']}").json()["avisos"] == venta["avisos"]
+
+
+def test_una_venta_con_todo_vigente_no_trae_avisos(admin_client, escenario):
+    """La clave `avisos` sólo existe si hay algo que avisar: L-LEJANO vence en 60 días (fuera de la ventana de 15)."""
+    abrir_turno(admin_client)
+    for lote, qty in (("L-VENCIDO", 4), ("L-PRONTO", 10)):
+        r = admin_client.post("/api/vencimientos/merma", json={
+            "producto_id": escenario["leche"], "deposito_id": escenario["deposito"], "lote": lote,
+            "vence": _dia(-3 if lote == "L-VENCIDO" else 5), "cantidad": qty, "clave_operacion": f"baja-{lote}"})
+        assert r.status_code == 200, r.text
+    venta = registrar_venta(admin_client, escenario["leche"], precio="1500.00", cantidad="2")
+    assert "avisos" not in venta
+    assert _saldos(admin_client)[0] == {"L-LEJANO": 4}
+    assert "avisos" not in admin_client.get(f"/api/ventas/{venta['id']}").json()
+
+
+def test_el_plan_de_salida_dice_de_que_lote_saldria_y_no_escribe_nada(escenario):
+    """`POST /api/ventas/plan-salida` es lectura pura: el POS lo consulta antes de cobrar. Mismo plan que después hace la venta."""
+    cajero = escenario["clientes"]["cajero"]
+    antes = _movimientos(cajero, escenario["leche"])
+    r = _plan(cajero, escenario, 10)
+    assert r.status_code == 200, r.text
+    plan = r.json()
+    assert (plan["hoy"], plan["dias"]) == (hoy(), 15)
+    assert [(s["lote"], s["cantidad"], s["estado"], s["dias_para_vencer"], s["faltante"]) for s in plan["salidas"]] == [
+        ("L-VENCIDO", 4, "vencido", -3, 0), ("L-PRONTO", 6, "vigente", 5, 0)]
+    assert [(a["tipo"], a["lote"], a["vence"]) for a in plan["avisos"]] == [
+        ("lote_vencido", "L-VENCIDO", _dia(-3)), ("por_vencer", "L-PRONTO", _dia(5))]
+    assert _movimientos(cajero, escenario["leche"]) == antes and _stock(cajero, escenario["leche"]) == 28
+    # Lo que no alcanza sale del «sin lote» (8) y el resto es faltante; un producto sin marcar no elige lote.
+    plan = _plan(cajero, escenario, 30).json()
+    assert [(s["lote"], s["cantidad"], s["estado"], s["faltante"]) for s in plan["salidas"]] == [
+        ("L-VENCIDO", 4, "vencido", 0), ("L-PRONTO", 10, "vigente", 0), ("L-LEJANO", 6, "vigente", 0), (None, 10, "sin_lote", 2)]
+    sal = cajero.post("/api/ventas/plan-salida", json={"items": [{"producto_id": escenario["sal"], "qty": 3}]})
+    assert sal.status_code == 200 and sal.json()["salidas"] == [] and sal.json()["avisos"] == []
+    # Cuerpos inválidos: 422 y nada escrito.
+    assert cajero.post("/api/ventas/plan-salida", json={"items": []}).status_code == 422
+    assert _plan(cajero, escenario, 0).status_code == 422
+    assert _plan(cajero, escenario, 1, deposito_id=999999).status_code == 422
+    assert cajero.post("/api/ventas/plan-salida", json={"items": [{"producto_id": 999999, "qty": 1}]}).status_code == 422
+    assert _movimientos(cajero, escenario["leche"]) == antes
+
+
+def test_quien_puede_vender_puede_consultar_el_plan_y_el_resto_no(escenario):
+    """La capacidad es la del POS (`ventas.pos`): encargado, vendedor, cajero, staff y admin; el depósito no vende y el anónimo, 401."""
+    for rol in ("admin", "encargado", "vendedor", "cajero", "staff"):
+        assert _plan(escenario["clientes"][rol], escenario, 1).status_code == 200, rol
+    r = _plan(escenario["clientes"]["deposito"], escenario, 1)
+    assert r.status_code == 403 and r.json()["detail"] == "forbidden"
+    assert _plan(https_client(escenario["clientes"]["admin"].app), escenario, 1).status_code == 401
+
+
+def test_la_devolucion_de_un_marcado_es_un_par_devolucion_y_merma_por_lote_y_el_neto_es_cero(admin_client, escenario):
+    """Decisión de producto 3: la devolución de un perecedero va a merma, no vuelve al lote. Se vendieron 4 de L-VENCIDO y 6 de L-PRONTO
+    y se devuelven 7: los 4 primeros al lote del que salieron y 3 del siguiente; cada tramo es `devolucion +q` y `merma -q`."""
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, escenario["leche"], precio="1500.00", cantidad="10")
+    linea = _linea_de_la_venta(admin_client, venta["id"])
+    antes = len(_movimientos(admin_client, escenario["leche"]))
+    r = admin_client.post(f"/api/ventas/{venta['id']}/devolver", json={
+        "lineas": [{"sale_item_id": linea, "cantidad": 7}], "deposito_id": escenario["deposito"]})
+    assert r.status_code == 200 and r.json()["estado"] == "devuelta_parcial", r.text
+    assert _filas(admin_client, escenario["leche"], antes) == [
+        ("return", "devolucion", 4.0, "L-VENCIDO"), ("waste", "merma", -4.0, "L-VENCIDO"),
+        ("return", "devolucion", 3.0, "L-PRONTO"), ("waste", "merma", -3.0, "L-PRONTO")]
+    assert _saldos(admin_client) == ({"L-PRONTO": 4, "L-LEJANO": 6}, 8)  # el neto por lote es cero: lo devuelto no vuelve al estante
+    assert _stock(admin_client, escenario["leche"]) == 18
+    # No se puede devolver más de lo vendido (el tope sigue siendo por línea).
+    r = admin_client.post(f"/api/ventas/{venta['id']}/devolver", json={
+        "lineas": [{"sale_item_id": linea, "cantidad": 4}], "deposito_id": escenario["deposito"]})
+    assert r.status_code == 422 and "quedan 3" in r.json()["detail"], r.text
+    assert _stock(admin_client, escenario["leche"]) == 18
+
+
+def test_anular_una_venta_de_un_marcado_repone_al_lote_del_que_salio(admin_client, escenario):
+    abrir_turno(admin_client)
+    venta = registrar_venta(admin_client, escenario["leche"], precio="1500.00", cantidad="10")
+    assert _saldos(admin_client)[0] == {"L-PRONTO": 4, "L-LEJANO": 6}
+    antes = len(_movimientos(admin_client, escenario["leche"]))
+    r = admin_client.post(f"/api/ventas/{venta['id']}/anular")
+    assert r.status_code == 200, r.text
+    assert _filas(admin_client, escenario["leche"], antes) == [
+        ("return", "anulacion", 4.0, "L-VENCIDO"), ("return", "anulacion", 6.0, "L-PRONTO")]
+    assert _saldos(admin_client) == ({"L-VENCIDO": 4, "L-PRONTO": 10, "L-LEJANO": 6}, 8)
+    assert _stock(admin_client, escenario["leche"]) == 28
+    # Anular dos veces no repone dos veces.
+    filas = len(_movimientos(admin_client, escenario["leche"]))
+    assert admin_client.post(f"/api/ventas/{venta['id']}/anular").status_code == 200  # idempotente: responde la venta anulada
+    assert len(_movimientos(admin_client, escenario["leche"])) == filas and _stock(admin_client, escenario["leche"]) == 28
+
+
+def test_transferir_un_marcado_es_un_par_por_tramo_y_el_lote_viaja_al_destino(escenario):
+    """12 unidades salen por FEFO del origen: 4 de L-VENCIDO y 8 de L-PRONTO, y cada tramo entra al destino con su lote y vencimiento."""
+    deposito = escenario["clientes"]["deposito"]
+    destino = crear_deposito(escenario["clientes"]["admin"], "Depósito chico")["id"]
+    antes = len(_movimientos(deposito, escenario["leche"]))
+    r = deposito.post("/api/depositos/transferir", json={
+        "producto_id": escenario["leche"], "origen_id": escenario["deposito"], "destino_id": destino, "cantidad": 12})
+    assert r.status_code == 200, r.text
+    filas = _movimientos(deposito, escenario["leche"])[antes:]
+    assert [(float(f[2]), f[3], f[4]) for f in filas] == [
+        (-4.0, "L-VENCIDO", _dia(-3)), (4.0, "L-VENCIDO", _dia(-3)), (-8.0, "L-PRONTO", _dia(5)), (8.0, "L-PRONTO", _dia(5))]
+    saldos = deposito.app.state.conn.execute(
+        "SELECT location_id, lot_code, SUM(quantity_delta) FROM stock_movements WHERE item_id = ? AND lot_code IS NOT NULL "
+        "GROUP BY location_id, lot_code ORDER BY location_id, lot_code", (escenario["leche"],)).fetchall()
+    assert sorted((a, b, float(c)) for a, b, c in saldos) == sorted([
+        (escenario["deposito"], "L-VENCIDO", 0.0), (escenario["deposito"], "L-PRONTO", 2.0), (escenario["deposito"], "L-LEJANO", 6.0),
+        (destino, "L-VENCIDO", 4.0), (destino, "L-PRONTO", 8.0)])
+    assert _stock(deposito, escenario["leche"]) == 28  # una transferencia no cambia el total
+
+
+def test_ajustar_un_marcado_sigue_el_lote(admin_client, escenario):
+    """El conteo de un lote (con `lot_code` y `expires_at`), el ajuste del total (baja por FEFO) y la salida manual (FEFO)."""
+    leche, dep = escenario["leche"], escenario["deposito"]
+    # Contar el lote L-PRONTO en 7 (había 10): una fila `ajuste` de -3 en ese bucket.
+    antes = len(_movimientos(admin_client, leche))
+    r = admin_client.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "absoluto", "cantidad": 7, "deposito_id": dep, "lot_code": "L-PRONTO", "expires_at": _dia(5), "referencia": "conteo"})
+    assert r.status_code == 200, r.text
+    assert _filas(admin_client, leche, antes) == [("adjustment", "ajuste", -3.0, "L-PRONTO")]
+    # Llevar el total de 25 a 20 sin indicar lote: baja 5 por FEFO (los 4 del vencido y 1 de L-PRONTO), no del «sin lote».
+    antes = len(_movimientos(admin_client, leche))
+    r = admin_client.post(f"/api/stock/{leche}/ajuste", json={"modo": "absoluto", "cantidad": 20, "deposito_id": dep, "referencia": "conteo"})
+    assert r.status_code == 200, r.text
+    assert _filas(admin_client, leche, antes) == [("adjustment", "ajuste", -4.0, "L-VENCIDO"), ("adjustment", "ajuste", -1.0, "L-PRONTO")]
+    # Una salida manual también sale por lote: 2 más de L-PRONTO.
+    antes = len(_movimientos(admin_client, leche))
+    r = admin_client.post(f"/api/stock/{leche}/ajuste", json={"modo": "salida", "cantidad": 2, "deposito_id": dep, "referencia": "rotura"})
+    assert r.status_code == 200, r.text
+    assert _filas(admin_client, leche, antes) == [("adjustment", "salida", -2.0, "L-PRONTO")]
+    assert _saldos(admin_client) == ({"L-PRONTO": 4, "L-LEJANO": 6}, 8) and _stock(admin_client, leche) == 18
+    # Un producto sin marcar sigue ajustándose como siempre, y un lote sobre él es 422.
+    sal = escenario["sal"]
+    assert admin_client.post(f"/api/stock/{sal}/ajuste", json={
+        "modo": "absoluto", "cantidad": 15, "deposito_id": dep, "lot_code": "X", "expires_at": _dia(3)}).status_code == 422
+    antes = len(_movimientos(admin_client, sal))
+    assert admin_client.post(f"/api/stock/{sal}/ajuste", json={"modo": "absoluto", "cantidad": 15, "deposito_id": dep}).status_code == 200
+    assert _filas(admin_client, sal, antes) == [("adjustment", "ajuste", -5.0, None)]
+
+
+def test_un_marcado_con_stock_por_variante_exige_la_variante_en_el_ajuste(admin_client, escenario):
+    """Hallazgo de Codex sobre el motor, medido acá: sin variante el ajuste de un marcado con stock en una variante es 422 y no escribe."""
+    leche, dep = escenario["leche"], escenario["deposito"]
+    variante = admin_client.post(f"/api/productos/{leche}/variantes", json={"sku": "LECHE-ENT", "nombre": "Entera"})
+    assert variante.status_code == 200, variante.text
+    vid = variante.json()["id"]
+    assert admin_client.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "entrada", "cantidad": 5, "deposito_id": dep, "variant_id": vid}).status_code == 200
+    antes = _movimientos(admin_client, leche)
+    r = admin_client.post(f"/api/stock/{leche}/ajuste", json={"modo": "salida", "cantidad": 1, "deposito_id": dep})
+    assert r.status_code == 422 and "variante" in r.json()["detail"], r.text
+    assert _movimientos(admin_client, leche) == antes
+
+
+def test_cargar_stock_con_lote_por_entrada_y_por_el_ajuste_de_entrada(mueve, escenario):
+    """`POST /api/vencimientos/entrada` (`vencimientos.mover`: encargado y depósito) y la entrada con lote del ajuste de stock: stock
+    nuevo en ESE lote, a nombre de quien lo cargó; un reintento con la misma clave no vuelve a sumar."""
+    leche, dep = escenario["leche"], escenario["deposito"]
+    quien = int(mueve.get("/auth/me").json()["id"])
+    cuerpo = {"producto_id": leche, "deposito_id": dep, "lote": "L-NUEVO", "vence": _dia(20), "cantidad": 12, "clave_operacion": "entrada-1"}
+    antes = len(_movimientos(mueve, leche))
+    r = mueve.post("/api/vencimientos/entrada", json=cuerpo)
+    assert r.status_code == 200, r.text
+    assert (r.json()["lote"], r.json()["cantidad"], r.json()["saldo_lote"], r.json()["repetida"]) == ("L-NUEVO", 12, 12, False)
+    (fila,) = _movimientos(mueve, leche)[antes:]
+    assert (fila[0], fila[1], float(fila[2]), fila[3], fila[4], fila[5]) == ("adjustment", "entrada", 12.0, "L-NUEVO", _dia(20), quien)
+    assert mueve.post("/api/vencimientos/entrada", json=cuerpo).json()["repetida"] is True
+    assert len(_movimientos(mueve, leche)) == antes + 1 and _stock(mueve, leche) == 40
+    assert _saldos(mueve)[0]["L-NUEVO"] == 12
+    # Sin marcar, con una clave vacía o una cantidad cero: no escribe.
+    assert mueve.post("/api/vencimientos/entrada", json={**cuerpo, "producto_id": escenario["sal"], "clave_operacion": "x"}).status_code == 409
+    assert mueve.post("/api/vencimientos/entrada", json={**cuerpo, "clave_operacion": ""}).status_code == 422
+    assert mueve.post("/api/vencimientos/entrada", json={**cuerpo, "clave_operacion": "y", "cantidad": 0}).status_code == 422
+    assert len(_movimientos(mueve, leche)) == antes + 1
+    # La misma carga por el ajuste de stock (la que usa «Cargar stock con lote» en la pantalla de stock).
+    r = mueve.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "entrada", "cantidad": 5, "deposito_id": dep, "lot_code": "L-OTRO", "expires_at": _dia(30), "referencia": "carga"})
+    assert r.status_code == 200, r.text
+    assert _saldos(mueve)[0]["L-OTRO"] == 5 and _stock(mueve, leche) == 45
+
+
+def test_el_mostrador_no_carga_stock_con_lote(escenario):
+    antes = _movimientos(escenario["clientes"]["admin"], escenario["leche"])
+    for rol in ROLES_SIN_ACCESO:
+        r = escenario["clientes"][rol].post("/api/vencimientos/entrada", json={
+            "producto_id": escenario["leche"], "deposito_id": escenario["deposito"], "lote": "L-X", "vence": _dia(9),
+            "cantidad": 1, "clave_operacion": f"e-{rol}"})
+        assert r.status_code == 403 and r.json()["detail"] == "forbidden", (rol, r.text)
+    assert _movimientos(escenario["clientes"]["admin"], escenario["leche"]) == antes
+
+
+def test_la_baja_de_un_lote_funciona_y_la_guarda_del_motor_sigue_con_un_sin_lote_negativo_heredado(escenario):
+    """La merma se reactivó (200). La guarda del motor sigue: con un saldo «sin lote» NEGATIVO en ese depósito (lo que dejan las ventas de
+    antes de A-4, o un faltante) no se puede dar de baja ningún lote hasta conciliar con el conteo físico: 409, sin escribir."""
+    admin, encargado = escenario["clientes"]["admin"], escenario["clientes"]["encargado"]
+    leche, dep = escenario["leche"], escenario["deposito"]
+    assert _merma(encargado, escenario, "baja-1").status_code == 200  # L-VENCIDO: 4 -> 0
+    # Se deja el «sin lote» en negativo: se vende todo lo que hay (24) y 2 más que no tienen respaldo (faltante).
+    abrir_turno(admin)
+    venta = registrar_venta(admin, leche, precio="1500.00", cantidad="26")
+    assert [a["tipo"] for a in venta["avisos"]] == ["por_vencer", "faltante_sin_lote"]
+    lotes, sin_lote = _saldos(admin)
+    assert lotes == {} and sin_lote == -2
+    assert admin.post("/api/vencimientos/entrada", json={
+        "producto_id": leche, "deposito_id": dep, "lote": "L-REPO", "vence": _dia(40), "cantidad": 10, "clave_operacion": "repo"}).status_code == 200
+    antes = _movimientos(admin, leche)
+    r = _merma(encargado, escenario, "baja-2", lote="L-REPO", vence=_dia(40), cantidad=3)
+    assert r.status_code == 409 and "sin lote" in r.json()["detail"], r.text
+    assert _movimientos(admin, leche) == antes
+    # Conciliado el «sin lote» (un ajuste del bucket que lo lleva a cero), la baja pasa.
+    assert admin.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "entrada", "cantidad": 2, "deposito_id": dep, "referencia": "conteo físico"}).status_code == 200
+    assert _saldos(admin)[1] == 0 or _saldos(admin)[1] is None
+    assert _merma(encargado, escenario, "baja-3", lote="L-REPO", vence=_dia(40), cantidad=3).status_code == 200
+
+
+def test_marcar_un_producto_por_el_put_del_producto_es_del_encargado(escenario):
+    """El `PUT /api/productos/{id}` con `vence` (la marca en la ficha del producto, libra-ui v0.92.0) la decide `vencimientos.marcar`, no
+    `productos.escribir`: el staff heredado edita productos pero no puede marcar (403 y NO se guarda nada de la edición); el encargado y el
+    admin sí. Sin `vence` la edición no toca la marca."""
+    sal, admin, encargado, staff = escenario["sal"], escenario["clientes"]["admin"], escenario["clientes"]["encargado"], escenario["clientes"]["staff"]
+    ficha = {"nombre": "Sal fina", "unidad": "u", "precio_venta": "950.00", "precio_costo": "400.00", "codigo": "SAL-1"}
+
+    def vence(cliente):
+        return next(p for p in cliente.get("/api/productos").json() if p["id"] == sal)["vence"]
+
+    assert vence(admin) is False
+    r = staff.put(f"/api/productos/{sal}", json={**ficha, "vence": True})
+    assert r.status_code == 403 and "marcar" in r.json()["detail"], r.text
+    assert next(p for p in admin.get("/api/productos").json() if p["id"] == sal)["precio_venta"] == 900  # no guardó el resto
+    # El staff edita el producto sin tocar la marca (o repitiéndola): 200.
+    assert staff.put(f"/api/productos/{sal}", json={**ficha, "vence": False}).status_code == 200
+    assert staff.put(f"/api/productos/{sal}", json=ficha).status_code == 200
+    # El encargado marca por ahí, la respuesta ya trae `vence`, y por el PUT de vencimientos se ve lo mismo.
+    r = encargado.put(f"/api/productos/{sal}", json={**ficha, "vence": True})
+    assert r.status_code == 200 and r.json()["vence"] is True, r.text
+    assert vence(admin) is True
+    assert admin.get(f"/api/vencimientos/productos/{sal}/lotes").json()["producto"]["vence"] is True
+    # Editar sin `vence` no la pierde; el admin la saca.
+    assert encargado.put(f"/api/productos/{sal}", json={**ficha, "precio_venta": "1000.00"}).status_code == 200 and vence(admin) is True
+    assert admin.put(f"/api/productos/{sal}", json={**ficha, "vence": False}).json()["vence"] is False
+    # Un servicio no se marca.
+    servicio = admin.post("/api/productos", json={"nombre": "Envío", "unidad": "u", "precio_venta": "100.00", "tipo": "servicio"})
+    assert servicio.status_code == 200, servicio.text
+    r = admin.put(f"/api/productos/{servicio.json()['id']}", json={
+        "nombre": "Envío", "unidad": "u", "precio_venta": "100.00", "tipo": "servicio", "vence": True})
+    assert r.status_code == 409, r.text
+
+
+def test_todos_los_roles_que_leen_productos_reciben_vence(escenario):
+    """La pantalla del kit Productos muestra el interruptor «Vence» sólo si el listado lo trae: lo leen los roles con `catalogo.ver`."""
+    for rol, cliente in escenario["clientes"].items():
+        productos = {p["nombre"]: p for p in cliente.get("/api/productos").json()}
+        assert productos["Leche 1L"]["vence"] is True and productos["Sal fina"]["vence"] is False, rol
 
 
 # ── Sin costos, sin gate de plan, y lo que pide la pantalla ──────────────────
 
 
-def test_ningun_endpoint_de_vencimientos_revela_costos(escenario, merma_habilitada):
+def test_ningun_endpoint_de_vencimientos_revela_costos(escenario):
     """`/api/vencimientos` no está en los prefijos de `SinCostos` (`app/costos.py`): no hace falta si el endpoint no manda costos. Se
     prueba mirando lo que ve el ADMIN, que tiene `costos.ver` (el filtro no le sacaría nada aunque los hubiera): ni una clave con
     costo ni el valor del costo del producto (`precio_costo`) ni el de la recepción (`unit_cost`), en ninguna de las seis rutas. Y el
@@ -468,7 +708,64 @@ def test_ningun_endpoint_de_vencimientos_revela_costos(escenario, merma_habilita
     assert admin.get("/api/vencimientos").json() == deposito.get("/api/vencimientos").json()
 
 
-def test_los_vencimientos_estan_libres_en_todos_los_planes(admin_client, escenario, merma_habilitada):
+def test_las_respuestas_nuevas_de_fefo_no_revelan_costos_a_quien_no_tiene_costos_ver(escenario):
+    """Los avisos de la venta, el plan de salida, la carga con lote y la marca `vence` del producto no llevan costos. `/api/ventas` y
+    `/api/vencimientos` NO están en los prefijos de `SinCostos` (`app/costos.py`): no hace falta si el endpoint no manda costos, y acá se
+    prueba que no los manda, por CLAVE (`cost`/`costo` como palabra, como el filtro) y por VALOR (los números que sólo el costo tiene),
+    mirando lo que reciben el vendedor, el cajero y el depósito, que no tienen `costos.ver`. El contrapeso: el admin sí ve el costo en
+    `/api/productos` (si el test no lo encontrara ahí, no estaría midiendo nada)."""
+    leche, dep = escenario["leche"], escenario["deposito"]
+    costos = (COSTO, COSTO_DE_LA_RECEPCION)  # 731.42 el del alta del producto y 543.21 el de la recepción (que pasa a ser `default_cost`)
+    clave_de_costo = re.compile(r"(^|_)(costos?|cost)($|_)", re.I)
+
+    def limpia(r, donde):
+        assert r.status_code == 200, (donde, r.status_code, r.text)
+        def claves(v):
+            if isinstance(v, dict):
+                for k, x in v.items():
+                    if clave_de_costo.search(k):
+                        yield k
+                    yield from claves(x)
+            elif isinstance(v, list):
+                for x in v:
+                    yield from claves(x)
+        assert not list(claves(r.json())), (donde, list(claves(r.json())))
+        assert not any(c in r.text for c in costos), (donde, r.text)
+        return r.json()
+
+    # El contrapeso: el admin ve el costo del producto donde corresponde.
+    admin_ve = next(p for p in escenario["clientes"]["admin"].get("/api/productos").json() if p["id"] == leche)
+    assert "precio_costo" in admin_ve and str(admin_ve["precio_costo"]) in (COSTO, COSTO_DE_LA_RECEPCION)
+
+    for rol in ("vendedor", "cajero"):
+        cliente = escenario["clientes"][rol]
+        assert not permisos.condicion("costos.ver")({"role": rol})
+        plan = limpia(_plan(cliente, escenario, 10), f"{rol} plan-salida")
+        assert plan["avisos"] and plan["salidas"]  # hay qué mirar: no pasa por vacío
+        productos = limpia(cliente.get("/api/productos"), f"{rol} productos")
+        assert all("vence" in p and "precio_costo" not in p for p in productos)
+    cajero = escenario["clientes"]["cajero"]
+    abrir_turno(cajero)
+    venta = limpia(cajero.post("/api/ventas", json={
+        "fecha": hoy(), "items": [{"nombre": "Leche", "qty": 10, "precio": 1500.0, "producto_id": leche}],
+        "pagos": [{"medio": "efectivo", "monto": 15000.0}]}), "cajero venta")
+    assert venta["avisos"]
+    limpia(cajero.get(f"/api/ventas/{venta['id']}"), "cajero detalle de la venta")
+    deposito = escenario["clientes"]["deposito"]
+    limpia(deposito.post("/api/vencimientos/entrada", json={
+        "producto_id": leche, "deposito_id": dep, "lote": "L-SC", "vence": _dia(25), "cantidad": 3, "clave_operacion": "sc-entrada"}),
+        "deposito entrada")
+    limpia(deposito.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "entrada", "cantidad": 2, "deposito_id": dep, "lot_code": "L-SC2", "expires_at": _dia(26)}), "deposito ajuste con lote")
+    limpia(deposito.get(f"/api/vencimientos/productos/{leche}/lotes"), "deposito lotes")
+    limpia(deposito.get("/api/productos"), "deposito productos")
+    # El encargado (que sí tiene `costos.ver`) marca por la ficha: la respuesta trae `vence` y nada de lo que no es suyo.
+    r = escenario["clientes"]["encargado"].put(f"/api/productos/{escenario['sal']}", json={
+        "nombre": "Sal fina", "unidad": "u", "precio_venta": "900.00", "precio_costo": "400.00", "codigo": "SAL-1", "vence": True})
+    assert r.status_code == 200 and r.json()["vence"] is True
+
+
+def test_los_vencimientos_estan_libres_en_todos_los_planes(admin_client, escenario):
     """ADR-048: Básico y Premium se distinguen por facturación y multisucursal; no hay `require_module` sobre estas rutas."""
     for modulo in ("facturacion", "multisucursal"):
         admin_client.app.state.modules.set_enabled(modulo, False)
@@ -505,28 +802,3 @@ def test_las_capacidades_llegan_a_la_sesion_de_cada_rol(escenario):
     for rol, capacidades in esperado.items():
         recibidas = set(escenario["clientes"][rol].get("/auth/me").json()["capacidades"])
         assert recibidas & {"vencimientos.ver", "vencimientos.marcar", "vencimientos.mover"} == capacidades, rol
-
-
-def test_la_guarda_de_la_merma_no_se_salta_con_un_prefijo_asgi():
-    """Hallazgo de Codex: bajo un `root_path` Starlette lo descarta para elegir el endpoint pero `request.url.path` lo conserva;
-    la guarda tiene que mirar también la ruta resuelta (y nunca dejar pasar la merma)."""
-    from types import SimpleNamespace
-
-    from fastapi import HTTPException
-    from starlette.requests import Request
-
-    def pedido(metodo, url, ruta_resuelta):
-        return Request({"type": "http", "method": metodo, "path": url, "root_path": "/venta", "headers": [],
-                        "query_string": b"", "route": SimpleNamespace(path=ruta_resuelta)})
-
-    for url in ("/venta/api/vencimientos/merma", "/venta/api/vencimientos/merma/", "/api/vencimientos/merma"):
-        with pytest.raises(HTTPException) as e:
-            merma_deshabilitada(pedido("POST", url, "/api/vencimientos/merma"))
-        assert e.value.status_code == 409
-    # La URL pedida engaña pero el router resolvió la merma: también se bloquea.
-    with pytest.raises(HTTPException):
-        merma_deshabilitada(pedido("POST", "/otra/cosa", "/api/vencimientos/merma"))
-    # Asignar, lecturas y otros métodos pasan.
-    merma_deshabilitada(pedido("POST", "/venta/api/vencimientos/asignar", "/api/vencimientos/asignar"))
-    merma_deshabilitada(pedido("GET", "/venta/api/vencimientos", "/api/vencimientos"))
-    merma_deshabilitada(pedido("PUT", "/venta/api/vencimientos/productos/1", "/api/vencimientos/productos/{producto_id}"))

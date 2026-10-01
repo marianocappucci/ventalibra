@@ -5,12 +5,14 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 ## En curso
 
-- [ ] Vencimientos y lotes, etapa siguiente (A-4, FEFO en ventas): que la venta, la devolución, el ajuste y la transferencia descuenten del
-  lote del que sale la mercadería. Al llegar, **reactivar la baja de un lote** (`POST /api/vencimientos/merma`, hoy 409 para todos por
-  `app/vencimientos_guarda.py`): ver «Cómo reactivarla» en ADR-052 (`DECISIONS.md`).
-- [ ] Pedido al kit (`libra-ui`): una prop `puedeMermar` en `comercio/Vencimientos`, separada de `puedeMover` (que oculta también «asignar
-  vencimiento»). Hoy la pantalla muestra «Dar de baja (merma)» y el servidor contesta 409; con la prop VentaLibra la pasa en `false` hasta A-4
-  (ADR-052).
+- [ ] Pedido al kit (`libra-ui`): el aviso ámbar permanente de `comercio/Vencimientos` («Hasta que las ventas descuenten por lote, el saldo de cada lote puede ser
+  MAYOR al real…», `AvisoSaldoSobreestimado`, 4 lugares: la pantalla y los tres diálogos) sigue fijo en v0.92.0 y ya no es cierto para lo vendido, devuelto, ajustado o
+  transferido con `libracommerce` v0.30.0 (ADR-053). Pedir que sea condicional (por ejemplo, sólo si el reporte trae `resumen.saldos_con_salidas_sin_lote > 0`, que es
+  exactamente el caso de un «sin lote» negativo heredado) o que tenga una prop para apagarlo. La prop `puedeMermar` que se había pedido ya no hace falta (la baja está habilitada).
+- [ ] POS: probar el diálogo «¿Vender igual?» y los avisos de la venta cobrada en un navegador real (se probaron con vitest y `fetch` simulado, ADR-053); decidir si el aviso
+  por vencer se ofrece también en Ventas/VentaDetalle (hoy `GET /api/ventas/{id}` trae `avisos` y la pantalla del kit no los muestra) — pedido al kit si se quiere.
+- [ ] Vencimientos: los productos con un saldo «sin lote» negativo heredado (ventas anteriores a A-4) no dejan dar de baja sus lotes hasta conciliar con el conteo físico (un
+  ajuste que lleve ese bucket a cero): avisar a los comercios que ya marcaron productos con ADR-052 (ADR-053).
 
 ## Completadas
 

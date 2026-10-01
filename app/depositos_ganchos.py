@@ -47,7 +47,9 @@ from .services.sucursales import SucursalService
 
 _ENTERO = TypeAdapter(int)  # mismo modo laxo que los campos `int` del cuerpo de la transferencia
 
-OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True)
+#: `con_lotes` (ADR-053, libracommerce v0.30.0): el ajuste de stock acepta `lot_code` y `expires_at` para un producto marcado «vence»
+#: («Cargar stock con lote», el conteo de un lote). Un producto sin marcar no cambia: sin lote es el ajuste de siempre.
+OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True, con_lotes=True)
 
 Sucursales = Callable[[], SucursalService]
 #: Quien dice qué módulos tiene la instancia (`ModuleRepository`): se pide en cada request, no al armar el router.
