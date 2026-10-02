@@ -11,5 +11,7 @@ import { puede } from '../lib/permisos'
 
 export function Reposicion() {
   const { user } = useAuth()
-  return <ReposicionComercio conGenerarOrdenes={puede(user, 'compras.escribir')} rutaDeOrden={(id) => `/compras/${id}`} />
+  // El visitante de la demo (`demo_readonly`) «puede» todo para ver (ver `puede`), pero el backend le abre sólo la lectura: a él no se le ofrece una acción que escribe.
+  const soloLectura = (user as { demo_readonly?: unknown } | null)?.demo_readonly === true
+  return <ReposicionComercio conGenerarOrdenes={puede(user, 'compras.escribir') && !soloLectura} rutaDeOrden={(id) => `/compras/${id}`} />
 }

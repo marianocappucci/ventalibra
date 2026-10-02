@@ -143,5 +143,22 @@ describe('generar órdenes en borrador', () => {
     expect(await screen.findByText('Yerba 1kg')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Generar órdenes en borrador/ })).not.toBeInTheDocument()
   })
+
+  it('el visitante de la demo (sólo lectura) ve la reposición pero no se le ofrece generar órdenes', async () => {
+    conSesion('encargado')
+    const previo = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).getMockImplementation()!
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/auth/me')) {
+        const r = await previo(url, init) as Response
+        return json({ ...(await r.json()), demo_readonly: true })
+      }
+      if (u.startsWith('/api/reportes/reposicion')) return json(CON_PROVEEDOR)
+      return previo(url, init)
+    }))
+    abrir('/reposicion')
+    expect(await screen.findByText('Yerba 1kg')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Generar órdenes en borrador/ })).not.toBeInTheDocument()
+  })
 })
 
