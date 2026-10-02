@@ -92,7 +92,7 @@ from .cajas_ganchos import (
     usuario_de_turnos,
     validar_apertura_de,
 )
-from .compras_ganchos import OPCIONES_DE_COMPRAS
+from .compras_ganchos import OPCIONES_DE_COMPRAS, resolver_proveedor_del_producto, proveedor_del_producto
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import (
@@ -868,7 +868,12 @@ def create_app(db_path: str) -> FastAPI:
     # CSV). Capacidad `reposicion.ver` (admin y encargado, como `margen`); sin gate de plan (libre en Básico y Premium, ADR-048). Sólo
     # sugiere: no genera la orden de compra. No lleva costos: `/api/reportes` no está en los prefijos de `SinCostos` (`app/costos.py`)
     # y `tests/test_reposicion.py` fija que ninguna clave de costo viaja.
-    app.include_router(build_reposicion_router(conexion=lc_get_connection), dependencies=[Depends(requiere("reposicion.ver"))])
+    app.include_router(
+        build_reposicion_router(
+            conexion=lc_get_connection, resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
+        ),
+        dependencies=[Depends(requiere("reposicion.ver"))],
+    )
     # Plazo de entrega y stock máximo por producto (ADR-055; ADR-020 del motor, libracommerce v0.32.0): `GET`/`PUT /api/productos/{id}/reposicion`.
     # Capacidad `reposicion.parametros` (encargado y admin) tanto para leer como para escribir; el router no se construye sin dependencias de
     # escritura. Va aparte del payload del producto (que no cambia). Requiere la revisión `0003` del motor (`libracommerce-migrar upgrade`).
@@ -876,6 +881,7 @@ def create_app(db_path: str) -> FastAPI:
         conexion=lc_get_connection,
         dependencias_leer=[Depends(requiere("reposicion.parametros"))],
         dependencias_escribir=[Depends(requiere("reposicion.parametros"))],
+        resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
     ))
     # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.30.0,
     # ADR-018 del motor), que cuelgan de `/api/vencimientos`. Sin gate de plan (libre en Básico y Premium, ADR-048). Desde v0.30.0 (A-4,

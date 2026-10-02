@@ -40,8 +40,14 @@ def _proveedor_de(_conn, party_id: int) -> int:
     return proveedor_de_party(party_id)
 
 
+#: Los mismos ganchos, con nombres para otros routers del motor que hablan de proveedores (la reposición, ADR-056): el `proveedor_id` que ve
+#: el usuario es el de la tabla de VentaLibra y el motor guarda y compara por `party_id`.
+resolver_proveedor_del_producto = _resolver_proveedor
+proveedor_del_producto = _proveedor_de
+
+
 OPCIONES_DE_COMPRAS = OpcionesCompras(
     numerador=_numerador, resolver_proveedor=_resolver_proveedor, proveedor_de=_proveedor_de,
 )
 
-__all__ = ["OPCIONES_DE_COMPRAS"]
+__all__ = ["OPCIONES_DE_COMPRAS", "proveedor_del_producto", "resolver_proveedor_del_producto"]

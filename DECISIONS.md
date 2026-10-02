@@ -2696,3 +2696,21 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - Consecuencias: se guardan aparte del producto (un `PUT` propio después del `PUT /api/productos/{id}`); si el producto se guarda y falla el
   plazo/techo, el formulario lo dice y queda abierto. Antes de desplegar hay que correr `libracommerce-migrar upgrade --prefijo ventalibra`
   (el deploy de siempre ya corre las migraciones) y subir los dos pines.
+
+## ADR-056 — Proveedor habitual por producto en la reposición: selector en el formulario, columna y filtro
+
+- Estado: aceptada (pedido del humano, 2026-10-02). Usa [[libracommerce]] `v0.33.1` (ADR-021 del motor, migración `0004_proveedor_por_producto`) y
+  [[libra-ui]] `v0.103.0` (columna y filtro «Proveedor» en la reposición; selector «Proveedor habitual» en el formulario del producto).
+- Decisión: **un** proveedor habitual por producto (un tercero de `/api/proveedores`), que se carga con la misma capacidad y el mismo endpoint que el plazo
+  y el techo (`reposicion.parametros`: encargado, admin y depósito; `PUT /api/productos/{id}/reposicion` con `proveedor_id`). No hay capacidad nueva ni ruta
+  nueva. El depósito puede elegir porque `GET /api/proveedores` es de la mercadería (lo lee), aunque no administra proveedores (`proveedores.pantalla` es del
+  encargado y el staff).
+- Es una **preferencia, no una restricción**: no cambia lo sugerido ni lo que cuenta como «en camino» (una orden a otro proveedor sigue contando). Sirve para
+  ver y filtrar la reposición por proveedor y es el paso previo de la orden de compra en borrador.
+- Consecuencias: al desplegar corre la migración `0004` del motor (el deploy de siempre corre las migraciones). Sigue diferido: la orden de compra en borrador
+  por proveedor, estacionalidad, `min_stock` por sucursal y descontar lo que vence dentro del horizonte.
+- **Los ids de proveedor:** el `proveedor_id` que ve el usuario es el de la tabla de VentaLibra (`/api/proveedores`), no el `party_id` del motor. Los dos routers de reposición
+  traducen con los mismos ganchos que Compras (`party_de_proveedor` / `proveedor_de_party`, offset `+100.000`; `app/compras_ganchos.py`), así que un proveedor que no existe es 404,
+  como en Compras. Asignar un proveedor crea o actualiza su espejo en `parties` (lo hace `party_de_proveedor`); **si después se renombra el proveedor, el nombre que muestra la
+  reposición se actualiza la próxima vez que se asigne o se use en una orden de compra**, no al instante (límite conocido).
+

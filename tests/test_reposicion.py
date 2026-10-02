@@ -282,3 +282,50 @@ def test_editar_el_producto_no_deja_subir_el_minimo_por_encima_del_techo_ni_para
               "stock_minimo": 31}
     assert staff.put(f"/api/productos/{yerba}", json=cuerpo).status_code == 422
     assert next(p for p in admin_client.get("/api/productos").json() if p["id"] == yerba)["stock_minimo"] == 30
+
+
+# ── Proveedor habitual por producto (ADR-056) ────────────────────────────
+
+
+def _nuevo_proveedor(cliente, nombre):
+    r = cliente.post("/api/proveedores", json={"nombre": nombre})
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def test_el_encargado_y_el_admin_cargan_el_proveedor_y_la_reposicion_lo_muestra_y_filtra(gerencia, escenario):
+    yerba = escenario["yerba"]
+    norte, sur = _nuevo_proveedor(gerencia, "Distribuidora Norte"), _nuevo_proveedor(gerencia, "Mayorista Sur")
+    r = _parametros(gerencia, yerba, plazo_entrega_dias=None, stock_maximo=None, proveedor_id=norte)
+    assert r.status_code == 200, r.text
+    assert r.json()["proveedor_id"] == norte and r.json()["proveedor"] == "Distribuidora Norte"
+    (p,) = _reposicion(gerencia)["productos"]
+    assert p["proveedor_id"] == norte and p["proveedor"] == "Distribuidora Norte"
+    assert [x["producto_id"] for x in _reposicion(gerencia, proveedor_id=norte)["productos"]] == [yerba]
+    assert _reposicion(gerencia, proveedor_id=sur)["productos"] == []
+    # El CSV lo trae.
+    csv = gerencia.get("/api/reportes/reposicion/export", params={"proveedor_id": norte}).text.splitlines()
+    assert csv[0].endswith(",proveedor_id,proveedor") and csv[1].endswith(f",{norte},Distribuidora Norte")
+    # Sin mandar la clave el proveedor queda; con null se borra.
+    assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None).json()["proveedor_id"] == norte
+    assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None, proveedor_id=None).json()["proveedor_id"] is None
+
+
+def test_un_proveedor_que_no_existe_es_404_y_no_escribe(admin_client, escenario):
+    """El gancho de VentaLibra (`party_de_proveedor`) dice 404 para un proveedor que no existe, igual que en Compras."""
+    yerba = escenario["yerba"]
+    assert _parametros(admin_client, yerba, plazo_entrega_dias=4, stock_maximo=None, proveedor_id=999999).status_code == 404
+    assert admin_client.get(f"/api/productos/{yerba}/reposicion").json()["plazo_entrega_dias"] is None
+    assert admin_client.get("/api/reportes/reposicion", params={"proveedor_id": 999999}).status_code == 404
+
+
+def test_el_deposito_carga_el_proveedor_y_lista_los_proveedores_para_elegirlo(admin_client, escenario):
+    """El depósito decide la reposición (`reposicion.parametros`) y puede listar proveedores (`GET /api/proveedores` es de la mercadería),
+    así que el selector del formulario le sirve; no los administra."""
+    deposito = _entrar(admin_client, "deposito")
+    norte = _nuevo_proveedor(admin_client, "Distribuidora Norte")
+    assert norte in [x["id"] for x in deposito.get("/api/proveedores").json()]
+    r = _parametros(deposito, escenario["yerba"], plazo_entrega_dias=None, stock_maximo=None, proveedor_id=norte)
+    assert r.status_code == 200 and r.json()["proveedor"] == "Distribuidora Norte"
+    assert deposito.post("/api/proveedores", json={"nombre": "Colado"}).status_code == 403
+
