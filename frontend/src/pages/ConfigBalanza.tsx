@@ -207,7 +207,7 @@ export function ConfigBalanza() {
             <Button onClick={guardar} disabled={saving}>
               {saving ? 'Guardando…' : 'Guardar'}
             </Button>
-            {guardado && <span className="text-sm text-emerald-600">Guardado.</span>}
+            {guardado && <span className="text-sm text-exito">Guardado.</span>}
             {error && <span className="text-sm text-destructive">{error}</span>}
           </div>
         </CardContent>
