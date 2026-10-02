@@ -89,7 +89,12 @@ services:
     ports:
       - "127.0.0.1:8081:8000"
     volumes:
-      - ./:/app
+      # El código va **horneado en la imagen**, igual que en LibraDesk: este contenedor
+      # no monta el checkout, así que no ve `clientes/` ni el `.env`. Lo único que se monta
+      # es la carpeta de datos de dev (config, certificados, logos, PDF), que vive en
+      # `dev-data/` del checkout del servidor. Un cambio de código llega con
+      # `docker compose up -d --build`, que es como se despliega dev.
+      - ./dev-data:/app/dev-data
     # 🔴 Las migraciones también acá, no sólo en el deploy.
     # `cmd_actualizar` las corre para las instancias de cliente y la demo,
     # pero ESTA la levanta el compose del repo y el motor no la toca. Tiene
@@ -97,7 +102,7 @@ services:
     # hay un test que ata las dos puntas.
     #
     # `exec` para que uvicorn quede como PID 1 y `docker stop` le llegue.
-    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && libraauth-migrar upgrade --prefijo ventalibra --base core && libracommerce-migrar upgrade --prefijo ventalibra && alembic upgrade head && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && libraauth-migrar upgrade --prefijo ventalibra --base core && libracommerce-migrar upgrade --prefijo ventalibra && alembic upgrade head && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000"
     environment:
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY es obligatorio tambien en dev (sin default en un repo publico)}
       - TZ=America/Argentina/Buenos_Aires
