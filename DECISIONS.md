@@ -2679,3 +2679,18 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - Límite conocido (hallazgo P2 de Codex, aceptado): si el admin cambia el nombre del negocio, el subtítulo de la barra lateral
   lo toma en el próximo login o recarga; el `AuthContext` del kit no tiene un `refresh` y es igual en toda la suite. Arreglarlo
   es un cambio de `libra-ui`, no de este producto.
+
+## ADR-055 — Plazo de entrega y stock máximo por producto en la reposición: capacidad `reposicion.parametros` y campos en el formulario
+
+- Estado: **aceptada, pendiente de deploy** (2026-10-02). Usa [[libracommerce]] `v0.32.1` (ADR-020 del motor, migración `0003`) y
+  [[libra-ui]] `v0.96.0` (`conParametrosDeReposicion`), los dos revisados por Codex y con tag.
+- Decisión: se monta `build_reposicion_parametros_router` (`GET`/`PUT /api/productos/{id}/reposicion`) con la capacidad nueva
+  **`reposicion.parametros` = encargado y admin**, tanto para leer como para escribir. El **depósito ve la reposición pero no decide sus
+  parámetros**; el staff heredado tampoco (capacidad nueva, no se abre por herencia). El formulario de producto muestra «Plazo de entrega
+  (días)» y «Stock máximo» sólo a quien la tiene (`conParametrosDeReposicion={puede(user, 'reposicion.parametros')}`).
+- Por qué esa capacidad y no `reposicion.ver`: cambiar el plazo o el techo cambia cuánto se pide, y eso es del que maneja el negocio, como el
+  stock mínimo; `reposicion.ver` incluye al depósito. **Es una decisión mía, no del humano**: si prefiere que el depósito también los edite,
+  se cambia una línea de `app/permisos.py` y el test de la matriz.
+- Consecuencias: se guardan aparte del producto (un `PUT` propio después del `PUT /api/productos/{id}`); si el producto se guarda y falla el
+  plazo/techo, el formulario lo dice y queda abierto. Antes de desplegar hay que correr `libracommerce-migrar upgrade --prefijo ventalibra`
+  (el deploy de siempre ya corre las migraciones) y subir los dos pines.

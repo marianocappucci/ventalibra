@@ -163,8 +163,15 @@ def test_la_instancia_de_pruebas_tiene_la_revision_0002_del_motor(admin_client):
         "SELECT indexdef FROM pg_indexes WHERE tablename = 'stock_movements' AND indexname = 'idx_stock_item_location_lot'"
     ).fetchall()
     assert len(indices) == 1 and "(item_id, location_id, lot_code)" in indices[0][0]
+    # La cabeza de la cadena del motor: la 0002 sigue verificada arriba (columna e índice); la 0003 (v0.32.0, plazo y techo de reposición,
+    # ADR-055) agrega sus dos columnas.
     assert [tuple(v) for v in conn.execute("SELECT version_num FROM alembic_version_libracommerce").fetchall()] == [
-        ("0002_vencimientos_lotes",)]
+        ("0003_parametros_reposicion",)]
+    propias = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'catalog_items' "
+        "AND column_name IN ('lead_time_days', 'max_stock') ORDER BY column_name"
+    ).fetchall()
+    assert [c[0] for c in propias] == ["lead_time_days", "max_stock"]
 
 
 def test_sin_la_revision_el_motor_contesta_503_con_el_comando(tmp_path):
