@@ -329,3 +329,15 @@ def test_el_deposito_carga_el_proveedor_y_lista_los_proveedores_para_elegirlo(ad
     assert r.status_code == 200 and r.json()["proveedor"] == "Distribuidora Norte"
     assert deposito.post("/api/proveedores", json={"nombre": "Colado"}).status_code == 403
 
+
+def test_no_se_puede_eliminar_un_proveedor_que_es_el_habitual_de_un_producto(admin_client, escenario):
+    yerba = escenario["yerba"]
+    norte = _nuevo_proveedor(admin_client, "Distribuidora Norte")
+    assert _parametros(admin_client, yerba, plazo_entrega_dias=None, stock_maximo=None, proveedor_id=norte).status_code == 200
+    r = admin_client.delete(f"/api/proveedores/{norte}")
+    assert r.status_code == 409 and "habitual" in r.json()["detail"]
+    assert admin_client.get(f"/api/productos/{yerba}/reposicion").json()["proveedor"] == "Distribuidora Norte"
+    # Soltándolo, se puede eliminar.
+    assert _parametros(admin_client, yerba, plazo_entrega_dias=None, stock_maximo=None, proveedor_id=None).status_code == 200
+    assert admin_client.delete(f"/api/proveedores/{norte}").status_code == 200
+

@@ -43,6 +43,14 @@ def proveedor_de_party(party_id: int) -> int:
     return party_id - OFFSET_PROVEEDOR
 
 
+def es_proveedor_habitual(conn: Conexion, proveedor_id: int) -> bool:
+    """Si algún producto lo tiene como proveedor habitual (reposición, ADR-056): no se puede eliminar sin soltarlo antes."""
+    fila = conn.execute(
+        "SELECT EXISTS(SELECT 1 FROM catalog_items WHERE supplier_party_id = ?)", (OFFSET_PROVEEDOR + proveedor_id,)
+    ).fetchone()
+    return bool(fila[0])
+
+
 def tiene_compras(conn: Conexion, proveedor_id: int) -> bool:
     """Si el proveedor tiene órdenes o recepciones de compra (no se puede eliminar)."""
     party_id = OFFSET_PROVEEDOR + proveedor_id
