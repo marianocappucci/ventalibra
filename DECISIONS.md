@@ -2683,13 +2683,13 @@ decisión explícita del humano, y no forman parte de esta ADR.
 ## ADR-055 — Plazo de entrega y stock máximo por producto en la reposición: capacidad `reposicion.parametros` y campos en el formulario
 
 - Estado: **aceptada, pendiente de deploy** (2026-10-02). Usa [[libracommerce]] `v0.32.1` (ADR-020 del motor, migración `0003`) y
-  [[libra-ui]] `v0.98.0` (`conParametrosDeReposicion`; guarda sólo plazo y techo si sólo ellos cambiaron), los dos revisados por Codex y con tag.
+  [[libra-ui]] `v0.99.0` (`conParametrosDeReposicion`; guarda sólo plazo y techo si sólo ellos cambiaron, y funciona sin `precio_costo`), los dos revisados por Codex y con tag.
 - Decisión: se monta `build_reposicion_parametros_router` (`GET`/`PUT /api/productos/{id}/reposicion`) con la capacidad nueva
   **`reposicion.parametros` = encargado, admin y depósito**, tanto para leer como para escribir (**el depósito quedó incluido por decisión del
   humano, 2026-10-02**; la primera versión era sólo encargado y admin). El staff heredado no (capacidad nueva, no se abre por herencia) ni el mostrador.
   El formulario de producto muestra «Plazo de entrega (días)» y «Stock máximo» sólo a quien la tiene
   (`conParametrosDeReposicion={puede(user, 'reposicion.parametros')}`).
-- El depósito **no edita el resto del producto** (`productos.escribir` es de encargado y staff): [[libra-ui]] `0.98.0` guarda sólo
+- El depósito **no edita el resto del producto** (`productos.escribir` es de encargado y staff): [[libra-ui]] `0.98.0` y `0.99.0` guardan sólo
   `PUT /api/productos/{id}/reposicion` cuando únicamente cambiaron esos dos campos, sin pasar por el `PUT` del producto (que le daría 403).
 - Por qué esa capacidad y no `reposicion.ver` a secas: son escrituras, y quedan separadas de la lectura para poder cambiar quién decide sin
   tocar quién mira.

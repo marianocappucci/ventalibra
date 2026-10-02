@@ -245,6 +245,9 @@ it.each(['vendedor', 'cajero'] as const)('el %s no ve esos campos ni se pide nad
 // plazo y el techo cuando sólo ellos cambiaron, sin pasar por el PUT del producto, que le daría 403.
 it('el depósito cambia sólo el plazo/techo: se guarda la reposición y NO se manda el PUT del producto', async () => {
   rol = 'deposito'
+  // La respuesta REAL para un rol sin `costos.ver`: el producto llega sin `precio_costo` (`app/costos.py`, ADR-049).
+  const { precio_costo: _costo, ...sinCosto } = YERBA
+  respuestas['GET /api/productos'] = [sinCosto]
   respuestas[`GET ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 7, stock_maximo: null, stock_minimo: 0 }
   respuestas[`PUT ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 9, stock_maximo: null, stock_minimo: 0 }
   respuestas['PUT /api/productos/1'] = { status: 403, detail: 'forbidden' }
