@@ -268,3 +268,34 @@ it('el depósito cambia sólo el plazo/techo: se guarda la reposición y NO se m
   expect(llamadas.find((l) => l.metodo === 'PUT' && l.url === REPOSICION)!.cuerpo).toEqual({ plazo_entrega_dias: 9, stock_maximo: null })
   expect(llamadas.some((l) => l.metodo === 'PUT' && l.url === '/api/productos/1')).toBe(false)
 })
+
+// Proveedor habitual por producto (ADR-056, kit v0.102.0): el selector aparece si el motor devuelve `proveedor_id`; lo ve quien tiene `reposicion.parametros`.
+it.each(['encargado', 'deposito'] as const)('el %s elige el proveedor habitual y viaja sólo el proveedor cuando es lo único que cambió', async (quien) => {
+  rol = quien
+  respuestas['GET /api/proveedores'] = [{ id: 7, nombre: 'Distribuidora Norte' }, { id: 8, nombre: 'Mayorista Sur' }]
+  respuestas[`GET ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: null, stock_maximo: null, stock_minimo: 0, proveedor_id: 7, proveedor: 'Distribuidora Norte' }
+  respuestas[`PUT ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: null, stock_maximo: null, stock_minimo: 0, proveedor_id: 8, proveedor: 'Mayorista Sur' }
+  const user = userEvent.setup()
+  abrir()
+  await screen.findByText('Yerba Playadito')
+  await user.click(screen.getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  const selector = await within(dialogo).findByLabelText('Proveedor habitual')
+  await waitFor(() => expect(selector).toHaveTextContent('Distribuidora Norte'))
+  await user.click(selector)
+  await user.click(await screen.findByRole('option', { name: 'Mayorista Sur' }))
+  await user.click(within(dialogo).getByRole('button', { name: /Guardar/ }))
+  await waitFor(() => expect(llamadas.some((l) => l.metodo === 'PUT' && l.url === REPOSICION)).toBe(true))
+  expect(llamadas.find((l) => l.metodo === 'PUT' && l.url === REPOSICION)!.cuerpo).toEqual({ plazo_entrega_dias: null, stock_maximo: null, proveedor_id: 8 })
+})
+
+it('un rol sin reposicion.parametros no ve el selector de proveedor', async () => {
+  rol = 'vendedor'
+  const user = userEvent.setup()
+  abrir()
+  await screen.findByText('Yerba Playadito')
+  await user.click(screen.getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  expect(within(dialogo).queryByLabelText('Proveedor habitual')).not.toBeInTheDocument()
+})
+
