@@ -162,3 +162,25 @@ describe('generar órdenes en borrador', () => {
   })
 })
 
+// ── Estacionalidad (ADR-058, kit v0.107.0): el interruptor aparece solo si el motor la maneja (la respuesta trae la clave `estacionalidad`).
+describe('estacionalidad', () => {
+  it('el encargado ve el interruptor «Ajustar por estacionalidad» y encenderlo manda estacionalidad=true', async () => {
+    conSesion('encargado')
+    const previo = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).getMockImplementation()!
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('/api/reportes/reposicion')) {
+        llamadas.push(u)
+        return Promise.resolve(json({ ...REPOSICION, estacionalidad: u.includes('estacionalidad=true') }))
+      }
+      return previo(url, init)
+    }))
+    const user = userEvent.setup()
+    abrir('/reposicion')
+    const interruptor = await screen.findByLabelText('Ajustar por estacionalidad')
+    await user.click(interruptor)
+    await screen.findByRole('button', { name: /^Estacional/ })
+    expect(llamadas.some((l) => l.includes('estacionalidad=true'))).toBe(true)
+  })
+})
+
