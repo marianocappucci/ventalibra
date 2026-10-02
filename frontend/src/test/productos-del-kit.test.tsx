@@ -210,10 +210,10 @@ it('el admin también lo ve', async () => {
 })
 
 // Plazo de entrega y stock máximo de reposición (ADR-055, kit v0.96.0): el wrapper los ofrece sólo a quien tiene `reposicion.parametros`
-// (encargado y admin). Se leen y se guardan aparte del producto, en `/api/productos/{id}/reposicion`.
+// (encargado, admin y depósito). Se leen y se guardan aparte del producto, en `/api/productos/{id}/reposicion`.
 const REPOSICION = '/api/productos/1/reposicion'
 
-it.each(['encargado', 'admin'] as const)('el %s ve el plazo y el stock máximo de reposición, los lee del producto y los guarda aparte', async (quien) => {
+it.each(['encargado', 'admin', 'deposito'] as const)('el %s ve el plazo y el stock máximo de reposición, los lee del producto y los guarda aparte', async (quien) => {
   rol = quien
   respuestas[`GET ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 7, stock_maximo: null, stock_minimo: 0 }
   respuestas[`PUT ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 7, stock_maximo: 40, stock_minimo: 0 }
@@ -230,7 +230,7 @@ it.each(['encargado', 'admin'] as const)('el %s ve el plazo y el stock máximo d
   expect(llamadas.find((l) => l.metodo === 'PUT' && l.url === REPOSICION)!.cuerpo).toEqual({ plazo_entrega_dias: 7, stock_maximo: 40 })
 })
 
-it.each(['vendedor', 'cajero', 'deposito'] as const)('el %s no ve esos campos ni se pide nada de reposición del producto', async (quien) => {
+it.each(['vendedor', 'cajero'] as const)('el %s no ve esos campos ni se pide nada de reposición del producto', async (quien) => {
   rol = quien
   const user = userEvent.setup()
   abrir()
@@ -239,4 +239,25 @@ it.each(['vendedor', 'cajero', 'deposito'] as const)('el %s no ve esos campos ni
   const dialogo = await screen.findByRole('dialog')
   expect(within(dialogo).queryByLabelText('Plazo de entrega (días)')).not.toBeInTheDocument()
   expect(llamadas.some((l) => l.url.includes('/reposicion'))).toBe(false)
+})
+
+// El depósito decide la reposición pero no edita el producto (`productos.escribir` es del encargado y el staff): el kit (0.98.0) guarda sólo el
+// plazo y el techo cuando sólo ellos cambiaron, sin pasar por el PUT del producto, que le daría 403.
+it('el depósito cambia sólo el plazo/techo: se guarda la reposición y NO se manda el PUT del producto', async () => {
+  rol = 'deposito'
+  respuestas[`GET ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 7, stock_maximo: null, stock_minimo: 0 }
+  respuestas[`PUT ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 9, stock_maximo: null, stock_minimo: 0 }
+  respuestas['PUT /api/productos/1'] = { status: 403, detail: 'forbidden' }
+  const user = userEvent.setup()
+  abrir()
+  await screen.findByText('Yerba Playadito')
+  await user.click(screen.getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  await waitFor(() => expect(within(dialogo).getByLabelText('Plazo de entrega (días)')).toHaveValue('7'))
+  await user.clear(within(dialogo).getByLabelText('Plazo de entrega (días)'))
+  await user.type(within(dialogo).getByLabelText('Plazo de entrega (días)'), '9')
+  await user.click(within(dialogo).getByRole('button', { name: /Guardar/ }))
+  await waitFor(() => expect(llamadas.some((l) => l.metodo === 'PUT' && l.url === REPOSICION)).toBe(true))
+  expect(llamadas.find((l) => l.metodo === 'PUT' && l.url === REPOSICION)!.cuerpo).toEqual({ plazo_entrega_dias: 9, stock_maximo: null })
+  expect(llamadas.some((l) => l.metodo === 'PUT' && l.url === '/api/productos/1')).toBe(false)
 })

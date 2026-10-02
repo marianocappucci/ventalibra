@@ -244,13 +244,27 @@ def test_un_techo_menor_que_el_minimo_o_un_plazo_invalido_es_422_y_no_escribe(ad
     assert admin_client.get(f"/api/productos/{yerba}/reposicion").json()["plazo_entrega_dias"] is None
 
 
-@pytest.mark.parametrize("rol", ["cajero", "vendedor", "deposito"])
+@pytest.mark.parametrize("rol", ["cajero", "vendedor"])
 def test_los_demas_roles_no_leen_ni_escriben_los_parametros(admin_client, escenario, rol):
     cliente = _entrar(admin_client, rol)
     yerba = escenario["yerba"]
     assert cliente.get(f"/api/productos/{yerba}/reposicion").status_code == 403
     assert _parametros(cliente, yerba, plazo_entrega_dias=3, stock_maximo=None).status_code == 403
     assert admin_client.get(f"/api/productos/{yerba}/reposicion").json()["plazo_entrega_dias"] is None
+
+
+def test_el_deposito_lee_y_escribe_los_parametros_pero_no_edita_el_producto(admin_client, escenario):
+    """Decisión del humano (2026-10-02): reponer es trabajo del depósito. Puede cargar el plazo y el techo; el resto del producto
+    (`productos.escribir`) sigue siendo del encargado y el staff."""
+    deposito = _entrar(admin_client, "deposito")
+    yerba = escenario["yerba"]
+    r = _parametros(deposito, yerba, plazo_entrega_dias=5, stock_maximo=35)
+    assert r.status_code == 200, r.text
+    assert deposito.get(f"/api/productos/{yerba}/reposicion").json()["stock_maximo"] == 35
+    cuerpo = {"nombre": "Yerba 1kg", "unidad": "u", "codigo": "YERBA-1", "precio_venta": PRECIO, "precio_costo": COSTO, "stock_minimo": 30}
+    assert deposito.put(f"/api/productos/{yerba}", json=cuerpo).status_code == 403
+    # Tampoco puede esquivar la regla del motor: un techo menor que el mínimo es 422 para él también.
+    assert _parametros(deposito, yerba, plazo_entrega_dias=None, stock_maximo=10).status_code == 422
 
 
 def test_sin_sesion_los_parametros_no_se_ven(admin_client, escenario):

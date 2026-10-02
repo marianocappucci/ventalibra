@@ -12,8 +12,8 @@
 // capacidad: con ella, el interruptor se fuerza aunque el catálogo todavía esté vacío (el kit lo deduce de los datos y una lista
 // vacía no tiene de dónde); sin ella, no se ofrece (el backend igual contesta 403 a quien intente cambiar la marca).
 //
-// **Plazo de entrega y stock máximo** (reposición sugerida, ADR-055; kit v0.96.0): `conParametrosDeReposicion` los ofrece sólo a quien tiene
-// `reposicion.parametros` (el encargado y el admin); se guardan aparte del producto en `/api/productos/{id}/reposicion`.
+// **Plazo de entrega y stock máximo** (reposición sugerida, ADR-055; kit v0.98.0): `conParametrosDeReposicion` los ofrece sólo a quien tiene
+// `reposicion.parametros` (encargado, admin y depósito: el depósito no edita el resto del producto y el kit, desde 0.98.0, guarda sólo estos dos valores si sólo ellos cambiaron); se guardan aparte del producto en `/api/productos/{id}/reposicion`.
 import { Productos as ProductosComercio } from 'libra-ui/comercio/Productos'
 import { useAuth } from '../context/AuthContext'
 import { puede } from '../lib/permisos'
