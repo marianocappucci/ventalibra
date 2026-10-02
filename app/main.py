@@ -92,7 +92,7 @@ from .cajas_ganchos import (
     usuario_de_turnos,
     validar_apertura_de,
 )
-from .compras_ganchos import OPCIONES_DE_COMPRAS, resolver_proveedor_del_producto, proveedor_del_producto
+from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import (
