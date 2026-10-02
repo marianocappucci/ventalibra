@@ -2727,3 +2727,15 @@ decisión explícita del humano, y no forman parte de esta ADR.
   dos veces) y toda la generación va detrás de un candado de la transacción (dos pedidos a la vez no duplican).
 - Límites conocidos: el intento cortado se guarda en `sessionStorage` sin atarlo al usuario (igual que el de Vencimientos): si otra persona inicia sesión en la misma pestaña antes de resolverlo, lo
   vería; una orden con costo 0 hay que completarla antes de enviarla.
+
+## ADR-058 — Estacionalidad en la reposición
+
+- Estado: aceptada (pedido del humano, 2026-10-02). Usa libracommerce `v0.35.0` (ADR-023 del motor) y libra-ui `v0.107.0` (interruptor y columna).
+- Decisión: la reposición tiene un interruptor **«Ajustar por estacionalidad»** (apagado por defecto) que proyecta con lo que pasó hace un año: para cada producto, la razón entre lo que
+  rotaba por día después de una ventana equivalente a la de ahora y lo que rotaba en esa ventana, acotada entre ×0,25 y ×4, multiplica la necesidad. La columna **«Estacional»** muestra el factor
+  (`×3`) o un guion si no hay historia de hace un año (menos de 3 días con venta en la referencia: una instancia nueva, o un producto que entonces no se vendía). Las órdenes en borrador se calculan
+  con el mismo ajuste que se ve. No hay capacidad ni ruta nuevas: es un parámetro de la reposición, de quien ya la ve.
+- Límites que hay que tener presentes al usarlo: confía en **un solo año** (un año atípico se hereda), no corrige los quiebres de entonces, es por producto (no por categoría) y no inventa temporada
+  para un producto sin rotación reciente. Una instancia con menos de un año de historia —**VentaLibra no tiene ningún cliente en producción**— no tiene con qué ajustar: el interruptor existe pero
+  el factor sale vacío hasta que haya un año de ventas.
+
