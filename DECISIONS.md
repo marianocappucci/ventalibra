@@ -2700,7 +2700,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 ## ADR-056 — Proveedor habitual por producto en la reposición: selector en el formulario, columna y filtro
 
 - Estado: aceptada (pedido del humano, 2026-10-02). Usa [[libracommerce]] `v0.33.1` (ADR-021 del motor, migración `0004_proveedor_por_producto`) y
-  [[libra-ui]] `v0.103.0` (columna y filtro «Proveedor» en la reposición; selector «Proveedor habitual» en el formulario del producto).
+  [[libra-ui]] `v0.103.0` (el pin actual es la `v0.104.1`, que la incluye) (columna y filtro «Proveedor» en la reposición; selector «Proveedor habitual» en el formulario del producto).
 - Decisión: **un** proveedor habitual por producto (un tercero de `/api/proveedores`), que se carga con la misma capacidad y el mismo endpoint que el plazo
   y el techo (`reposicion.parametros`: encargado, admin y depósito; `PUT /api/productos/{id}/reposicion` con `proveedor_id`). No hay capacidad nueva ni ruta
   nueva. El depósito puede elegir porque `GET /api/proveedores` es de la mercadería (lo lee), aunque no administra proveedores (`proveedores.pantalla` es del
