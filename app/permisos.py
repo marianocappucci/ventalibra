@@ -167,9 +167,10 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     # pantalla nueva, no algo que ya tuviera).
     "reposicion.ver": frozenset({_E, _D}),
     # Plazo de entrega y stock máximo propios de un producto (`/api/productos/{id}/reposicion`, ADR-055): cambian cuánto sugiere la
-    # reposición, así que son de quien maneja el negocio, como el mínimo de stock: el encargado (y el admin). NO el depósito, que ve
-    # la reposición pero no decide sus parámetros, ni el staff heredado (capacidad nueva, no se abre por herencia).
-    "reposicion.parametros": frozenset({_E}),
+    # reposición. Encargado, admin y depósito (decisión del humano, 2026-10-02: reponer es trabajo del depósito, que ya ve la reposición).
+    # NO el staff heredado (capacidad nueva, no se abre por herencia) ni el mostrador. El depósito NO edita el resto del producto
+    # (`productos.escribir`): el formulario del kit guarda sólo estos dos valores cuando sólo ellos cambiaron (libra-ui 0.98.0).
+    "reposicion.parametros": frozenset({_E, _D}),
     # ── Vencimientos y lotes (ADR-052) ──
     # Ver qué lotes vencen, qué stock no tiene lote y los lotes de un producto (`/api/vencimientos`, sólo lectura, sin costos). Es de
     # quien maneja la mercadería: el encargado y el depósito. NO el staff heredado (pantalla nueva: una capacidad nueva no se abre por
