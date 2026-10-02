@@ -50,6 +50,7 @@ export const CAPACIDADES = [
   'reportes',
   'margen',
   'reposicion.ver',
+  'reposicion.parametros',
   'vencimientos.ver',
   'vencimientos.marcar',
   'vencimientos.mover',

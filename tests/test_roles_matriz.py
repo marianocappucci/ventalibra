@@ -295,6 +295,10 @@ GET    /api/reportes/margen/export/periodos                             GERENCIA
 GET    /api/reportes/reposicion                                         GERENCIA_Y_DEPOSITO
 GET    /api/reportes/reposicion/export                                  GERENCIA_Y_DEPOSITO
 
+# Plazo y stock máximo por producto (ADR-055): `reposicion.parametros`, sólo el encargado (y el admin), para leer y para escribir.
+GET    /api/productos/{producto_id}/reposicion                          GERENCIA
+PUT    /api/productos/{producto_id}/reposicion                          GERENCIA
+
 # Vencimientos y lotes: ver `vencimientos.ver` y mover (asignar, cargar con lote, dar de baja) `vencimientos.mover`, el encargado y el depósito; marcar
 # un producto `vencimientos.marcar`, sólo el encargado. NO el staff heredado (pantalla nueva), ni el mostrador.
 GET    /api/vencimientos                                                GERENCIA_Y_DEPOSITO
@@ -576,13 +580,13 @@ def test_auth_me_y_login_traen_las_capacidades_del_rol(instancia):
     cajero = set(instancia["cajero"].get("/auth/me").json()["capacidades"])
     assert "ventas.pos" in cajero and "caja.propia" in cajero
     assert not cajero & {"reportes", "margen", "reposicion.ver", "dashboard", "cierre_diario", "tesoreria", "cuenta_corriente",
-                         "vencimientos.ver", "vencimientos.marcar", "vencimientos.mover"}
+                         "vencimientos.ver", "vencimientos.marcar", "vencimientos.mover", "reposicion.parametros"}
     # ADR-054: su menú es el mostrador (POS, ventas para reimprimir, turnos); las pantallas de gestión no se le ofrecen.
     assert not cajero & {"catalogo.pantalla", "stock.pantalla", "clientes.pantalla", "proveedores.pantalla"}
     deposito = set(instancia["deposito"].get("/auth/me").json()["capacidades"])
     assert {"stock.ver", "stock.ajustar", "stock.transferir", "compras.ver", "vencimientos.ver", "vencimientos.mover", "reposicion.ver"} <= deposito
     # No recibe compras: confirmar una recepción fija el costo del producto, y el depósito no maneja plata.
-    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver", "vencimientos.marcar"}
+    assert not deposito & {"ventas.pos", "caja.propia", "reportes", "margen", "tesoreria", "clientes.ver", "compras.recibir", "costos.ver", "vencimientos.marcar", "reposicion.parametros"}
     login = https_client(instancia["admin"].app).post(
         "/auth/login", json={"username": "u-cajero", "password": "clave-larga-1"},
     )
