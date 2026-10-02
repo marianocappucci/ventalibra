@@ -43,7 +43,11 @@ from libracommerce.web.promociones_router import (
     build_promociones_calculo_router,
     build_promociones_router,
 )
-from libracommerce.web.reposicion_router import build_reposicion_parametros_router, build_reposicion_router
+from libracommerce.web.reposicion_router import (
+    build_reposicion_ordenes_router,
+    build_reposicion_parametros_router,
+    build_reposicion_router,
+)
 from libracommerce.web.vencimientos_router import build_vencimientos_escritura_router, build_vencimientos_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
@@ -875,12 +879,23 @@ def create_app(db_path: str) -> FastAPI:
         dependencies=[Depends(requiere("reposicion.ver"))],
     )
     # Plazo de entrega y stock máximo por producto (ADR-055; ADR-020 del motor, libracommerce v0.32.0): `GET`/`PUT /api/productos/{id}/reposicion`.
-    # Capacidad `reposicion.parametros` (encargado y admin) tanto para leer como para escribir; el router no se construye sin dependencias de
+    # Capacidad `reposicion.parametros` (encargado, admin y depósito) tanto para leer como para escribir; el router no se construye sin dependencias de
     # escritura. Va aparte del payload del producto (que no cambia). Requiere la revisión `0003` del motor (`libracommerce-migrar upgrade`).
     app.include_router(build_reposicion_parametros_router(
         conexion=lc_get_connection,
         dependencias_leer=[Depends(requiere("reposicion.parametros"))],
         dependencias_escribir=[Depends(requiere("reposicion.parametros"))],
+        resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
+    ))
+    # Órdenes de compra en borrador desde la reposición (ADR-057; ADR-022 del motor, libracommerce v0.34.0): `POST /api/reportes/reposicion/ordenes` crea UNA
+    # orden en borrador por proveedor habitual con lo que la reposición sugiere pedir. Nunca envía ni confirma. Escribe órdenes de compra: pide las DOS
+    # capacidades, `reposicion.ver` (la pantalla de donde sale) y `compras.escribir` (lo que protege crear una orden en Compras), así que en la práctica es del
+    # encargado y el admin; el depósito y el staff no (el staff no ve la reposición). La respuesta lleva costos: sólo la ven quienes tienen `compras.escribir`.
+    # Numeración y ids de proveedor, los ganchos de Compras (`app/compras_ganchos.py`).
+    app.include_router(build_reposicion_ordenes_router(
+        conexion=lc_get_connection, usuario_actual=get_current_user,
+        dependencias_escribir=[Depends(requiere("reposicion.ver")), Depends(requiere("compras.escribir"))],
+        numerador=OPCIONES_DE_COMPRAS.numerador,
         resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
     ))
     # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.30.0,

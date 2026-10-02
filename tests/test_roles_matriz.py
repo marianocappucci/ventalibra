@@ -295,6 +295,9 @@ GET    /api/reportes/margen/export/periodos                             GERENCIA
 GET    /api/reportes/reposicion                                         GERENCIA_Y_DEPOSITO
 GET    /api/reportes/reposicion/export                                  GERENCIA_Y_DEPOSITO
 
+# Órdenes de compra en borrador desde la reposición (ADR-057): escribe órdenes, así que pide `reposicion.ver` Y `compras.escribir`: encargado y admin.
+POST   /api/reportes/reposicion/ordenes                                 GERENCIA
+
 # Plazo y stock máximo por producto (ADR-055): `reposicion.parametros`, el encargado, el admin y el depósito, para leer y para escribir.
 GET    /api/productos/{producto_id}/reposicion                          GERENCIA_Y_DEPOSITO
 PUT    /api/productos/{producto_id}/reposicion                          GERENCIA_Y_DEPOSITO

@@ -341,3 +341,73 @@ def test_no_se_puede_eliminar_un_proveedor_que_es_el_habitual_de_un_producto(adm
     assert _parametros(admin_client, yerba, plazo_entrega_dias=None, stock_maximo=None, proveedor_id=None).status_code == 200
     assert admin_client.delete(f"/api/proveedores/{norte}").status_code == 200
 
+
+
+# ── Órdenes de compra en borrador desde la reposición (ADR-057) ──────────
+
+
+def _ordenes(cliente, **cuerpo):
+    cuerpo.setdefault("clave_operacion", "intento-1")
+    return cliente.post("/api/reportes/reposicion/ordenes", json=cuerpo)
+
+
+def test_el_encargado_y_el_admin_generan_la_orden_en_borrador_del_proveedor_habitual(gerencia, escenario):
+    yerba = escenario["yerba"]
+    norte = _nuevo_proveedor(gerencia, "Distribuidora Norte")
+    assert _parametros(gerencia, yerba, plazo_entrega_dias=None, stock_maximo=None, proveedor_id=norte).status_code == 200
+    r = _ordenes(gerencia)
+    assert r.status_code == 200, r.text
+    cuerpo = r.json()
+    (orden,) = cuerpo["ordenes"]
+    assert cuerpo["repetida"] is False and cuerpo["sin_proveedor"] == [] and orden["status"] == "draft"
+    assert orden["proveedor_id"] == norte and orden["proveedor"] == "Distribuidora Norte"
+    assert orden["number"].startswith("OC-")                                           # la numeración de VentaLibra, no la del motor
+    (linea,) = orden["lineas"]
+    # Yerba: 13 a pedir (ver `test_admin_y_encargado_ven_que_pedir_con_datos_reales`), al costo vigente del producto.
+    assert (linea["nombre"], float(linea["cantidad"]), float(linea["costo_unitario"])) == ("Yerba 1kg", 13.0, float(COSTO))
+    # Está en Compras como borrador, a nombre del proveedor y de quien la generó; y ya cuenta como «en camino».
+    guardada = gerencia.get(f"/api/purchase-orders/{orden['id']}").json()
+    assert guardada["status"] == "draft" and guardada["proveedor_id"] == norte
+    (p,) = _reposicion(gerencia, solo_a_pedir="false", proveedor_id=norte)["productos"]
+    assert p["en_camino"] == 4 + 13 and p["sugerido"] == 0
+
+
+def test_generar_de_nuevo_con_otra_clave_no_duplica_y_con_la_misma_devuelve_lo_mismo(admin_client, escenario):
+    yerba = escenario["yerba"]
+    norte = _nuevo_proveedor(admin_client, "Distribuidora Norte")
+    _parametros(admin_client, yerba, plazo_entrega_dias=None, stock_maximo=None, proveedor_id=norte)
+    primera = _ordenes(admin_client, clave_operacion="a").json()
+    mismo = _ordenes(admin_client, clave_operacion="a").json()
+    assert mismo["repetida"] is True and [o["id"] for o in mismo["ordenes"]] == [o["id"] for o in primera["ordenes"]]
+    otra = _ordenes(admin_client, clave_operacion="b").json()
+    assert otra["ordenes"] == [] and otra["repetida"] is False
+    assert len(admin_client.get("/api/purchase-orders").json()) == 2                       # la del escenario y la generada
+    assert _ordenes(admin_client, clave_operacion="a", dias_cobertura=20).status_code == 409   # la misma clave con otros datos
+
+
+def test_un_producto_sin_proveedor_habitual_se_informa_y_no_genera_ninguna_orden(admin_client, escenario):
+    r = _ordenes(admin_client).json()
+    assert r["ordenes"] == [] and [x["producto_id"] for x in r["sin_proveedor"]] == [escenario["yerba"]]
+    assert len(admin_client.get("/api/purchase-orders").json()) == 1                      # sólo la del escenario
+
+
+@pytest.mark.parametrize("rol", ["cajero", "vendedor", "deposito", "staff"])
+def test_los_demas_roles_no_generan_ordenes(admin_client, escenario, rol):
+    """Escribe órdenes de compra y trae costos: pide `reposicion.ver` y `compras.escribir` (el depósito ve la reposición pero no escribe Compras; el staff
+    escribe Compras pero no ve la reposición)."""
+    cliente = _entrar(admin_client, rol)
+    assert _ordenes(cliente).status_code == 403
+    assert len(admin_client.get("/api/purchase-orders").json()) == 1
+
+
+def test_sin_sesion_no_se_generan_ordenes(admin_client, escenario):
+    from fastapi.testclient import TestClient
+
+    assert _ordenes(TestClient(admin_client.app)).status_code == 401
+
+
+def test_el_cuerpo_invalido_es_422_y_un_proveedor_que_no_existe_es_404(admin_client, escenario):
+    assert admin_client.post("/api/reportes/reposicion/ordenes", json={}).status_code == 422
+    assert _ordenes(admin_client, dias_rotacion=0).status_code == 422
+    assert _ordenes(admin_client, proveedor_id=999999).status_code == 404
+    assert len(admin_client.get("/api/purchase-orders").json()) == 1
