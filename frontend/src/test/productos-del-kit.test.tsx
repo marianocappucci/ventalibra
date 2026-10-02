@@ -259,6 +259,10 @@ it('el depósito cambia sólo el plazo/techo: se guarda la reposición y NO se m
   await waitFor(() => expect(within(dialogo).getByLabelText('Plazo de entrega (días)')).toHaveValue('7'))
   await user.clear(within(dialogo).getByLabelText('Plazo de entrega (días)'))
   await user.type(within(dialogo).getByLabelText('Plazo de entrega (días)'), '9')
+  // Sin ver el costo (kit 0.100.0): ni columna «Precio costo» ni campo «Precio de costo» ni un «NaN» (ni un 0 inventado).
+  expect(within(dialogo).queryByLabelText('Precio de costo')).not.toBeInTheDocument()
+  expect(screen.queryByText('Precio costo')).not.toBeInTheDocument()
+  expect(document.body.textContent).not.toMatch(/NaN/)
   await user.click(within(dialogo).getByRole('button', { name: /Guardar/ }))
   await waitFor(() => expect(llamadas.some((l) => l.metodo === 'PUT' && l.url === REPOSICION)).toBe(true))
   expect(llamadas.find((l) => l.metodo === 'PUT' && l.url === REPOSICION)!.cuerpo).toEqual({ plazo_entrega_dias: 9, stock_maximo: null })
