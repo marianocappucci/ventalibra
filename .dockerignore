@@ -26,3 +26,7 @@ __pycache__
 *.pyc
 frontend/node_modules
 frontend/dist
+
+# El historial del repo no hace falta en la imagen: no hay versionado por VCS (`pyproject.toml`
+# no usa hatch-vcs) y nada del build ni de la app consulta git. Pesaba 47 MB en contalibra.
+.git
