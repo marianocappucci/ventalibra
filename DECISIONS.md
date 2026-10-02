@@ -2682,7 +2682,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 
 ## ADR-055 — Plazo de entrega y stock máximo por producto en la reposición: capacidad `reposicion.parametros` y campos en el formulario
 
-- Estado: **aceptada, pendiente de deploy** (2026-10-02). Usa [[libracommerce]] `v0.32.0` (ADR-020 del motor, migración `0003`) y
+- Estado: **aceptada, pendiente de deploy** (2026-10-02). Usa [[libracommerce]] `v0.32.1` (ADR-020 del motor, migración `0003`) y
   [[libra-ui]] `v0.96.0` (`conParametrosDeReposicion`), los dos revisados por Codex y con tag.
 - Decisión: se monta `build_reposicion_parametros_router` (`GET`/`PUT /api/productos/{id}/reposicion`) con la capacidad nueva
   **`reposicion.parametros` = encargado y admin**, tanto para leer como para escribir. El **depósito ve la reposición pero no decide sus

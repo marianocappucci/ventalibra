@@ -258,3 +258,13 @@ def test_sin_sesion_los_parametros_no_se_ven(admin_client, escenario):
 
     anonimo = TestClient(admin_client.app)
     assert anonimo.get(f"/api/productos/{escenario['yerba']}/reposicion").status_code == 401
+
+
+def test_editar_el_producto_no_deja_subir_el_minimo_por_encima_del_techo_ni_para_el_staff(admin_client, escenario):
+    yerba = escenario["yerba"]
+    assert _parametros(admin_client, yerba, plazo_entrega_dias=None, stock_maximo=30).status_code == 200   # el mínimo es 30
+    staff = _entrar(admin_client, "staff")
+    cuerpo = {"nombre": "Yerba 1kg", "unidad": "u", "codigo": "YERBA-1", "precio_venta": PRECIO, "precio_costo": COSTO,
+              "stock_minimo": 31}
+    assert staff.put(f"/api/productos/{yerba}", json=cuerpo).status_code == 422
+    assert next(p for p in admin_client.get("/api/productos").json() if p["id"] == yerba)["stock_minimo"] == 30
