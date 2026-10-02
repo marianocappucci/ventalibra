@@ -720,14 +720,14 @@ export function Pos() {
     <div className="grid gap-3 lg:flex lg:h-[calc(100svh-3rem)] lg:flex-col">
       {/* Color (ADR-054, pedido del humano 2026-10-01): el POS es la pantalla que el cajero mira todo el día y no tiene que
           parecerse al resto. Encabezado azul, total sobre fondo de marca y «Cobrar» verde; el resto de la app queda sobrio. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2.5 text-sm text-sky-50 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg libra-pos-encabezado px-4 py-2.5 text-sm shadow-sm">
         <span className="flex items-center gap-2">
-          <Scan className="size-4 text-white" />
+          <Scan className="size-4" />
           {/* Identificación sobria de la pantalla (pedido del humano,
               2026-09-17): sin bloque propio -- éste es el único renglón de
               encabezado que tiene el POS, y robarle alto es justo lo que no
               hay que hacer acá (ver TituloPantalla, que sí lo haría). */}
-          <span className="text-base font-semibold text-white">POS (Caja)</span>
+          <span className="text-base font-semibold">POS (Caja)</span>
           <span aria-hidden="true">·</span>
           Nueva venta
         </span>
@@ -736,7 +736,7 @@ export function Pos() {
               sucursal/caja, y "Cerrar turno" al final -- el más a la
               derecha, porque es la acción y no una etiqueta. */}
           {turno && (
-            <span className="rounded border border-white/30 bg-white/15 px-2 py-0.5 text-xs text-white">
+            <span className="rounded border border-current/30 bg-current/15 px-2 py-0.5 text-xs">
               Turno #{turno.id} · desde {hora(turno.apertura)} · inicial ${money(turno.monto_inicial)}
             </span>
           )}
@@ -753,7 +753,7 @@ export function Pos() {
             // "Cerrar turno" -- ya está ahí, a un click. Pedido del
             // humano (2026-09-17): "un botón «Cambiar»... o un tooltip".
             <span
-              className="rounded border border-white/30 bg-white/15 px-2 py-0.5 text-xs text-white"
+              className="rounded border border-current/30 bg-current/15 px-2 py-0.5 text-xs"
               title="Para trabajar en otra sucursal, cerrá el turno."
             >
               {conPrefijo('Sucursal', turno.sucursal.nombre)}
@@ -847,28 +847,28 @@ export function Pos() {
         />
 
         <div className="grid content-start gap-2">
-          <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+          <div className="rounded-lg border-2 border-exito/40 bg-exito/10 p-4">
             {ahorro > 0 && (
               <div className="mb-2 grid gap-0.5 border-b pb-2 text-sm">
                 <p className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span><span className="tabular-nums">${money(total)}</span>
                 </p>
                 {promosAplicadas.map((a) => (
-                  <p key={`${a.promocion_id}-${a.nombre}`} className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                  <p key={`${a.promocion_id}-${a.nombre}`} className="flex justify-between text-exito">
                     <span>{a.nombre}{a.veces > 1 ? ` × ${a.veces}` : ''}</span>
                     <span className="tabular-nums">−${money(a.ahorro)}</span>
                   </p>
                 ))}
               </div>
             )}
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Total</p>
-            <p className="text-5xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400">${money(totalConPromos)}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Total</p>
+            <p className="text-5xl font-bold tabular-nums text-exito">${money(totalConPromos)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {cart.length} producto{cart.length === 1 ? '' : 's'}
             </p>
           </div>
           <Button
-            className="h-16 bg-emerald-600 text-lg font-semibold text-white shadow hover:bg-emerald-700 disabled:bg-emerald-600/40"
+            className="h-16 bg-exito text-lg font-semibold text-exito-foreground shadow hover:bg-exito/90 disabled:bg-exito/40"
             disabled={!puedeCobrar || busy}
             onClick={() => { setCobroDividido(false); setCobroOpen(true) }}
           >
@@ -1014,7 +1014,7 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
                 i === marcada ? 'bg-sky-100 dark:bg-sky-900/40' : '',
                 // El resaltado del escaneo pisa al de seleccion: es el acuse
                 // de que la linea entro, y dura un segundo.
-                i === reciente ? 'bg-emerald-100 dark:bg-emerald-950' : '',
+                i === reciente ? 'bg-exito/15' : '',
               ].join(' ')}
             >
               <td className="p-2 text-muted-foreground">{i + 1}</td>
@@ -1688,7 +1688,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
                 <>
                   <p className="text-sm">
                     {qrEstado === 'acreditado' ? (
-                      <span className="font-medium text-emerald-600 dark:text-emerald-500">
+                      <span className="font-medium text-exito">
                         Pago acreditado. Cerrando la venta…
                       </span>
                     ) : (
@@ -1764,7 +1764,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
             ) : (
               <div className="flex items-baseline justify-between">
                 <span className="text-sm text-muted-foreground">Vuelto</span>
-                <span className="text-3xl font-medium tabular-nums text-emerald-600 dark:text-emerald-500">
+                <span className="text-3xl font-medium tabular-nums text-exito">
                   ${money(vuelto)}
                 </span>
               </div>
@@ -1860,7 +1860,7 @@ function VentaCobrada({ venta, facturaError, aviso, onNueva }: {
         <p className="text-sm text-muted-foreground">Venta {venta.numero} cobrada</p>
         <p className="mt-1 text-2xl font-medium tabular-nums">${money(venta.total)}</p>
         {(venta.promociones ?? []).length > 0 && (
-          <div className="mt-2 grid gap-0.5 text-sm text-emerald-700 dark:text-emerald-400">
+          <div className="mt-2 grid gap-0.5 text-sm text-exito">
             {(venta.promociones ?? []).map((promo, i) => (
               <p key={i}>
                 {promo.nombre}{promo.veces > 1 ? ` × ${promo.veces}` : ''}: ahorro ${money(promo.ahorro)}
@@ -1871,7 +1871,7 @@ function VentaCobrada({ venta, facturaError, aviso, onNueva }: {
         {vuelto > 0 && (
           <div className="mt-5 border-t pt-5">
             <p className="text-sm text-muted-foreground">Vuelto</p>
-            <p className="text-5xl font-medium tabular-nums text-emerald-600 dark:text-emerald-500">
+            <p className="text-5xl font-medium tabular-nums text-exito">
               ${money(vuelto)}
             </p>
           </div>
@@ -2194,7 +2194,7 @@ function CerrarTurno({ turno, onCerrado, onCancelar }: {
                 className={[
                   'text-2xl font-medium tabular-nums',
                   Math.abs(diferencia) < 0.005
-                    ? 'text-emerald-600 dark:text-emerald-500'
+                    ? 'text-exito'
                     : 'text-destructive',
                 ].join(' ')}
               >
