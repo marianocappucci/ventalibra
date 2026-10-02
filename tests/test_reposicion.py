@@ -210,3 +210,51 @@ def test_lo_que_la_pantalla_del_kit_pide_al_abrir_lo_leen_el_admin_y_el_encargad
     categorias = gerencia.get("/api/productos/categorias")
     assert categorias.status_code == 200, categorias.text
     assert [c["nombre"] for c in categorias.json()] == ["Almacén"] and all({"id", "nombre"} <= set(c) for c in categorias.json())
+
+
+# ── Plazo de entrega y stock máximo por producto (ADR-055) ───────────────
+
+
+def _parametros(cliente, producto_id, **cuerpo):
+    return cliente.put(f"/api/productos/{producto_id}/reposicion", json=cuerpo)
+
+
+def test_el_encargado_y_el_admin_cargan_el_plazo_y_el_techo_y_la_reposicion_los_usa(gerencia, escenario):
+    yerba = escenario["yerba"]
+    # Con 60 días de cobertura la necesidad es de 63 − 17 = 46 (rota 1 por día; 13 en stock y 4 en camino).
+    assert _reposicion(gerencia, dias_cobertura=60)["productos"][0]["sugerido"] == 46
+    r = _parametros(gerencia, yerba, plazo_entrega_dias=10, stock_maximo=30)   # el mínimo es 30: el techo no puede ser menor
+    assert r.status_code == 200, r.text
+    assert r.json()["plazo_entrega_dias"] == 10 and r.json()["stock_maximo"] == 30
+    assert gerencia.get(f"/api/productos/{yerba}/reposicion").json()["stock_maximo"] == 30
+    (p,) = _reposicion(gerencia, dias_cobertura=60)["productos"]
+    # El plazo propio (10 en vez de 3) alarga el horizonte (70 días: 70 − 17 = 53) y el techo lo recorta: caben 30 − 17 = 13.
+    assert p["sugerido"] == 13 and p["limitado_por_maximo"] is True and p["plazo_entrega_dias"] == 10 and p["plazo_propio"] is True
+    # Borrar los dos vuelve a la cuenta de siempre.
+    assert _parametros(gerencia, yerba, plazo_entrega_dias=None, stock_maximo=None).status_code == 200
+    (p,) = _reposicion(gerencia, dias_cobertura=60)["productos"]
+    assert p["sugerido"] == 46 and p["limitado_por_maximo"] is False and p["plazo_propio"] is False
+
+
+def test_un_techo_menor_que_el_minimo_o_un_plazo_invalido_es_422_y_no_escribe(admin_client, escenario):
+    yerba = escenario["yerba"]
+    assert _parametros(admin_client, yerba, plazo_entrega_dias=3, stock_maximo=5).status_code == 422   # el mínimo es 30
+    assert _parametros(admin_client, yerba, plazo_entrega_dias=0, stock_maximo=None).status_code == 422
+    assert _parametros(admin_client, 999999, plazo_entrega_dias=3, stock_maximo=None).status_code == 404
+    assert admin_client.get(f"/api/productos/{yerba}/reposicion").json()["plazo_entrega_dias"] is None
+
+
+@pytest.mark.parametrize("rol", ["cajero", "vendedor", "deposito"])
+def test_los_demas_roles_no_leen_ni_escriben_los_parametros(admin_client, escenario, rol):
+    cliente = _entrar(admin_client, rol)
+    yerba = escenario["yerba"]
+    assert cliente.get(f"/api/productos/{yerba}/reposicion").status_code == 403
+    assert _parametros(cliente, yerba, plazo_entrega_dias=3, stock_maximo=None).status_code == 403
+    assert admin_client.get(f"/api/productos/{yerba}/reposicion").json()["plazo_entrega_dias"] is None
+
+
+def test_sin_sesion_los_parametros_no_se_ven(admin_client, escenario):
+    from fastapi.testclient import TestClient
+
+    anonimo = TestClient(admin_client.app)
+    assert anonimo.get(f"/api/productos/{escenario['yerba']}/reposicion").status_code == 401

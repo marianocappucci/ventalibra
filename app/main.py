@@ -43,7 +43,7 @@ from libracommerce.web.promociones_router import (
     build_promociones_calculo_router,
     build_promociones_router,
 )
-from libracommerce.web.reposicion_router import build_reposicion_router
+from libracommerce.web.reposicion_router import build_reposicion_parametros_router, build_reposicion_router
 from libracommerce.web.vencimientos_router import build_vencimientos_escritura_router, build_vencimientos_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
 from libracore import config_manager
@@ -869,6 +869,14 @@ def create_app(db_path: str) -> FastAPI:
     # sugiere: no genera la orden de compra. No lleva costos: `/api/reportes` no está en los prefijos de `SinCostos` (`app/costos.py`)
     # y `tests/test_reposicion.py` fija que ninguna clave de costo viaja.
     app.include_router(build_reposicion_router(conexion=lc_get_connection), dependencies=[Depends(requiere("reposicion.ver"))])
+    # Plazo de entrega y stock máximo por producto (ADR-055; ADR-020 del motor, libracommerce v0.32.0): `GET`/`PUT /api/productos/{id}/reposicion`.
+    # Capacidad `reposicion.parametros` (encargado y admin) tanto para leer como para escribir; el router no se construye sin dependencias de
+    # escritura. Va aparte del payload del producto (que no cambia). Requiere la revisión `0003` del motor (`libracommerce-migrar upgrade`).
+    app.include_router(build_reposicion_parametros_router(
+        conexion=lc_get_connection,
+        dependencias_leer=[Depends(requiere("reposicion.parametros"))],
+        dependencias_escribir=[Depends(requiere("reposicion.parametros"))],
+    ))
     # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.30.0,
     # ADR-018 del motor), que cuelgan de `/api/vencimientos`. Sin gate de plan (libre en Básico y Premium, ADR-048). Desde v0.30.0 (A-4,
     # ADR-053) las salidas de un producto marcado siguen el lote, y las opciones de productos, stock y ventas lo completan (más arriba).

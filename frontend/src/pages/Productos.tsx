@@ -11,6 +11,9 @@
 // encargado y el admin), no de todo el que edita productos (el staff heredado también edita). `conVencimientos` lo decide por esa
 // capacidad: con ella, el interruptor se fuerza aunque el catálogo todavía esté vacío (el kit lo deduce de los datos y una lista
 // vacía no tiene de dónde); sin ella, no se ofrece (el backend igual contesta 403 a quien intente cambiar la marca).
+//
+// **Plazo de entrega y stock máximo** (reposición sugerida, ADR-055; kit v0.96.0): `conParametrosDeReposicion` los ofrece sólo a quien tiene
+// `reposicion.parametros` (el encargado y el admin); se guardan aparte del producto en `/api/productos/{id}/reposicion`.
 import { Productos as ProductosComercio } from 'libra-ui/comercio/Productos'
 import { useAuth } from '../context/AuthContext'
 import { puede } from '../lib/permisos'
@@ -21,6 +24,7 @@ export function Productos() {
     <ProductosComercio
       conTipo conDetalle conStockTotal conEliminar={false}
       conVencimientos={puede(user, 'vencimientos.marcar')}
+      conParametrosDeReposicion={puede(user, 'reposicion.parametros')}
     />
   )
 }
