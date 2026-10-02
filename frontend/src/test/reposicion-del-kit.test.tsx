@@ -3,6 +3,7 @@
 // tiene `reposicion.ver` (admin y encargado) y que la pantalla habla con la API que el kit espera, incluidos los dos pedidos de sus filtros
 // (`/api/sucursales` y `/api/productos/categorias`), que si fallan no la rompen.
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
@@ -25,7 +26,7 @@ const REPOSICION = {
   }],
 }
 
-type Rol = 'admin' | 'encargado' | 'cajero' | 'vendedor'
+type Rol = 'admin' | 'encargado' | 'cajero' | 'vendedor' | 'deposito'
 
 /** `filtros`: si `/api/sucursales` y `/api/productos/categorias` contestan bien o con 403. */
 function conSesion(role: Rol, filtros: 'bien' | 'fallan' = 'bien') {
@@ -94,3 +95,70 @@ describe('ruta /reposicion', () => {
     expect(screen.queryByRole('link', { name: /Reposición sugerida/ })).toBeNull()
   })
 })
+
+// ── Generar órdenes en borrador (ADR-057, kit v0.105.0) ──
+// El botón escribe órdenes de compra: lo ofrece el wrapper a quien tiene `compras.escribir` y sólo si el motor maneja proveedores (el kit lo deduce de la respuesta).
+describe('generar órdenes en borrador', () => {
+  const CON_PROVEEDOR = { ...REPOSICION, proveedor_id: null, productos: [{ ...REPOSICION.productos[0], proveedor_id: 7, proveedor: 'Distribuidora Norte' }] }
+
+  function sesionConProveedor(role: Rol) {
+    conSesion(role)
+    const base = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
+    const previo = base.getMockImplementation()!
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('/api/reportes/reposicion/ordenes') && init?.method === 'POST') {
+        llamadas.push(`POST ${u}`)
+        return Promise.resolve(json({
+          ordenes: [{ id: 41, number: 'OC-000041', proveedor_id: 7, proveedor: 'Distribuidora Norte', branch_id: null, status: 'draft', total: '120', lineas: [] }],
+          sin_proveedor: [], omitidos: [], repetida: false,
+        }))
+      }
+      if (u.startsWith('/api/reportes/reposicion')) return Promise.resolve(json(CON_PROVEEDOR))
+      if (u === '/api/proveedores') return Promise.resolve(json([{ id: 7, nombre: 'Distribuidora Norte' }]))
+      return previo(url, init)
+    }))
+  }
+
+  it.each(['admin', 'encargado'] as const)('el %s ve «Generar órdenes en borrador» y el número de la orden creada lleva a su detalle en Compras', async (rol) => {
+    sesionConProveedor(rol)
+    const user = userEvent.setup()
+    abrir('/reposicion')
+    await user.click(await screen.findByRole('button', { name: /Generar órdenes en borrador/ }))
+    await user.click(await screen.findByRole('button', { name: 'Crear 1 orden' }))
+    const enlace = await screen.findByRole('link', { name: 'OC-000041' })
+    expect(enlace).toHaveAttribute('href', '/compras/41')
+    expect(llamadas.some((l) => l.startsWith('POST /api/reportes/reposicion/ordenes'))).toBe(true)
+  })
+
+  it('un rol sin compras.escribir (el depósito) ve la reposición pero no el botón', async () => {
+    conSesion('deposito')                           // la respuesta del motor trae proveedores, pero el rol no escribe Compras
+    const previo = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).getMockImplementation()!
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('/api/reportes/reposicion')) return Promise.resolve(json(CON_PROVEEDOR))
+      return previo(url, init)
+    }))
+    abrir('/reposicion')
+    expect(await screen.findByText('Yerba 1kg')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Generar órdenes en borrador/ })).not.toBeInTheDocument()
+  })
+
+  it('el visitante de la demo (sólo lectura) ve la reposición pero no se le ofrece generar órdenes', async () => {
+    conSesion('encargado')
+    const previo = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).getMockImplementation()!
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/auth/me')) {
+        const r = await previo(url, init) as Response
+        return json({ ...(await r.json()), demo_readonly: true })
+      }
+      if (u.startsWith('/api/reportes/reposicion')) return json(CON_PROVEEDOR)
+      return previo(url, init)
+    }))
+    abrir('/reposicion')
+    expect(await screen.findByText('Yerba 1kg')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Generar órdenes en borrador/ })).not.toBeInTheDocument()
+  })
+})
+

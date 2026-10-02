@@ -2714,3 +2714,16 @@ decisión explícita del humano, y no forman parte de esta ADR.
   como en Compras. Asignar un proveedor crea o actualiza su espejo en `parties` (lo hace `party_de_proveedor`); **si después se renombra el proveedor, el nombre que muestra la
   reposición se actualiza la próxima vez que se asigne o se use en una orden de compra**, no al instante (límite conocido).
 
+
+## ADR-057 — Órdenes de compra en borrador desde la reposición
+
+- Estado: aceptada (pedido del humano, 2026-10-02). Usa libracommerce `v0.34.0` (ADR-022 del motor) y libra-ui `v0.105.0` (botón y diálogo en la reposición).
+- Decisión: `POST /api/reportes/reposicion/ordenes` crea **una orden de compra en borrador por proveedor habitual** con lo que la reposición sugiere pedir (cantidad = sugerido, costo =
+  el costo vigente del producto, sin IVA), con la numeración `OC-` de VentaLibra (`next_sequence`) y los ids de proveedor de Compras (`app/compras_ganchos.py`). **Nunca envía ni
+  confirma**: es un borrador que se revisa y se manda desde Compras. Los productos sin proveedor habitual no entran y se informan; las líneas sin costo cargado se marcan para completarlas.
+- Capacidades: **`reposicion.ver` Y `compras.escribir`** (las dos): en la práctica el encargado y el admin. El depósito ve la reposición pero no escribe Compras (y no ve costos, que esta
+  respuesta trae); el staff escribe Compras pero no ve la reposición. No hay capacidad nueva. El botón del kit lo enciende el wrapper por `compras.escribir`.
+- Se puede reintentar sin duplicar (`clave_operacion`, el kit la conserva y reenvía el pedido entero tras un corte), las órdenes en borrador cuentan como «en camino» (generar dos veces no pide
+  dos veces) y toda la generación va detrás de un candado de la transacción (dos pedidos a la vez no duplican).
+- Límites conocidos: el intento cortado se guarda en `sessionStorage` sin atarlo al usuario (igual que el de Vencimientos): si otra persona inicia sesión en la misma pestaña antes de resolverlo, lo
+  vería; una orden con costo 0 hay que completarla antes de enviarla.
