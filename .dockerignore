@@ -5,6 +5,11 @@
 # adentro de la imagen. Las de producción se construyen desde un clon limpio y no
 # tenían el problema.
 clientes/
+# Credenciales de Nginx Proxy Manager del checkout del servidor (no versionadas) y
+# el panel de administración de infraestructura: no son parte de la app.
+scripts/.npm_config.json*
+scripts/.npm_config*
+admin/
 dev-data/
 data/
 data-*/
