@@ -51,6 +51,22 @@ Cada cliente corre en su propio contenedor, aislado en `clientes/<slug>/`, todos
 la imagen `ventalibra:latest`. El puerto base de este producto es **8082** (los asigna el
 provisioning mirando los puertos realmente ocupados del host).
 
+> **Dónde viven las instancias (medido el 2026-10-03).** En el VPS están en
+> `/srv/libra/ventalibra/clientes/<slug>/` (0700, root), **fuera del checkout `/root/ventalibra`
+> y de git**. Los scripts (`nuevo_cliente.py`, `panel_admin.py`, `reset_demo.sh`), los crons y el
+> backoffice toman ese directorio de la variable de entorno **`LIBRA_CLIENTES_DIR`**; la
+> precedencia del motor (libracore v1.123.0) es: parámetro `clientes_dir` de `configure()` >
+> `LIBRA_CLIENTES_DIR` > `<repo>/clientes`. En desarrollo local (WSL), sin la variable, sigue
+> siendo `<repo>/clientes`.
+>
+> Cada instancia es un directorio con `docker-compose.yml`, `cliente.json`, `.env` (si la
+> instancia lo tiene) y `data/` (montado `./data:/app/data`). El sidecar PostgreSQL usa un
+> volumen nombrado, que no se mueve de lugar.
+>
+> `scripts/reset_demo.sh` acepta `CLIENTES_DIR` o `LIBRA_CLIENTES_DIR`. Los `*_backup_*.tar.gz` viejos de
+> la raíz de `clientes/` quedaron copiados en `/srv/libra/ventalibra/backups-legacy/`, fuera de la carpeta de
+> instancias y de la purga del motor.
+
 ### Setup único del servidor
 
 `nuevo_cliente.py` y `panel_admin.py` son wrappers finos sobre `libracore.provisioning`, y el
@@ -82,6 +98,12 @@ Dos cosas que no son obvias:
 > (`docker build --ssh default=$SSH_AUTH_SOCK -t ventalibra:latest .`). Con la imagen ya
 > construida, el alta funciona sola.
 
+> ⚠️ **En el VPS, antes de lanzar `nuevo_cliente.py` o `panel_admin.py` a mano, exportá
+> `LIBRA_CLIENTES_DIR=/srv/libra/ventalibra/clientes`.** Sin la variable toman
+> `/root/ventalibra/clientes`, el directorio viejo que se retira más adelante: por ejemplo,
+> `actualizar demo` recrearía la demo desde el compose viejo. Los crons y el backoffice ya la
+> traen definida.
+
 ### Alta de un cliente nuevo
 
 En el servidor, desde `/root/ventalibra`:
@@ -91,7 +113,7 @@ En el servidor, desde `/root/ventalibra`:
 ```
 
 El wizard pide nombre, slug, puerto, dominio, plan y credenciales de admin; crea
-`clientes/<slug>/` (compose + `data/` con base, config y adjuntos aislados), levanta el
+`<LIBRA_CLIENTES_DIR>/<slug>/` (compose + `data/` con base, config y adjuntos aislados), levanta el
 contenedor y —si hay dominio— crea el proxy y el certificado en Nginx Proxy Manager.
 
 ### Gestión del día a día
