@@ -2739,3 +2739,9 @@ decisión explícita del humano, y no forman parte de esta ADR.
   para un producto sin rotación reciente. Una instancia con menos de un año de historia —**VentaLibra no tiene ningún cliente en producción**— no tiene con qué ajustar: el interruptor existe pero
   el factor sale vacío hasta que haya un año de ventas.
 
+## ADR-059 — Mínimo de stock por sucursal en la reposición
+
+- Estado: aceptada (pedido del humano, 2026-10-03). Usa libracommerce `v0.36.0` (ADR-024 del motor, migración `0005_min_stock_por_sucursal`) y libra-ui `v0.108.0` (sección «Mínimo por sucursal» del formulario de reposición del producto y marca «propio de la sucursal» en la tabla).
+- Decisión: cada producto puede tener un mínimo propio en cada sucursal; con una sucursal elegida, la reposición usa ese mínimo y, si no hay, el global de siempre. **Sin sucursal (toda la instancia) usa siempre el global**: los mínimos por sucursal no se suman. `0` sigue siendo «no me avises», también como mínimo propio. Router del motor montado con la **misma capacidad** que el plazo y el techo, `reposicion.parametros` (encargado, admin y depósito), para leer y para escribir; el id de sucursal es el del motor, el mismo que ya usa el filtro de la reposición. El techo de reposición no puede ser menor que ningún mínimo por sucursal ni al revés (422).
+- Migración: la `0005` del motor crea la tabla `item_branch_min_stock` (aditiva) y corre con `libracommerce-migrar upgrade --prefijo ventalibra` en el deploy. Sin ella, el router contesta 503 y el kit oculta la sección.
+- Lo que no hace: no hay mínimos por sucursal en el alta de un producto (se cargan editando), la lista de productos no los muestra, y el mínimo de toda la instancia no los agrega.

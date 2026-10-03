@@ -305,7 +305,7 @@ def test_el_encargado_y_el_admin_cargan_el_proveedor_y_la_reposicion_lo_muestra_
     assert _reposicion(gerencia, proveedor_id=sur)["productos"] == []
     # El CSV lo trae.
     csv = gerencia.get("/api/reportes/reposicion/export", params={"proveedor_id": norte}).text.splitlines()
-    assert csv[0].endswith(",proveedor_id,proveedor,factor_estacional") and csv[1].endswith(f",{norte},Distribuidora Norte,")
+    assert csv[0].endswith(",proveedor_id,proveedor,factor_estacional,stock_minimo_propio") and f",{norte},Distribuidora Norte,," in csv[1]
     # Sin mandar la clave el proveedor queda; con null se borra.
     assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None).json()["proveedor_id"] == norte
     assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None, proveedor_id=None).json()["proveedor_id"] is None
@@ -424,7 +424,7 @@ def test_la_estacionalidad_se_pide_y_sin_historia_de_hace_un_año_no_ajusta_nada
     (p_sin,), (p_con,) = sin["productos"], con["productos"]
     assert p_con["factor_estacional"] is None and p_con["sugerido"] == p_sin["sugerido"] == 13
     csv = gerencia.get("/api/reportes/reposicion/export", params={"estacionalidad": "true"}).text.splitlines()
-    assert csv[0].endswith(",factor_estacional")
+    assert csv[0].endswith(",factor_estacional,stock_minimo_propio")
 
 
 def test_las_ordenes_en_borrador_aceptan_el_ajuste_estacional(admin_client, escenario):
@@ -433,3 +433,63 @@ def test_las_ordenes_en_borrador_aceptan_el_ajuste_estacional(admin_client, esce
     r = _ordenes(admin_client, clave_operacion="est-1", estacionalidad=True)
     assert r.status_code == 200, r.text
     assert float(r.json()["ordenes"][0]["lineas"][0]["cantidad"]) == 13.0                  # sin historia: lo de siempre
+
+
+# ── Mínimo de stock por sucursal (ADR-059) ───────────────────────────────
+
+
+def _minimo(cliente, producto_id, sucursal_id, valor):
+    return cliente.put(f"/api/productos/{producto_id}/reposicion/minimos/{sucursal_id}", json={"stock_minimo": valor})
+
+
+def test_el_encargado_carga_un_minimo_por_sucursal_y_la_reposicion_lo_usa_en_esa_sucursal(gerencia, escenario):
+    yerba, norte = escenario["yerba"], escenario["otra_sucursal"]
+    r = gerencia.get(f"/api/productos/{yerba}/reposicion/minimos")
+    assert r.status_code == 200, r.text
+    filas = {f["sucursal_id"]: f for f in r.json()["sucursales"]}
+    assert filas[norte]["stock_minimo_propio"] is False and filas[norte]["stock_minimo"] == 30 == filas[norte]["stock_minimo_global"]
+    r = _minimo(gerencia, yerba, norte, 5)
+    assert r.status_code == 200, r.text
+    assert {f["sucursal_id"]: f for f in r.json()["sucursales"]}[norte]["stock_minimo"] == 5
+    filas = gerencia.get("/api/reportes/reposicion", params={"sucursal_id": norte}).json()["productos"]
+    yerba_norte = next((p for p in filas if p["producto_id"] == yerba), None)
+    assert yerba_norte is None or (yerba_norte["stock_minimo"] == 5 and yerba_norte["stock_minimo_propio"] is True)
+    # Sin sucursal manda el global; borrar el propio vuelve a él.
+    (p,) = _reposicion(gerencia)["productos"]
+    assert p["stock_minimo"] == 30 and p["stock_minimo_propio"] is False
+    assert _minimo(gerencia, yerba, norte, None).status_code == 200
+    filas = {f["sucursal_id"]: f for f in gerencia.get(f"/api/productos/{yerba}/reposicion/minimos").json()["sucursales"]}
+    assert filas[norte]["stock_minimo_propio"] is False
+
+
+def test_un_minimo_por_sucursal_invalido_es_422_y_un_producto_o_sucursal_que_no_existe_no_escribe(admin_client, escenario):
+    yerba, norte = escenario["yerba"], escenario["otra_sucursal"]
+    assert _minimo(admin_client, yerba, norte, -1).status_code == 422
+    assert _minimo(admin_client, yerba, norte, True).status_code == 422          # un booleano no es un número
+    assert _minimo(admin_client, yerba, 999999, 3).status_code == 422
+    assert _minimo(admin_client, 999999, norte, 3).status_code == 404
+    filas = {f["sucursal_id"]: f for f in admin_client.get(f"/api/productos/{yerba}/reposicion/minimos").json()["sucursales"]}
+    assert filas[norte]["stock_minimo_propio"] is False
+
+
+@pytest.mark.parametrize("rol", ["cajero", "vendedor"])
+def test_los_demas_roles_no_leen_ni_escriben_los_minimos_por_sucursal(admin_client, escenario, rol):
+    cliente = _entrar(admin_client, rol)
+    yerba, norte = escenario["yerba"], escenario["otra_sucursal"]
+    assert cliente.get(f"/api/productos/{yerba}/reposicion/minimos").status_code == 403
+    assert _minimo(cliente, yerba, norte, 3).status_code == 403
+
+
+def test_el_deposito_carga_los_minimos_por_sucursal_sin_editar_el_producto(admin_client, escenario):
+    deposito = _entrar(admin_client, "deposito")
+    yerba, norte = escenario["yerba"], escenario["otra_sucursal"]
+    r = _minimo(deposito, yerba, norte, 8)
+    assert r.status_code == 200, r.text
+    assert deposito.get(f"/api/productos/{yerba}/reposicion/minimos").status_code == 200
+
+
+def test_sin_sesion_los_minimos_por_sucursal_no_se_ven(admin_client, escenario):
+    from fastapi.testclient import TestClient
+
+    anonimo = TestClient(admin_client.app)
+    assert anonimo.get(f"/api/productos/{escenario['yerba']}/reposicion/minimos").status_code == 401

@@ -301,6 +301,9 @@ POST   /api/reportes/reposicion/ordenes                                 GERENCIA
 # Plazo y stock máximo por producto (ADR-055): `reposicion.parametros`, el encargado, el admin y el depósito, para leer y para escribir.
 GET    /api/productos/{producto_id}/reposicion                          GERENCIA_Y_DEPOSITO
 PUT    /api/productos/{producto_id}/reposicion                          GERENCIA_Y_DEPOSITO
+# Mínimo de stock por sucursal (ADR-059): la misma capacidad `reposicion.parametros`, para leer y para escribir.
+GET    /api/productos/{producto_id}/reposicion/minimos                  GERENCIA_Y_DEPOSITO
+PUT    /api/productos/{producto_id}/reposicion/minimos/{sucursal_id}    GERENCIA_Y_DEPOSITO
 
 # Vencimientos y lotes: ver `vencimientos.ver` y mover (asignar, cargar con lote, dar de baja) `vencimientos.mover`, el encargado y el depósito; marcar
 # un producto `vencimientos.marcar`, sólo el encargado. NO el staff heredado (pantalla nueva), ni el mostrador.
