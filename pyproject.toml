@@ -92,7 +92,7 @@ dependencies = [
     # vencimientos (`POST /api/vencimientos/entrada`, la marca `vence` en el producto con `OpcionesCatalogo.con_vencimientos`,
     # `OpcionesStock.con_lotes`, que NO se prende: ADR-053); y los avisos opt-in de la venta (`OpcionesVentas.con_avisos_de_vencimiento`, `POST
     # /api/ventas/plan-salida`). Sin migración nueva (sigue la 0002). ADR-053 de este producto.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.36.0",
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.37.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -227,7 +227,10 @@ dependencies = [
     # reemplaza la base por worker y las plantillas que este repo escribia por su cuenta (reglas/ci.md del wiki).
     # Subir el pin trae tambien v1.119.0 -> v1.121.0, todo de ARCA y con DOS migraciones del motor (0014: condicion
     # de IVA del receptor y FCE MiPyME; 0015: `facturas.cae_error`), que corren al desplegar: ver el CHANGELOG de libracore.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.122.0",
+    # v1.122.0 -> v1.123.0 (2026-10-03): `get_config().clientes_dir` con precedencia `configure(clientes_dir=)` >
+    # env `LIBRA_CLIENTES_DIR` > `repo_root/clientes` (el default no cambia). `scripts/nuevo_cliente.py` y
+    # `scripts/panel_admin.py` lo leen de ahi (etapa 1 de wiki/analyses/sacar-clientes-del-arbol-del-repo.md).
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.123.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

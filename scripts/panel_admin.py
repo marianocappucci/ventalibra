@@ -18,6 +18,7 @@ from libracore.provisioning import (
     client_from_config,
     configure,
     forward_host_from_config,
+    get_config,
     le_email_from_config,
     npm_available,
 )
@@ -106,8 +107,9 @@ configure(
     base_port=8082,
 )
 
-# Re-exportados por compatibilidad con cualquier uso directo de este módulo.
-CLIENTES_DIR = REPO_ROOT / "clientes"
+# Re-exportado por compatibilidad con cualquier uso directo de este módulo. La
+# fuente de verdad es el motor: `LIBRA_CLIENTES_DIR` o, sin ella, `REPO_ROOT/clientes`.
+CLIENTES_DIR = get_config().clientes_dir
 _NPM_AVAILABLE = npm_available()
 
 if __name__ == "__main__":
