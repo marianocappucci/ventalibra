@@ -255,6 +255,9 @@ dev = [
     "ruff>=0.13",
     "httpx>=0.27,<1",
     "pytest>=8.0",
+    # F3 (2026-09-05, reglas/ci.md del wiki): la suite corre en varios procesos,
+    # una base por worker (tests/motor_de_test.py).
+    "pytest-xdist>=3.8",
     # Para leer el texto de los recibos. Un test que solo comprueba que salgan
     # bytes pasa aunque el comprobante salga en blanco.
     "pypdf>=4",

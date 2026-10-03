@@ -221,11 +221,15 @@ jobs:
       # Una sola corrida, contra el motor real. Hasta el 2026-08-25 habia dos:
       # esta --- SIN la variable, o sea SQLite --- y otra despues. El guard de
       # `tests/motor_de_test.py` ahora hace imposible la primera.
+      # xdist (reglas/ci.md del wiki): 4 workers, las vCPU del runner. Cada uno
+      # trabaja en SU base (`ventalibra_gw0`, ...; ver `tests/motor_de_test.py`),
+      # porque la limpieza entre tests vacia el schema entero. La cobertura sigue
+      # siendo una sola: pytest-cov junta la de los workers y el piso aplica igual.
       - name: Run tests
         if: steps.cambios.outputs.backend == 'true'
         env:
           VENTALIBRA_TEST_DATABASE_URL: postgresql://ventalibra:ventalibra-ci@localhost:5432/ventalibra
-        run: pytest -v --cov --cov-report=term-missing
+        run: pytest -n 4 -v --cov --cov-report=term-missing
 
       # La misma suite contra el motor de destino. Sin `--cov`: la cobertura ya
       # se midio arriba y es la misma.
