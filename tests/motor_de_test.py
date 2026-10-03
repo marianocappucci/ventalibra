@@ -44,6 +44,47 @@ if not TEST_DATABASE_URL.startswith("postgresql"):
     )
 
 
+# --- Una base por worker de pytest-xdist ----------------------------------
+# `limpiar_entre_tests()` vacia el schema `public` ENTERO y termina todas las
+# conexiones del rol sobre la base: con dos procesos sobre la misma base, cada
+# uno le borraria el piso al otro en pleno test. Por eso cada worker trabaja en
+# SU base (`<base>_gw0`, `<base>_gw1`, ...), creada al importar este modulo,
+# que es antes de que alguien lea `TEST_DATABASE_URL`. Sin xdist la variable
+# `PYTEST_XDIST_WORKER` no existe y todo sigue en la base de siempre.
+#
+# `from motor_de_test import TEST_DATABASE_URL` es como la leen todos los tests,
+# asi que reasignarla aca alcanza: ninguno compone la URL por su cuenta.
+#
+# Se crea conectado a la base ORIGINAL (un `CREATE DATABASE` va desde cualquier
+# base), asi no se supone que exista la `postgres`. Pide un rol con CREATEDB; el
+# del servicio de CI es el superusuario del contenedor.
+def _base_del_worker(url: str, worker: str) -> str:
+    import atexit
+
+    import psycopg
+    from sqlalchemy.engine import make_url
+
+    origen = make_url(url)
+    nombre = f"{origen.database}_{worker}"
+    admin = origen.render_as_string(hide_password=False).replace("postgresql+psycopg://", "postgresql://", 1)
+
+    def _soltar() -> None:
+        # `FORCE` porque la app del ultimo test deja su conexion viva (ver
+        # `_vaciar_schema`), y sin eso el DROP falla y deja la base huerfana.
+        with psycopg.connect(admin, autocommit=True) as conexion:
+            conexion.execute(f'DROP DATABASE IF EXISTS "{nombre}" WITH (FORCE)')
+
+    _soltar()  # restos de una corrida interrumpida
+    with psycopg.connect(admin, autocommit=True) as conexion:
+        conexion.execute(f'CREATE DATABASE "{nombre}"')
+    atexit.register(_soltar)
+    return origen.set(database=nombre).render_as_string(hide_password=False)
+
+
+if _WORKER := os.environ.get("PYTEST_XDIST_WORKER"):
+    TEST_DATABASE_URL = _base_del_worker(TEST_DATABASE_URL, _WORKER)
+
+
 def _vaciar_schema() -> None:
     """Deja el PostgreSQL compartido como una base nueva.
 
