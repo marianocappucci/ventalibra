@@ -299,3 +299,48 @@ it('un rol sin reposicion.parametros no ve el selector de proveedor', async () =
   expect(within(dialogo).queryByLabelText('Proveedor habitual')).not.toBeInTheDocument()
 })
 
+// Alta y edición del producto por rol (kit v0.111.0): `productos.escribir` (encargado y admin) crea y edita; el depósito carga sólo la reposición.
+it.each(['encargado', 'admin'] as const)('el %s ve «Nuevo producto» y edita los datos del producto', async (quien) => {
+  rol = quien
+  respuestas['GET /api/productos'] = [YERBA]
+  const user = userEvent.setup()
+  abrir()
+  await screen.findByText('Yerba Playadito')
+  expect(screen.getByRole('button', { name: /Nuevo producto/ })).toBeInTheDocument()
+  await user.click(screen.getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  expect(within(dialogo).getByLabelText(/Nombre/)).toBeEnabled()
+  expect(within(dialogo).queryByText(/sólo puede cargar la reposición/)).not.toBeInTheDocument()
+})
+
+it('el depósito no ve «Nuevo producto» y su formulario es de sólo lectura salvo la reposición', async () => {
+  rol = 'deposito'
+  const { precio_costo: _costo, ...sinCosto } = YERBA
+  respuestas['GET /api/productos'] = [sinCosto]
+  respuestas[`GET ${REPOSICION}`] = { producto_id: 1, nombre: 'Yerba Playadito', plazo_entrega_dias: 7, stock_maximo: null, stock_minimo: 0 }
+  const user = userEvent.setup()
+  abrir()
+  await screen.findByText('Yerba Playadito')
+  expect(screen.queryByRole('button', { name: /Nuevo producto/ })).not.toBeInTheDocument()
+  await user.click(screen.getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  expect(within(dialogo).getByLabelText(/Nombre/)).toBeDisabled()
+  expect(within(dialogo).getByText(/Tu rol sólo puede cargar la reposición de este producto/)).toBeInTheDocument()
+  await waitFor(() => expect(within(dialogo).getByLabelText('Plazo de entrega (días)')).toBeEnabled())
+})
+
+it('un 403 genérico de la API se muestra en castellano y no como «forbidden»', async () => {
+  respuestas['PUT /api/productos/1'] = { status: 403, detail: 'forbidden' }
+  respuestas['GET /api/productos'] = [YERBA]
+  const user = userEvent.setup()
+  abrir()
+  await screen.findByText('Yerba Playadito')
+  await user.click(screen.getByLabelText('Editar producto'))
+  const dialogo = await screen.findByRole('dialog')
+  await user.clear(within(dialogo).getByLabelText(/Nombre/))
+  await user.type(within(dialogo).getByLabelText(/Nombre/), 'Yerba 2')
+  await user.click(within(dialogo).getByRole('button', { name: /Guardar/ }))
+  expect(await within(dialogo).findByText(/No tenés permiso para hacer esto/)).toBeInTheDocument()
+  expect(within(dialogo).queryByText(/forbidden/i)).not.toBeInTheDocument()
+})
+
