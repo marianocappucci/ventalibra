@@ -44,118 +44,157 @@ if not TEST_DATABASE_URL.startswith("postgresql"):
     )
 
 
-# --- Una base por worker de pytest-xdist ----------------------------------
-# `limpiar_entre_tests()` vacia el schema `public` ENTERO y termina todas las
-# conexiones del rol sobre la base: con dos procesos sobre la misma base, cada
-# uno le borraria el piso al otro en pleno test. Por eso cada worker trabaja en
-# SU base (`<base>_gw0`, `<base>_gw1`, ...), creada al importar este modulo,
-# que es antes de que alguien lea `TEST_DATABASE_URL`. Sin xdist la variable
-# `PYTEST_XDIST_WORKER` no existe y todo sigue en la base de siempre.
+# --- Una base por worker, restaurada desde una plantilla -----------------------
+# Cada test arranca de una base **nueva**, y rearmarla desde cero es lo que mas
+# cuesta: medido sobre PostgreSQL 16, ~1,6 s por test entre vaciar el schema,
+# crear el de auth, `create_app()` (0,8 s) y las dos cadenas de Alembic (0,6 s).
+# Con `CREATE DATABASE ... TEMPLATE` la base sale de una copia ya armada, ~0,1 s.
+#
+# Dos plantillas por worker, armadas la primera vez que se piden:
+#
+# - **vacia**: solo el schema de auth. Es EXACTAMENTE lo que dejaba antes
+#   `limpiar_entre_tests()` (vaciar `public` + `crear_schema_de_auth`), asi que
+#   los tests que arman su propia app o prueban migraciones desde cero ven lo
+#   mismo que siempre.
+# - **armada**: lo que el fixture `admin_client` le hacia a esa base vacia
+#   (`create_app` + las cadenas de LibraCore y LibraCommerce). Solo se usa para
+#   los tests que piden `admin_client`; su `create_app` posterior es idempotente
+#   sobre ella, que es lo que el producto hace en cada arranque.
+#
+# Y una base **por worker** (`<base>_gw0`, ... y `<base>_main` sin xdist): el
+# test anterior deja conexiones vivas y la restauracion borra la base con
+# `FORCE`, asi que dos procesos sobre la misma se pisarian en pleno test.
 #
 # `from motor_de_test import TEST_DATABASE_URL` es como la leen todos los tests,
 # asi que reasignarla aca alcanza: ninguno compone la URL por su cuenta.
 #
-# Se crea conectado a la base ORIGINAL (un `CREATE DATABASE` va desde cualquier
-# base), asi no se supone que exista la `postgres`. Pide un rol con CREATEDB; el
-# del servicio de CI es el superusuario del contenedor.
-def _base_del_worker(url: str, worker: str) -> str:
-    import atexit
+# 🔴 Algunos tests importan `tests.motor_de_test` y otros `motor_de_test`: son DOS
+# modulos, y este codigo corre dos veces por proceso. Por eso lo que decide si
+# algo ya esta hecho no es una variable de Python sino PostgreSQL (la plantilla
+# existe o no) y una variable de entorno (la URL del worker).
+#
+# Se administra conectado a la base ORIGINAL (un `CREATE DATABASE` va desde
+# cualquier base). Pide un rol con CREATEDB; el del servicio de CI es el
+# superusuario del contenedor.
+import atexit
 
-    import psycopg
+_BASE_ORIGINAL = TEST_DATABASE_URL
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "main")
+# La clave lleva el id del worker: el proceso que lanza a los workers tambien
+# importa este modulo (como `main`) y los workers heredan su entorno, asi que una
+# clave unica les haria compartir la base del controlador.
+_CLAVE_ENV = f"_VENTALIBRA_BASE_DEL_WORKER_{_WORKER}"
+
+
+def _con_base(url: str, nombre: str) -> str:
     from sqlalchemy.engine import make_url
 
-    origen = make_url(url)
-    nombre = f"{origen.database}_{worker}"
-    admin = origen.render_as_string(hide_password=False).replace("postgresql+psycopg://", "postgresql://", 1)
-
-    def _soltar() -> None:
-        # `FORCE` porque la app del ultimo test deja su conexion viva (ver
-        # `_vaciar_schema`), y sin eso el DROP falla y deja la base huerfana.
-        with psycopg.connect(admin, autocommit=True) as conexion:
-            conexion.execute(f'DROP DATABASE IF EXISTS "{nombre}" WITH (FORCE)')
-
-    _soltar()  # restos de una corrida interrumpida
-    with psycopg.connect(admin, autocommit=True) as conexion:
-        conexion.execute(f'CREATE DATABASE "{nombre}"')
-    atexit.register(_soltar)
-    return origen.set(database=nombre).render_as_string(hide_password=False)
+    return make_url(url).set(database=nombre).render_as_string(hide_password=False)
 
 
-if _WORKER := os.environ.get("PYTEST_XDIST_WORKER"):
-    TEST_DATABASE_URL = _base_del_worker(TEST_DATABASE_URL, _WORKER)
+def _nombre_base() -> str:
+    from sqlalchemy.engine import make_url
+
+    return make_url(_BASE_ORIGINAL).database
 
 
-def _vaciar_schema() -> None:
-    """Deja el PostgreSQL compartido como una base nueva.
-
-    Cada test arma su propia app y espera una base limpia. Con archivos
-    temporales eso sale gratis; un PostgreSQL es **uno solo y compartido** por
-    toda la corrida. Se borra el SCHEMA y no la base: `DROP DATABASE` exige que
-    no quede ninguna conexion abierta, y la app del test anterior puede tener
-    la suya viva.
-
-    🔴 **Y antes hay que echar a las conexiones del test anterior.** Este
-    producto abre **una conexion viva por app** (`db.connect()`, sin pool) y no
-    la cierra nunca: es su diseno, heredado de SQLite. Contra PostgreSQL esa
-    conexion queda *idle in transaction* sosteniendo locks sobre `public`, y el
-    `DROP SCHEMA` de este helper **se cuelga esperandola** -- medido: 20 minutos
-    sin avanzar, con la corrida entera detras. No falla, no da error: se queda.
-
-    Por eso se las termina primero. Es brutal y es correcto para un arnes de
-    test: son conexiones de apps que ese test ya no usa.
-    """
+def _sql_admin(*sentencias: str) -> None:
     import psycopg
 
-    with psycopg.connect(
-        TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1),
-        autocommit=True,
-    ) as conexion:
-        # 🔴 **Sólo `client backend` de ESTE rol.** El terminate de antes no
-        # filtraba nada más allá de la base, y un rol sin superuser no puede
-        # matar procesos de un rol con superuser: el worker de autovacuum de
-        # los CATÁLOGOS (dueño `postgres`, que se despierta con el DDL constante
-        # de la suite) hacía estallar el setup con
-        # `InsufficientPrivilege: permission denied to terminate process`,
-        # y el error caído en un test ensuciaba los siguientes
-        # (medido el 2026-09-23: 108 tests en ERROR en una corrida local).
-        # Lo que hay que terminar son las conexiones VIEJAS de la app del test
-        # anterior, que corren con este mismo rol: `usename = session_user`
-        # las mata a ellas y sólo a ellas, sin privilegios especiales.
-        #
-        # Y hay que escribirlo con `=` y no con `<>`: para un rol sin superuser
-        # `usename`/`backend_type` de las sesiones ajenas se ven NULL en
-        # `pg_stat_activity`, y `usename <> 'x'` sobre NULL da NULL — la fila
-        # ajena quedaría FUERA del filtro igual, pero un `=` nunca va a
-        # apuntar a ella por aritmética de tres valores.
-        conexion.execute(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = current_database() AND pid <> pg_backend_pid() "
-            "AND usename = session_user AND backend_type = 'client backend'"
-        )
-        # `IF EXISTS`: una corrida interrumpida a mitad de este bloque deja la
-        # base SIN schema `public`, y entonces todas las corridas siguientes
-        # mueren en la primera linea. Un arnes no puede quedar envenenado
-        # porque alguien apreto Ctrl-C.
-        conexion.execute("DROP SCHEMA IF EXISTS public CASCADE")
-        conexion.execute("CREATE SCHEMA public")
+    admin = _BASE_ORIGINAL.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(admin, autocommit=True) as conexion:
+        for sentencia in sentencias:
+            conexion.execute(sentencia)
 
 
-def limpiar_entre_tests() -> None:
-    """Deja la base vacia UNA VEZ POR TEST. La llama la fixture autouse.
+def _existe_base(nombre: str) -> bool:
+    import psycopg
 
-    🔴 No puede ir dentro de `destino_dominio()`, que fue el primer intento:
-    varios tests arman **dos apps** y ahi la segunda le vaciaba el schema por
-    debajo a la primera -- 229 errores de *schema "public" does not exist*. Con
-    SQLite el problema no existe porque cada app se lleva su propio archivo.
+    admin = _BASE_ORIGINAL.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(admin, autocommit=True) as conexion:
+        return conexion.execute("SELECT 1 FROM pg_database WHERE datname = %s", (nombre,)).fetchone() is not None
+
+
+_BASE_WORKER = f"{_nombre_base()}_{_WORKER}"
+_PLANTILLA_VACIA = f"{_BASE_WORKER}_vacia"
+_PLANTILLA_ARMADA = f"{_BASE_WORKER}_armada"
+
+
+def _soltar_todo() -> None:
+    # `FORCE` porque la app del ultimo test deja su conexion viva (ver mas abajo).
+    _sql_admin(*(f'DROP DATABASE IF EXISTS "{n}" WITH (FORCE)' for n in (_BASE_WORKER, _PLANTILLA_VACIA, _PLANTILLA_ARMADA)))
+
+
+if _ya := os.environ.get(_CLAVE_ENV):
+    TEST_DATABASE_URL = _ya
+else:
+    _soltar_todo()  # restos de una corrida interrumpida
+    _sql_admin(f'CREATE DATABASE "{_BASE_WORKER}"')
+    atexit.register(_soltar_todo)
+    TEST_DATABASE_URL = _con_base(_BASE_ORIGINAL, _BASE_WORKER)
+    os.environ[_CLAVE_ENV] = TEST_DATABASE_URL
+
+
+def _asegurar_plantilla(nombre: str, construir) -> None:
+    """Arma la plantilla `nombre` si no existe: crea la base, la llena con `construir(url)` y la suelta.
+
+    `CREATE DATABASE ... TEMPLATE` falla si queda **alguien** conectado a la
+    plantilla, y `construir` (que levanta una app) deja su conexion viva: por
+    eso se las termina al final. Si algo falla a medias se borra, para que la
+    proxima vez no se tome una plantilla incompleta por buena.
     """
-    _vaciar_schema()
+    if _existe_base(nombre):
+        return
+    _sql_admin(f'CREATE DATABASE "{nombre}"')
+    try:
+        construir(_con_base(_BASE_ORIGINAL, nombre))
+        _sql_admin(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE datname = '{nombre}' AND pid <> pg_backend_pid()"
+        )
+    except BaseException:
+        _sql_admin(f'DROP DATABASE IF EXISTS "{nombre}" WITH (FORCE)')
+        raise
+
+
+def _construir_vacia(url: str) -> None:
     # Desde libraauth v0.45 el arranque exige la cadena de auth en vez de crear
-    # sus tablas. Se corre acá, sobre la base recién vaciada y antes de que el
-    # test arme la app: es el orden del deploy (libraauth antes que las tablas de
+    # sus tablas: es el orden del deploy (libraauth antes que las tablas de
     # LibraCore, que tienen FK a `usuarios`).
     from libraauth.testing import crear_schema_de_auth
 
-    crear_schema_de_auth(TEST_DATABASE_URL)
+    crear_schema_de_auth(url)
+
+
+def limpiar_entre_tests(construir_armada=None) -> None:
+    """Deja la base del worker como nueva UNA VEZ POR TEST. La llama la fixture autouse.
+
+    Sin argumentos: la base **vacia** (solo el schema de auth). Con
+    `construir_armada` (una funcion `url -> None` que deja la base como la deja
+    `admin_client`): la base **armada**, que se construye la primera vez.
+
+    🔴 No puede ir dentro de `destino_dominio()`, que fue el primer intento:
+    varios tests arman **dos apps** y ahi la segunda le vaciaba la base por
+    debajo a la primera -- 229 errores de *schema "public" does not exist*.
+
+    🔴 **`DROP DATABASE ... WITH (FORCE)` y no un `DROP SCHEMA`.** Este producto
+    abre **una conexion viva por app** (`db.connect()`, sin pool) y no la cierra
+    nunca: es su diseno, heredado de SQLite. Contra PostgreSQL esa conexion queda
+    *idle in transaction* sosteniendo locks, y un `DROP SCHEMA` **se cuelga
+    esperandola** -- medido: 20 minutos sin avanzar, con la corrida entera
+    detras. `FORCE` echa a esas conexiones y borra, que es correcto para un
+    arnes de test: son conexiones de apps que ese test ya no usa.
+    """
+    if construir_armada is None:
+        plantilla = _PLANTILLA_VACIA
+        _asegurar_plantilla(plantilla, _construir_vacia)
+    else:
+        plantilla = _PLANTILLA_ARMADA
+        _asegurar_plantilla(plantilla, construir_armada)
+    _sql_admin(
+        f'DROP DATABASE IF EXISTS "{_BASE_WORKER}" WITH (FORCE)',
+        f'CREATE DATABASE "{_BASE_WORKER}" TEMPLATE "{plantilla}"',
+    )
 
 
 def destino_dominio(ruta_sqlite) -> str:  # noqa: ARG001
