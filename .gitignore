@@ -15,7 +15,7 @@ data/*.db-shm
 
 # Datos por cliente (generados por scripts/nuevo_cliente.py, mismo patrón
 # que Contalibra/Restolibra/Gestiolibra/MedLibra) y datos locales de -dev.
-/clientes/
+/clientes
 dev-data/
 
 # La config de la instancia: guarda el Access Token de MercadoPago y la

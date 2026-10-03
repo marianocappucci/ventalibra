@@ -10,7 +10,7 @@ VentaLibra; la lógica real vive en LibraCore.
 """
 from pathlib import Path
 
-from libracore.provisioning import configure
+from libracore.provisioning import configure, get_config
 from libracore.provisioning.nuevo_cliente import (
     ClienteError,
     ask,
@@ -89,8 +89,9 @@ configure(
     base_port=8082,
 )
 
-# Re-exportados por compatibilidad con cualquier uso directo de este módulo.
-CLIENTES_DIR = REPO_ROOT / "clientes"
+# Re-exportado por compatibilidad con cualquier uso directo de este módulo. La
+# fuente de verdad es el motor: `LIBRA_CLIENTES_DIR` o, sin ella, `REPO_ROOT/clientes`.
+CLIENTES_DIR = get_config().clientes_dir
 
 if __name__ == "__main__":
     main()
