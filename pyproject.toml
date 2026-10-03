@@ -223,7 +223,11 @@ dependencies = [
     # activa `conConsultaCuit` en Clientes (fase 14, ADR-040).
     # v1.115.0 -> v1.116.0 (2026-09-29): `generar_ticket_venta` acepta `promociones` (ADR-012 de libracore) y el
     # ticket imprime cada promoción aplicada; sin la clave el papel sale igual. Sin migración.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.118.0",
+    # v1.118.0 -> v1.122.0 (2026-10-03): v1.122.0 es `libracore.testing.pg_por_worker`, el helper de TEST que
+    # reemplaza la base por worker y las plantillas que este repo escribia por su cuenta (reglas/ci.md del wiki).
+    # Subir el pin trae tambien v1.119.0 -> v1.121.0, todo de ARCA y con DOS migraciones del motor (0014: condicion
+    # de IVA del receptor y FCE MiPyME; 0015: `facturas.cae_error`), que corren al desplegar: ver el CHANGELOG de libracore.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.122.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
