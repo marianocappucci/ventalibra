@@ -39,11 +39,50 @@ def _sin_almacen_de_secretos_colgado():
     config_manager.usar_almacen_de_secretos(None)
 
 
+def _construir_armada(url: str) -> None:
+    """Deja `url` como la deja `admin_client` antes de loguear: auth + `create_app` + las dos cadenas de Alembic.
+
+    Es la plantilla de la base "armada" (ver `motor_de_test.py`). Se corre una
+    vez por worker, con el mismo entorno que `_dev_env` le pone a cada test, y no
+    deja nada vivo: ni conexiones (las termina `motor_de_test`) ni el pool del
+    engine de auth ni el almacen de secretos, que es un global del proceso.
+    """
+    import shutil
+    import tempfile
+
+    from libraauth.testing import crear_schema_de_auth
+    from libracore import config_manager
+
+    crear_schema_de_auth(url)
+    carpeta = tempfile.mkdtemp(prefix="ventalibra-plantilla-")
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setenv("ENV", "development")
+        mp.setenv("VENTALIBRA_LIBRACORE_DB_PATH", url)
+        mp.setenv("DATA_DIR", f"{carpeta}/data")
+        mp.setattr(config_manager, "CONFIG_PATH", f"{carpeta}/config.json")
+        mp.setattr(config_manager, "LOGO_DIR", f"{carpeta}/logos")
+        app = create_app(url)
+        _migrar_libracore(url)
+        _migrar_libracommerce(url)
+        motor = getattr(app.state, "auth_engine", None)
+        if motor is not None:
+            motor.dispose()
+    finally:
+        mp.undo()
+        config_manager.usar_almacen_de_secretos(None)
+        shutil.rmtree(carpeta, ignore_errors=True)
+
+
 @pytest.fixture(autouse=True)
-def _dev_env(monkeypatch, tmp_path):
-    # Una base vacia por TEST, no por app: varios tests arman dos apps y la
-    # segunda le vaciaba el schema por debajo a la primera.
-    limpiar_entre_tests()
+def _dev_env(request, monkeypatch, tmp_path):
+    # Una base nueva por TEST, no por app: varios tests arman dos apps y la
+    # segunda le vaciaba la base por debajo a la primera. Se restaura de una
+    # plantilla (ver `motor_de_test.py`): la ARMADA para los tests que usan
+    # `admin_client` (`staff_client` lo arrastra en `fixturenames`), la VACIA
+    # (solo auth) para el resto, que arma su app o prueba migraciones desde cero.
+    usa_admin_client = "admin_client" in request.fixturenames
+    limpiar_entre_tests(_construir_armada if usa_admin_client else None)
     # SessionAuth's SECRET_KEY resolution and ensure_default_admin both
     # fail closed unless ENV=development -- see app/auth.py y
     # app/services/users.py::ensure_default_admin.

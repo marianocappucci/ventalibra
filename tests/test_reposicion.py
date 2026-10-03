@@ -305,7 +305,7 @@ def test_el_encargado_y_el_admin_cargan_el_proveedor_y_la_reposicion_lo_muestra_
     assert _reposicion(gerencia, proveedor_id=sur)["productos"] == []
     # El CSV lo trae.
     csv = gerencia.get("/api/reportes/reposicion/export", params={"proveedor_id": norte}).text.splitlines()
-    assert csv[0].endswith(",proveedor_id,proveedor") and csv[1].endswith(f",{norte},Distribuidora Norte")
+    assert csv[0].endswith(",proveedor_id,proveedor,factor_estacional") and csv[1].endswith(f",{norte},Distribuidora Norte,")
     # Sin mandar la clave el proveedor queda; con null se borra.
     assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None).json()["proveedor_id"] == norte
     assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None, proveedor_id=None).json()["proveedor_id"] is None
@@ -411,3 +411,25 @@ def test_el_cuerpo_invalido_es_422_y_un_proveedor_que_no_existe_es_404(admin_cli
     assert _ordenes(admin_client, dias_rotacion=0).status_code == 422
     assert _ordenes(admin_client, proveedor_id=999999).status_code == 404
     assert len(admin_client.get("/api/purchase-orders").json()) == 1
+
+
+# ── Estacionalidad (ADR-058) ─────────────────────────────────────────────
+
+
+def test_la_estacionalidad_se_pide_y_sin_historia_de_hace_un_año_no_ajusta_nada(gerencia, escenario):
+    """La instancia de pruebas es nueva: no hay un año de ventas, así que el motor no inventa temporada (`factor_estacional` None) y lo sugerido es lo de siempre."""
+    sin = _reposicion(gerencia)
+    con = _reposicion(gerencia, estacionalidad="true")
+    assert sin["estacionalidad"] is False and con["estacionalidad"] is True
+    (p_sin,), (p_con,) = sin["productos"], con["productos"]
+    assert p_con["factor_estacional"] is None and p_con["sugerido"] == p_sin["sugerido"] == 13
+    csv = gerencia.get("/api/reportes/reposicion/export", params={"estacionalidad": "true"}).text.splitlines()
+    assert csv[0].endswith(",factor_estacional")
+
+
+def test_las_ordenes_en_borrador_aceptan_el_ajuste_estacional(admin_client, escenario):
+    norte = _nuevo_proveedor(admin_client, "Distribuidora Norte")
+    assert _parametros(admin_client, escenario["yerba"], plazo_entrega_dias=None, stock_maximo=None, proveedor_id=norte).status_code == 200
+    r = _ordenes(admin_client, clave_operacion="est-1", estacionalidad=True)
+    assert r.status_code == 200, r.text
+    assert float(r.json()["ordenes"][0]["lineas"][0]["cantidad"]) == 13.0                  # sin historia: lo de siempre

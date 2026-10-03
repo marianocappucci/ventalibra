@@ -44,77 +44,69 @@ if not TEST_DATABASE_URL.startswith("postgresql"):
     )
 
 
-def _vaciar_schema() -> None:
-    """Deja el PostgreSQL compartido como una base nueva.
+# --- Una base por worker, restaurada desde una plantilla -----------------------
+# Cada test arranca de una base **nueva**, y rearmarla desde cero es lo que mas
+# cuesta: medido sobre PostgreSQL 16, ~1,6 s por test entre vaciar el schema,
+# crear el de auth, `create_app()` (0,8 s) y las dos cadenas de Alembic (0,6 s).
+# Con `CREATE DATABASE ... TEMPLATE` la base sale de una copia ya armada, ~0,1 s.
+# El mecanismo (una base por worker de xdist, plantillas, `FORCE` para echar las
+# conexiones del test anterior) vive en `libracore.testing.pg_por_worker`; aca
+# queda lo propio de VentaLibra: que hay en cada plantilla.
+#
+# Dos plantillas por worker, armadas la primera vez que se piden:
+#
+# - **vacia**: solo el schema de auth. Es EXACTAMENTE lo que dejaba antes
+#   `limpiar_entre_tests()` (vaciar `public` + `crear_schema_de_auth`), asi que
+#   los tests que arman su propia app o prueban migraciones desde cero ven lo
+#   mismo que siempre.
+# - **armada**: lo que el fixture `admin_client` le hacia a esa base vacia
+#   (`create_app` + las cadenas de LibraCore y LibraCommerce). Solo se usa para
+#   los tests que piden `admin_client`; su `create_app` posterior es idempotente
+#   sobre ella, que es lo que el producto hace en cada arranque.
+#
+# `from motor_de_test import TEST_DATABASE_URL` es como la leen todos los tests,
+# asi que reasignarla aca alcanza: ninguno compone la URL por su cuenta.
+#
+# 🔴 Algunos tests importan `tests.motor_de_test` y otros `motor_de_test`: son DOS
+# modulos y este codigo corre dos veces por proceso. `base_por_worker` es
+# idempotente a proposito, asi que no recrea la base la segunda vez.
+from libracore.testing.pg_por_worker import base_por_worker  # noqa: E402
 
-    Cada test arma su propia app y espera una base limpia. Con archivos
-    temporales eso sale gratis; un PostgreSQL es **uno solo y compartido** por
-    toda la corrida. Se borra el SCHEMA y no la base: `DROP DATABASE` exige que
-    no quede ninguna conexion abierta, y la app del test anterior puede tener
-    la suya viva.
-
-    🔴 **Y antes hay que echar a las conexiones del test anterior.** Este
-    producto abre **una conexion viva por app** (`db.connect()`, sin pool) y no
-    la cierra nunca: es su diseno, heredado de SQLite. Contra PostgreSQL esa
-    conexion queda *idle in transaction* sosteniendo locks sobre `public`, y el
-    `DROP SCHEMA` de este helper **se cuelga esperandola** -- medido: 20 minutos
-    sin avanzar, con la corrida entera detras. No falla, no da error: se queda.
-
-    Por eso se las termina primero. Es brutal y es correcto para un arnes de
-    test: son conexiones de apps que ese test ya no usa.
-    """
-    import psycopg
-
-    with psycopg.connect(
-        TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1),
-        autocommit=True,
-    ) as conexion:
-        # 🔴 **Sólo `client backend` de ESTE rol.** El terminate de antes no
-        # filtraba nada más allá de la base, y un rol sin superuser no puede
-        # matar procesos de un rol con superuser: el worker de autovacuum de
-        # los CATÁLOGOS (dueño `postgres`, que se despierta con el DDL constante
-        # de la suite) hacía estallar el setup con
-        # `InsufficientPrivilege: permission denied to terminate process`,
-        # y el error caído en un test ensuciaba los siguientes
-        # (medido el 2026-09-23: 108 tests en ERROR en una corrida local).
-        # Lo que hay que terminar son las conexiones VIEJAS de la app del test
-        # anterior, que corren con este mismo rol: `usename = session_user`
-        # las mata a ellas y sólo a ellas, sin privilegios especiales.
-        #
-        # Y hay que escribirlo con `=` y no con `<>`: para un rol sin superuser
-        # `usename`/`backend_type` de las sesiones ajenas se ven NULL en
-        # `pg_stat_activity`, y `usename <> 'x'` sobre NULL da NULL — la fila
-        # ajena quedaría FUERA del filtro igual, pero un `=` nunca va a
-        # apuntar a ella por aritmética de tres valores.
-        conexion.execute(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = current_database() AND pid <> pg_backend_pid() "
-            "AND usename = session_user AND backend_type = 'client backend'"
-        )
-        # `IF EXISTS`: una corrida interrumpida a mitad de este bloque deja la
-        # base SIN schema `public`, y entonces todas las corridas siguientes
-        # mueren en la primera linea. Un arnes no puede quedar envenenado
-        # porque alguien apreto Ctrl-C.
-        conexion.execute("DROP SCHEMA IF EXISTS public CASCADE")
-        conexion.execute("CREATE SCHEMA public")
+_PG = base_por_worker("ventalibra", TEST_DATABASE_URL)
+TEST_DATABASE_URL = _PG.url
 
 
-def limpiar_entre_tests() -> None:
-    """Deja la base vacia UNA VEZ POR TEST. La llama la fixture autouse.
-
-    🔴 No puede ir dentro de `destino_dominio()`, que fue el primer intento:
-    varios tests arman **dos apps** y ahi la segunda le vaciaba el schema por
-    debajo a la primera -- 229 errores de *schema "public" does not exist*. Con
-    SQLite el problema no existe porque cada app se lleva su propio archivo.
-    """
-    _vaciar_schema()
+def _construir_vacia(url: str) -> None:
     # Desde libraauth v0.45 el arranque exige la cadena de auth en vez de crear
-    # sus tablas. Se corre acá, sobre la base recién vaciada y antes de que el
-    # test arme la app: es el orden del deploy (libraauth antes que las tablas de
+    # sus tablas: es el orden del deploy (libraauth antes que las tablas de
     # LibraCore, que tienen FK a `usuarios`).
     from libraauth.testing import crear_schema_de_auth
 
-    crear_schema_de_auth(TEST_DATABASE_URL)
+    crear_schema_de_auth(url)
+
+
+def limpiar_entre_tests(construir_armada=None) -> None:
+    """Deja la base del worker como nueva UNA VEZ POR TEST. La llama la fixture autouse.
+
+    Sin argumentos: la base **vacia** (solo el schema de auth). Con
+    `construir_armada` (una funcion `url -> None` que deja la base como la deja
+    `admin_client`): la base **armada**, que se construye la primera vez.
+
+    🔴 No puede ir dentro de `destino_dominio()`, que fue el primer intento:
+    varios tests arman **dos apps** y ahi la segunda le vaciaba la base por
+    debajo a la primera -- 229 errores de *schema "public" does not exist*.
+
+    🔴 **Se borra la base con `FORCE` y no se hace un `DROP SCHEMA`.** Este producto
+    abre **una conexion viva por app** (`db.connect()`, sin pool) y no la cierra
+    nunca: es su diseno, heredado de SQLite. Contra PostgreSQL esa conexion queda
+    *idle in transaction* sosteniendo locks, y un `DROP SCHEMA` **se cuelga
+    esperandola** -- medido: 20 minutos sin avanzar, con la corrida entera
+    detras. `FORCE` echa a esas conexiones, que son de apps que ese test ya no usa.
+    """
+    if construir_armada is None:
+        _PG.restaurar("vacia", _construir_vacia)
+    else:
+        _PG.restaurar("armada", construir_armada)
 
 
 def destino_dominio(ruta_sqlite) -> str:  # noqa: ARG001
