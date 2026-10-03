@@ -12,10 +12,11 @@ motor divide por 7 (`_MIN_DIAS_DE_MUESTRA`). 7 unidades vendidas -> rotación de
 18; hay 13 y vienen 4 -> por rotación faltarían 1, pero el mínimo (30) manda: 30 - 13 - 4 = 13.
 """
 import re
+from datetime import date, timedelta
 
 import pytest
 from conftest import https_client
-from ventas_helpers import abrir_turno, crear_sucursal, deposito_default, registrar_venta, sucursal_default
+from ventas_helpers import abrir_turno, crear_sucursal, deposito_default, hoy, registrar_venta, sucursal_default
 
 #: Un costo que ninguna otra cifra del escenario repite: si aparece en la respuesta, se filtró.
 COSTO = "731.42"
@@ -305,7 +306,7 @@ def test_el_encargado_y_el_admin_cargan_el_proveedor_y_la_reposicion_lo_muestra_
     assert _reposicion(gerencia, proveedor_id=sur)["productos"] == []
     # El CSV lo trae.
     csv = gerencia.get("/api/reportes/reposicion/export", params={"proveedor_id": norte}).text.splitlines()
-    assert csv[0].endswith(",proveedor_id,proveedor,factor_estacional,stock_minimo_propio") and f",{norte},Distribuidora Norte,," in csv[1]
+    assert csv[0].endswith(",proveedor_id,proveedor,factor_estacional,stock_minimo_propio,por_vencer") and f",{norte},Distribuidora Norte,," in csv[1]
     # Sin mandar la clave el proveedor queda; con null se borra.
     assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None).json()["proveedor_id"] == norte
     assert _parametros(gerencia, yerba, plazo_entrega_dias=9, stock_maximo=None, proveedor_id=None).json()["proveedor_id"] is None
@@ -424,7 +425,7 @@ def test_la_estacionalidad_se_pide_y_sin_historia_de_hace_un_año_no_ajusta_nada
     (p_sin,), (p_con,) = sin["productos"], con["productos"]
     assert p_con["factor_estacional"] is None and p_con["sugerido"] == p_sin["sugerido"] == 13
     csv = gerencia.get("/api/reportes/reposicion/export", params={"estacionalidad": "true"}).text.splitlines()
-    assert csv[0].endswith(",factor_estacional,stock_minimo_propio")
+    assert csv[0].endswith(",factor_estacional,stock_minimo_propio,por_vencer")
 
 
 def test_las_ordenes_en_borrador_aceptan_el_ajuste_estacional(admin_client, escenario):
@@ -493,3 +494,39 @@ def test_sin_sesion_los_minimos_por_sucursal_no_se_ven(admin_client, escenario):
 
     anonimo = TestClient(admin_client.app)
     assert anonimo.get(f"/api/productos/{escenario['yerba']}/reposicion/minimos").status_code == 401
+
+
+# ── Descontar lo que vence dentro del horizonte (ADR-060) ────────────────
+
+
+def _con_un_lote_que_vence_pronto(cliente, escenario):
+    """La yerba (13 en el depósito) marcada «vence», con todo el stock en un lote que vence dentro de 2 días."""
+    yerba = escenario["yerba"]
+    assert cliente.put(f"/api/vencimientos/productos/{yerba}", json={"vence": True}).status_code == 200
+    r = cliente.post("/api/vencimientos/asignar", json={
+        "producto_id": yerba, "deposito_id": deposito_default(cliente), "lote": "L-PRONTO",
+        "vence": (date.fromisoformat(hoy()) + timedelta(days=2)).isoformat(), "cantidad": 13, "clave_operacion": "lote-pronto-1",
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_descontar_por_vencer_apagado_no_cambia_nada_y_prendido_resta_lo_que_no_se_alcanza_a_vender(admin_client, escenario):
+    _con_un_lote_que_vence_pronto(admin_client, escenario)
+    apagado = _reposicion(admin_client)
+    assert apagado["descontar_por_vencer"] is False
+    (p0,) = apagado["productos"]
+    assert p0["por_vencer"] == 0 and p0["sugerido"] == 13
+    # Rota 1 por día; el lote de 13 vence en 2 días (se vende hasta el día 3: 3 unidades): se pierden ~10 y hay que reponerlas.
+    prendido = _reposicion(admin_client, descontar_por_vencer="true")
+    assert prendido["descontar_por_vencer"] is True
+    (p1,) = prendido["productos"]
+    assert 9 <= p1["por_vencer"] <= 11            # ±1 por el borde de «hoy» de Argentina contra el del servidor
+    assert p1["sugerido"] == p0["sugerido"] + p1["por_vencer"] and p1["stock"] == p0["stock"] == 13
+    csv = admin_client.get("/api/reportes/reposicion/export", params={"descontar_por_vencer": "true"}).text.splitlines()
+    assert csv[0].endswith(",por_vencer") and float(csv[1].split(",")[-1]) == p1["por_vencer"]
+
+
+def test_descontar_por_vencer_invalido_es_422_y_un_producto_sin_marcar_no_pierde_nada(admin_client, escenario):
+    assert admin_client.get("/api/reportes/reposicion", params={"descontar_por_vencer": "quizas"}).status_code == 422
+    (p,) = _reposicion(admin_client, descontar_por_vencer="true")["productos"]
+    assert p["por_vencer"] == 0 and p["sugerido"] == 13       # la yerba no está marcada: no hay lotes que vencer
