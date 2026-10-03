@@ -44,6 +44,7 @@ from libracommerce.web.promociones_router import (
     build_promociones_router,
 )
 from libracommerce.web.reposicion_router import (
+    build_reposicion_minimos_router,
     build_reposicion_ordenes_router,
     build_reposicion_parametros_router,
     build_reposicion_router,
@@ -886,6 +887,14 @@ def create_app(db_path: str) -> FastAPI:
         dependencias_leer=[Depends(requiere("reposicion.parametros"))],
         dependencias_escribir=[Depends(requiere("reposicion.parametros"))],
         resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
+    ))
+    # Mínimo de stock por sucursal (ADR-059; ADR-024 del motor, libracommerce v0.36.0): `GET /api/productos/{id}/reposicion/minimos` y
+    # `PUT .../minimos/{sucursal_id}`. Misma capacidad que el plazo y el techo (`reposicion.parametros`: encargado, admin y depósito), para leer y escribir. Los
+    # ids de sucursal son los del motor (los mismos que ya usa el filtro `sucursal_id` de la reposición). Requiere la revisión `0005` del motor.
+    app.include_router(build_reposicion_minimos_router(
+        conexion=lc_get_connection,
+        dependencias_leer=[Depends(requiere("reposicion.parametros"))],
+        dependencias_escribir=[Depends(requiere("reposicion.parametros"))],
     ))
     # Órdenes de compra en borrador desde la reposición (ADR-057; ADR-022 del motor, libracommerce v0.34.0): `POST /api/reportes/reposicion/ordenes` crea UNA
     # orden en borrador por proveedor habitual con lo que la reposición sugiere pedir. Nunca envía ni confirma. Escribe órdenes de compra: pide las DOS
