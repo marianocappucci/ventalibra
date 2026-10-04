@@ -92,7 +92,7 @@ dependencies = [
     # vencimientos (`POST /api/vencimientos/entrada`, la marca `vence` en el producto con `OpcionesCatalogo.con_vencimientos`,
     # `OpcionesStock.con_lotes`, que NO se prende: ADR-053); y los avisos opt-in de la venta (`OpcionesVentas.con_avisos_de_vencimiento`, `POST
     # /api/ventas/plan-salida`). Sin migración nueva (sigue la 0002). ADR-053 de este producto.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.40.0",
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.40.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -231,7 +231,8 @@ dependencies = [
     # env `LIBRA_CLIENTES_DIR` > `repo_root/clientes` (el default no cambia). `scripts/nuevo_cliente.py` y
     # `scripts/panel_admin.py` lo leen de ahi (etapa 1 de wiki/analyses/sacar-clientes-del-arbol-del-repo.md).
     # v1.123.0 -> v1.124.0 (2026-10-04): la guarda del CUIT del receptor (`arca_wsfe.problema_del_receptor`, que `solicitar_cae` corre antes de llamar a ARCA): CUIT de 11 digitos en clase A y FCE, y verificador valido en toda clase. El endpoint de notas no lo monta este producto. Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.125.0",
+    # v1.125.0 -> v1.126.0 (2026-10-04): suma el nucleo `libracore.notas_de_credito` (este producto todavia no lo usa); la guarda del CUIT del receptor deja de bloquear las notas (ARCA autoriza la nota de credito a un CUIT que no cierra, igual que la factura). Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.126.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
