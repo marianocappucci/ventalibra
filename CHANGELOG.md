@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **libracore `v1.124.0`** (2026-10-04; antes `v1.123.0`). La guarda del CUIT del receptor (`arca_wsfe.problema_del_receptor`, que `solicitar_cae` corre antes de llamar a ARCA): CUIT de 11 digitos en clase A y FCE, y verificador valido en toda clase. El endpoint de notas no lo monta este producto. Sin migración.
+
 - **Vencimientos y lotes, etapa 2: la venta descuenta del lote que vence primero, la carga de vencimientos y los avisos en el POS** (2026-09-30, ADR-053).
   Con `libracommerce` v0.30.0 y `libra-ui` v0.92.0: en un producto marcado «vence», la **venta, la anulación, la devolución, la transferencia, el ajuste y las
   salidas manuales siguen el lote** (vence primero, sale primero; el stock «sin lote» sale último; un lote vencido se vende con aviso). La devolución de un

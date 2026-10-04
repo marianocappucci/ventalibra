@@ -230,7 +230,8 @@ dependencies = [
     # v1.122.0 -> v1.123.0 (2026-10-03): `get_config().clientes_dir` con precedencia `configure(clientes_dir=)` >
     # env `LIBRA_CLIENTES_DIR` > `repo_root/clientes` (el default no cambia). `scripts/nuevo_cliente.py` y
     # `scripts/panel_admin.py` lo leen de ahi (etapa 1 de wiki/analyses/sacar-clientes-del-arbol-del-repo.md).
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.123.0",
+    # v1.123.0 -> v1.124.0 (2026-10-04): la guarda del CUIT del receptor (`arca_wsfe.problema_del_receptor`, que `solicitar_cae` corre antes de llamar a ARCA): CUIT de 11 digitos en clase A y FCE, y verificador valido en toda clase. El endpoint de notas no lo monta este producto. Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.125.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
@@ -247,7 +248,7 @@ dependencies = [
     # v0.45.1 -> v0.46.0 (2026-09-17): tabla `secretos_instancia`
     # (revision `0002` de la cadena de Alembic) + `libraauth.secretos.
     # SecretosRepository`, el almacen que engancha `config_manager` de arriba.
-    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.46.0",
+    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.46.1",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
