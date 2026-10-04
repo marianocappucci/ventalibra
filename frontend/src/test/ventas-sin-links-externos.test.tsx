@@ -16,6 +16,11 @@ import { Ventas } from '../pages/Ventas'
 import { VentaDetalle } from '../pages/VentaDetalle'
 import { _resetCacheDeMedios } from '@/lib/medios-pago'
 
+// `VentaDetalle` lee la sesión (`puedeEmitirNota`); este archivo monta la pantalla suelta, sin `AuthProvider`.
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', username: 'u', name: 'U', role: 'admin' }, loading: false }),
+}))
+
 const MEDIOS = [{ id: 'efectivo', label: 'Efectivo' }]
 
 function json(body: unknown, status = 200) {

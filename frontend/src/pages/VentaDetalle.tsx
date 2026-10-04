@@ -3,14 +3,21 @@
 // `accionesExtra` y sin recibo, facturas ni remitos -- ninguno de los tres
 // existe como pantalla propia en este producto.
 import { VentaDetalle as VentaDetalleComercio } from 'libra-ui/comercio/VentaDetalle'
+import { useAuth } from '../context/AuthContext'
+import { puede } from '../lib/permisos'
 import { DevolucionDeVenta } from './Ventas'
 
 export function VentaDetalle() {
+  const { user } = useAuth()
   return (
     <VentaDetalleComercio
       // Mismo criterio que `Ventas.tsx`: un cajero (staff) también puede
       // anular -- el motor no está gateado a admin en este producto.
       puedeAnular
+      // La nota de crédito de una factura con CAE (libracore v1.129.0): sólo la emite quien tiene `facturas.nota_credito`
+      // (admin). Anular una venta facturada por ARCA la exige antes (libracommerce v0.41.0, 409 si falta); al cajero que
+      // anula (decisión del 2026-09-15) el aviso del kit le dice que se la pida a un administrador.
+      puedeEmitirNota={puede(user, 'facturas.nota_credito')}
       // Los cuatro en `null` (libra-ui v0.72.1, nullables desde acá):
       // VentaLibra no tiene pantalla de recibo, de factura ni de remito. El
       // dato de la factura queda como texto (`factura_display`), sin link;
