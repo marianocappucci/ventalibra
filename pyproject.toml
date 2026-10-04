@@ -232,7 +232,7 @@ dependencies = [
     # `scripts/panel_admin.py` lo leen de ahi (etapa 1 de wiki/analyses/sacar-clientes-del-arbol-del-repo.md).
     # v1.123.0 -> v1.124.0 (2026-10-04): la guarda del CUIT del receptor (`arca_wsfe.problema_del_receptor`, que `solicitar_cae` corre antes de llamar a ARCA): CUIT de 11 digitos en clase A y FCE, y verificador valido en toda clase. El endpoint de notas no lo monta este producto. Sin migracion.
     # v1.125.0 -> v1.126.0 (2026-10-04): suma el nucleo `libracore.notas_de_credito` (este producto todavia no lo usa); la guarda del CUIT del receptor deja de bloquear las notas (ARCA autoriza la nota de credito a un CUIT que no cierra, igual que la factura). Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.126.0",
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.127.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
