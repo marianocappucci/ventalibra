@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libracommerce` v0.40.1 y `libra-ui` v0.112.1** (2026-10-04; antes v0.40.0 y v0.112.0). `repo.transaction()` pasa a ser reentrante por conexión (un `update_producto` dentro de una transacción ya no confirma lo de la exterior; ADR-031 de libracommerce). El diálogo de códigos anuncia su error como alerta y el select «Tipo» no corta su texto. Sin migración.
+
 - **libracore `v1.126.0`** (2026-10-04; antes `v1.125.0`). Suma el nucleo `libracore.notas_de_credito` (este producto todavia no lo usa); la guarda del CUIT del receptor deja de bloquear las notas (ARCA autoriza la nota de credito a un CUIT que no cierra, igual que la factura). Sin migración.
 
 - **libracore `v1.124.0`** (2026-10-04; antes `v1.123.0`). La guarda del CUIT del receptor (`arca_wsfe.problema_del_receptor`, que `solicitar_cae` corre antes de llamar a ARCA): CUIT de 11 digitos en clase A y FCE, y verificador valido en toda clase. El endpoint de notas no lo monta este producto. Sin migración.
