@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.112.2 y `libracommerce` v0.40.2** (2026-10-04; antes v0.112.1 y v0.40.1). La fila de botones del encabezado de Reposición envuelve en el móvil: con «Generar órdenes en borrador» el «CSV» se salía de la tarjeta y la página ganaba scroll horizontal a 390, 360 y 320 px. En el motor, una categoría nueva de `update_producto` se crea dentro de su transacción. Sin migración.
+
 - **`libracommerce` v0.40.1 y `libra-ui` v0.112.1** (2026-10-04; antes v0.40.0 y v0.112.0). `repo.transaction()` pasa a ser reentrante por conexión (un `update_producto` dentro de una transacción ya no confirma lo de la exterior; ADR-031 de libracommerce). El diálogo de códigos anuncia su error como alerta y el select «Tipo» no corta su texto. Sin migración.
 
 - **libracore `v1.126.0`** (2026-10-04; antes `v1.125.0`). Suma el nucleo `libracore.notas_de_credito` (este producto todavia no lo usa); la guarda del CUIT del receptor deja de bloquear las notas (ARCA autoriza la nota de credito a un CUIT que no cierra, igual que la factura). Sin migración.
