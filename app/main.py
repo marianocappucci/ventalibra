@@ -68,6 +68,7 @@ from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
+from libracore.facturas_router import build_nota_de_credito_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.mp_config_router import build_mp_config_router
 from libracore.recibos_router import build_recibos_router
@@ -599,6 +600,15 @@ def create_app(db_path: str) -> FastAPI:
             facturacion_habilitada=_facturacion_habilitada,
         ),
         dependencies=[Depends(requiere("ventas.pos"))],
+    )
+    # La nota de crédito de una factura con CAE (`libracore.facturas_router`, ADR-017 del motor): SOLO esa ruta, no
+    # los otros once endpoints de comprobantes (alta manual, cobro, borrado), que este producto no usa y que llevarían
+    # el cobro sin `turno_id`. La necesita `anular_venta`, que desde libracommerce v0.41.0 no anula una venta con
+    # factura CAE sin nota. No toca la caja. Sólo admin: `facturas.nota_credito`.
+    app.include_router(
+        build_nota_de_credito_router(
+            usuario_actual=get_current_user, solo_admin=requiere("facturas.nota_credito"),
+        ),
     )
     # Cajas y turnos: los routers del motor (`libracore.caja_router`), los mismos de Contalibra y Restolibra,
     # con las reglas de VentaLibra como ganchos (`app/cajas_ganchos.py`, ADR-032). Reemplazan a `/shifts` y al

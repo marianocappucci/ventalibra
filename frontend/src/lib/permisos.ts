@@ -16,6 +16,7 @@ export const CAPACIDADES = [
   'sucursales.admin',
   'caja.admin',
   'cierre_diario.reabrir',
+  'facturas.nota_credito',
   'catalogo.ver',
   'catalogo.configurar',
   'productos.escribir',

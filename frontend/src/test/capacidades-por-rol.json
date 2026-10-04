@@ -22,6 +22,7 @@
     "dashboard",
     "egresos",
     "etiquetas",
+    "facturas.nota_credito",
     "libros_iva",
     "logs",
     "margen",
