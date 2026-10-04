@@ -6,6 +6,7 @@ ancho de papel tiene la ticketeadora, y con qué cuenta de MercadoPago cobra.
 """
 from fastapi import APIRouter, HTTPException, Request
 from libracommerce.domain.scale import ScaleFormat, ScaleValueKind
+from libracommerce.web._validacion import sin_booleanos
 from libracore import config_manager
 from pydantic import BaseModel
 
@@ -21,6 +22,8 @@ class ScaleFormatIn(BaseModel):
     value_kind: str = "weight"
     divisor: int = 1000
     total_digits: int = 13
+    # `true` no es 1 dígito ni divisor 1 (ADR-028 del motor): pydantic lo convertiría antes de que el servicio lo valide.
+    _no_son_booleanos = sin_booleanos("code_digits", "value_digits", "divisor", "total_digits")
 
 
 class ScaleFormatOut(ScaleFormatIn):
@@ -67,6 +70,7 @@ class TicketConfigIn(BaseModel):
     #: 58 u 80. Son los dos formatos de rollo del mercado.
     ancho_mm: str = "80"
     fuente_size: int = 9
+    _no_son_booleanos = sin_booleanos("fuente_size")
     mostrar_logo: bool = False
     linea_corte: bool = True
     pie: str = ""

@@ -8,6 +8,7 @@ las activas.
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request
+from libracommerce.web._validacion import sin_booleanos
 from pydantic import BaseModel
 
 from ..services.catalog import CatalogService, CategoryInvalido, CategoryNotFound
@@ -18,6 +19,8 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
 class CategoryCreate(BaseModel):
     name: str
     parent_id: int | None = None
+    # `true` no es el padre 1 (ADR-028 del motor): sin esto pydantic lo convierte en 1 antes de que nadie lo mire.
+    _no_son_booleanos = sin_booleanos("parent_id")
 
 
 class CategoryUpdate(BaseModel):
@@ -40,6 +43,7 @@ class UnitCreate(BaseModel):
     name: str
     allows_fraction: bool = False
     decimal_scale: int = 0
+    _no_son_booleanos = sin_booleanos("decimal_scale")
 
 
 class UnitOut(BaseModel):
