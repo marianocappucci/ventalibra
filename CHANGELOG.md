@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.113.1** (2026-10-04; antes v0.113.0). Arregla una regresión de v0.112.3: en el móvil, elegir un nombre largo en los selects de sucursal, categoría o proveedor de Reposición ensanchaba la página (scroll horizontal). Sin migración.
+
 - **`libra-ui` v0.113.0: el botón «Emitir nota de crédito» en el detalle de la venta** (2026-10-04; antes v0.112.3). Con la factura autorizada por ARCA (`factura_cae`), el detalle avisa que hace falta la nota antes de anular y, a quien tiene la capacidad `facturas.nota_credito` (admin), le ofrece el botón (confirmación; `POST /api/facturas/{id}/nota-credito`). El cajero, que puede anular, ve el aviso y no el botón: se la pide a un administrador. No anula sola. Cierra el hueco de la entrada de la nota de crédito, que hasta ahora sólo se emitía por la API. Sin factura, o con una factura sin CAE, la pantalla no cambia. **No verificado en navegador.** Sin migración.
 
 - **`libra-ui` v0.112.3** (2026-10-04; antes v0.112.2). Los selects de sucursal, categoría y proveedor de Reposición llevan el nombre completo de la opción elegida en el `title` (el valor se cortaba) y son más anchos (todo el ancho en móvil, `w-64` desde `sm`). Sin migración.
