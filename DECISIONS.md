@@ -2795,3 +2795,12 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - Decisión: por la regla del humano del 2026-10-03 («el arreglo de fondo vive siempre en el motor»), el helper `sin_booleanos` y la guardia `campos_numericos_que_aceptan_booleano` son canónicos en [[libracore]] (`libracore.validacion` y `libracore.testing`, `v1.125.0`) y `libracommerce.web._validacion` y `libracommerce.testing` ahora los **reexportan** (el mismo objeto, comprobado con `is`; mismo mensaje y mismo comportamiento, medidos con `diff`). VentaLibra sigue importando `libracommerce.testing` y `libracommerce.web._validacion` sin cambios: sólo sube el pin.
 - Consecuencia: el extra `web` de libracommerce declara `libracore>=1.125,<2` (el núcleo sigue sin importar libracore; `ventas_router` ya lo importaba a nivel de módulo sin declararlo). Quien suba libracommerce a `v0.40.0` debe tener `libracore >= v1.125.0` pineado: VentaLibra ya lo tiene; **los otros productos tienen que subir el pin de libracore antes**.
 
+## ADR-067 — La nota de crédito se emite por la ruta del motor, solo admin, y anular una venta facturada la exige
+
+**Estado:** aceptada (2026-10-04). **Contexto:** anular una venta con factura autorizada por ARCA dejaba la factura vigente allá (relevamiento del 2026-10-04); libracommerce v0.41.0 (ADR-032) ahora exige la nota antes. Este producto no tenía cómo emitirla. El router completo de comprobantes del motor trae doce endpoints (alta manual, borrador, cobro, email, borrado) que no usa, y su cobro por defecto entraría sin `turno_id` (la caja de VentaLibra es por turno).
+
+- Decisión 1 — se monta **`libracore.facturas_router.build_nota_de_credito_router`** (ADR-017 del motor): una sola ruta, `POST /api/facturas/{id}/nota-credito`. La nota no toca la caja.
+- Decisión 2 — **solo admin**, con una capacidad propia (`facturas.nota_credito`), como Contalibra, Restolibra y LibraClub: es un acto fiscal que no se deshace. La decisión del 2026-09-15 («el cajero puede anular y devolver») no cambia, pero **el cajero no puede anular una venta facturada por ARCA** hasta que un admin emita la nota. Si se quiere que el cajero la emita, es agregar `_E` o el rol a esa capacidad.
+- Decisión 3 — los pines suben juntos: sin la ruta, subir libracommerce dejaba esas ventas sin salida.
+- Lo que **no** resuelve: el botón en la pantalla (`libra-ui`, detalle de la venta) y la nota parcial.
+
