@@ -81,6 +81,11 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "caja.admin": frozenset(),
     # Reabrir un día ya cerrado: más sensible que cerrarlo (LibraCore v1.107.0).
     "cierre_diario.reabrir": frozenset(),
+    # Emitir la nota de crédito de una factura con CAE (`POST /api/facturas/{id}/nota-credito`, LibraCore v1.129.0): es un
+    # acto fiscal ante ARCA que no se deshace. Sólo admin, como en Contalibra, Restolibra y LibraClub. Anular una venta con
+    # factura con CAE exige haberla emitido antes (libracommerce v0.41.0), así que el cajero que puede anular ventas (decisión
+    # del 2026-09-15) NO puede anular las facturadas por ARCA hasta que un admin emita la nota.
+    "facturas.nota_credito": frozenset(),
     # ── Catálogo y stock ──
     # Leer productos (con códigos y variantes), sucursales, depósitos, categorías y unidades.
     "catalogo.ver": frozenset({_E, _V, _C, _D, _S}),

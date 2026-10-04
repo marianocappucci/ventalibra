@@ -280,6 +280,9 @@ POST   /api/cierre-diario/{cierre_id}/reabrir                           ADMIN
 GET    /api/cierre-diario                                               GERENCIA_Y_STAFF
 GET    /api/cierre-diario/{cierre_id}                                   GERENCIA_Y_STAFF
 GET    /api/cierre-diario/{cierre_id}/ticket                            GERENCIA_Y_STAFF
+
+# Nota de crédito de una factura con CAE (LibraCore v1.129.0): `facturas.nota_credito`, sólo admin
+POST   /api/facturas/{factura_id}/nota-credito                          ADMIN
 GET    /api/cierre-diario/turno/{turno_id}/ticket                       MOSTRADOR
 
 # Reportes, margen y reposición: `reportes`, `margen`, `reposicion.ver`
@@ -557,7 +560,8 @@ def test_lo_que_el_humano_dejo_solo_para_admin_sigue_siendo_solo_de_admin():
     """Escrito a mano (ADR-049): el encargado NO tiene usuarios, configuración, logs, la estructura del local ni la
     reapertura de un día cerrado; y ningún rol nuevo tiene lo que era exclusivo de admin salvo el encargado con lo
     que se le dio a propósito."""
-    solo_admin = {"usuarios.admin", "config", "logs", "sucursales.admin", "caja.admin", "cierre_diario.reabrir"}
+    solo_admin = {"usuarios.admin", "config", "logs", "sucursales.admin", "caja.admin", "cierre_diario.reabrir",
+                  "facturas.nota_credito"}
     for capacidad in solo_admin:
         assert permisos.roles_con(capacidad) == ("admin",), capacidad
     for rol in ("encargado", "vendedor", "cajero", "deposito"):
@@ -661,6 +665,7 @@ STAFF_NO_PUEDE = [
     ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
     ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/logs"), ("POST", "/api/cajas"),
     ("POST", "/api/sucursales"), ("POST", "/api/depositos"), ("POST", "/api/cierre-diario/999999/reabrir"),
+    ("POST", "/api/facturas/999999/nota-credito"),
     ("DELETE", "/api/cuenta-corriente/pagos/999999"), ("POST", "/api/recibos/999999/anular"),
 ]
 
