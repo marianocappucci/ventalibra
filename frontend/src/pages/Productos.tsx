@@ -14,6 +14,12 @@
 //
 // **Plazo de entrega y stock máximo** (reposición sugerida, ADR-055; kit v0.99.0): `conParametrosDeReposicion` los ofrece sólo a quien tiene
 // `reposicion.parametros` (encargado, admin y depósito: el depósito no edita el resto del producto y el kit, desde 0.98.0, guarda sólo estos dos valores si sólo ellos cambiaron); se guardan aparte del producto en `/api/productos/{id}/reposicion`.
+//
+// **Alta y edición del producto por rol** (kit v0.111.0, ADR-061): crear un producto y editar sus datos (nombre, precios, categoría…) es de
+// quien tiene `productos.escribir` (encargado, admin y el staff heredado). El depósito entra a la pantalla para cargar la reposición
+// (`reposicion.parametros`) pero no puede crear ni editar el producto: `conAlta` y `conEdicionDelProducto` se apagan JUNTAS (sólo
+// `conEdicionDelProducto={false}` no impide crear) y el kit le deja de sólo lectura el formulario, con una nota, y editable sólo la reposición. Como
+// siempre, el que corta es el backend (403).
 import { Productos as ProductosComercio } from 'libra-ui/comercio/Productos'
 import { useAuth } from '../context/AuthContext'
 import { puede } from '../lib/permisos'
@@ -25,6 +31,8 @@ export function Productos() {
       conTipo conDetalle conStockTotal conEliminar={false}
       conVencimientos={puede(user, 'vencimientos.marcar')}
       conParametrosDeReposicion={puede(user, 'reposicion.parametros')}
+      conAlta={puede(user, 'productos.escribir')}
+      conEdicionDelProducto={puede(user, 'productos.escribir')}
     />
   )
 }
