@@ -2775,3 +2775,10 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - Límite: el 422 corta sólo la entrada; el motor y los servicios ya rechazaban un `bool` donde les llegaba como `bool`. Lo que corrige esto es que `true` no llegue convertido en `1`.
 - Pendiente (otra librería, otro release y el pin de cada producto): aplicar `sin_booleanos` en `libracore` y `libraauth` y subir el pin en los ocho productos.
 
+## ADR-064 — libracommerce v0.39.1 y libra-ui v0.112.0: lo hallado al reverificar en un navegador real
+
+- Estado: aceptada (pedido del humano, 2026-10-04: «seguí con los pendientes menores que quedan»). Usa [[libracommerce]] `v0.39.1` (ADR-029 del motor) y [[libra-ui]] `v0.112.0` (ADR-014 del kit). Sin migración, sin capacidad ni ruta nuevas.
+- Motor: un código repetido en el alta, la edición o `/codigos` ya no devuelve el texto crudo de la base en inglés (`duplicate key value violates unique constraint…`) sino «Ya existe un producto con el código «X».» (422 en el alta y la edición, 409 en `/codigos`). Y el **alta** de un producto también es atómica: antes confirmaba el producto y fallaba recién al guardar el código, y dejaba un producto huérfano sin código; ahora un código repetido no deja nada guardado.
+- Kit: el diálogo de códigos y variantes ya no muestra «forbidden» en inglés y, para el depósito (`conEdicionDelProducto={false}`), es de sólo lectura con una nota; el alta arranca con la unidad que existe en el catálogo de la instalación (antes arrancaba con `u`, que VentaLibra no tiene, y fallaba con 422 si no se la cambiaba) y un catálogo sin unidades pide elegir una; en móvil el campo con error se ve junto con su mensaje; y los campos de sólo lectura por rol se leen con mejor contraste (~8,8:1 estimado).
+- Verificación: la reverificación en Chromium real, contra una instancia local descartable, fue la que destapó estos tres defectos. 🔵 Sin mirar a ojo tras este cambio: el placeholder «Elegir…» de la unidad vacía, la nota de sólo lectura del diálogo de códigos, el campo con error a 390 px y el contraste real sobre los tokens de VentaLibra.
+
