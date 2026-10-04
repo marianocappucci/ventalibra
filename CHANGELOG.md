@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.112.3** (2026-10-04; antes v0.112.2). Los selects de sucursal, categoría y proveedor de Reposición llevan el nombre completo de la opción elegida en el `title` (el valor se cortaba) y son más anchos (todo el ancho en móvil, `w-64` desde `sm`). Sin migración.
+
 - **Nota de crédito de una factura con CAE** (2026-10-04; `libracore` v1.129.0 y `libracommerce` v0.41.0, antes v1.127.0 y v0.40.2). Nueva ruta `POST /api/facturas/{id}/nota-credito`, **solo admin** (capacidad `facturas.nota_credito`): emite la nota de crédito total autorizada por ARCA, asociada a su factura. Es la ruta del motor y **solo esa**: no se montan los otros once endpoints del router de comprobantes. **Cambia el comportamiento de anular:** una venta cuya factura tiene CAE ya no se anula (`409`, el texto dice qué hacer) hasta que un admin emite la nota; con la nota emitida se anula como siempre y la cuenta corriente no se acredita dos veces. Una venta sin factura, o con una factura sin CAE, se anula igual que antes. Sin migración. **Todavía no hay botón**: la nota se emite por la API hasta que `libra-ui` lo sume en el detalle de la venta.
 
 - **`libra-ui` v0.112.2 y `libracommerce` v0.40.2** (2026-10-04; antes v0.112.1 y v0.40.1). La fila de botones del encabezado de Reposición envuelve en el móvil: con «Generar órdenes en borrador» el «CSV» se salía de la tarjeta y la página ganaba scroll horizontal a 390, 360 y 320 px. En el motor, una categoría nueva de `update_producto` se crea dentro de su transacción. Sin migración.
