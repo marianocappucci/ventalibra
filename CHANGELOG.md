@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.114.0** (2026-10-04; antes v0.113.1). **Stock sin scroll horizontal:** la tabla de siempre cuando entra en el ancho que hay y tarjetas por producto (stock por depósito, total, estado, acciones, ordenar por) cuando no; el aviso de stock bajo y el historial de movimientos tampoco ensanchan la página. **Ventas:** la columna Estado muestra «Descartada», «Devuelta» y «Dev. parcial» en vez del nombre técnico (`borrador_descartado`, `devuelta`, `devuelta_parcial`). Sin migración.
+
 - **`libra-ui` v0.113.1** (2026-10-04; antes v0.113.0). Arregla una regresión de v0.112.3: en el móvil, elegir un nombre largo en los selects de sucursal, categoría o proveedor de Reposición ensanchaba la página (scroll horizontal). Sin migración.
 
 - **`libra-ui` v0.113.0: el botón «Emitir nota de crédito» en el detalle de la venta** (2026-10-04; antes v0.112.3). Con la factura autorizada por ARCA (`factura_cae`), el detalle avisa que hace falta la nota antes de anular y, a quien tiene la capacidad `facturas.nota_credito` (admin), le ofrece el botón (confirmación; `POST /api/facturas/{id}/nota-credito`). El cajero, que puede anular, ve el aviso y no el botón: se la pide a un administrador. No anula sola. Cierra el hueco de la entrada de la nota de crédito, que hasta ahora sólo se emitía por la API. Sin factura, o con una factura sin CAE, la pantalla no cambia. **No verificado en navegador.** Sin migración.
