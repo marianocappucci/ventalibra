@@ -1,6 +1,15 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
+
+// Los `findBy*` y `waitFor` esperan 1 s por defecto, y las pantallas de este
+// producto montan el `App` entero (menu lateral, auth, kit de libra-ui) antes
+// de pedir los datos: aun con la maquina libre tardan ~0,5 s en aparecer, y
+// con la suite completa en paralelo (un worker por core) o un CI cargado
+// pasan de 1 s con el elemento YA en camino. El tope no vuelve lento al test
+// que anda -- `findBy` devuelve apenas aparece --, solo da margen al que
+// espera; un elemento que de verdad no esta sigue fallando, 5 s despues.
+configure({ asyncUtilTimeout: 5000 })
 
 afterEach(() => {
   cleanup()

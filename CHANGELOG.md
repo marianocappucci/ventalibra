@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.116.6** (2026-10-05; antes v0.116.5). Las tablas ya no rearman sus celdas cada vez que la pantalla se actualiza: quien usa el teclado no pierde el foco al tildar una casilla, y un clic que coincide con una actualización llega igual. Sin migración.
+
 - **`libra-ui` v0.116.5** (2026-10-05; antes v0.116.4). En el teléfono el botón del menú mide 44 px (medía 28); en la tabla de Ventas el número de venta ya no se corta con «…». Sin migración.
 
 - **La X de cierre de los diálogos y los selectores de la devolución, cómodos para el dedo** (2026-10-05). En pantallas de menos de 1024 px la X de todos los diálogos tiene 44 px de área táctil (el icono no cambia de lugar ni de tamaño; medía 16×16) y los selectores «Depósito» y «Devolver por» del diálogo de devolución miden 44 px de alto (medían 36).
