@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.116.1** (2026-10-05; antes v0.116.0). En las tarjetas de Stock y de Ventas (la vista de pantallas angostas) los botones de acción miden 44 px, cómodos para el dedo; en la tabla de Ventas el total de 7 dígitos se lee entero. Sin migración.
+
 - **`libra-ui` v0.116.0** (2026-10-05; antes v0.115.1). **La lista de Ventas sin scroll horizontal:** la tabla de siempre cuando entra en el ancho que hay y una tarjeta por venta (número que lleva al detalle, fecha y cliente, estado, total, medios de pago, factura y los mismos botones) cuando no; las pestañas Todas / Sin facturar / Facturadas pasan a dos líneas en pantallas angostas. Sin migración.
 
 - **Nota de crédito parcial en el motor: `libracore` v1.130.0 y `libracommerce` v0.44.0** (2026-10-05; antes v1.129.0 y v0.42.0). Una factura con CAE se puede acreditar en **varias notas** (`POST /api/facturas/{id}/nota-credito` con `{"importe": ...}`; sin él, la nota total de siempre) y la suma nunca supera su total. Anular una venta facturada exige que **las notas sumen** el total de la factura (no alcanza con una parcial), y el detalle de la venta trae `factura_total` y `factura_saldo_acreditable`. La pantalla con el importe llega con `libra-ui` v0.115.x (PR aparte). Sin migración.
