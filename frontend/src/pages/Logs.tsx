@@ -9,5 +9,6 @@ import { Logs as Compartida } from 'libra-ui/Logs'
 
 /** Ver el comentario de `Usuarios`: el icono es de este producto. */
 export function Logs() {
-  return <Compartida icono={ScrollText} />
+  // `/api/logs`: en `/logs` (el default del kit) el endpoint tapaba la pantalla al recargarla.
+  return <Compartida icono={ScrollText} basePath="/api/logs" />
 }

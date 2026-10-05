@@ -341,7 +341,7 @@ DELETE /api/config/resguardo-externo/enlace                             ADMIN
 POST   /api/config/resguardo-externo/enlace/{proveedor}                 ADMIN
 
 # Logs: `logs`
-GET    /logs                                                            ADMIN
+GET    /api/logs                                                        ADMIN
 """
 
 #: Rutas que el motor no publica en `openapi.json` (`include_in_schema=False`).
@@ -663,7 +663,7 @@ STAFF_NO_PUEDE = [
     ("PUT", "/api/vencimientos/productos/999999"), ("POST", "/api/vencimientos/asignar"), ("POST", "/api/vencimientos/entrada"),
     ("POST", "/api/vencimientos/merma"),
     ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
-    ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/logs"), ("POST", "/api/cajas"),
+    ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/api/logs"), ("POST", "/api/cajas"),
     ("POST", "/api/sucursales"), ("POST", "/api/depositos"), ("POST", "/api/cierre-diario/999999/reabrir"),
     ("POST", "/api/facturas/999999/nota-credito"),
     ("DELETE", "/api/cuenta-corriente/pagos/999999"), ("POST", "/api/recibos/999999/anular"),

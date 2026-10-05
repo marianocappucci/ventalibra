@@ -1020,8 +1020,13 @@ def create_app(db_path: str) -> FastAPI:
     # El router lo arma el motor de auth (libraauth v0.10.0) pero el gate lo
     # pone el producto: el vocabulario de roles es de aca. Y la lista de
     # entidades sale del motor comercial, que es de donde sale la actividad.
+    #
+    # En `/api/logs` y no en el `/logs` por defecto: `/logs` es tambien la ruta
+    # de la pantalla, y como este router se monta antes del fallback de la SPA
+    # un F5 o un link pegado a la pantalla devolvia el JSON crudo (medido en
+    # Chromium contra dev, 2026-10-05). El frontend lo pide con `basePath`.
     app.include_router(
-        build_logs_router(entidades_auditadas()), dependencies=[Depends(requiere("logs"))],
+        build_logs_router(entidades_auditadas(), prefix="/api/logs"), dependencies=[Depends(requiere("logs"))],
     )
 
     return app
