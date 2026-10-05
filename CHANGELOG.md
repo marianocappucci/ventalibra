@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.116.2** (2026-10-05; antes v0.116.1). En el detalle de la venta, en pantallas de menos de 1024 px, los botones (Ticket, Volver, Facturar, Emitir nota de crédito, Anular venta y los del diálogo de la nota) miden 44 px de alto, cómodos para el dedo; en escritorio, iguales. Sin migración.
+
 - **`libra-ui` v0.116.1** (2026-10-05; antes v0.116.0). En las tarjetas de Stock y de Ventas (la vista de pantallas angostas) los botones de acción miden 44 px, cómodos para el dedo; en la tabla de Ventas el total de 7 dígitos se lee entero. Sin migración.
 
 - **`libra-ui` v0.116.0** (2026-10-05; antes v0.115.1). **La lista de Ventas sin scroll horizontal:** la tabla de siempre cuando entra en el ancho que hay y una tarjeta por venta (número que lleva al detalle, fecha y cliente, estado, total, medios de pago, factura y los mismos botones) cuando no; las pestañas Todas / Sin facturar / Facturadas pasan a dos líneas en pantallas angostas. Sin migración.
