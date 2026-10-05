@@ -5,7 +5,11 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **El CSV de Reposición sale en el orden de la tabla: `libracommerce` v0.45.0 y `libra-ui` v0.118.0** (2026-10-05; antes v0.44.0 y v0.117.7). Si ordenabas la tabla por una columna y exportabas, el CSV salía siempre por urgencia; ahora sale como lo ves. El motor acepta `orden` y `sentido` en `/api/reportes/reposicion` y su `/export` (uno desconocido da 422; sin `orden`, nada cambia) y el botón «CSV» los manda. Sin migración.
+
 - **`libra-ui` v0.117.7** (2026-10-05; antes v0.117.5). Reposición sugerida y Vencimientos y lotes avisan «La respuesta del servidor no tiene el formato esperado.» cuando el servidor contesta algo que no es lo prometido (un proxy, otra versión), en vez de romper la pantalla.
+
+- **libracore `v1.135.0`** (2026-10-05; antes `v1.134.0`). Las funciones del comprobante aceptan `conn=` para emitir dentro de la transacción del producto (ADR-025 del motor; sin `conn`, nada cambia) y el dinero del motor se guarda exacto en PostgreSQL (ADR-024): **migración `0018` del motor**, que pasa 33 columnas de dinero de `DOUBLE PRECISION` a `NUMERIC` sin redondear. La lectura sigue siendo `float`: el comportamiento de este producto no cambia.
 
 - **libracore `v1.134.0`** (2026-10-05; antes `v1.133.0`). Trae el emisor opcional de cada comprobante (`facturas.emisor_id`, ADR-021 del motor), la anulación con rastro de un comprobante sin CAE (`POST /api/facturas/{id}/anular`, ADR-022) y el registro con número tipeado (ADR-023). **Con migración del motor**: `0016` y `0017` (columnas nuevas en `facturas` y el índice de numeración por emisor y ambiente); las aplica el arranque (`init_core_schema`) y `alembic upgrade head`. Para este producto no cambia el comportamiento: no pasa emisor.
 
