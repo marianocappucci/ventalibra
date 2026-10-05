@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Corrección: los selectores y las cantidades de la devolución ahora sí miden 44 px en el teléfono** (2026-10-05). El cambio anterior les ponía la clase pero el selector del kit fija su alto con otra regla más fuerte y seguían en 36 px (medido en Chromium contra demo). Las cantidades a devolver pasan de 32 a 44.
+
 - **`libra-ui` v0.116.6** (2026-10-05; antes v0.116.5). Las tablas ya no rearman sus celdas cada vez que la pantalla se actualiza: quien usa el teclado no pierde el foco al tildar una casilla, y un clic que coincide con una actualización llega igual. Sin migración.
 
 - **`libra-ui` v0.116.5** (2026-10-05; antes v0.116.4). En el teléfono el botón del menú mide 44 px (medía 28); en la tabla de Ventas el número de venta ya no se corta con «…». Sin migración.
