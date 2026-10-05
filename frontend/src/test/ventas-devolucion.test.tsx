@@ -6,7 +6,7 @@
 // línea, que era como indexaba el modelo viejo (`POST /sales/{id}/returns`,
 // retirado) -- junto con `cantidad`, `deposito_id` y `medio_pago`, y que
 // recarga el detalle al terminar.
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -109,6 +109,17 @@ async function abrirDialogo(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('La devolución de una venta', () => {
+  it('bajo `lg` el botón y los del diálogo miden 44 px de alto (como el resto del detalle, libra-ui ADR-022)', async () => {
+    const user = userEvent.setup()
+    render(<DevolucionDeVenta detalle={DETALLE} recargar={vi.fn()} />)
+    // Antes de abrir: con el diálogo abierto Radix lo saca del árbol accesible.
+    const boton = screen.getByRole('button', { name: /Devolver productos/ })
+    expect(boton.className).toContain('max-lg:h-11')
+    await user.click(boton)
+    const dialogo = await screen.findByRole('dialog')
+    expect(within(dialogo).getByRole('button', { name: 'Cancelar' }).className).toContain('max-lg:h-11')
+  })
+
   it('manda sale_item_id, cantidad, deposito_id y medio_pago, y recarga', async () => {
     const { llamadas } = montarRed()
     const recargar = vi.fn()

@@ -57,8 +57,9 @@ export function ConfigTicket() {
     return <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
   }
 
+  // `minmax(0,1fr)`: sin eso la columna toma el mínimo de su contenido (la maqueta de 302 px) y no deja que la tarjeta se achique.
   return (
-    <div className="grid max-w-2xl gap-4">
+    <div className="grid max-w-2xl grid-cols-[minmax(0,1fr)] gap-4">
 
       <Card>
         <CardHeader>
@@ -143,8 +144,12 @@ export function ConfigTicket() {
             gastar rollo probando.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Vista cfg={cfg} />
+        <CardContent className="min-w-0">
+          {/* La maqueta conserva el ancho real del papel (302 px en 80 mm): a 320 px de pantalla no entra y ensanchaba la página 23 px.
+              Scrollea dentro de la tarjeta en vez de achicarse, que mentiría el ancho. */}
+          <div className="max-w-full overflow-x-auto" data-testid="vista-ticket">
+            <Vista cfg={cfg} />
+          </div>
         </CardContent>
       </Card>
     </div>
