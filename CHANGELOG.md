@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **`libra-ui` v0.117.2** (2026-10-05; antes v0.117.1). El aviso de la pantalla de Vencimientos y lotes ya no dice «Hasta que las ventas descuenten por lote…» (desde A-4 lo hacen): explica que lo anterior y los ajustes de stock restaron del «sin lote», por lo que el saldo de un lote puede ser mayor al real.
+
 - **Las rutas `/api` que no existen devuelven 404: `libracore` v1.133.0** (2026-10-05; antes v1.132.0). Antes contestaban la página de la aplicación con 200, y un chequeo o un cliente que pedía un endpoint mal escrito lo tomaba por un éxito. La SPA (`app/spa.py`) pasa a ser la del motor (`libracore.spa`, ADR-020): este archivo queda como re-export. Sin migración.
 
 - **`libra-ui` v0.117.1** (2026-10-05; antes v0.116.6). En escritorio con barras de scroll clásicas, el lugar de la barra queda siempre reservado: Ventas ya no cambia entre tabla y tarjetas según hacia dónde se redimensione la ventana (cuesta 15 px de ancho en las páginas cortas). Configuración › Empresa con logo cargado ya no ensancha la página en un teléfono de 320 px. Trae también `AvisoFce` (0.117.0), que este producto todavía no monta. Sin migración.
