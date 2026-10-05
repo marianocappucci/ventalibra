@@ -119,8 +119,15 @@ describe('La devolución de una venta', () => {
     const dialogo = await screen.findByRole('dialog')
     expect(within(dialogo).getByRole('button', { name: 'Cancelar' }).className).toContain('max-lg:h-11')
     // Los dos selectores y la X de cierre (el componente `Dialog` del producto, que usan todos sus diálogos) también: medían 36 y 16 px.
-    expect(within(dialogo).getByLabelText('Depósito').className).toContain('max-lg:h-11')
-    expect(within(dialogo).getByLabelText('Devolver por').className).toContain('max-lg:h-11')
+    // El selector fija su alto con `data-[size=default]:h-9`: un `max-lg:h-11` suelto pierde por especificidad (pasó en #471,
+    // medido en demo). Tiene que ir con la misma variante de atributo.
+    for (const etiqueta of ['Depósito', 'Devolver por']) {
+      const clase = within(dialogo).getByLabelText(etiqueta).className
+      expect(clase).toContain('max-lg:data-[size=default]:h-11')
+      expect(clase.split(/\s+/)).not.toContain('max-lg:h-11')
+    }
+    // Las cantidades a devolver, también 44 (medían 32).
+    for (const campo of within(dialogo).getAllByPlaceholderText(/máx\./)) expect(campo.className).toContain('max-lg:h-11')
     expect(within(dialogo).getByRole('button', { name: 'Close' }).className).toContain('max-lg:size-11')
   })
 
