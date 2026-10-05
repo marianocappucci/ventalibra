@@ -201,7 +201,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
             <div className="grid gap-1">
               <Label className="text-xs">Depósito</Label>
               <Select value={locationId} onValueChange={setLocationId}>
-                <SelectTrigger className="w-48" aria-label="Depósito"><SelectValue placeholder="Elegí un depósito…" /></SelectTrigger>
+                <SelectTrigger className="w-48 max-lg:h-11" aria-label="Depósito"><SelectValue placeholder="Elegí un depósito…" /></SelectTrigger>
                 <SelectContent>
                   {locations.map((l) => (
                     <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
@@ -212,7 +212,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
             <div className="grid gap-1">
               <Label className="text-xs">Devolver por</Label>
               <Select value={medio} onValueChange={setMedio}>
-                <SelectTrigger className="w-48" aria-label="Devolver por"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-48 max-lg:h-11" aria-label="Devolver por"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {medios.map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
