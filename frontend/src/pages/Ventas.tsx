@@ -147,7 +147,8 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
 
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+      {/* 44 px de alto bajo `lg`, como los demás botones del detalle de la venta (libra-ui ADR-022): en el teléfono medía 32. */}
+      <Button size="sm" variant="outline" className="max-lg:h-11" onClick={() => setOpen(true)}>
         <Undo2 />Devolver productos
       </Button>
 
@@ -224,8 +225,8 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={devolver} disabled={busy || lineas.length === 0 || !locationId}>
+            <Button variant="outline" className="max-lg:h-11" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button className="max-lg:h-11" onClick={devolver} disabled={busy || lineas.length === 0 || !locationId}>
               {busy ? 'Devolviendo…' : 'Confirmar devolución'}
             </Button>
           </DialogFooter>
