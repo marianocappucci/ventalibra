@@ -68,7 +68,8 @@ describe('Nota de crédito en el detalle de la venta', () => {
 
     expect((await screen.findByRole('note')).textContent).toMatch(/75123456789012/)
     await user.click(screen.getByRole('button', { name: /Emitir nota de crédito/ }))
-    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Emitir nota' }))
+    // libra-ui 0.115.0: el diálogo de la nota es un `Dialog` (con saldo pide el importe), ya no un `alertdialog` de confirmación.
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Emitir nota' }))
 
     await waitFor(() => expect(pedidos).toContain('POST /api/facturas/55/nota-credito'))
     expect((await screen.findByRole('note')).textContent).toMatch(/ya podés anular la venta/)
