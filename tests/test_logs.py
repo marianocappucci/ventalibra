@@ -22,7 +22,7 @@ import pytest
 
 
 def _logs(client, **params) -> dict:
-    r = client.get("/logs", params=params)
+    r = client.get("/api/logs", params=params)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -207,9 +207,16 @@ def test_la_contrasena_no_aparece_en_ningun_lado(admin_client):
 
 # ── Permisos y usuario ────────────────────────────────────────────────────
 
+def test_el_endpoint_no_tapa_la_ruta_de_la_pantalla(admin_client):
+    """`/logs` es la pantalla de la SPA: el JSON vive en `/api/logs`. Con el router en `/logs`, un F5 en la pantalla devolvia el JSON crudo."""
+    assert admin_client.get("/api/logs").status_code == 200
+    # En la app de la API `/logs` ya no existe; en produccion lo atiende el fallback de la SPA (`app/asgi.py`).
+    assert admin_client.get("/logs").status_code == 404
+
+
 def test_el_cajero_no_ve_los_logs(staff_client):
     """Es la pantalla que dice desde qué IP entró cada uno y quién vendió qué."""
-    assert staff_client.get("/logs").status_code == 403
+    assert staff_client.get("/api/logs").status_code == 403
 
 
 def test_lo_que_escribe_el_cajero_queda_a_su_nombre(admin_client, staff_client):

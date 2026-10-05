@@ -254,7 +254,7 @@ def test_el_encargado_maneja_precios_stock_y_plata_pero_no_la_configuracion(admi
     for lectura in ("/api/reportes", "/api/reportes/margen", "/api/dashboard", "/api/tesoreria", "/api/egresos",
                     "/api/libros-iva", "/api/cierre-diario/preview", "/api/cuenta-corriente", "/api/stock"):
         assert encargado.get(lectura).status_code == 200, lectura
-    for prohibido in ("/users", "/logs", "/settings/scale", "/api/config/empresa", "/api/config/backups", "/config/arca"):
+    for prohibido in ("/users", "/api/logs", "/settings/scale", "/api/config/empresa", "/api/config/backups", "/config/arca"):
         assert encargado.get(prohibido).status_code == 403, prohibido
     # La reapertura de un día cerrado es sólo de admin: 403 aunque el cierre no exista.
     assert encargado.post("/api/cierre-diario/999999/reabrir", json={"motivo": "x"}).status_code == 403
