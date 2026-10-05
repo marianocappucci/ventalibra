@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **libracore `v1.134.0`** (2026-10-05; antes `v1.133.0`). Trae el emisor opcional de cada comprobante (`facturas.emisor_id`, ADR-021 del motor), la anulación con rastro de un comprobante sin CAE (`POST /api/facturas/{id}/anular`, ADR-022) y el registro con número tipeado (ADR-023). **Con migración del motor**: `0016` y `0017` (columnas nuevas en `facturas` y el índice de numeración por emisor y ambiente); las aplica el arranque (`init_core_schema`) y `alembic upgrade head`. Para este producto no cambia el comportamiento: no pasa emisor.
+
 - **`libra-ui` v0.117.5** (2026-10-05; antes v0.117.4). En Reposición sugerida, los parámetros que se tipean (días de rotación, cobertura y plazo de entrega) se piden 300 ms después de la última tecla, no uno por dígito; los selectores y las casillas siguen inmediatos.
 
 - **`libra-ui` v0.117.2** (2026-10-05; antes v0.117.1). El aviso de la pantalla de Vencimientos y lotes ya no dice «Hasta que las ventas descuenten por lote…» (desde A-4 lo hacen): explica que lo anterior y los ajustes de stock restaron del «sin lote», por lo que el saldo de un lote puede ser mayor al real.
