@@ -118,6 +118,10 @@ describe('La devolución de una venta', () => {
     await user.click(boton)
     const dialogo = await screen.findByRole('dialog')
     expect(within(dialogo).getByRole('button', { name: 'Cancelar' }).className).toContain('max-lg:h-11')
+    // Los dos selectores y la X de cierre (el componente `Dialog` del producto, que usan todos sus diálogos) también: medían 36 y 16 px.
+    expect(within(dialogo).getByLabelText('Depósito').className).toContain('max-lg:h-11')
+    expect(within(dialogo).getByLabelText('Devolver por').className).toContain('max-lg:h-11')
+    expect(within(dialogo).getByRole('button', { name: 'Close' }).className).toContain('max-lg:size-11')
   })
 
   it('manda sale_item_id, cantidad, deposito_id y medio_pago, y recarga', async () => {
