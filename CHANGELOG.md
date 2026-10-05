@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **libracore `v1.131.0`** (2026-10-05; antes `v1.130.0`). La nota de crédito **total** de una FCE se frena antes de pedirle el número a ARCA (`POST /api/facturas/{id}/nota-credito` sin `importe` → 422): ARCA sólo deja anular una FCE si el comprador la rechazó (`10154`) y una nota por el total supera su saldo (`10184`). La de una FCE va siempre por un importe menor que el saldo. Sin migración.
+
 - **`libra-ui` v0.116.2** (2026-10-05; antes v0.116.1). En el detalle de la venta, en pantallas de menos de 1024 px, los botones (Ticket, Volver, Facturar, Emitir nota de crédito, Anular venta y los del diálogo de la nota) miden 44 px de alto, cómodos para el dedo; en escritorio, iguales. Sin migración.
 
 - **`libra-ui` v0.116.1** (2026-10-05; antes v0.116.0). En las tarjetas de Stock y de Ventas (la vista de pantallas angostas) los botones de acción miden 44 px, cómodos para el dedo; en la tabla de Ventas el total de 7 dígitos se lee entero. Sin migración.
