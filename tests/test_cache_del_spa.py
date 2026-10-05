@@ -120,3 +120,17 @@ def test_la_app_de_verdad_llama_a_montar_spa():
     assert "montar_spa(app, FRONTEND_DIST)" in texto, (
         f"{fuente.name} nombra montar_spa pero no la invoca sobre FRONTEND_DIST"
     )
+
+
+def test_una_ruta_de_la_api_que_no_existe_da_404_y_no_la_spa(cliente):
+    """libracore v1.133.0 (ADR-020 del motor): `/api/...` desconocido es un 404 en JSON.
+
+    Antes contestaba el `index.html` con 200, y los deploys reportaron «`/api/health` 200» durante
+    dos días cuando el chequeo de salud es `/health`.
+    """
+    r = cliente.get("/api/health")
+    assert r.status_code == 404
+    assert r.json() == {"detail": "Not Found"}
+    # Las rutas de la pantalla siguen en la SPA.
+    assert cliente.get("/ventas").status_code == 200
+
