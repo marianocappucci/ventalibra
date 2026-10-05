@@ -22,6 +22,12 @@ export default mergeConfig(
       // usuarios, que es la del contenedor de produccion.
       env: { TZ: 'America/Argentina/Buenos_Aires' },
       globals: true,
+      // 5 s por defecto es poco para un test que monta el `App` y espera
+      // varias respuestas con la suite en paralelo: los mas pesados ya
+      // rondan los 3-4 s con la maquina cargada. Tiene que ser MAYOR que el
+      // `asyncUtilTimeout` de `setup.ts`, para que un `findBy` que no
+      // encuentra falle con su propio mensaje y no con un timeout opaco.
+      testTimeout: 15000,
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
       coverage: {
