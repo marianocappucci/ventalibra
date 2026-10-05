@@ -93,7 +93,7 @@ dependencies = [
     # `OpcionesStock.con_lotes`, que NO se prende: ADR-053); y los avisos opt-in de la venta (`OpcionesVentas.con_avisos_de_vencimiento`, `POST
     # /api/ventas/plan-salida`). Sin migración nueva (sigue la 0002). ADR-053 de este producto.
     # v0.40.2 -> v0.41.0 (2026-10-04, ADR-032 de libracommerce): `anular_venta` NO anula una venta cuya factura tiene CAE y no tiene nota de credito (`VentaConFacturaCAE`, 409 en `POST /api/ventas/{id}/anular`); con la nota emitida anula sin acreditar dos veces la cuenta corriente. `obtener_venta` trae `factura_cae`. Va junto con la ruta de la nota (ADR de este producto), si no esas ventas quedarian sin forma de anularse. Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.42.0",
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.44.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -234,7 +234,7 @@ dependencies = [
     # v1.123.0 -> v1.124.0 (2026-10-04): la guarda del CUIT del receptor (`arca_wsfe.problema_del_receptor`, que `solicitar_cae` corre antes de llamar a ARCA): CUIT de 11 digitos en clase A y FCE, y verificador valido en toda clase. El endpoint de notas no lo monta este producto. Sin migracion.
     # v1.125.0 -> v1.126.0 (2026-10-04): suma el nucleo `libracore.notas_de_credito` (este producto todavia no lo usa); la guarda del CUIT del receptor deja de bloquear las notas (ARCA autoriza la nota de credito a un CUIT que no cierra, igual que la factura). Sin migracion.
     # v1.127.0 -> v1.129.0 (2026-10-04): `build_nota_de_credito_router` (v1.129.0, ADR-017), que este producto monta; y la marca del abono de la nota en la cuenta corriente (v1.128.0, ADR-016), que usa `anular_venta` de libracommerce v0.41.0. Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.129.0",
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.130.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
