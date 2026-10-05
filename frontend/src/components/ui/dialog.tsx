@@ -78,8 +78,9 @@ function DialogContent({
         {...props}
       >
         {children}
+        {/* Bajo `lg` la X tiene 44 px de área táctil (el icono sigue de 16) y va a la esquina, así el icono queda donde estaba (a 15 px del borde en vez de 16): medía 16×16 (medido en Chromium contra dev). */}
         {showCloseButton && (
-          <DialogPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
+          <DialogPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 max-lg:top-0 max-lg:right-0 max-lg:flex max-lg:size-11 max-lg:items-center max-lg:justify-center ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>

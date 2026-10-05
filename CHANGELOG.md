@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **La X de cierre de los diálogos y los selectores de la devolución, cómodos para el dedo** (2026-10-05). En pantallas de menos de 1024 px la X de todos los diálogos tiene 44 px de área táctil (el icono no cambia de lugar ni de tamaño; medía 16×16) y los selectores «Depósito» y «Devolver por» del diálogo de devolución miden 44 px de alto (medían 36).
+
 - **Ninguna pantalla scrollea de costado en el teléfono: `libra-ui` v0.116.4** (2026-10-05; antes v0.116.2). Libros IVA, Configuración, Transferencias, Reportes, Cajas, Tesorería, Logs, Promociones y Sucursales ensanchaban la página en un móvil (hasta 522 px de más, medido en Chromium contra dev); ahora entran en cualquier ancho. La vista previa del ticket (Configuración) conserva el ancho real del papel y scrollea dentro de su tarjeta.
 - **Logs se puede recargar:** el endpoint pasa de `/logs` a `/api/logs`. En `/logs` tapaba la ruta de la pantalla: un F5 o un link pegado mostraba el JSON crudo en vez de la pantalla.
 
