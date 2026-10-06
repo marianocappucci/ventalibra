@@ -9,6 +9,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 - **`libra-ui` v0.117.7** (2026-10-05; antes v0.117.5). Reposición sugerida y Vencimientos y lotes avisan «La respuesta del servidor no tiene el formato esperado.» cuando el servidor contesta algo que no es lo prometido (un proxy, otra versión), en vez de romper la pantalla.
 
+- **libracore `v1.136.0`** (2026-10-06; antes `v1.135.0`). Suma el libro de cuenta corriente de terceros, opcional (`cc_asientos` y `libracore.db.libro_de_terceros`, ADR-026 del motor). **Con migración del motor**: `0019_libro_de_terceros`, que crea una tabla vacía. Este producto no lo usa: su comportamiento no cambia.
+
 - **libracore `v1.135.0`** (2026-10-05; antes `v1.134.0`). Las funciones del comprobante aceptan `conn=` para emitir dentro de la transacción del producto (ADR-025 del motor; sin `conn`, nada cambia) y el dinero del motor se guarda exacto en PostgreSQL (ADR-024): **migración `0018` del motor**, que pasa 33 columnas de dinero de `DOUBLE PRECISION` a `NUMERIC` sin redondear. La lectura sigue siendo `float`: el comportamiento de este producto no cambia.
 
 - **libracore `v1.134.0`** (2026-10-05; antes `v1.133.0`). Trae el emisor opcional de cada comprobante (`facturas.emisor_id`, ADR-021 del motor), la anulación con rastro de un comprobante sin CAE (`POST /api/facturas/{id}/anular`, ADR-022) y el registro con número tipeado (ADR-023). **Con migración del motor**: `0016` y `0017` (columnas nuevas en `facturas` y el índice de numeración por emisor y ambiente); las aplica el arranque (`init_core_schema`) y `alembic upgrade head`. Para este producto no cambia el comportamiento: no pasa emisor.
