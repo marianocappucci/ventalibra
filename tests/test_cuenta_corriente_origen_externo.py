@@ -47,6 +47,11 @@ def test_el_saldo_de_un_cliente_no_se_confunde_con_el_de_otro():
     _venta_fiada("POS-000001", ana, 300)
     _venta_fiada("POS-000002", beto, 700)
     conn.commit()
+    # Las ventas se cargaron con SQL propio, por fuera de los escritores del motor: el saldo sale
+    # del libro (ADR-029 de LibraCore) y las ve después de `reconstruir`, como un deploy.
+    from libracore.db import libro_de_clientes
+
+    libro_de_clientes.reconstruir(db_cc.VENTAS_LIBRACOMMERCE)
 
     # El cruce del router del motor: por id, con el origen de Contalibra.
     assert db_cc.get_cc_saldo(ana, origen=db_cc.VENTAS_LIBRACOMMERCE) == 300
