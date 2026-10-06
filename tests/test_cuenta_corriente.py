@@ -247,6 +247,12 @@ def test_un_cliente_de_clients_con_deuda_aparece_por_su_id(admin_client):
         (cliente_id,),
     )
     conn.commit()
+    # Cargado con SQL propio, por fuera de los escritores del motor: la cuenta de clientes
+    # se lee del libro (ADR-029 de LibraCore) y lo ve después de `reconstruir`, como un deploy.
+    from libracore.db import libro_de_clientes
+    from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
+
+    libro_de_clientes.reconstruir(VENTAS_LIBRACOMMERCE)
 
     clientes = admin_client.get("/api/cuenta-corriente").json()["clientes"]
     assert [(d["id"], d["name"]) for d in clientes] == [(cliente_id, "Cliente sin external_ref")]
