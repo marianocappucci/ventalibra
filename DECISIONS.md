@@ -2842,3 +2842,18 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
 - Pruebas: la fila de la matriz pasa de `MOSTRADOR` a `SIN_CAJERO` y `test_el_mostrador_puede_fiar_desde_el_pos_...` pide la ficha con
   los dos roles (403 el cajero, 200 con los documentos el vendedor). Mutación: sin la regla, 3 tests en rojo.
 
+## ADR-070 — El visitante de la demo es `encargado`; los usuarios `staff` pasan a un rol concreto
+
+**Estado:** aceptada (2026-10-07). **Contexto:** ADR-049 dejó `staff` como rol heredado «a migrar». Quedaban dos usuarios con ese rol: en dev
+`cajero` (un cajero de prueba) y en la demo el visitante público (`DEMO_USERNAME`), que `ensure_demo_user` creaba como `staff`.
+
+- Decisión 1 — el visitante de la demo es **`encargado`** (decisión del humano, 2026-10-07): `ensure_demo_user(..., rol=ENCARGADO)`. libraauth le
+  sigue abriendo la lectura de todo (lo reconoce por el nombre de usuario, no por el rol) y la bandera `demo_readonly` no cambia; para escribir
+  vale lo que vale para el encargado, que es **más** que lo del `staff` (precios, tesorería, anular cobranzas, reposición y vencimientos), elegido
+  a sabiendas para que la demo muestre el producto completo.
+- Decisión 2 — los datos se migran a mano, con respaldo previo: dev `cajero` → `cajero`, demo `demo` → `encargado`. `ensure_demo_user` no le
+  cambia el rol a un visitante que ya existe, así que la demo existente necesita el `UPDATE`.
+- Lo que **no** se hace todavía: retirar `staff` de `ROLES` y `catalogo.configurar` (TASKS). Sin usuarios `staff` en ninguna instancia, es
+  un cambio de código aparte.
+- Pruebas: `test_el_arranque_con_la_demo_crea_al_visitante_como_encargado`, y la matriz de la demo compara contra `encargado`.
+
