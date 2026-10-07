@@ -30,6 +30,7 @@ export const CAPACIDADES = [
   'precios.escribir',
   'etiquetas',
   'ventas.pos',
+  'ventas.todas',
   'caja.propia',
   'turnos.todos',
   'cierre_diario',

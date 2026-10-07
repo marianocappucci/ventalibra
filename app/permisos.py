@@ -127,6 +127,11 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "caja.propia": frozenset({_E, _V, _C, _S}),
     # Ver y cerrar los turnos de OTROS usuarios.
     "turnos.todos": frozenset({_E}),
+    # Ver, anular, devolver, facturar y reimprimir las ventas de OTROS (ADR-068). Sin ella, el mostrador sólo ve las ventas de los
+    # turnos de caja que abrió él, abiertos o cerrados (decisión del humano, 2026-10-07; `OpcionesVentas.solo_sus_turnos`,
+    # libracommerce ADR-038): el cajero y el vendedor. Una venta ajena es 404, como una que no existe. El staff heredado la
+    # conserva (veía todas, y es el rol del visitante de la demo).
+    "ventas.todas": frozenset({_E, _S}),
     # Cierre diario: vista previa, cierre, historial y tickets. NO incluye el ticket del propio turno.
     "cierre_diario": frozenset({_E, _S}),
     # ── Clientes y cuenta corriente ──

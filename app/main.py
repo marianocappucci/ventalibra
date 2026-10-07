@@ -50,7 +50,7 @@ from libracommerce.web.reposicion_router import (
     build_reposicion_router,
 )
 from libracommerce.web.vencimientos_router import build_vencimientos_escritura_router, build_vencimientos_router
-from libracommerce.web.ventas_router import OpcionesVentas, build_ventas_router
+from libracommerce.web.ventas_router import OpcionesVentas, build_guarda_de_venta, build_ventas_router
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
 from libracore.caja_router import build_cajas_router, build_cierre_diario_router, build_turnos_router
@@ -111,6 +111,7 @@ from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .permisos import (
     ROLES,
+    condicion,
     requiere,
     requiere_o_servicio,
     requiere_segun_metodo,
@@ -516,7 +517,21 @@ def create_app(db_path: str) -> FastAPI:
     # ver `app/routers/ventas_extra.py`, que reemplaza a `app/routers/
     # sales.py`). Montado ANTES del catch-all de la SPA (`app/asgi.py`), así
     # que `/ventas/{id}/ticket` gana sobre `/{full_path:path}`.
-    app.include_router(ventas_extra.router, dependencies=[Depends(requiere("ventas.pos"))])
+    # ADR-068: quien no ve las ventas de todos (`ventas.todas`: admin, encargado y el staff heredado) ve sólo las de los
+    # turnos de caja que abrió. La regla es del motor (libracommerce ADR-038); acá sólo se dice a quién se aplica.
+    _ve_todas_las_ventas = condicion("ventas.todas")
+
+    def _solo_sus_turnos(usuario: dict) -> bool:
+        return not _ve_todas_las_ventas(usuario)
+
+    def _guarda_de_venta(parametro: str):
+        return build_guarda_de_venta(solo_sus_turnos=_solo_sus_turnos, conexion=lc_get_connection,
+                                     usuario_actual=get_current_user, parametro=parametro)
+
+    # ADR-068: el ticket y lo devuelto de una venta ajena son 404 para quien sólo ve sus turnos (cajero y vendedor), con la
+    # misma regla del router de ventas del motor (`build_guarda_de_venta`, libracommerce ADR-038).
+    app.include_router(ventas_extra.router, dependencies=[
+        Depends(requiere("ventas.pos")), Depends(_guarda_de_venta("sale_id"))])
     # `POST`/`GET /api/ventas`, detalle, anular y devolver -- la capa ERP de
     # LibraCommerce (F3 del plan post-P9, ver DECISIONS.md ADR-025). Sin
     # `require_module("ventas")`: catálogo, stock y venta/POS nunca se gatean
@@ -555,6 +570,8 @@ def create_app(db_path: str) -> FastAPI:
                 # de ser estimado en las ventas nuevas (libracommerce v0.27.0, ADR-016 del motor; ADR-050). Sin
                 # backfill: las ventas anteriores siguen en NULL y el reporte de margen las marca `costo_estimado`.
                 guardar_costo=True,
+                # ADR-068: el cajero y el vendedor listan, abren, anulan y devuelven sólo las ventas de sus turnos.
+                solo_sus_turnos=_solo_sus_turnos,
                 # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
                 # retirado) rechazaba estos dos casos antes de confirmar --
                 # ADR-020. Con las dos apagadas (el default) `POST /api/ventas`
@@ -599,7 +616,8 @@ def create_app(db_path: str) -> FastAPI:
             ventas=venta_facturacion.PUERTO, usuario_actual=get_current_user,
             facturacion_habilitada=_facturacion_habilitada,
         ),
-        dependencies=[Depends(requiere("ventas.pos"))],
+        # ADR-068: facturar y cobrar por QR una venta ajena es 404 para quien sólo ve sus turnos.
+        dependencies=[Depends(requiere("ventas.pos")), Depends(_guarda_de_venta("vid"))],
     )
     # La nota de crédito de una factura con CAE (`libracore.facturas_router`, ADR-017 del motor): SOLO esa ruta, no
     # los otros once endpoints de comprobantes (alta manual, cobro, borrado), que este producto no usa y que llevarían

@@ -2283,6 +2283,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 | `ventas.pos` | POS: registrar y cobrar, facturar, QR, tickets, ver, anular y devolver ventas; calcular promociones | ✓ | ✓ | ✓ | ✓ |  | ✓ |
 | `caja.propia` | Turno propio (abrir, ver, cerrar), elegir caja y ticket del propio cierre | ✓ | ✓ | ✓ | ✓ |  | ✓ |
 | `turnos.todos` | Ver y cerrar los turnos de otros | ✓ | ✓ |  |  |  |  |
+| `ventas.todas` | Ver, anular, devolver, facturar y reimprimir las ventas de otros (sin ella, sólo las de sus turnos: ADR-068) | ✓ | ✓ |  |  |  | ✓ |
 | `cierre_diario` | Cierre diario: vista previa, cerrar, historial y tickets | ✓ | ✓ |  |  |  | ✓ |
 | `clientes.ver` | Leer clientes y la lista asignada | ✓ | ✓ | ✓ | ✓ |  | ✓ |
 | `clientes.alta` | Alta de cliente y consulta de CUIT | ✓ | ✓ | ✓ | ✓ |  | ✓ |
@@ -2361,7 +2362,8 @@ decisión explícita del humano, y no forman parte de esta ADR.
     cubre el detalle de cliente, que trae facturas, presupuestos y remitos. **No es una regresión: es lo que el `staff` de hoy ya hace.** Lo
     que no se cumple todavía es «el cajero ve sólo su turno». Cerrarlo pide filtrar por turno propio en el router de ventas del motor
     (`libracommerce`) y una vista de cliente reducida para el POS; queda en `TASKS.md`. Sí están cerrados el ticket de un turno ajeno, los
-    costos, la recepción de compras y la cuenta corriente.
+    costos, la recepción de compras y la cuenta corriente. **Las ventas, cerradas el 2026-10-07 (ADR-068):** el cajero y el vendedor
+    ven sólo las de sus turnos. Sigue abierta la vista de cliente reducida.
 - Depende de: nada externo —cambio contenido en este repo—; `libraauth` (`get_extras`, `build_users_router(roles=...)`) y `libra-ui`
   v0.88.0 (`Usuarios` con la prop `roles`).
 
@@ -2803,4 +2805,25 @@ decisión explícita del humano, y no forman parte de esta ADR.
 - Decisión 2 — **solo admin**, con una capacidad propia (`facturas.nota_credito`), como Contalibra, Restolibra y LibraClub: es un acto fiscal que no se deshace. La decisión del 2026-09-15 («el cajero puede anular y devolver») no cambia, pero **el cajero no puede anular una venta facturada por ARCA** hasta que un admin emita la nota. Si se quiere que el cajero la emita, es agregar `_E` o el rol a esa capacidad.
 - Decisión 3 — los pines suben juntos: sin la ruta, subir libracommerce dejaba esas ventas sin salida.
 - Lo que **no** resuelve: el botón en la pantalla (`libra-ui`, detalle de la venta) y la nota parcial.
+
+## ADR-068 — El cajero y el vendedor ven sólo las ventas de sus turnos
+
+**Estado:** aceptada (2026-10-07). **Contexto:** con los roles (ADR-049) el cajero y el vendedor seguían leyendo el historial de ventas
+completo, y podían abrir, anular, devolver, facturar y reimprimir cualquier venta del local por id: `ventas.pos` cubría todas esas rutas y
+ninguna filtraba por usuario ni por turno. Era lo abierto de ADR-049 («el cajero ve sólo su turno»).
+
+- Decisión 1 — **«sus turnos», no «su turno abierto»** (decisión del humano, 2026-10-07): ven las ventas de los turnos de caja que abrieron,
+  abiertos o cerrados, así que quien cobró una venta ayer la puede devolver hoy. Una venta ajena es **404**, como una que no existe.
+- Decisión 2 — **el cajero y el vendedor** (decisión del humano, 2026-10-07). Capacidad nueva `ventas.todas` = admin, encargado y el
+  `staff` heredado (veía todas, y es el rol del visitante de la demo). No abre ninguna ruta: decide qué ventas ve cada uno, con
+  `permisos.condicion` (el mismo mecanismo de `costos.ver` y `turnos.todos`).
+- Decisión 3 — la regla vive en el motor (libracommerce ADR-038, regla del 2026-10-03): `OpcionesVentas.solo_sus_turnos` corta el
+  listado, el detalle, la anulación y la devolución de `/api/ventas`, y `build_guarda_de_venta` corta las demás rutas con id de venta:
+  `POST /api/ventas/{vid}/facturar`, `/mp-qr` y `GET /mp-status` (`libracore.ventas_cobro_router`), y `GET /ventas/{sale_id}/ticket` y
+  `/devuelto` (`app/routers/ventas_extra.py`). Acá sólo se dice a quién se aplica.
+- Pruebas: `tests/test_roles_flujos.py::test_el_mostrador_ve_solo_las_ventas_de_sus_turnos` (cajero con el turno ya cerrado y vendedor con
+  el suyo abierto, en los dos sentidos, más el encargado, el staff y el admin). Mutaciones: sin la guarda del ticket, o con `ventas.todas`
+  para el cajero, el test se pone rojo.
+- Lo que **no** resuelve: la vista de cliente reducida para el POS (la ficha de un cliente le sigue mostrando al cajero sus facturas,
+  presupuestos y remitos), en `TASKS.md`. Los avisos del webhook de MercadoPago no pasan por sesión y no cambian.
 
