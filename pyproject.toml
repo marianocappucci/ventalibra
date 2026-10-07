@@ -237,7 +237,8 @@ dependencies = [
     # v1.127.0 -> v1.129.0 (2026-10-04): `build_nota_de_credito_router` (v1.129.0, ADR-017), que este producto monta; y la marca del abono de la nota en la cuenta corriente (v1.128.0, ADR-016), que usa `anular_venta` de libracommerce v0.41.0. Sin migracion.
     # v1.132.0 -> v1.133.0 (2026-10-05, ADR-020 del motor): `libracore.spa`, la SPA que este producto tenia en `app/spa.py` (ahora re-export); una ruta `/api/...` que no existe da 404 JSON en vez del `index.html` con 200. Sin migracion.
     # v1.141.0 -> v1.142.0 (2026-10-07): credenciales y estado de ARCA por servicio web (`wscpe`, CTG y Carta de Porte); la facturacion no cambia. Migracion 0022 (tabla nueva `arca_credenciales_servicio`).
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.142.0",
+    # v1.142.0 -> v1.143.0 (2026-10-07): suma libracore.arca_wscpe (lectura de la Carta de Porte de ARCA, ADR-034); este producto no lo usa. Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.143.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
