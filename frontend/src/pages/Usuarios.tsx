@@ -2,13 +2,12 @@
 // Gestiolibra/MedLibra/VentaLibra -- ver
 // wiki/analyses/auditoria-duplicacion-familia-libra.md).
 
-import { Building2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Usuarios as Compartida } from 'libra-ui/Usuarios'
 import { ROLES_DE_USUARIO } from '../lib/permisos'
 
-/** El icono se pasa acá y no en el router: es un dato de ESTE producto —el que
- *  su propio sidebar le da a `/usuarios`— y el paquete no puede saberlo.
+/** El icono no se pasa: es el del catálogo de la familia (`ICONOS.usuarios`, libra-ui ADR-035), que es también el que lleva `/usuarios`
+ *  en el sidebar (`components/Layout.tsx`). Antes era un `Building2` propio de este producto.
  *
  *  `permitirEliminar` en `true` desde la adopción del router de usuarios de
  *  libraauth (2026-09-13, ADR-018, `libraauth.usuarios.build_users_router`):
@@ -22,5 +21,5 @@ import { ROLES_DE_USUARIO } from '../lib/permisos'
  *  el alta (el cajero, el de menos privilegio que sirve para trabajar). */
 export function Usuarios() {
   const { user } = useAuth()
-  return <Compartida icono={Building2} roles={ROLES_DE_USUARIO} permitirEliminar usuarioActualId={user?.id} />
+  return <Compartida roles={ROLES_DE_USUARIO} permitirEliminar usuarioActualId={user?.id} />
 }
