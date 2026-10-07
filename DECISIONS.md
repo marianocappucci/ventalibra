@@ -2286,6 +2286,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
 | `ventas.todas` | Ver, anular, devolver, facturar y reimprimir las ventas de otros (sin ella, sólo las de sus turnos: ADR-068) | ✓ | ✓ |  |  |  | ✓ |
 | `cierre_diario` | Cierre diario: vista previa, cerrar, historial y tickets | ✓ | ✓ |  |  |  | ✓ |
 | `clientes.ver` | Leer clientes y la lista asignada | ✓ | ✓ | ✓ | ✓ |  | ✓ |
+| `clientes.ficha` | La ficha de un cliente por la API, con sus facturas, presupuestos y remitos (ADR-069) | ✓ | ✓ | ✓ |  |  | ✓ |
 | `clientes.alta` | Alta de cliente y consulta de CUIT | ✓ | ✓ | ✓ | ✓ |  | ✓ |
 | `clientes.escribir` | Editar, activar y desactivar, alias de facturación, auto-facturar | ✓ | ✓ | ✓ |  |  | ✓ |
 | `clientes.lista_precio` | Asignarle a un cliente su lista de precio | ✓ | ✓ |  |  |  | ✓ |
@@ -2363,7 +2364,7 @@ decisión explícita del humano, y no forman parte de esta ADR.
     que no se cumple todavía es «el cajero ve sólo su turno». Cerrarlo pide filtrar por turno propio en el router de ventas del motor
     (`libracommerce`) y una vista de cliente reducida para el POS; queda en `TASKS.md`. Sí están cerrados el ticket de un turno ajeno, los
     costos, la recepción de compras y la cuenta corriente. **Las ventas, cerradas el 2026-10-07 (ADR-068):** el cajero y el vendedor
-    ven sólo las de sus turnos. Sigue abierta la vista de cliente reducida.
+    ven sólo las de sus turnos. **La ficha del cliente, cerrada el mismo día (ADR-069):** el cajero no la lee.
 - Depende de: nada externo —cambio contenido en este repo—; `libraauth` (`get_extras`, `build_users_router(roles=...)`) y `libra-ui`
   v0.88.0 (`Usuarios` con la prop `roles`).
 
@@ -2826,4 +2827,18 @@ ninguna filtraba por usuario ni por turno. Era lo abierto de ADR-049 («el cajer
   para el cajero, el test se pone rojo.
 - Lo que **no** resuelve: la vista de cliente reducida para el POS (la ficha de un cliente le sigue mostrando al cajero sus facturas,
   presupuestos y remitos), en `TASKS.md`. Los avisos del webhook de MercadoPago no pasan por sesión y no cambian.
+
+## ADR-069 — El cajero no lee la ficha de un cliente (con sus facturas, presupuestos y remitos)
+
+**Estado:** aceptada (2026-10-07). **Contexto:** lo que quedaba abierto de ADR-049 y ADR-068: `clientes.ver` abría `GET /api/clientes/{id}`,
+que trae las facturas, los presupuestos y los remitos del cliente, y el cajero la tiene para elegir a quién vender o fiar en el POS.
+
+- Qué se midió: el POS sólo usa `GET /api/clientes` (la lista, sin documentos) y `POST /api/clientes` (el alta); la ficha la pide únicamente
+  la pantalla `ClienteDetalle` del kit, que el cajero no tiene (`clientes.pantalla`). `GET /api/clientes/{id}/lista-precio` sólo devuelve el
+  id de la lista. Por eso **no hace falta una «vista reducida»** para el POS, como suponía ADR-049: alcanza con cerrarle la ficha.
+- Decisión — capacidad nueva `clientes.ficha` = admin, encargado, vendedor y el `staff` heredado: `GET /api/clientes/{id}` la pide (regla
+  de ruta en `app/main.py`, antes de la de `clientes.ver`). El cajero recibe 403. Es un permiso del producto (a quién se le abre una ruta),
+  no lógica de fondo: el router del motor no cambia.
+- Pruebas: la fila de la matriz pasa de `MOSTRADOR` a `SIN_CAJERO` y `test_el_mostrador_puede_fiar_desde_el_pos_...` pide la ficha con
+  los dos roles (403 el cajero, 200 con los documentos el vendedor). Mutación: sin la regla, 3 tests en rojo.
 
