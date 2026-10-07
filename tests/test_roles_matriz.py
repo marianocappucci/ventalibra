@@ -218,7 +218,7 @@ POST   /api/purchase-receipts/{recepcion_id}/confirm                    GERENCIA
 # Clientes: ver `clientes.ver`, alta `clientes.alta`, resto `clientes.escribir`, lista `clientes.lista_precio`
 GET    /api/clientes                                                    MOSTRADOR
 POST   /api/clientes                                                    MOSTRADOR
-GET    /api/clientes/{cliente_id}                                       MOSTRADOR
+GET    /api/clientes/{cliente_id}                                       SIN_CAJERO
 PUT    /api/clientes/{cliente_id}                                       SIN_CAJERO
 POST   /api/clientes/{cliente_id}/toggle-auto-facturar                  SIN_CAJERO
 POST   /api/clientes/{cliente_id}/alias-facturacion                     SIN_CAJERO

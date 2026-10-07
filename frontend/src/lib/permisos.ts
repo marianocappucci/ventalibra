@@ -36,6 +36,7 @@ export const CAPACIDADES = [
   'cierre_diario',
   'clientes.ver',
   'clientes.pantalla',
+  'clientes.ficha',
   'clientes.alta',
   'clientes.escribir',
   'clientes.lista_precio',

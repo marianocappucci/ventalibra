@@ -91,4 +91,4 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 - [ ] Ninguna por ahora.
 
 - [x] **Roles: que el cajero vea sólo su turno — las ventas** (2026-10-07, ADR-068): el cajero y el vendedor ven, anulan, devuelven, facturan y reimprimen sólo las ventas de sus turnos (libracommerce ADR-038).
-- [ ] **Roles: una vista de cliente reducida para el POS** (sin facturas, presupuestos ni remitos): la ficha de un cliente le sigue mostrando esos documentos al cajero (ADR-049, ADR-068).
+- [x] **Roles: el cajero no lee la ficha de un cliente** (2026-10-07, ADR-069): capacidad `clientes.ficha`; el POS no necesitaba una vista reducida.
