@@ -4,11 +4,10 @@
 // los accesos del de auth (libraauth v0.8.0), pero eso lo resuelve el backend:
 // las dos mitades llegan por el mismo endpoint y con la misma forma.
 
-import { ScrollText } from 'lucide-react'
 import { Logs as Compartida } from 'libra-ui/Logs'
 
-/** Ver el comentario de `Usuarios`: el icono es de este producto. */
+/** Ver el comentario de `Usuarios`: el icono es el del catálogo (`ICONOS.logDeActividad`), el default del kit. */
 export function Logs() {
   // `/api/logs`: en `/logs` (el default del kit) el endpoint tapaba la pantalla al recargarla.
-  return <Compartida icono={ScrollText} basePath="/api/logs" />
+  return <Compartida basePath="/api/logs" />
 }

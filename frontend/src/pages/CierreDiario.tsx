@@ -13,7 +13,8 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { BadgeEstado } from 'libra-ui/badge-estado'
-import { CalendarCheck, Printer, Undo2 } from 'lucide-react'
+import { Printer, Undo2 } from 'lucide-react'
+import { ICONOS } from 'libra-ui/iconos-identidad'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha, fechaHora, hora } from '@/lib/fechas'
 import { abrirTicket } from '@/lib/tickets'
@@ -135,7 +136,7 @@ export function CierreDiario() {
 
   return (
     <div className="grid gap-4">
-      <TituloPantalla icono={CalendarCheck}>Cierre diario</TituloPantalla>
+      <TituloPantalla icono={ICONOS.cierreDiario}>Cierre diario</TituloPantalla>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
