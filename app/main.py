@@ -767,6 +767,8 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(
         build_clientes_router(),
         dependencies=[Depends(requiere_segun_ruta(
+            # ADR-069: la ficha de un cliente trae sus facturas, presupuestos y remitos; el cajero no la lee.
+            ("GET", r"/api/clientes/\d+", "clientes.ficha"),
             ("GET", r"/api/clientes(/.*)?", "clientes.ver"),
             ("POST", r"/api/clientes", "clientes.alta"),
             por_defecto="clientes.escribir",

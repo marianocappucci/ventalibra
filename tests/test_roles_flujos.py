@@ -243,6 +243,11 @@ def test_el_mostrador_puede_fiar_desde_el_pos_y_el_cajero_no_ve_saldos_recibos_n
     usuario = _entrar(admin_client, rol)
     abrir_turno(usuario)
     assert any(c["id"] == cliente for c in usuario.get("/api/clientes").json())
+    # La ficha (con facturas, presupuestos y remitos) es del vendedor, no del cajero (ADR-069).
+    ficha = usuario.get(f"/api/clientes/{cliente}")
+    assert ficha.status_code == (403 if rol == "cajero" else 200), ficha.text
+    if rol == "vendedor":
+        assert {"facturas", "presupuestos", "remitos"} <= set(ficha.json())
 
     venta = registrar_venta(
         usuario, item, cantidad="2", cliente_id=cliente, pagos=[{"medio": "cuenta_corriente", "monto": 3000.0}],

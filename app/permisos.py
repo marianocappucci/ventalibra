@@ -138,6 +138,9 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "clientes.ver": frozenset({_E, _V, _C, _S}),
     # La pantalla de Clientes (SOLO de la SPA, ADR-054): el cajero lee y da de alta clientes desde el POS, no entra a la ficha.
     "clientes.pantalla": frozenset({_E, _V, _S}),
+    # La ficha de UN cliente por la API (`GET /api/clientes/{id}`): trae sus facturas, presupuestos y remitos (ADR-069). El cajero no la
+    # tiene: el POS sólo usa la lista (`clientes.ver`) para elegir a quién vender o fiar, y su menú no tiene la pantalla de Clientes.
+    "clientes.ficha": frozenset({_E, _V, _S}),
     # Alta de un cliente (y la consulta de CUIT en ARCA que la acompaña): el cajero da de alta en el mostrador.
     "clientes.alta": frozenset({_E, _V, _C, _S}),
     # Editar, activar/desactivar, alias de facturación y facturar solo (todo lo que no es el alta).
