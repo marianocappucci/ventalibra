@@ -44,7 +44,8 @@
     "vencimientos.marcar",
     "vencimientos.mover",
     "vencimientos.ver",
-    "ventas.pos"
+    "ventas.pos",
+    "ventas.todas"
   ],
   "encargado": [
     "caja.propia",
@@ -83,7 +84,8 @@
     "vencimientos.marcar",
     "vencimientos.mover",
     "vencimientos.ver",
-    "ventas.pos"
+    "ventas.pos",
+    "ventas.todas"
   ],
   "vendedor": [
     "caja.propia",
@@ -145,6 +147,7 @@
     "stock.pantalla",
     "stock.transferir",
     "stock.ver",
-    "ventas.pos"
+    "ventas.pos",
+    "ventas.todas"
   ]
 }
