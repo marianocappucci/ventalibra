@@ -52,7 +52,7 @@ def test_un_tema_vacio_restaura_los_valores_por_defecto(admin_client):
     assert admin_client.get("/api/tema").json() == {"tema": {}}
 
 
-@pytest.mark.parametrize("rol", ["encargado", "vendedor", "cajero", "deposito", "staff"])
+@pytest.mark.parametrize("rol", ["encargado", "vendedor", "cajero", "deposito"])
 def test_ningun_otro_rol_escribe_el_tema(admin_client, rol):
     cliente = _entrar(admin_client, rol)
     assert cliente.put("/api/tema", json={"tema": TEMA}).status_code == 403

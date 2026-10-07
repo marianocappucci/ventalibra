@@ -24,7 +24,7 @@ import { Usuarios } from '../pages/Usuarios'
 
 const USUARIOS = [
   { id: 'u-yo', username: 'yo', name: 'Yo Misma', role: 'admin', active: true, email: '' },
-  { id: 'u-otro', username: 'otro', name: 'Otra Persona', role: 'staff', active: true, email: '' },
+  { id: 'u-otro', username: 'otro', name: 'Otra Persona', role: 'cajero', active: true, email: '' },
 ]
 
 function json(body: unknown) {
@@ -58,8 +58,8 @@ describe('Usuarios (shim de VentaLibra)', () => {
 
 describe('Usuarios: los roles (ADR-049)', () => {
   // El kit ya acepta la lista de roles por prop (`roles`), así que el shim la pasa: hasta acá el default del kit
-  // (`admin`/`staff`) dejaba al alta sin los roles nuevos.
-  it('el alta ofrece los cinco roles y el heredado, con el cajero por defecto', async () => {
+  // (`admin`/`staff`) dejaba al alta sin los roles nuevos; `staff` se retiró (ADR-071).
+  it('el alta ofrece los cinco roles (y ya no el `staff` heredado), con el cajero por defecto', async () => {
     render(<Usuarios />)
     await waitFor(() => expect(screen.getByText('Otra Persona')).toBeInTheDocument())
 
@@ -71,7 +71,7 @@ describe('Usuarios: los roles (ADR-049)', () => {
     await userEvent.click(selector)
     const opciones = (await screen.findAllByRole('option')).map((o) => o.textContent)
     expect(opciones).toEqual([
-      'Cajero', 'Vendedor', 'Depósito', 'Encargado', 'Admin', 'Staff (heredado: migrar a un rol concreto)',
+      'Cajero', 'Vendedor', 'Depósito', 'Encargado', 'Admin',
     ])
   })
 })

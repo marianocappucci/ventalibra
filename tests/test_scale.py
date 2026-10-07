@@ -175,8 +175,8 @@ def test_el_codigo_de_balanza_no_choca_con_un_codigo_interno_igual(admin_client)
     assert cuerpo["producto"]["id"] == queso
 
 
-def test_el_cajero_no_configura_la_balanza(staff_client):
-    assert staff_client.get("/settings/scale").status_code == 403
+def test_el_cajero_no_configura_la_balanza(cajero_client):
+    assert cajero_client.get("/settings/scale").status_code == 403
 
 
 @pytest.mark.parametrize("codigo", ["2000123000000", "200012300750", "2000000007504"])

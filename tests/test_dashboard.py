@@ -56,5 +56,5 @@ def test_sin_ningun_modulo_el_tablero_se_abre(admin_client):
     assert admin_client.get("/api/dashboard").status_code == 200
 
 
-def test_un_cajero_no_ve_el_tablero(staff_client):
-    assert staff_client.get("/api/dashboard").status_code == 403
+def test_un_cajero_no_ve_el_tablero(cajero_client):
+    assert cajero_client.get("/api/dashboard").status_code == 403

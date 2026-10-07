@@ -68,5 +68,5 @@ def test_un_proveedor_sin_compras_se_elimina(admin_client):
     assert admin_client.get("/api/proveedores").json() == []
 
 
-def test_un_cajero_puede_ver_los_proveedores(staff_client):
-    assert staff_client.get("/api/proveedores").status_code == 200
+def test_el_deposito_puede_ver_los_proveedores(deposito_client):
+    assert deposito_client.get("/api/proveedores").status_code == 200

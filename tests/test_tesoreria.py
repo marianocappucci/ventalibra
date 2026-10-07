@@ -116,12 +116,12 @@ def test_eliminar_un_movimiento(admin_client):
     assert admin_client.get(f"/api/tesoreria/cuentas/{cuenta['id']}").json()["cuenta"]["saldo"] == 0
 
 
-def test_un_cajero_no_entra_libre_en_todos_los_planes(admin_client, staff_client):
+def test_un_cajero_no_entra_libre_en_todos_los_planes(admin_client, cajero_client):
     """La decisión (ADR-037) es que Tesorería queda libre de gate de plan, pero sigue siendo de admin:
-    un cajero (staff) no puede ni leerla ni escribirla."""
+    un cajero no puede ni leerla ni escribirla."""
     cuenta = _crear_cuenta(admin_client)
-    assert staff_client.get("/api/tesoreria").status_code == 403
-    assert staff_client.post("/api/tesoreria/cuentas", json={"nombre": "X"}).status_code == 403
-    assert staff_client.post(f"/api/tesoreria/cuentas/{cuenta['id']}/movimiento", json={
+    assert cajero_client.get("/api/tesoreria").status_code == 403
+    assert cajero_client.post("/api/tesoreria/cuentas", json={"nombre": "X"}).status_code == 403
+    assert cajero_client.post(f"/api/tesoreria/cuentas/{cuenta['id']}/movimiento", json={
         "tipo": "ingreso", "monto": 100, "concepto": "X", "fecha": "2026-09-27",
     }).status_code == 403

@@ -50,7 +50,7 @@ it('el admin ve los turnos de todos, con la caja de cada uno', async () => {
 })
 
 it('el cajero ve «Mis turnos»', async () => {
-  sesion.rol = 'staff'
+  sesion.rol = 'cajero'
   render(<MemoryRouter><Turnos /></MemoryRouter>)
   expect(await screen.findByText('Mis turnos')).toBeInTheDocument()
 })

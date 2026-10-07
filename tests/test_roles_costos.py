@@ -12,7 +12,7 @@ RESPUESTA para quien no tiene la capacidad.
   rol restringido. Busca el costo de dos maneras: por el nombre de la clave (`cost`/`costo` como palabra, más `subtotal`) y
   **por el valor** (números que sólo el costo tiene). Si mañana el motor lo manda bajo otra clave, o una ruta nueva queda
   fuera del prefijo del filtro, se pone rojo acá.
-- El contrapeso: los roles con la capacidad (admin, encargado, staff) SÍ lo ven en las rutas de costo, y lo que reciben los
+- El contrapeso: los roles con la capacidad (admin y encargado) SÍ lo ven en las rutas de costo, y lo que reciben los
   restringidos es EXACTAMENTE lo del admin menos esas claves (no se pierde ningún otro dato).
 """
 import re
@@ -25,7 +25,7 @@ from app import permisos
 from app.costos import sin_costos
 
 RESTRINGIDOS = ("vendedor", "cajero", "deposito")
-CON_COSTOS = ("admin", "encargado", "staff")
+CON_COSTOS = ("admin", "encargado")
 
 #: Las claves de costo MEDIDAS en las respuestas reales (ADR-049). Escrita a mano, aparte de `app/costos.py`.
 CLAVES_MEDIDAS = {"precio_costo", "unit_cost", "subtotal"}
@@ -96,7 +96,7 @@ def datos(admin_client):
     venta = registrar_venta(c, yerba, cantidad="2")["id"]
     assert c.post(f"/api/turnos/{turno}/cerrar", json={"monto_declarado": 3000}).status_code == 200
 
-    usuarios = {rol: _entrar(c, rol) for rol in ("vendedor", "cajero", "deposito", "encargado", "staff")}
+    usuarios = {rol: _entrar(c, rol) for rol in ("vendedor", "cajero", "deposito", "encargado")}
     usuarios["admin"] = c
     return {
         "usuarios": usuarios, "yerba": yerba, "fideos": fideos, "proveedor": proveedor, "orden": orden,
@@ -136,9 +136,9 @@ def _sacar_medidas(valor):
 # ── La capacidad ─────────────────────────────────────────────────────────────
 
 
-def test_costos_ver_es_de_admin_encargado_y_el_staff_heredado_y_de_nadie_mas():
+def test_costos_ver_es_de_admin_y_encargado_y_de_nadie_mas():
     """Escrito a mano: el vendedor y el cajero no ven costos, y el depósito no ve plata."""
-    assert permisos.roles_con("costos.ver") == ("admin", "encargado", "staff")
+    assert permisos.roles_con("costos.ver") == ("admin", "encargado")
     for rol in RESTRINGIDOS:
         assert "costos.ver" not in permisos.capacidades_de(rol), rol
 
@@ -219,7 +219,7 @@ def test_el_deposito_ve_las_cantidades_de_la_recepcion_sin_importes(datos):
 def test_el_deposito_no_puede_recibir_ni_fijar_el_costo_con_una_recepcion(datos):
     """Confirmar una recepción deja el `unit_cost` recibido como `default_cost` del producto: quien recibe fija costos. Un depósito
     (que no ve plata) podía cambiar el costo de cualquier producto con una recepción arbitraria (hallazgo de la revisión de Codex);
-    con `compras.recibir` sólo de encargado, staff y admin, cada paso es 403 y el costo no se mueve."""
+    con `compras.recibir` sólo de encargado y admin, cada paso es 403 y el costo no se mueve."""
     admin, deposito = datos["usuarios"]["admin"], datos["usuarios"]["deposito"]
 
     def costo_del_producto():

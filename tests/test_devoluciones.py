@@ -310,33 +310,34 @@ def test_se_puede_devolver_por_otro_medio_del_que_se_cobro(admin_client):
 # instalado (`.venv/.../libracommerce/web/ventas_router.py`): el `gate_anular`
 # que arma con `solo_admin` no cuelga de ninguna otra ruta de ese router.
 # `app/main.py` NO le pasa `solo_admin` a propósito: hasta hoy, en este
-# producto, un cajero (staff) podía anular (`/sales/{id}/cancel`, retirado) y
+# producto, un cajero podía anular (`/sales/{id}/cancel`, retirado) y
 # devolver (`/sales/{id}/returns`, retirado) -- el router llevaba `staff_or_
 # admin` y el endpoint en sí sólo pedía sesión (`get_current_user`), sin
 # ningún chequeo de rol propio. Restringirlo a admin sería una decisión que
 # nadie tomó -- se preserva el permiso de siempre.
 
 
-def test_un_staff_puede_anular_y_devolver(admin_client, staff_client):
+def test_un_cajero_puede_anular_y_devolver(admin_client, cajero_client):
     item_id = crear_item(admin_client)
     location_id = deposito_default(admin_client)
     con_stock(admin_client, item_id, location_id, "10")
-    abrir_turno(admin_client)
+    # Las ventas son del propio cajero (de su turno): el mostrador sólo ve las suyas (ADR-068), una ajena sería 404.
+    abrir_turno(cajero_client)
 
-    sale_id = _venta(admin_client, item_id, cantidad="2")
-    anulada = staff_client.post(f"/api/ventas/{sale_id}/anular")
+    sale_id = _venta(cajero_client, item_id, cantidad="2")
+    anulada = cajero_client.post(f"/api/ventas/{sale_id}/anular")
     assert anulada.status_code == 200, anulada.text
 
-    sale_id_2 = _venta(admin_client, item_id, cantidad="2")
+    sale_id_2 = _venta(cajero_client, item_id, cantidad="2")
     sale_item_id = primer_sale_item_id(admin_client, sale_id_2)
-    devuelta = staff_client.post(f"/api/ventas/{sale_id_2}/devolver", json={
+    devuelta = cajero_client.post(f"/api/ventas/{sale_id_2}/devolver", json={
         "lineas": [{"sale_item_id": sale_item_id, "cantidad": 1}], "deposito_id": location_id,
     })
     assert devuelta.status_code == 200, devuelta.text
 
 
 def test_sin_sesion_no_se_puede_anular_ni_devolver(admin_client):
-    """El control: el permiso amplio (staff puede) no es "sin sesión pasa
+    """El control: el permiso amplio (el cajero puede) no es "sin sesión pasa
     igual" -- sigue haciendo falta estar logueado."""
     item_id = crear_item(admin_client)
     location_id = deposito_default(admin_client)

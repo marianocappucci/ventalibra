@@ -15,11 +15,11 @@ def test_logout_clears_session(admin_client):
     assert admin_client.get("/auth/me").status_code == 401
 
 
-def test_staff_cannot_manage_users(staff_client):
-    response = staff_client.get("/users")
+def test_encargado_cannot_manage_users(encargado_client):
+    response = encargado_client.get("/users")
     assert response.status_code == 403
 
 
-def test_staff_can_use_catalog(staff_client):
-    response = staff_client.get("/api/productos")
+def test_cajero_can_use_catalog(cajero_client):
+    response = cajero_client.get("/api/productos")
     assert response.status_code == 200

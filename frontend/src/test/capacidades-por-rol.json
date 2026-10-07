@@ -2,7 +2,6 @@
   "admin": [
     "caja.admin",
     "caja.propia",
-    "catalogo.configurar",
     "catalogo.pantalla",
     "catalogo.ver",
     "cierre_diario",
@@ -125,33 +124,5 @@
     "stock.ver",
     "vencimientos.mover",
     "vencimientos.ver"
-  ],
-  "staff": [
-    "caja.propia",
-    "catalogo.configurar",
-    "catalogo.pantalla",
-    "catalogo.ver",
-    "cierre_diario",
-    "clientes.alta",
-    "clientes.escribir",
-    "clientes.ficha",
-    "clientes.lista_precio",
-    "clientes.pantalla",
-    "clientes.ver",
-    "compras.escribir",
-    "compras.recibir",
-    "compras.ver",
-    "costos.ver",
-    "cuenta_corriente",
-    "egresos",
-    "precios.consultar",
-    "productos.escribir",
-    "proveedores.pantalla",
-    "stock.ajustar",
-    "stock.pantalla",
-    "stock.transferir",
-    "stock.ver",
-    "ventas.pos",
-    "ventas.todas"
   ]
 }

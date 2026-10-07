@@ -165,18 +165,18 @@ def test_list_purchase_receipts_returns_newest_first(admin_client):
     assert [r["id"] for r in response.json()] == [second["id"], first["id"]]
 
 
-def test_staff_can_run_full_purchasing_flow(admin_client, staff_client):
+def test_encargado_can_run_full_purchasing_flow(admin_client, encargado_client):
     item_id = _make_item(admin_client)
     location_id = _make_location(admin_client)
     supplier_id = _make_supplier(admin_client)
 
-    receipt = staff_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id})
+    receipt = encargado_client.post("/api/purchase-receipts", json={"proveedor_id": supplier_id})
     receipt_id = receipt.json()["id"]
-    staff_client.post(
+    encargado_client.post(
         f"/api/purchase-receipts/{receipt_id}/items",
         json={"item_id": item_id, "quantity": "5", "unit_cost": "900.00"},
     )
-    confirmed = staff_client.post(
+    confirmed = encargado_client.post(
         f"/api/purchase-receipts/{receipt_id}/confirm", json={"deposito_id": location_id},
     )
     assert confirmed.status_code == 200, confirmed.text

@@ -2857,3 +2857,16 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   un cambio de código aparte.
 - Pruebas: `test_el_arranque_con_la_demo_crea_al_visitante_como_encargado`, y la matriz de la demo compara contra `encargado`.
 
+## ADR-071 — Se retira el rol `staff` y la capacidad `catalogo.configurar`
+
+**Estado:** aceptada (2026-10-07, pedido del humano: «retirá el rol staff del código»). **Contexto:** ADR-049 dejó `staff` como rol heredado
+«a migrar»; ADR-070 migró los dos usuarios que lo tenían (dev y demo) y ya no queda ninguno.
+
+- Decisión 1 — `staff` sale de `ROLES` y de la matriz (`app/permisos.py`), de la pantalla de Usuarios (`ROLES_DE_USUARIO`) y de los tests.
+  Crear o editar un usuario con ese rol da 422. Un `staff` que quedara en una base vieja (restaurada de un respaldo anterior) puede
+  loguearse pero no tiene ninguna capacidad: `/auth/me` le da `capacidades: []` y cada ruta, 403. Arreglo: pasarlo a un rol concreto.
+- Decisión 2 — `catalogo.configurar` se elimina: existía sólo para que el `staff` conservara la escritura de `/catalog/*` (categorías y
+  unidades). Esa escritura pasa a `config` (sólo admin), que es lo que la matriz ya decía para cualquier rol nuevo.
+- La tabla de ADR-049 conserva la columna `staff` como registro de cómo era; la matriz vigente es `app/permisos.py`.
+- libraauth no cambia: `staff` sigue siendo su vocabulario por defecto para los productos que no pasan el suyo; VentaLibra pasa `ROLES`.
+

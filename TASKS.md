@@ -84,7 +84,7 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   subtotal del detalle de una orden de compra), más una prop `soloLectura` por pantalla (ADR-049). Recibir compras es del encargado
   (el depósito no: decisión del humano, 2026-09-29).
 - [x] Roles: migrar los usuarios `staff` existentes a un rol concreto (2026-10-07, ADR-070: dev `cajero` → cajero, visitante de la demo → encargado).
-- [ ] Roles: retirar el rol `staff` y `catalogo.configurar` del código (ya no queda ningún usuario con ese rol).
+- [x] Roles: retirar el rol `staff` y `catalogo.configurar` del código (2026-10-07, ADR-071).
 
 ## Bloqueadas
 

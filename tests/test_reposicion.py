@@ -22,7 +22,7 @@ from ventas_helpers import abrir_turno, crear_sucursal, deposito_default, hoy, r
 COSTO = "731.42"
 PRECIO = "1500.00"
 
-ROLES_SIN_ACCESO = ("staff", "vendedor", "cajero")
+ROLES_SIN_ACCESO = ("vendedor", "cajero")
 RUTAS = ("/api/reportes/reposicion", "/api/reportes/reposicion/export")
 
 
@@ -148,7 +148,7 @@ def test_export_csv_bajo_el_mismo_prefijo(gerencia, escenario):
 
 
 @pytest.mark.parametrize("rol", ROLES_SIN_ACCESO)
-def test_staff_vendedor_y_cajero_no_la_ven(admin_client, escenario, rol):
+def test_vendedor_y_cajero_no_la_ven(admin_client, escenario, rol):
     cliente = _entrar(admin_client, rol)
     for ruta in RUTAS:
         r = cliente.get(ruta)
@@ -256,7 +256,7 @@ def test_los_demas_roles_no_leen_ni_escriben_los_parametros(admin_client, escena
 
 def test_el_deposito_lee_y_escribe_los_parametros_pero_no_edita_el_producto(admin_client, escenario):
     """Decisión del humano (2026-10-02): reponer es trabajo del depósito. Puede cargar el plazo y el techo; el resto del producto
-    (`productos.escribir`) sigue siendo del encargado y el staff."""
+    (`productos.escribir`) sigue siendo del encargado."""
     deposito = _entrar(admin_client, "deposito")
     yerba = escenario["yerba"]
     r = _parametros(deposito, yerba, plazo_entrega_dias=5, stock_maximo=35)
@@ -275,13 +275,13 @@ def test_sin_sesion_los_parametros_no_se_ven(admin_client, escenario):
     assert anonimo.get(f"/api/productos/{escenario['yerba']}/reposicion").status_code == 401
 
 
-def test_editar_el_producto_no_deja_subir_el_minimo_por_encima_del_techo_ni_para_el_staff(admin_client, escenario):
+def test_editar_el_producto_no_deja_subir_el_minimo_por_encima_del_techo_ni_para_el_encargado(admin_client, escenario):
     yerba = escenario["yerba"]
     assert _parametros(admin_client, yerba, plazo_entrega_dias=None, stock_maximo=30).status_code == 200   # el mínimo es 30
-    staff = _entrar(admin_client, "staff")
+    encargado = _entrar(admin_client, "encargado")
     cuerpo = {"nombre": "Yerba 1kg", "unidad": "u", "codigo": "YERBA-1", "precio_venta": PRECIO, "precio_costo": COSTO,
               "stock_minimo": 31}
-    assert staff.put(f"/api/productos/{yerba}", json=cuerpo).status_code == 422
+    assert encargado.put(f"/api/productos/{yerba}", json=cuerpo).status_code == 422
     assert next(p for p in admin_client.get("/api/productos").json() if p["id"] == yerba)["stock_minimo"] == 30
 
 
@@ -392,10 +392,10 @@ def test_un_producto_sin_proveedor_habitual_se_informa_y_no_genera_ninguna_orden
     assert len(admin_client.get("/api/purchase-orders").json()) == 1                      # sólo la del escenario
 
 
-@pytest.mark.parametrize("rol", ["cajero", "vendedor", "deposito", "staff"])
+@pytest.mark.parametrize("rol", ["cajero", "vendedor", "deposito"])
 def test_los_demas_roles_no_generan_ordenes(admin_client, escenario, rol):
-    """Escribe órdenes de compra y trae costos: pide `reposicion.ver` y `compras.escribir` (el depósito ve la reposición pero no escribe Compras; el staff
-    escribe Compras pero no ve la reposición)."""
+    """Escribe órdenes de compra y trae costos: pide `reposicion.ver` y `compras.escribir` (el depósito ve la reposición pero no escribe Compras; el vendedor y el
+    cajero no ven ninguna de las dos)."""
     cliente = _entrar(admin_client, rol)
     assert _ordenes(cliente).status_code == 403
     assert len(admin_client.get("/api/purchase-orders").json()) == 1

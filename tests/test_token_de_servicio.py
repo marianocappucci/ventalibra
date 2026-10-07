@@ -65,7 +65,7 @@ def test_el_token_puede_dar_de_alta_un_usuario(sin_sesion, monkeypatch):
     r = sin_sesion.post(
         RUTA_USERS,
         headers={SERVICE_TOKEN_HEADER: TOKEN},
-        json={"username": "ana", "name": "Ana", "password": "clave-inicial", "role": "staff"},
+        json={"username": "ana", "name": "Ana", "password": "clave-inicial", "role": "cajero"},
     )
     # 201 desde la adopción de `libraauth.usuarios.build_users_router`
     # (2026-09-13, ADR-018). Hasta esa fecha era 200: el router propio de

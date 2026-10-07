@@ -251,21 +251,21 @@ def test_basico_no_transfiere_entre_sucursales(admin_client):
     assert float(stock(admin_client, item, destino)) == 0.0
 
 
-def test_el_cajero_tampoco_transfiere_entre_sucursales_en_basico(admin_client, staff_client):
-    """La transferencia es de staff y admin: el gate del plan corta a los dos."""
+def test_el_cajero_tampoco_transfiere_entre_sucursales_en_basico(admin_client, encargado_client):
+    """La transferencia es de encargado, depósito y admin: el gate del plan corta a los dos."""
     item, origen, destino = _dos_sucursales_con_stock(admin_client)
     _aplicar(admin_client, "basico")
 
-    assert _transferir(staff_client, item, origen, destino).status_code == 403
+    assert _transferir(encargado_client, item, origen, destino).status_code == 403
     assert float(stock(admin_client, item, destino)) == 0.0
 
 
-def test_premium_transfiere_entre_sucursales(admin_client, staff_client):
+def test_premium_transfiere_entre_sucursales(admin_client, encargado_client):
     item, origen, destino = _dos_sucursales_con_stock(admin_client)
     _aplicar(admin_client, "premium")
 
     assert _transferir(admin_client, item, origen, destino, 3).status_code == 200
-    assert _transferir(staff_client, item, origen, destino, 2).status_code == 200
+    assert _transferir(encargado_client, item, origen, destino, 2).status_code == 200
     assert float(stock(admin_client, item, origen)) == 5.0
     assert float(stock(admin_client, item, destino)) == 5.0
 
@@ -297,7 +297,7 @@ def test_el_resto_de_las_rutas_de_depositos_no_lee_ni_corta_nada_en_basico(admin
 # ── Lo que ya existe no se rompe: una instalación con varias sucursales, en Básico ──────────────────────────────────────
 
 
-def test_una_instalacion_con_varias_sucursales_sigue_leyendose_y_editandose_en_basico(admin_client, staff_client):
+def test_una_instalacion_con_varias_sucursales_sigue_leyendose_y_editandose_en_basico(admin_client, encargado_client):
     """La demo tiene tres ubicaciones. Pasar a Básico sólo impide crear más y cruzar mercadería: no borra ni oculta
     lo existente, ni impide editarlo, ni vender."""
     item, origen, destino = _dos_sucursales_con_stock(admin_client)
@@ -305,7 +305,7 @@ def test_una_instalacion_con_varias_sucursales_sigue_leyendose_y_editandose_en_b
     _aplicar(admin_client, "basico")
 
     # Se lee todo.
-    for cliente in (admin_client, staff_client):
+    for cliente in (admin_client, encargado_client):
         nombres = [s["nombre"] for s in cliente.get("/api/sucursales").json()]
         assert len(nombres) == 3 and "Sucursal Norte" in nombres
         assert len(cliente.get("/api/depositos").json()) == 3

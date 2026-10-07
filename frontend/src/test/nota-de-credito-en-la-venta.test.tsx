@@ -10,7 +10,7 @@ import { VentaDetalle } from '../pages/VentaDetalle'
 import { _resetCacheDeMedios } from '@/lib/medios-pago'
 import CAPACIDADES_POR_ROL from './capacidades-por-rol.json'
 
-const sesion = vi.hoisted(() => ({ rol: 'admin' as 'admin' | 'staff' | 'cajero' }))
+const sesion = vi.hoisted(() => ({ rol: 'admin' as 'admin' | 'cajero' }))
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'u1', username: 'u', name: 'U', role: sesion.rol, capacidades: (CAPACIDADES_POR_ROL as Record<string, string[]>)[sesion.rol] },

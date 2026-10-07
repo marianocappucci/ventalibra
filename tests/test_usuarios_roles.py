@@ -1,4 +1,4 @@
-"""El router de usuarios con los roles de ADR-049: admin, encargado, vendedor, cajero, deposito y el `staff` heredado.
+"""El router de usuarios con los roles de ADR-049: admin, encargado, vendedor, cajero, deposito (el `staff` heredado se retiró: ADR-071).
 
 Lo que ya hace `libraauth.usuarios.build_users_router` NO se vuelve a probar ni a implementar acá: el 422 por rol inválido,
 el 409 por sacarse el rol de admin a uno mismo y el 422 por dejar la instancia sin admin activo son de la factory (ver su
@@ -79,7 +79,7 @@ def test_no_se_puede_dejar_la_instancia_sin_admin(admin_client, monkeypatch):
         assert backoffice.put(f"/users/{yo['id']}", json=cuerpo, headers=servicio).status_code == 200
 
 
-@pytest.mark.parametrize("rol", ["encargado", "vendedor", "cajero", "deposito", "staff"])
+@pytest.mark.parametrize("rol", ["encargado", "vendedor", "cajero", "deposito"])
 def test_solo_el_admin_administra_usuarios(admin_client, rol):
     """Ninguno de los otros roles —el encargado incluido— lista, crea, edita, borra ni resetea la contraseña de nadie.
     Y no puede darse a sí mismo el rol admin."""
@@ -113,15 +113,40 @@ def test_cambiar_el_rol_de_alguien_cambia_lo_que_puede_en_el_pedido_siguiente(ad
         assert cliente.get("/api/reportes").status_code == 403
 
 
-def test_un_staff_existente_sigue_entrando_sin_migrar(admin_client, staff_client):
-    """Nadie se migra ni se borra: el `staff` de antes sigue siendo un rol válido, con su sesión y sus permisos."""
-    assert staff_client.get("/auth/me").json()["role"] == "staff"
-    assert staff_client.get("/api/productos").status_code == 200
-    assert staff_client.get("/api/reportes").status_code == 403
+def test_el_rol_staff_retirado_da_422_en_el_alta_y_en_la_edicion(admin_client):
+    """ADR-071: `staff` ya no está en el vocabulario (`ROLES`), así que ni el alta ni la edición lo aceptan, y no se crea ni se cambia nada."""
+    assert _alta(admin_client, "staff").status_code == 422
+    assert "u-staff" not in {u["username"] for u in admin_client.get("/users").json()}
+
+    creado = _alta(admin_client, "cajero").json()
+    r = admin_client.put(f"/users/{creado['id']}", json={"name": "C", "role": "staff", "active": True})
+    assert r.status_code == 422, r.text
+    assert admin_client.get(f"/users/{creado['id']}").json()["role"] == "cajero"
+
+
+def test_un_staff_de_una_base_vieja_entra_pero_no_tiene_ninguna_capacidad(admin_client):
+    """Si en una base quedó un usuario `staff` (la migración del ADR-070 corre por instancia), puede iniciar sesión pero no puede nada:
+    403 en el mostrador y `/auth/me` sin capacidades. Se inserta saltando la validación del router, como lo dejó una base anterior."""
+    from libraauth.repository import UserRepository
+
+    viejo = UserRepository(admin_client.app.state.users.session_factory, roles=(*permisos.ROLES, "staff"))
+    viejo.create(username="staff-viejo", name="Empleada vieja", password="clave-larga-1", role="staff")
+    assert "staff" not in permisos.ROLES
+
+    with https_client(admin_client.app) as cliente:
+        entrada = cliente.post("/auth/login", json={"username": "staff-viejo", "password": "clave-larga-1"})
+        assert entrada.status_code == 200, entrada.text
+        yo = cliente.get("/auth/me")
+        assert yo.status_code == 200, yo.text
+        assert yo.json()["role"] == "staff" and yo.json()["capacidades"] == []
+        for ruta in ("/api/ventas", "/api/productos", "/api/clientes", "/api/cajas"):
+            r = cliente.get(ruta)
+            assert r.status_code == 403, (ruta, r.status_code, r.text)
+        assert cliente.get("/users").status_code == 403
 
 
 def test_el_arranque_con_la_demo_crea_al_visitante_como_encargado(monkeypatch, tmp_path):
-    """ADR-070 (decisión del humano, 2026-10-07): el visitante de la demo nace `encargado`, no `staff`. `ensure_demo_user`
+    """ADR-070 (decisión del humano, 2026-10-07): el visitante de la demo nace `encargado`. `ensure_demo_user`
     levanta el arranque si el rol no está en el vocabulario del producto: se nota acá y no en el deploy."""
     monkeypatch.setenv("DEMO_MODE", "1")
     monkeypatch.setenv("DEMO_USERNAME", "visitante")

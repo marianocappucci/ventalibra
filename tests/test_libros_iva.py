@@ -55,8 +55,8 @@ def test_fuera_del_periodo_no_entra(admin_client):
     assert r.json()["egresos"] == []
 
 
-def test_un_cajero_no_ve_libros_iva(staff_client):
-    assert staff_client.get("/api/libros-iva").status_code == 403
+def test_un_cajero_no_ve_libros_iva(cajero_client):
+    assert cajero_client.get("/api/libros-iva").status_code == 403
 
 
 def test_los_cuatro_exports_reginfo(admin_client):
@@ -72,5 +72,5 @@ def test_los_cuatro_exports_reginfo(admin_client):
         assert prefijo + "202609.txt" in r.headers["content-disposition"]
 
 
-def test_los_exports_son_de_admin(staff_client):
-    assert staff_client.get("/libros-iva/export/ventas-cbte").status_code == 403
+def test_los_exports_son_de_gerencia(cajero_client):
+    assert cajero_client.get("/libros-iva/export/ventas-cbte").status_code == 403

@@ -25,11 +25,10 @@ Los roles:
 - `cajero`: POS, su turno y su caja; no ve cierre diario, cuentas corrientes ni reportes.
 - `deposito` (sin tilde, es un valor de base y de URL; en pantalla se lee «Depósito»): stock, ajustes y transferencias, y
   lectura de órdenes y recepciones de compra sin importes; no recibe compras, sin POS y sin plata.
-- `staff`: **heredado; migrar a un rol concreto.** Los usuarios que ya existían. Tiene exactamente lo que
-  tenía antes de los roles (la unión de lo que hacía un cajero y un mozo de mostrador): ni una capacidad más,
-  ni una menos. No se migra ni se borra a nadie.
+`staff`, el rol de antes de los roles, **se retiró el 2026-10-07** (ADR-071): sus usuarios se migraron a un rol concreto
+(ADR-070) y un `staff` que quedara en una base vieja no tiene ninguna capacidad (y el alta y la edición lo rechazan con 422).
 
-🔴 **El visitante de la demo** entra como `staff`, y `json_api_require_role` de libraauth le abre la
+🔴 **El visitante de la demo** entra como `encargado` (ADR-070), y `json_api_require_role` de libraauth le abre la
 LECTURA de todo lo que pida cualquier rol. Las guardas de acá se construyen SOBRE esa función y no la
 duplican, así que la demo, el gate de Términos y demás excepciones del motor siguen funcionando igual
 (`requiere` no las reimplementa: las hereda).
@@ -53,16 +52,14 @@ ENCARGADO = "encargado"
 VENDEDOR = "vendedor"
 CAJERO = "cajero"
 DEPOSITO = "deposito"
-#: Heredado: los usuarios de antes de los roles. Sigue siendo válido, con los permisos de siempre.
-STAFF = "staff"
 
 #: El vocabulario de roles de la instancia: lo usan `UserRepository` y `build_users_router`. Un rol que no
 #: esté acá es 422 en el alta y en la edición de usuarios.
-ROLES: tuple[str, ...] = (ADMIN, ENCARGADO, VENDEDOR, CAJERO, DEPOSITO, STAFF)
+ROLES: tuple[str, ...] = (ADMIN, ENCARGADO, VENDEDOR, CAJERO, DEPOSITO)
 
 # ── Capacidades y quién las tiene ────────────────────────────────────────────
 
-_E, _V, _C, _D, _S = ENCARGADO, VENDEDOR, CAJERO, DEPOSITO, STAFF
+_E, _V, _C, _D = ENCARGADO, VENDEDOR, CAJERO, DEPOSITO
 
 #: capacidad -> los roles que NO son admin y la tienen (admin las tiene todas). Un frozenset vacío es
 #: «sólo admin». Cada línea dice qué abre.
@@ -88,31 +85,25 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     "facturas.nota_credito": frozenset(),
     # ── Catálogo y stock ──
     # Leer productos (con códigos y variantes), sucursales, depósitos, categorías y unidades.
-    "catalogo.ver": frozenset({_E, _V, _C, _D, _S}),
-    # Crear y editar las unidades y las categorías del catálogo (`/catalog/*`). Es configuración (decisión de
-    # criterio de ADR-049: viven en esa pantalla y cambian el vocabulario de todo el local), así que el rol nuevo
-    # que la tiene es sólo el admin. La tiene también `staff` **por herencia**: hasta los roles el router entero
-    # era de staff y nadie lo acotó; es un permiso que sólo existe en la API (ninguna pantalla lo ofrecía a un
-    # staff) y que se va cuando ese rol se migre.
-    "catalogo.configurar": frozenset({_S}),
+    "catalogo.ver": frozenset({_E, _V, _C, _D}),
     # Alta, edición y baja de productos, códigos y variantes.
-    "productos.escribir": frozenset({_E, _S}),
+    "productos.escribir": frozenset({_E}),
     # Consultar cuánto hay (stock, stock por depósito, historial de movimientos).
-    "stock.ver": frozenset({_E, _V, _C, _D, _S}),
+    "stock.ver": frozenset({_E, _V, _C, _D}),
     # Ajustar el stock de un producto (merma, conteo).
-    "stock.ajustar": frozenset({_E, _D, _S}),
+    "stock.ajustar": frozenset({_E, _D}),
     # Mover mercadería entre depósitos.
-    "stock.transferir": frozenset({_E, _D, _S}),
+    "stock.transferir": frozenset({_E, _D}),
     # Las pantallas de gestión de Productos, Stock y Proveedores (ADR-054). Son SOLO de la SPA: el cajero necesita LEER el catálogo
     # y el stock (el POS busca productos), pero su menú es el mostrador y nada más, así que la pantalla no se le ofrece ni se le
     # abre por URL. Lo que corta de verdad sigue siendo `catalogo.ver` / `stock.ver` / `compras.ver` en cada endpoint.
-    "catalogo.pantalla": frozenset({_E, _V, _D, _S}),
-    "stock.pantalla": frozenset({_E, _V, _D, _S}),
+    "catalogo.pantalla": frozenset({_E, _V, _D}),
+    "stock.pantalla": frozenset({_E, _V, _D}),
     # La pantalla de Proveedores: gestión de compras. El depósito lee las órdenes (`compras.ver`) pero no administra proveedores.
-    "proveedores.pantalla": frozenset({_E, _S}),
+    "proveedores.pantalla": frozenset({_E}),
     # ── Precios ──
     # Leer las listas de precio y el precio de una línea (el POS se lo pide a la lista predeterminada).
-    "precios.consultar": frozenset({_E, _V, _C, _S}),
+    "precios.consultar": frozenset({_E, _V, _C}),
     # Escribir listas, quiebres, vigencias, promociones y la actualización masiva.
     "precios.escribir": frozenset({_E}),
     # La pantalla de etiquetas de góndola. Es SOLO de la SPA: no hay endpoint propio (lee productos y
@@ -121,54 +112,53 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     # ── Mostrador ──
     # POS: registrar y cobrar ventas, facturar, cobro por QR, tickets, ver el detalle de una venta y anular o
     # devolver (decisión del humano, 2026-09-15: el cajero también anula y devuelve).
-    "ventas.pos": frozenset({_E, _V, _C, _S}),
+    "ventas.pos": frozenset({_E, _V, _C}),
     # El turno propio (abrir, ver, cerrar), elegir la caja, y el ticket del cierre del propio turno. El POS
     # exige turno abierto para vender: cualquiera que venda necesita esta capacidad.
-    "caja.propia": frozenset({_E, _V, _C, _S}),
+    "caja.propia": frozenset({_E, _V, _C}),
     # Ver y cerrar los turnos de OTROS usuarios.
     "turnos.todos": frozenset({_E}),
     # Ver, anular, devolver, facturar y reimprimir las ventas de OTROS (ADR-068). Sin ella, el mostrador sólo ve las ventas de los
     # turnos de caja que abrió él, abiertos o cerrados (decisión del humano, 2026-10-07; `OpcionesVentas.solo_sus_turnos`,
-    # libracommerce ADR-038): el cajero y el vendedor. Una venta ajena es 404, como una que no existe. El staff heredado la
-    # conserva (veía todas, y es el rol del visitante de la demo).
-    "ventas.todas": frozenset({_E, _S}),
+    # libracommerce ADR-038): el cajero y el vendedor. Una venta ajena es 404, como una que no existe.
+    "ventas.todas": frozenset({_E}),
     # Cierre diario: vista previa, cierre, historial y tickets. NO incluye el ticket del propio turno.
-    "cierre_diario": frozenset({_E, _S}),
+    "cierre_diario": frozenset({_E}),
     # ── Clientes y cuenta corriente ──
-    "clientes.ver": frozenset({_E, _V, _C, _S}),
+    "clientes.ver": frozenset({_E, _V, _C}),
     # La pantalla de Clientes (SOLO de la SPA, ADR-054): el cajero lee y da de alta clientes desde el POS, no entra a la ficha.
-    "clientes.pantalla": frozenset({_E, _V, _S}),
+    "clientes.pantalla": frozenset({_E, _V}),
     # La ficha de UN cliente por la API (`GET /api/clientes/{id}`): trae sus facturas, presupuestos y remitos (ADR-069). El cajero no la
     # tiene: el POS sólo usa la lista (`clientes.ver`) para elegir a quién vender o fiar, y su menú no tiene la pantalla de Clientes.
-    "clientes.ficha": frozenset({_E, _V, _S}),
+    "clientes.ficha": frozenset({_E, _V}),
     # Alta de un cliente (y la consulta de CUIT en ARCA que la acompaña): el cajero da de alta en el mostrador.
-    "clientes.alta": frozenset({_E, _V, _C, _S}),
+    "clientes.alta": frozenset({_E, _V, _C}),
     # Editar, activar/desactivar, alias de facturación y facturar solo (todo lo que no es el alta).
-    "clientes.escribir": frozenset({_E, _V, _S}),
+    "clientes.escribir": frozenset({_E, _V}),
     # Asignarle a un cliente su lista de precio (`PUT /api/clientes/{id}/lista-precio`): es una decisión de
-    # precio, así que no la tiene el vendedor; el staff heredado sí, como hasta ahora.
-    "clientes.lista_precio": frozenset({_E, _S}),
+    # precio, así que no la tiene el vendedor.
+    "clientes.lista_precio": frozenset({_E}),
     # Cuenta corriente y recibos: ver, cobrar y emitir.
-    "cuenta_corriente": frozenset({_E, _V, _S}),
+    "cuenta_corriente": frozenset({_E, _V}),
     # Dar de baja un pago de cuenta corriente y anular un recibo (plata que ya entró).
     "cobranzas.anular": frozenset({_E}),
     # ── Compras y proveedores ──
-    "compras.ver": frozenset({_E, _D, _S}),
+    "compras.ver": frozenset({_E, _D}),
     # Órdenes de compra, y alta, edición y baja de proveedores.
-    "compras.escribir": frozenset({_E, _S}),
+    "compras.escribir": frozenset({_E}),
     # Recepción de mercadería contra una compra (crear, cargar líneas, confirmar). NO la tiene el depósito (decisión del
     # humano, 2026-09-29): confirmar una recepción deja su `unit_cost` como nuevo costo del producto (`default_cost`), o sea
     # que quien recibe fija costos, y el depósito no ve ni maneja plata. Recibe el encargado; el depósito lee las órdenes y
     # recepciones (`compras.ver`) sin importes y maneja el stock.
-    "compras.recibir": frozenset({_E, _S}),
+    "compras.recibir": frozenset({_E}),
     # ── Costos ──
     # Ver lo que cuesta la mercadería: el `precio_costo` de un producto (productos, stock, listas de precio) y el costo
     # y el subtotal de cada línea de las órdenes y recepciones de compra. Sin ella la API no manda esos campos
     # (`app/costos.py`, un filtro de RESPUESTA por prefijo de ruta). No abre ninguna ruta: sólo decide qué campos viajan.
-    # El vendedor y el cajero no ven costos y el depósito no ve plata; el staff heredado los sigue viendo.
-    "costos.ver": frozenset({_E, _S}),
+    # El vendedor y el cajero no ven costos y el depósito no ve plata.
+    "costos.ver": frozenset({_E}),
     # ── Plata y reportes ──
-    "egresos": frozenset({_E, _S}),
+    "egresos": frozenset({_E}),
     "tesoreria": frozenset({_E}),
     "libros_iva": frozenset({_E}),
     "dashboard": frozenset({_E}),

@@ -111,16 +111,16 @@ def test_alta_de_caja_con_punto_de_venta_repetido_da_409(admin_client):
     assert choque.status_code == 409, choque.text
 
 
-def test_staff_no_puede_crear_cajas(staff_client):
-    sucursal = _sembrada(staff_client)
-    r = staff_client.post("/api/cajas", json={
+def test_encargado_no_puede_crear_cajas(encargado_client):
+    sucursal = _sembrada(encargado_client)
+    r = encargado_client.post("/api/cajas", json={
         "nombre": "Mostrador 2", "sucursal_id": sucursal["id"],
     })
     assert r.status_code == 403, r.text
 
 
-def test_staff_puede_listar_cajas(staff_client):
-    r = staff_client.get("/api/cajas")
+def test_encargado_puede_listar_cajas(encargado_client):
+    r = encargado_client.get("/api/cajas")
     assert r.status_code == 200, r.text
 
 
@@ -237,11 +237,11 @@ def test_marcar_predeterminada_es_por_sucursal(admin_client):
 # ── Turno por usuario y por caja ────────────────────────────────────────────
 
 
-def test_una_caja_no_admite_dos_turnos_abiertos(admin_client, staff_client):
+def test_una_caja_no_admite_dos_turnos_abiertos(admin_client, cajero_client):
     caja_id = caja_default(admin_client)
     abrir_turno(admin_client, caja_id=caja_id)
 
-    segundo = staff_client.post(
+    segundo = cajero_client.post(
         "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_id}
     )
     assert segundo.status_code == 409, segundo.text
@@ -274,7 +274,7 @@ def test_shifts_current_devuelve_caja_y_sucursal(admin_client):
     assert actual["turno"]["sucursal"]["id"] == sucursal["id"]
 
 
-def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, staff_client):
+def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, cajero_client):
     """El caso real: dos locales vendiendo a la vez, cada uno con su cajero,
     cada uno con su caja. La venta de cada uno cae en SU turno, no en el del
     otro -- es lo que rompía el turno compartido."""
@@ -291,22 +291,22 @@ def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, staff_
     con_stock(admin_client, item_id, sucursal2["id"])
 
     tid1 = abrir_turno(admin_client, caja_id=caja1)
-    tid2 = abrir_turno(staff_client, caja_id=caja2)
+    tid2 = abrir_turno(cajero_client, caja_id=caja2)
     assert tid1 != tid2
 
     registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1",
                     deposito_id=sucursal1["id"])
-    registrar_venta(staff_client, item_id, precio="1000.00", cantidad="3",
+    registrar_venta(cajero_client, item_id, precio="1000.00", cantidad="3",
                     deposito_id=sucursal2["id"])
 
     resumen1 = admin_client.get(f"/api/turnos/{tid1}").json()["resumen"]
-    resumen2 = staff_client.get(f"/api/turnos/{tid2}").json()["resumen"]
+    resumen2 = cajero_client.get(f"/api/turnos/{tid2}").json()["resumen"]
 
     assert resumen1["total_ventas"] == 1000.0
     assert resumen2["total_ventas"] == 3000.0
 
 
-def test_ganchos_turno_para_devuelve_el_del_usuario_que_pide(admin_client, staff_client):
+def test_ganchos_turno_para_devuelve_el_del_usuario_que_pide(admin_client, cajero_client):
     """`app/ganchos.py::turno_para` -- desde esta feature ya NO es
     `get_turno_activo_any()` (compartido): tiene que devolver el turno de
     QUIEN está vendiendo, no cualquiera que esté abierto."""
@@ -319,19 +319,19 @@ def test_ganchos_turno_para_devuelve_el_del_usuario_que_pide(admin_client, staff
     caja2 = _cajas_de(admin_client, sucursal2["id"])[0]["id"]
 
     tid_admin = abrir_turno(admin_client, caja_id=caja_id)
-    tid_staff = abrir_turno(staff_client, caja_id=caja2)
+    tid_cajero = abrir_turno(cajero_client, caja_id=caja2)
 
     admin_id = admin_client.get("/auth/me").json()["id"]
-    staff_id = staff_client.get("/auth/me").json()["id"]
+    cajero_id = cajero_client.get("/auth/me").json()["id"]
 
     with get_connection() as conn:
         turno_admin = turno_para(conn, admin_id)
-        turno_staff = turno_para(conn, staff_id)
+        turno_cajero = turno_para(conn, cajero_id)
 
     assert turno_admin["id"] == tid_admin
-    assert turno_staff["id"] == tid_staff
+    assert turno_cajero["id"] == tid_cajero
     # Y no al revés: el turno de uno no es el del otro.
-    assert turno_admin["id"] != turno_staff["id"]
+    assert turno_admin["id"] != turno_cajero["id"]
 
 
 def test_turno_para_sin_usuario_da_none(admin_client):
@@ -491,14 +491,14 @@ def test_una_caja_sin_sucursal_que_la_resuelva_se_puede_desactivar(admin_client)
 # ── Fase 5: los routers del motor con los ganchos de VentaLibra (ADR-032) ──────
 
 
-def test_staff_tampoco_edita_predetermina_ni_borra_cajas(admin_client, staff_client):
+def test_encargado_tampoco_edita_predetermina_ni_borra_cajas(admin_client, encargado_client):
     """Configurar el local es de admin: lo dice `autorizar_escritura`, no cada ruta."""
     sucursal = _sembrada(admin_client)
     caja = admin_client.post("/api/cajas", json={"nombre": "Otra", "sucursal_id": sucursal["id"]}).json()
-    assert staff_client.put(f"/api/cajas/{caja['id']}", json={"nombre": "X"}).status_code == 403
-    assert staff_client.post(f"/api/cajas/{caja['id']}/set-default").status_code == 403
-    assert staff_client.delete(f"/api/cajas/{caja['id']}").status_code == 403
-    assert admin_client.get("/api/cajas").json()  # y el listado sigue siendo de staff y admin
+    assert encargado_client.put(f"/api/cajas/{caja['id']}", json={"nombre": "X"}).status_code == 403
+    assert encargado_client.post(f"/api/cajas/{caja['id']}/set-default").status_code == 403
+    assert encargado_client.delete(f"/api/cajas/{caja['id']}").status_code == 403
+    assert admin_client.get("/api/cajas").json()  # y el listado sigue siendo de encargado y admin
 
 
 def test_la_caja_dice_si_tiene_turno_abierto_y_en_que_sucursal_esta(admin_client):
@@ -512,20 +512,20 @@ def test_la_caja_dice_si_tiene_turno_abierto_y_en_que_sucursal_esta(admin_client
     assert durante["tiene_turno_abierto"] is True
 
 
-def test_cada_cajero_ve_y_cierra_sus_turnos_y_el_admin_los_de_todos(admin_client, staff_client):
-    """Regla del motor (la de Contalibra): dueño o admin. Hasta la fase 5 cualquier sesión de staff podía
+def test_cada_cajero_ve_y_cierra_sus_turnos_y_el_admin_los_de_todos(admin_client, cajero_client):
+    """Regla del motor (la de Contalibra): dueño o admin. Hasta la fase 5 cualquier sesión de empleado podía
     cerrar cualquier turno (`/shifts/{id}/close`, sin restricción propia)."""
     sucursal2 = _crear_sucursal(admin_client)
     caja2 = _cajas_de(admin_client, sucursal2["id"])[0]["id"]
     del_admin = abrir_turno(admin_client)
-    del_staff = abrir_turno(staff_client, caja_id=caja2)
+    del_cajero = abrir_turno(cajero_client, caja_id=caja2)
 
-    assert [t["id"] for t in staff_client.get("/api/turnos").json()["turnos"]] == [del_staff]
-    assert staff_client.get(f"/api/turnos/{del_admin}").status_code == 403
-    assert staff_client.post(f"/api/turnos/{del_admin}/cerrar", json={"monto_declarado": 0}).status_code == 403
-    assert staff_client.get("/api/turnos/actual").json()["turno"]["id"] == del_staff
-    assert staff_client.post(f"/api/turnos/{del_staff}/cerrar", json={"monto_declarado": 0}).status_code == 200
-    assert {t["id"] for t in admin_client.get("/api/turnos").json()["turnos"]} == {del_admin, del_staff}
+    assert [t["id"] for t in cajero_client.get("/api/turnos").json()["turnos"]] == [del_cajero]
+    assert cajero_client.get(f"/api/turnos/{del_admin}").status_code == 403
+    assert cajero_client.post(f"/api/turnos/{del_admin}/cerrar", json={"monto_declarado": 0}).status_code == 403
+    assert cajero_client.get("/api/turnos/actual").json()["turno"]["id"] == del_cajero
+    assert cajero_client.post(f"/api/turnos/{del_cajero}/cerrar", json={"monto_declarado": 0}).status_code == 200
+    assert {t["id"] for t in admin_client.get("/api/turnos").json()["turnos"]} == {del_admin, del_cajero}
     assert admin_client.post(f"/api/turnos/{del_admin}/cerrar", json={"monto_declarado": 0}).status_code == 200
 
 

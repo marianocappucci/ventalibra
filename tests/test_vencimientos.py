@@ -39,7 +39,7 @@ from app.main import create_app
 COSTO = "731.42"
 COSTO_DE_LA_RECEPCION = "543.21"
 
-ROLES_SIN_ACCESO = ("staff", "vendedor", "cajero")
+ROLES_SIN_ACCESO = ("vendedor", "cajero")
 #: Las tres rutas de lectura, con `{p}` por el id del producto.
 LECTURA = ("/api/vencimientos", "/api/vencimientos/export", "/api/vencimientos/productos/{p}/lotes")
 
@@ -108,7 +108,7 @@ def escenario(admin_client):
         "nombre": "Sal fina", "unidad": "u", "precio_venta": "900.00", "precio_costo": "400.00", "codigo": "SAL-1",
     }).json()["id"]
     deposito = deposito_default(c)
-    clientes = {"admin": c, **{rol: _entrar(c, rol) for rol in ("encargado", "deposito", "vendedor", "cajero", "staff")}}
+    clientes = {"admin": c, **{rol: _entrar(c, rol) for rol in ("encargado", "deposito", "vendedor", "cajero")}}
     encargado = clientes["encargado"]
 
     # El camino real: el encargado marca el producto y recibe la compra con lote y vencimiento (`compras.recibir`).
@@ -263,7 +263,7 @@ def test_los_filtros_de_sucursal_y_de_categoria(admin_client, escenario):
 
 
 @pytest.mark.parametrize("rol", ROLES_SIN_ACCESO)
-def test_staff_vendedor_y_cajero_no_ven_nada(escenario, rol):
+def test_vendedor_y_cajero_no_ven_nada(escenario, rol):
     cliente = escenario["clientes"][rol]
     for ruta in LECTURA:
         r = cliente.get(ruta.format(p=escenario["leche"]))
@@ -459,8 +459,8 @@ def test_el_plan_de_salida_dice_de_que_lote_saldria_y_no_escribe_nada(escenario)
 
 
 def test_quien_puede_vender_puede_consultar_el_plan_y_el_resto_no(escenario):
-    """La capacidad es la del POS (`ventas.pos`): encargado, vendedor, cajero, staff y admin; el depósito no vende y el anónimo, 401."""
-    for rol in ("admin", "encargado", "vendedor", "cajero", "staff"):
+    """La capacidad es la del POS (`ventas.pos`): encargado, vendedor, cajero y admin; el depósito no vende y el anónimo, 401."""
+    for rol in ("admin", "encargado", "vendedor", "cajero"):
         assert _plan(escenario["clientes"][rol], escenario, 1).status_code == 200, rol
     r = _plan(escenario["clientes"]["deposito"], escenario, 1)
     assert r.status_code == 403 and r.json()["detail"] == "forbidden"
@@ -548,11 +548,11 @@ def test_ajustar_un_marcado_sigue_el_lote(admin_client, escenario):
     assert _filas(admin_client, sal, antes) == [("adjustment", "ajuste", -5.0, None)]
 
 
-@pytest.mark.parametrize("rol", ["admin", "encargado", "deposito", "staff"])
+@pytest.mark.parametrize("rol", ["admin", "encargado", "deposito"])
 def test_el_ajuste_de_stock_no_acepta_lote_para_ningun_rol(escenario, rol):
     """`OpcionesStock.con_lotes` está APAGADA (ADR-053): `POST /api/stock/{id}/ajuste` no maneja lotes. Con la opción apagada el cuerpo es el de
     siempre y el motor IGNORA `lot_code` y `expires_at` (pydantic descarta lo que no declara): no se crea ni se toca ningún lote por esa
-    ruta, ni siquiera por el staff heredado, que tiene `stock.ajustar` pero NO `vencimientos.mover` (la carga con lote es sólo
+    ruta, ni siquiera por quien tiene `stock.ajustar` (la carga con lote es de `vencimientos.mover`, por
     `POST /api/vencimientos/entrada`). Lo que se escribe es la entrada de siempre, SIN lote, y el reporte no ve ningún lote nuevo."""
     leche, dep = escenario["leche"], escenario["deposito"]
     cliente = escenario["clientes"][rol]
@@ -566,11 +566,11 @@ def test_el_ajuste_de_stock_no_acepta_lote_para_ningun_rol(escenario, rol):
     assert (fila[1], float(fila[2]), fila[3], fila[4]) == ("entrada", 5.0, None, None), (rol, fila)  # sin lote ni vencimiento
     lotes, sin_lote = _saldos(admin)
     assert "L-COLADO" not in lotes and lotes == lotes_antes[0] and sin_lote == lotes_antes[1] + 5
-    # El camino con lote es el de vencimientos: el staff no entra (403); los demás sí.
+    # El camino con lote es el de vencimientos: los tres roles tienen `vencimientos.mover` y entran.
     cuerpo = {"producto_id": leche, "deposito_id": dep, "lote": "L-COLADO", "vence": _dia(30), "cantidad": 1, "clave_operacion": f"carga-{rol}"}
     r = cliente.post("/api/vencimientos/entrada", json=cuerpo)
-    assert r.status_code == (403 if rol == "staff" else 200), (rol, r.text)
-    assert ("L-COLADO" in _saldos(admin)[0]) == (rol != "staff")
+    assert r.status_code == 200, (rol, r.text)
+    assert "L-COLADO" in _saldos(admin)[0]
 
 
 def test_un_marcado_con_stock_por_variante_exige_la_variante_en_el_ajuste(admin_client, escenario):
@@ -646,21 +646,21 @@ def test_la_baja_de_un_lote_funciona_y_la_guarda_del_motor_sigue_con_un_sin_lote
 
 def test_marcar_un_producto_por_el_put_del_producto_es_del_encargado(escenario):
     """El `PUT /api/productos/{id}` con `vence` (la marca en la ficha del producto, libra-ui v0.92.0) la decide `vencimientos.marcar`, no
-    `productos.escribir`: el staff heredado edita productos pero no puede marcar (403 y NO se guarda nada de la edición); el encargado y el
-    admin sí. Sin `vence` la edición no toca la marca."""
-    sal, admin, encargado, staff = escenario["sal"], escenario["clientes"]["admin"], escenario["clientes"]["encargado"], escenario["clientes"]["staff"]
+    `productos.escribir`. Hoy las dos capacidades coinciden (encargado y admin), así que la guarda de la marca es defensa en profundidad: el
+    depósito, que no edita productos, recibe 403 y no se guarda nada; el encargado y el admin marcan. Sin `vence` la edición no toca la marca."""
+    sal, admin, encargado, deposito = escenario["sal"], escenario["clientes"]["admin"], escenario["clientes"]["encargado"], escenario["clientes"]["deposito"]
     ficha = {"nombre": "Sal fina", "unidad": "u", "precio_venta": "950.00", "precio_costo": "400.00", "codigo": "SAL-1"}
 
     def vence(cliente):
         return next(p for p in cliente.get("/api/productos").json() if p["id"] == sal)["vence"]
 
     assert vence(admin) is False
-    r = staff.put(f"/api/productos/{sal}", json={**ficha, "vence": True})
-    assert r.status_code == 403 and "marcar" in r.json()["detail"], r.text
+    assert deposito.put(f"/api/productos/{sal}", json={**ficha, "vence": True}).status_code == 403
     assert next(p for p in admin.get("/api/productos").json() if p["id"] == sal)["precio_venta"] == 900  # no guardó el resto
-    # El staff edita el producto sin tocar la marca (o repitiéndola): 200.
-    assert staff.put(f"/api/productos/{sal}", json={**ficha, "vence": False}).status_code == 200
-    assert staff.put(f"/api/productos/{sal}", json=ficha).status_code == 200
+    assert vence(admin) is False
+    # El encargado edita el producto sin tocar la marca (o repitiéndola): 200.
+    assert encargado.put(f"/api/productos/{sal}", json={**ficha, "vence": False}).status_code == 200
+    assert encargado.put(f"/api/productos/{sal}", json=ficha).status_code == 200
     # El encargado marca por ahí, la respuesta ya trae `vence`, y por el PUT de vencimientos se ve lo mismo.
     r = encargado.put(f"/api/productos/{sal}", json={**ficha, "vence": True})
     assert r.status_code == 200 and r.json()["vence"] is True, r.text
@@ -815,7 +815,7 @@ def test_las_capacidades_llegan_a_la_sesion_de_cada_rol(escenario):
         "admin": {"vencimientos.ver", "vencimientos.marcar", "vencimientos.mover"},
         "encargado": {"vencimientos.ver", "vencimientos.marcar", "vencimientos.mover"},
         "deposito": {"vencimientos.ver", "vencimientos.mover"},
-        "vendedor": set(), "cajero": set(), "staff": set(),
+        "vendedor": set(), "cajero": set(),
     }
     for rol, capacidades in esperado.items():
         recibidas = set(escenario["clientes"][rol].get("/auth/me").json()["capacidades"])

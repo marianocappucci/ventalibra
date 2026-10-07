@@ -74,8 +74,8 @@ def usuario_de_turnos(user: dict = Depends(usuario_actual)) -> dict:
 
 
 #: Quién puede pedir el arqueo de un turno que NO abrió: quien ve los turnos de todos (`turnos.todos`) y quien ya recibe
-#: el arqueo de todos los turnos en el cierre diario (`cierre_diario`: su vista previa trae uno por turno del día; es el
-#: staff heredado, que no tiene `turnos.todos`).
+#: el arqueo de todos los turnos en el cierre diario (`cierre_diario`: su vista previa trae uno por turno del día; hoy coincide
+#: con `turnos.todos`: admin y encargado).
 _VE_ARQUEOS_AJENOS = (condicion("turnos.todos"), condicion("cierre_diario"))
 
 
