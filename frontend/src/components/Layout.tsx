@@ -9,7 +9,7 @@ import {
   Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { createLayout, type NavSection } from 'libra-ui/Layout'
-import { LOGO, WORDMARK } from '@/branding'
+import { WORDMARK } from '@/branding'
 import { sinCapacidad } from '@/lib/permisos'
 
 const NAV_SECCIONES: NavSection<unknown>[] = [
@@ -116,22 +116,16 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
 export const Layout = createLayout({
   productName: 'VentaLibra',
   productInitial: 'V',
-  // El logo y el nombre en Montserrat Bold. Las clases salen de `@/branding`,
-  // el mismo archivo que usa el login: es lo que garantiza que las dos
-  // pantallas escriban "VentaLibra" igual.
-  //
-  // El override de colapsado NO es decorativo: con la sidebar en modo icono el
-  // ancho util son 32 px y sin bajarlo el logo de 36 se sale de la barra.
-  logo: {
-    src: LOGO,
-    className: 'h-9 w-9 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8',
-  },
-  // 🔴 El interlineado va PEGADO al tamano (`/[21px]`) y no como `leading-*`
+  // La marca (el icono de VentaLibra sobre un cuadrado de su color, libra-ui ADR-033) y el nombre en Montserrat Bold. Las clases del
+  // nombre salen de `@/branding`, el mismo archivo que usa el login: es lo que garantiza que las dos pantallas escriban "VentaLibra" igual.
+  // `MarcaProducto` ya viene con `h-8 w-8 shrink-0`, que es lo que cabe en la sidebar colapsada (32 px): no hace falta ningun override.
+  producto: 'ventalibra',
+  // 🔴 El interlineado va PEGADO al tamano (`/[17px]`) y no como `leading-*`
   // aparte: en Tailwind v4 una utilidad de tamano emite tambien `line-height`,
   // asi que el `leading-none` que libra-ui pone por defecto perderia contra
   // este `text-[15px]` y el nombre se quedaria con 22,5 px de caja.
-  // 21 = 36 (el alto del logo) menos los 15 de la linea de la empresa.
-  wordmarkClassName: `${WORDMARK} text-[15px]/[21px]`,
+  // 17 = 32 (el alto de la marca) menos los 15 de la linea de la empresa.
+  wordmarkClassName: `${WORDMARK} text-[15px]/[17px]`,
   // 🔴 El menú lo decide `hideFor` con las CAPACIDADES del usuario (`lib/permisos.ts`, ADR-049), no `adminOnly`: con
   // cinco roles «admin o no» no alcanza. Sólo esconde: el que corta es el backend. El visitante de la demo (`demo_readonly`)
   // ve todos los menús, como siempre.
