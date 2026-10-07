@@ -73,6 +73,49 @@ def test_el_mostrador_puede_devolver_y_anular_pero_no_ver_el_cierre_diario_ni_lo
         assert usuario.get(prohibido).status_code == 403, prohibido
 
 
+def test_el_mostrador_ve_solo_las_ventas_de_sus_turnos(admin_client):
+    """ADR-068 (libracommerce ADR-038; decisión del humano, 2026-10-07): el cajero y el vendedor listan, abren, anulan,
+    devuelven, facturan y reimprimen sólo las ventas de los turnos de caja que abrieron, abiertos o cerrados; una ajena es
+    404, como una que no existe. El encargado y el staff heredado (`ventas.todas`) ven todas."""
+    item = crear_item(admin_client)
+    con_stock(admin_client, item, deposito_default(admin_client), "20")
+    cajero = _entrar(admin_client, "cajero")
+    vendedor = _entrar(admin_client, "vendedor")
+    turno_del_cajero = abrir_turno(cajero)
+    del_cajero = registrar_venta(cajero, item, cantidad="1")
+    # Un turno cerrado sigue siendo suyo: la venta de ayer la puede devolver quien la cobró.
+    assert cajero.post(f"/api/turnos/{turno_del_cajero}/cerrar", json={"monto_declarado": 0}).status_code == 200
+    abrir_turno(vendedor)
+    del_vendedor = registrar_venta(vendedor, item, cantidad="1")
+
+    def ids(cliente):
+        r = cliente.get("/api/ventas")
+        assert r.status_code == 200, r.text
+        return {v["id"] for v in r.json()}
+
+    assert ids(cajero) == {del_cajero["id"]}
+    assert ids(vendedor) == {del_vendedor["id"]}
+    for rol in ("encargado", "staff"):
+        assert ids(_entrar(admin_client, rol)) >= {del_cajero["id"], del_vendedor["id"]}, rol
+    assert ids(admin_client) >= {del_cajero["id"], del_vendedor["id"]}
+
+    for cliente, propia, ajena in ((cajero, del_cajero, del_vendedor), (vendedor, del_vendedor, del_cajero)):
+        assert cliente.get(f"/api/ventas/{propia['id']}").status_code == 200
+        assert cliente.get(f"/ventas/{propia['id']}/ticket").status_code == 200
+        for ruta in (f"/api/ventas/{ajena['id']}", f"/ventas/{ajena['id']}/ticket",
+                     f"/ventas/{ajena['id']}/devuelto", f"/api/ventas/{ajena['id']}/mp-status"):
+            r = cliente.get(ruta)
+            assert r.status_code == 404, (ruta, r.status_code, r.text)
+        for ruta in (f"/api/ventas/{ajena['id']}/anular", f"/api/ventas/{ajena['id']}/facturar",
+                     f"/api/ventas/{ajena['id']}/mp-qr"):
+            r = cliente.post(ruta, json={})
+            assert r.status_code == 404, (ruta, r.status_code, r.text)
+    # Nada de lo ajeno se tocó.
+    assert admin_client.get(f"/api/ventas/{del_vendedor['id']}").json()["estado"] == "cobrada"
+    # La propia del turno ya cerrado, sí: el cajero la anula.
+    assert cajero.post(f"/api/ventas/{del_cajero['id']}/anular", json={}).status_code == 200
+
+
 def test_el_encargado_ve_y_cierra_los_turnos_de_otros_y_los_demas_no(admin_client):
     """El router de turnos del motor sólo deja ver los turnos ajenos si `role == "admin"` escrito a mano; el encargado no
     lo es, así que `usuario_de_turnos` (app/cajas_ganchos.py) se lo presenta sólo a ese router. Se prueba por

@@ -86,6 +86,7 @@ POST   /config/arca/certificado                                         ADMIN
 POST   /config/arca/clave                                               ADMIN
 DELETE /config/arca/credenciales                                        ADMIN
 GET    /config/arca/estado                                              ADMIN
+GET    /config/arca/servicios                                           ADMIN
 GET    /config/arca/certificado-info                                    ADMIN
 POST   /config/arca/probar                                              ADMIN
 GET    /api/config/mercadopago                                          ADMIN

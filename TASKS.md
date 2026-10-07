@@ -90,4 +90,5 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
 
 - [ ] Ninguna por ahora.
 
-- [ ] **Roles: que el cajero vea sólo su turno.** Filtrar `GET /api/ventas` y `GET /api/ventas/{id}` por turno propio para los roles sin `turnos.todos` (motor `libracommerce`, router de ventas) y una vista de cliente reducida para el POS (sin facturas, presupuestos ni remitos). Hoy el cajero ve lo mismo que veía como `staff` (ADR-049).
+- [x] **Roles: que el cajero vea sólo su turno — las ventas** (2026-10-07, ADR-068): el cajero y el vendedor ven, anulan, devuelven, facturan y reimprimen sólo las ventas de sus turnos (libracommerce ADR-038).
+- [ ] **Roles: una vista de cliente reducida para el POS** (sin facturas, presupuestos ni remitos): la ficha de un cliente le sigue mostrando esos documentos al cajero (ADR-049, ADR-068).
