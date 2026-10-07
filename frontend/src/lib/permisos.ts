@@ -18,7 +18,6 @@ export const CAPACIDADES = [
   'cierre_diario.reabrir',
   'facturas.nota_credito',
   'catalogo.ver',
-  'catalogo.configurar',
   'productos.escribir',
   'catalogo.pantalla',
   'stock.pantalla',
@@ -100,8 +99,7 @@ export function inicioDe(user: unknown): string | null {
 }
 
 /** Los roles que ofrece la pantalla de Usuarios, en el orden del Select. El PRIMERO es el que trae el alta: el de
- *  menos privilegio que sirve para trabajar (el cajero). `staff` es el de antes de los roles: sigue siendo válido
- *  (los usuarios existentes lo tienen) pero se ofrece marcado como heredado. Tienen que coincidir con
+ *  menos privilegio que sirve para trabajar (el cajero). `staff`, el de antes de los roles, se retiró (ADR-071). Tienen que coincidir con
  *  `app/permisos.py::ROLES` (`deposito` va sin tilde: es un valor de base). */
 export const ROLES_DE_USUARIO: { value: string; label: string }[] = [
   { value: 'cajero', label: 'Cajero' },
@@ -109,5 +107,4 @@ export const ROLES_DE_USUARIO: { value: string; label: string }[] = [
   { value: 'deposito', label: 'Depósito' },
   { value: 'encargado', label: 'Encargado' },
   { value: 'admin', label: 'Admin' },
-  { value: 'staff', label: 'Staff (heredado: migrar a un rol concreto)' },
 ]

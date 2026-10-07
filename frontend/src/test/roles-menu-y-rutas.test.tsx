@@ -46,11 +46,6 @@ const MENU_ESPERADO: Record<Rol, string[]> = {
   // ADR-054: el mostrador y nada más (POS, ventas para reimprimir, turnos para abrir y cerrar la caja).
   cajero: ['POS (Caja)', 'Ventas', 'Turnos'],
   deposito: ['Productos', 'Compras', 'Sucursales y depósitos', 'Stock', 'Vencimientos y lotes', 'Transferencias', 'Reposición sugerida'],
-  // El heredado ve lo que veía antes de los roles: todo lo que no era `adminOnly`.
-  staff: [
-    'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
-    'Sucursales y depósitos', 'Stock', 'Transferencias', 'Turnos', 'Cierre diario',
-  ],
 }
 
 function json(body: unknown, status = 200) {
@@ -98,8 +93,8 @@ describe('el menú de cada rol', () => {
     expect(menuVisible().sort()).toEqual([...MENU_ESPERADO[rol]].sort())
   })
 
-  it('el visitante de la demo ve todos los menús, aunque su rol sea staff', async () => {
-    entrar(usuarioDe('staff', { demo_readonly: true }), '/pos')
+  it('el visitante de la demo ve todos los menús, aunque su rol sea encargado', async () => {
+    entrar(usuarioDe('encargado', { demo_readonly: true }), '/pos')
     await screen.findByText('PANTALLA-POS')
     expect(menuVisible().sort()).toEqual([...TODO].sort())
   })

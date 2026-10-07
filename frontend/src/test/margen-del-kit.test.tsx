@@ -25,7 +25,7 @@ const MARGEN = {
   periodos: [{ periodo: '2026-09-27', unidades: 3, ingreso: 4500, costo: 2700, margen: 1800, margen_pct: 40, ...cifras }],
 }
 
-function conSesion(role: 'admin' | 'staff') {
+function conSesion(role: 'admin' | 'cajero') {
   llamadas = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     const u = String(url)
@@ -64,7 +64,7 @@ describe('ruta /margen', () => {
   })
 
   it('un cajero no llega: la ruta pide `margen` y ni siquiera pide el reporte', async () => {
-    conSesion('staff')
+    conSesion('cajero')
     abrir('/margen')
     await screen.findByRole('link', { name: /Ventas/ })
     expect(screen.queryByText('Yerba 1kg')).toBeNull()

@@ -33,7 +33,7 @@ def _entrar(admin_client, rol, usuario=None):
     return cliente
 
 
-@pytest.mark.parametrize("rol", ["cajero", "vendedor", "encargado", "staff"])
+@pytest.mark.parametrize("rol", ["cajero", "vendedor", "encargado"])
 def test_quien_vende_abre_su_turno_vende_y_cierra(admin_client, rol):
     """El POS exige un turno propio abierto (`exigir_turno=True`): quien vende necesita `caja.propia` además de
     `ventas.pos`. Sin eso el vendedor podría entrar al POS y no cobrar nunca."""
@@ -76,7 +76,7 @@ def test_el_mostrador_puede_devolver_y_anular_pero_no_ver_el_cierre_diario_ni_lo
 def test_el_mostrador_ve_solo_las_ventas_de_sus_turnos(admin_client):
     """ADR-068 (libracommerce ADR-038; decisión del humano, 2026-10-07): el cajero y el vendedor listan, abren, anulan,
     devuelven, facturan y reimprimen sólo las ventas de los turnos de caja que abrieron, abiertos o cerrados; una ajena es
-    404, como una que no existe. El encargado y el staff heredado (`ventas.todas`) ven todas."""
+    404, como una que no existe. El encargado (`ventas.todas`) ve todas."""
     item = crear_item(admin_client)
     con_stock(admin_client, item, deposito_default(admin_client), "20")
     cajero = _entrar(admin_client, "cajero")
@@ -95,8 +95,7 @@ def test_el_mostrador_ve_solo_las_ventas_de_sus_turnos(admin_client):
 
     assert ids(cajero) == {del_cajero["id"]}
     assert ids(vendedor) == {del_vendedor["id"]}
-    for rol in ("encargado", "staff"):
-        assert ids(_entrar(admin_client, rol)) >= {del_cajero["id"], del_vendedor["id"]}, rol
+    assert ids(_entrar(admin_client, "encargado")) >= {del_cajero["id"], del_vendedor["id"]}
     assert ids(admin_client) >= {del_cajero["id"], del_vendedor["id"]}
 
     for cliente, propia, ajena in ((cajero, del_cajero, del_vendedor), (vendedor, del_vendedor, del_cajero)):
@@ -145,8 +144,7 @@ def test_el_ticket_de_un_turno_es_de_quien_lo_abrio_y_de_quien_ve_los_de_todos(a
     """`GET /api/cierre-diario/turno/{id}/ticket`: el handler del motor imprime el arqueo de CUALQUIER turno por id, y la
     guarda de la ruta (`caja.propia`) no mira de quién es. Antes un cajero o un vendedor pedía el arqueo de los turnos de
     otro (medido con dos usuarios reales); ahora `solo_su_turno_o_todos` compara `turnos_caja.usuario_id` con la sesión
-    ANTES de llegar al handler. Lo ajeno sólo lo ven `turnos.todos` (admin, encargado) y `cierre_diario` (el staff heredado,
-    que ya recibe el arqueo de todos los turnos en la vista previa del cierre diario)."""
+    ANTES de llegar al handler. Lo ajeno sólo lo ve `turnos.todos` (admin y encargado)."""
     cajero = _entrar(admin_client, "cajero")
     vendedor = _entrar(admin_client, "vendedor")
     del_cajero = abrir_turno(cajero)
@@ -168,10 +166,9 @@ def test_el_ticket_de_un_turno_es_de_quien_lo_abrio_y_de_quien_ve_los_de_todos(a
     assert ticket(vendedor, del_vendedor + 1000).status_code == 404  # turno inexistente: el 404 del motor
     assert ticket(cajero, del_cajero).headers["content-type"] == "application/pdf"
     # Quien ve los turnos de todos, sí.
-    for rol in ("encargado", "staff"):
-        otro = _entrar(admin_client, rol)
-        assert ticket(otro, del_cajero).status_code == 200, rol
-        assert ticket(otro, del_vendedor).status_code == 200, rol
+    otro = _entrar(admin_client, "encargado")
+    assert ticket(otro, del_cajero).status_code == 200
+    assert ticket(otro, del_vendedor).status_code == 200
     assert ticket(admin_client, del_cajero).status_code == 200
     # El depósito no tiene turnos (403 por rol) y sin sesión, 401.
     assert ticket(_entrar(admin_client, "deposito"), del_cajero).status_code == 403
@@ -212,20 +209,19 @@ def test_el_deposito_maneja_mercaderia_y_lee_compras_pero_no_las_recibe_ni_vende
 
 
 def test_el_encargado_recibe_compras_y_el_costo_queda_en_el_producto(admin_client):
-    """Recibir mercadería es del encargado (y del staff heredado): crea la recepción, carga la línea y confirma, y el stock sube y
+    """Recibir mercadería es del encargado: crea la recepción, carga la línea y confirma, y el stock sube y
     el costo recibido queda como costo del producto."""
     item = crear_item(admin_client)
     principal = deposito_default(admin_client)
     proveedor = admin_client.post("/api/proveedores", json={"nombre": "Distribuidora SA"}).json()["id"]
-    for rol in ("encargado", "staff"):
-        usuario = _entrar(admin_client, rol)
-        recepcion = usuario.post("/api/purchase-receipts", json={"proveedor_id": proveedor})
-        assert recepcion.status_code == 200, recepcion.text
-        rid = recepcion.json()["id"]
-        linea = usuario.post(f"/api/purchase-receipts/{rid}/items", json={"item_id": item, "quantity": "5", "unit_cost": "700"})
-        assert linea.status_code == 200, linea.text
-        assert usuario.post(f"/api/purchase-receipts/{rid}/confirm", json={"deposito_id": principal}).status_code == 200
-    assert float(stock(admin_client, item, principal)) == 10.0
+    usuario = _entrar(admin_client, "encargado")
+    recepcion = usuario.post("/api/purchase-receipts", json={"proveedor_id": proveedor})
+    assert recepcion.status_code == 200, recepcion.text
+    rid = recepcion.json()["id"]
+    linea = usuario.post(f"/api/purchase-receipts/{rid}/items", json={"item_id": item, "quantity": "5", "unit_cost": "700"})
+    assert linea.status_code == 200, linea.text
+    assert usuario.post(f"/api/purchase-receipts/{rid}/confirm", json={"deposito_id": principal}).status_code == 200
+    assert float(stock(admin_client, item, principal)) == 5.0
     assert admin_client.get(f"/api/stock/{item}").json()["producto"]["precio_costo"] == 700.0
 
 
@@ -235,8 +231,7 @@ def test_el_mostrador_puede_fiar_desde_el_pos_y_el_cajero_no_ve_saldos_recibos_n
 
     Para fiar, el POS sólo usa `GET /api/clientes` (elegir a quién, `clientes.ver`) y `POST /api/ventas` con el medio
     `cuenta_corriente` y el cliente (`ventas.pos`): la deuda la asienta el servidor. Ninguna de las dos abre la cuenta corriente,
-    así que no hace falta una capacidad más: `cuenta_corriente` (saldos, cobrar, recibos) sigue siendo del vendedor, el encargado y el
-    staff heredado. Medido: el cajero fiaba con 200 antes de este test y su lectura de saldos era 403."""
+    así que no hace falta una capacidad más: `cuenta_corriente` (saldos, cobrar, recibos) sigue siendo del vendedor y el encargado. Medido: el cajero fiaba con 200 antes de este test y su lectura de saldos era 403."""
     item = crear_item(admin_client)
     con_stock(admin_client, item, deposito_default(admin_client), "20")
     cliente = admin_client.post("/api/clientes", json={"name": "Doña Rosa"}).json()["id"]

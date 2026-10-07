@@ -79,7 +79,7 @@ def _dev_env(request, monkeypatch, tmp_path):
     # Una base nueva por TEST, no por app: varios tests arman dos apps y la
     # segunda le vaciaba la base por debajo a la primera. Se restaura de una
     # plantilla (ver `motor_de_test.py`): la ARMADA para los tests que usan
-    # `admin_client` (`staff_client` lo arrastra en `fixturenames`), la VACIA
+    # `admin_client` (los `<rol>_client` lo arrastran en `fixturenames`), la VACIA
     # (solo auth) para el resto, que arma su app o prueba migraciones desde cero.
     usa_admin_client = "admin_client" in request.fixturenames
     limpiar_entre_tests(_construir_armada if usa_admin_client else None)
@@ -203,21 +203,43 @@ def admin_client(tmp_path):
                 motor.dispose()
 
 
-@pytest.fixture
-def staff_client(admin_client: TestClient):
-    """Segundo cliente logueado como staff, misma app/base que admin_client."""
+def _cliente_con_rol(admin_client: TestClient, rol: str):
+    """Segundo cliente logueado con `rol` (usuario `<rol>-1`), misma app/base que admin_client."""
     created = admin_client.post("/users", json={
-        "username": "staff-1", "name": "Empleada", "password": "staff-pass", "role": "staff",
+        "username": f"{rol}-1", "name": "Empleada", "password": f"{rol}-pass", "role": rol,
     })
     # 201 desde la adopción de `libraauth.usuarios.build_users_router`
     # (2026-09-13, ADR-018): la factory declara `status_code=201` en el alta,
     # a diferencia del router propio que reemplazó.
     assert created.status_code == 201, created.text
     with https_client(admin_client.app) as client:
-        response = client.post("/auth/login", json={"username": "staff-1", "password": "staff-pass"})
+        response = client.post("/auth/login", json={"username": f"{rol}-1", "password": f"{rol}-pass"})
         assert response.status_code == 200, response.text
         yield client
 
+
+@pytest.fixture
+def encargado_client(admin_client: TestClient):
+    """Cliente logueado como encargado (todo menos usuarios, configuración, logs y estructura)."""
+    yield from _cliente_con_rol(admin_client, "encargado")
+
+
+@pytest.fixture
+def vendedor_client(admin_client: TestClient):
+    """Cliente logueado como vendedor (mostrador con clientes; sin costos ni reportes)."""
+    yield from _cliente_con_rol(admin_client, "vendedor")
+
+
+@pytest.fixture
+def cajero_client(admin_client: TestClient):
+    """Cliente logueado como cajero (POS, su turno y su caja)."""
+    yield from _cliente_con_rol(admin_client, "cajero")
+
+
+@pytest.fixture
+def deposito_client(admin_client: TestClient):
+    """Cliente logueado como depósito (stock, ajustes y transferencias; sin POS ni plata)."""
+    yield from _cliente_con_rol(admin_client, "deposito")
 
 
 # ── Términos y Condiciones: aceptados para el resto de la suite ─────────────

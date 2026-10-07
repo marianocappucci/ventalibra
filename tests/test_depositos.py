@@ -103,20 +103,20 @@ def test_editar_sin_sesion_da_401(tmp_path):
         assert r.status_code == 401, r.text
 
 
-def test_el_cajero_no_crea_edita_predetermina_ni_borra_pero_los_lista(admin_client, staff_client):
+def test_el_cajero_no_crea_edita_predetermina_ni_borra_pero_los_lista(admin_client, cajero_client):
     """Alta, edición, predeterminado y baja, sólo admin (decisión del humano, 2026-09-17). El listado sigue abierto:
     el POS lo necesita."""
     deposito = crear_deposito(admin_client, "Depósito del admin")
 
     sucursal = sucursal_default(admin_client)["id"]
-    assert staff_client.post("/api/depositos", json={"nombre": "Del cajero", "branch_id": sucursal}).status_code == 403
-    assert staff_client.put(
+    assert cajero_client.post("/api/depositos", json={"nombre": "Del cajero", "branch_id": sucursal}).status_code == 403
+    assert cajero_client.put(
         f"/api/depositos/{deposito['id']}", json={"nombre": "Renombrado", "activo": True}
     ).status_code == 403
-    assert staff_client.post(f"/api/depositos/{deposito['id']}/set-default").status_code == 403
-    assert staff_client.delete(f"/api/depositos/{deposito['id']}").status_code == 403
+    assert cajero_client.post(f"/api/depositos/{deposito['id']}/set-default").status_code == 403
+    assert cajero_client.delete(f"/api/depositos/{deposito['id']}").status_code == 403
 
-    assert staff_client.get("/api/depositos").status_code == 200
+    assert cajero_client.get("/api/depositos").status_code == 200
     nombres = {d["nombre"] for d in admin_client.get("/api/depositos").json()}
     assert "Del cajero" not in nombres and "Depósito del admin" in nombres
 

@@ -110,6 +110,7 @@ from .depositos_ganchos import (
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .permisos import (
+    ENCARGADO,
     ROLES,
     condicion,
     requiere,
@@ -310,8 +311,8 @@ def create_app(db_path: str) -> FastAPI:
     config_manager.usar_almacen_de_secretos(_secretos)
     migrar_secretos()
 
-    # El vocabulario de roles es el de `app/permisos.py` (ADR-049): admin, encargado, vendedor, cajero, deposito y el
-    # `staff` heredado. El MISMO `ROLES` se le pasa al router de usuarios, para que alta y edición validen contra lo
+    # El vocabulario de roles es el de `app/permisos.py` (ADR-049): admin, encargado, vendedor, cajero y deposito
+    # (el `staff` heredado se retiró: ADR-071). El MISMO `ROLES` se le pasa al router de usuarios, para que alta y edición validen contra lo
     # mismo que el repositorio (y un rol inválido sea 422 y no un 500).
     user_repository = UserRepository(auth_sessions, roles=ROLES)
     ensure_default_admin(user_repository)
@@ -324,7 +325,8 @@ def create_app(db_path: str) -> FastAPI:
     # `503 demo user not provisioned`. Cablear `incluir_demo=True` en el router
     # no alcanza — la ruta y la siembra las conecta el producto, cada una por
     # su lado.
-    ensure_demo_user(user_repository)
+    # ADR-070: el visitante de la demo es `encargado` (decisión del humano, 2026-10-07), no el `staff` heredado, que ya se retiró.
+    ensure_demo_user(user_repository, rol=ENCARGADO)
 
     app = FastAPI(title="VentaLibra")
 
@@ -506,18 +508,18 @@ def create_app(db_path: str) -> FastAPI:
         dependencies=[Depends(requiere("config")), Depends(require_module("facturacion"))],
     )
     # `/catalog/categories` y `/catalog/units`: leerlas es de todos los roles (las pantallas de productos las cargan
-    # para sus selectores); crear y editar es configuración (`catalogo.configurar`: admin, y el staff heredado que ya
-    # podía; decisión de criterio de ADR-049, viven en Configuración y cambian el vocabulario de todo el local).
+    # para sus selectores); crear y editar es configuración (`config`, sólo admin: viven en Configuración y cambian el
+    # vocabulario de todo el local, ADR-049). Hasta ADR-071 era `catalogo.configurar`, que sólo existía para el `staff`.
     app.include_router(
         catalog.router,
-        dependencies=[Depends(requiere_segun_metodo(lectura="catalogo.ver", escritura="catalogo.configurar"))],
+        dependencies=[Depends(requiere_segun_metodo(lectura="catalogo.ver", escritura="config"))],
     )
     # `GET /ventas/{id}/ticket` y `GET /pos/mp-estado` -- las dos lecturas
     # sueltas que quedaron cuando `/sales` se retiró entero en F4 (ADR-025,
     # ver `app/routers/ventas_extra.py`, que reemplaza a `app/routers/
     # sales.py`). Montado ANTES del catch-all de la SPA (`app/asgi.py`), así
     # que `/ventas/{id}/ticket` gana sobre `/{full_path:path}`.
-    # ADR-068: quien no ve las ventas de todos (`ventas.todas`: admin, encargado y el staff heredado) ve sólo las de los
+    # ADR-068: quien no ve las ventas de todos (`ventas.todas`: admin y encargado) ve sólo las de los
     # turnos de caja que abrió. La regla es del motor (libracommerce ADR-038); acá sólo se dice a quién se aplica.
     _ve_todas_las_ventas = condicion("ventas.todas")
 
@@ -549,14 +551,14 @@ def create_app(db_path: str) -> FastAPI:
             # gatear `POST /{vid}/anular` y `.../devolver` (verificado en el
             # código instalado, `libracommerce/web/ventas_router.py`: el
             # `gate_anular` que arma con `solo_admin` no cuelga de ninguna
-            # otra ruta). Hasta hoy, en este producto, un cajero (staff)
+            # otra ruta). Hasta hoy, en este producto, un cajero
             # podía anular (`/sales/{id}/cancel`, retirado) y devolver
             # (`/sales/{id}/returns`, retirado): el router llevaba `staff_or_
             # admin` y el endpoint en sí sólo pedía `get_current_user`, sin
             # ningún chequeo de rol propio. Se conserva: **decisión del humano del
             # 2026-09-15** ("dejá anular y devolver para el cajero también"). No pasar
             # `require_admin` acá (ni una capacidad más estricta que `ventas.pos`); lo custodia
-            # `test_un_staff_puede_anular_y_devolver`.
+            # `test_un_cajero_puede_anular_y_devolver`.
             opciones=OpcionesVentas(
                 stock_habilitado=lambda: True,
                 hooks=GANCHOS,
@@ -750,7 +752,7 @@ def create_app(db_path: str) -> FastAPI:
     # propios; el motor los monta bajo `/api` (antes no lo tenían, inconsistente con el resto de la familia).
     #
     # Leer es de `compras.ver`; emitir órdenes de compra, de `compras.escribir`; y la RECEPCIÓN de mercadería
-    # (`/api/purchase-receipts`: crear, cargar líneas, confirmar) es de `compras.recibir` (encargado y staff heredado, más
+    # (`/api/purchase-receipts`: crear, cargar líneas, confirmar) es de `compras.recibir` (encargado, más
     # admin), NO del depósito: confirmar una recepción fija el costo del producto (`default_cost`) y el depósito no maneja plata.
     app.include_router(
         build_compras_router(conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_COMPRAS),
@@ -778,7 +780,7 @@ def create_app(db_path: str) -> FastAPI:
     # mayorista de Contalibra): a diferencia de ahí, acá no hay add-on que gatee -- listas de
     # precio es un módulo siempre libre (fase 7) -- así que se monta con el mismo permiso que el
     # resto de la ficha del cliente. Prende `conListaDePrecio` en `ClienteDetalle.tsx`. Verla es de `clientes.ver`;
-    # ASIGNARLA es una decisión de precio (`clientes.lista_precio`: admin, encargado y el staff heredado; el vendedor no).
+    # ASIGNARLA es una decisión de precio (`clientes.lista_precio`: admin y encargado; el vendedor no).
     app.include_router(
         build_cliente_lista_router(conexion=lc_get_connection),
         dependencies=[Depends(requiere_segun_metodo(lectura="clientes.ver", escritura="clientes.lista_precio"))],
@@ -788,7 +790,7 @@ def create_app(db_path: str) -> FastAPI:
     # caja del turno, baja de pago que anula el movimiento de caja; ver `app/cuenta_corriente_ganchos.py`).
     # Reemplaza a `/accounts` y a `/api/cuenta-corriente` propios (ADR-031). El cajero cobra fiado en el
     # mostrador, asi que no es admin-only. Con los roles de ADR-049 la cuenta corriente es de `cuenta_corriente`
-    # (encargado, vendedor y el staff heredado; el cajero NUEVO no la tiene: no figura en lo que el humano le
+    # (encargado y vendedor; el cajero no la tiene: no figura en lo que el humano le
     # asignó); la baja de un pago sigue siendo la excepción (`solo_admin`, ahora la capacidad `cobranzas.anular`).
     app.include_router(
         build_cuenta_corriente_router(
@@ -820,7 +822,7 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(build_tesoreria_router(usuario_actual=get_current_user), dependencies=[Depends(requiere("tesoreria"))])
     # Egresos (fase 11, ADR-038): el router del motor, sin ganchos. Complementa a Compras -- Compras
     # repone inventario, Egresos es la contabilidad del pago (alquiler, sueldos, servicios, y también un
-    # pago a proveedor que Compras no cubre). De `egresos` (encargado y el staff heredado, además de admin), igual
+    # pago a proveedor que Compras no cubre). De `egresos` (encargado, además de admin), igual
     # que Compras y Proveedores (mismo criterio de Contalibra); libre en todos los planes, como Tesorería. La baja de un proveedor con
     # egresos ya la guarda el motor (`ValueError` -> 422 en `build_proveedores_router`); la de un proveedor
     # con compras la sigue guardando `app/proveedores_guarda.py`.
@@ -843,7 +845,7 @@ def create_app(db_path: str) -> FastAPI:
     # Cierre diario: acto registrado y numerado por sucursal (LibraCore
     # v1.101.0+, migración `0009_cierre_diario`, ya en la cadena de este pin).
     # `autorizar_cierre` no se pasa: el gate de ESTE producto es la capacidad `cierre_diario`
-    # (admin, encargado y el staff heredado; el cajero NUEVO ya no, ADR-049), y ya cubre TODOS los
+    # (admin y encargado; el cajero no, ADR-049), y ya cubre TODOS los
     # endpoints del router -- incluido `POST /cerrar` -- por el `dependencies=` de este mismo
     # `include_router`. Con UNA excepción: `GET /turno/{id}/ticket` es el ticket que el POS imprime
     # al cerrar el turno propio, así que lo pide `caja.propia` (el cajero lo necesita).
@@ -929,7 +931,7 @@ def create_app(db_path: str) -> FastAPI:
     # Órdenes de compra en borrador desde la reposición (ADR-057; ADR-022 del motor, libracommerce v0.34.0): `POST /api/reportes/reposicion/ordenes` crea UNA
     # orden en borrador por proveedor habitual con lo que la reposición sugiere pedir. Nunca envía ni confirma. Escribe órdenes de compra: pide las DOS
     # capacidades, `reposicion.ver` (la pantalla de donde sale) y `compras.escribir` (lo que protege crear una orden en Compras), así que en la práctica es del
-    # encargado y el admin; el depósito y el staff no (el staff no ve la reposición). La respuesta lleva costos: sólo la ven quienes tienen `compras.escribir`.
+    # encargado y el admin; el depósito no. La respuesta lleva costos: sólo la ven quienes tienen `compras.escribir`.
     # Numeración y ids de proveedor, los ganchos de Compras (`app/compras_ganchos.py`).
     app.include_router(build_reposicion_ordenes_router(
         conexion=lc_get_connection, usuario_actual=get_current_user,

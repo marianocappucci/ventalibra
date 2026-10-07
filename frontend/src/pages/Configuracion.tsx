@@ -36,7 +36,7 @@
  *  después a buscar por qué "no anda".
  */
 import { createConfiguracion } from 'libra-ui/Configuracion'
-import { Printer, Ruler, Scale, Settings, ShieldCheck, Tags } from 'lucide-react'
+import { Printer, Ruler, Scale, ShieldCheck, Tags } from 'lucide-react'
 
 import { AvisoPremium } from '../components/aviso-premium'
 import { FACTURACION, useTieneModulo } from '../lib/modulos'
@@ -47,8 +47,7 @@ import { ConfigUnidades } from './ConfigUnidades'
 
 // Todo lo que las dos variantes comparten: lo único que cambia entre planes es la integración con ARCA.
 const COMUN = {
-  // El icono que el sidebar de este producto le da a /configuracion.
-  icono: Settings,
+  // Sin `icono`: el kit usa el del catálogo (`ICONOS.configuracion`, ADR-035), el mismo que el sidebar le da a /configuracion.
   // Sale en el tutorial de Gmail —es el nombre que hay que ponerle a la
   // contraseña de aplicación— y en el de Padrón A13.
   producto: 'VentaLibra',

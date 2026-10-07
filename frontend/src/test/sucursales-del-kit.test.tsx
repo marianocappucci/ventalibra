@@ -116,7 +116,7 @@ describe('Sucursales', () => {
   })
 
   it('el cajero sólo mira: sin alta ni edición, pero sí ve los depósitos', async () => {
-    sesion.rol = 'staff'
+    sesion.rol = 'cajero'
     enRuta('/sucursales')
     await screen.findByText('Norte')
     expect(screen.queryByRole('button', { name: /Nueva/ })).not.toBeInTheDocument()
@@ -151,7 +151,7 @@ describe('Detalle de una sucursal', () => {
   })
 
   it('el cajero sólo mira: sin alta, edición, «Depósito de venta» ni borrar', async () => {
-    sesion.rol = 'staff'
+    sesion.rol = 'cajero'
     enRuta('/sucursales/7')
     await screen.findByText('Bodega Norte')
     expect(screen.queryByRole('button', { name: /Nuevo depósito/ })).not.toBeInTheDocument()
@@ -187,7 +187,7 @@ describe('Detalle de un depósito', () => {
   })
 
   it('el cajero sólo mira: sin edición', async () => {
-    sesion.rol = 'staff'
+    sesion.rol = 'cajero'
     enRuta('/depositos/12')
     await screen.findByText('Salón Norte')
     expect(screen.queryByRole('button', { name: /Editar/ })).not.toBeInTheDocument()

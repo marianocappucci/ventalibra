@@ -130,10 +130,10 @@ def test_sin_credenciales_el_pos_sabe_que_no_puede_cobrar_por_qr(admin_client):
     assert estado.json() == {"disponible": False, "auto_facturar": False}
 
 
-def test_un_cajero_tambien_puede_leer_mp_estado(staff_client):
+def test_un_cajero_tambien_puede_leer_mp_estado(cajero_client):
     """A diferencia de `/api/config/mercadopago` (admin-only), esto lo lee el
     cajero que arma el POS: decide si le ofrece el botón de QR."""
-    assert staff_client.get("/pos/mp-estado").status_code == 200
+    assert cajero_client.get("/pos/mp-estado").status_code == 200
 
 
 def test_mp_estado_no_se_cae_sin_el_modulo_de_facturacion(admin_client):

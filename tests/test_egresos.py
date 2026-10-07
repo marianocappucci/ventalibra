@@ -1,7 +1,7 @@
 """Egresos (fase 11 de la adopción de los motores, 2026-09-27, ADR-038): el router del motor
 (`libracore.egresos_router.build_egresos_router`), montado tal cual -- no tiene opciones que enganchar.
 Complementa a Compras: Compras repone inventario, Egresos es la contabilidad del pago (alquiler,
-sueldos, servicios, y también un pago a proveedor que Compras no cubre). De staff y admin, libre en
+sueldos, servicios, y también un pago a proveedor que Compras no cubre). De encargado y admin, libre en
 todos los planes de este producto.
 """
 
@@ -100,8 +100,8 @@ def test_un_proveedor_con_egresos_no_se_elimina(admin_client):
     assert r.status_code == 422 and "egresos" in r.json()["detail"]
 
 
-def test_un_cajero_puede_usar_egresos_libre_de_gate_de_plan(staff_client):
-    """Egresos es de staff y admin (ADR-038), a diferencia de Tesorería que es sólo de admin."""
-    egreso = _crear_egreso(staff_client, monto_neto=100, iva_pct=0)
-    assert staff_client.get("/api/egresos").status_code == 200
-    assert staff_client.post(f"/api/egresos/{egreso['id']}/pagar", json={"medio_pago": "efectivo"}).status_code == 200
+def test_un_cajero_puede_usar_egresos_libre_de_gate_de_plan(encargado_client):
+    """Egresos es de encargado y admin (ADR-038), a diferencia de Tesorería que es sólo de admin."""
+    egreso = _crear_egreso(encargado_client, monto_neto=100, iva_pct=0)
+    assert encargado_client.get("/api/egresos").status_code == 200
+    assert encargado_client.post(f"/api/egresos/{egreso['id']}/pagar", json={"medio_pago": "efectivo"}).status_code == 200

@@ -34,7 +34,7 @@ def _cerrar_dia(client, sucursal_id: int) -> dict:
     return r.json()
 
 
-def test_flujo_completo_reabrir_dia(admin_client, staff_client):
+def test_flujo_completo_reabrir_dia(admin_client, encargado_client):
     sucursal_id = _sucursal_principal(admin_client)
     caja_id = caja_default(admin_client)
 
@@ -50,8 +50,8 @@ def test_flujo_completo_reabrir_dia(admin_client, staff_client):
     assert bloqueado.status_code == 409, bloqueado.text
     assert "ya está cerrado" in bloqueado.json()["detail"]
 
-    # staff (no admin) no puede reabrir: 403.
-    negado = staff_client.post(f"/api/cierre-diario/{cierre['id']}/reabrir", json={"motivo": "prueba"})
+    # el encargado (no admin) no puede reabrir: 403.
+    negado = encargado_client.post(f"/api/cierre-diario/{cierre['id']}/reabrir", json={"motivo": "prueba"})
     assert negado.status_code == 403, negado.text
 
     # Motivo vacío: 422, y el cierre sigue activo.

@@ -31,16 +31,13 @@ from fastapi.testclient import TestClient
 
 from app import permisos
 
-TODOS = frozenset({"admin", "encargado", "vendedor", "cajero", "deposito", "staff"})
+TODOS = frozenset({"admin", "encargado", "vendedor", "cajero", "deposito"})
 #: Los grupos de roles que se repiten en la tabla. Cada nombre dice quién, no por qué.
 GRUPOS = {
     "ADMIN": frozenset({"admin"}),
-    "ADMIN_Y_STAFF": frozenset({"admin", "staff"}),
     "GERENCIA": frozenset({"admin", "encargado"}),
-    "GERENCIA_Y_STAFF": frozenset({"admin", "encargado", "staff"}),
-    "MOSTRADOR": frozenset({"admin", "encargado", "vendedor", "cajero", "staff"}),
-    "SIN_CAJERO": frozenset({"admin", "encargado", "vendedor", "staff"}),
-    "MERCADERIA": frozenset({"admin", "encargado", "deposito", "staff"}),
+    "MOSTRADOR": frozenset({"admin", "encargado", "vendedor", "cajero"}),
+    "SIN_CAJERO": frozenset({"admin", "encargado", "vendedor"}),
     "GERENCIA_Y_DEPOSITO": frozenset({"admin", "encargado", "deposito"}),
     "TODOS": TODOS,
 }
@@ -96,12 +93,12 @@ POST   /api/config/mercadopago/probar                                   ADMIN
 GET    /api/config/mercadopago/qr                                       ADMIN
 GET    /api/config/mercadopago/qr/{formato}                             ADMIN
 
-# Categorías y unidades: leer `catalogo.ver`, escribir `catalogo.configurar`
+# Categorías y unidades: leer `catalogo.ver`, escribir `config` (sólo admin, ADR-071)
 GET    /catalog/categories                                              TODOS
-POST   /catalog/categories                                              ADMIN_Y_STAFF
-PUT    /catalog/categories/{category_id}                                ADMIN_Y_STAFF
+POST   /catalog/categories                                              ADMIN
+PUT    /catalog/categories/{category_id}                                ADMIN
 GET    /catalog/units                                                   TODOS
-POST   /catalog/units                                                   ADMIN_Y_STAFF
+POST   /catalog/units                                                   ADMIN
 
 # Ventas y POS: `ventas.pos`
 GET    /ventas/{sale_id}/ticket                                         MOSTRADOR
@@ -147,7 +144,7 @@ POST   /api/depositos/{did}/set-default                                 ADMIN
 GET    /api/depositos/transferencias                                    TODOS
 GET    /api/depositos/{did}/stock                                       TODOS
 GET    /api/depositos/stock-producto/{pid}                              TODOS
-POST   /api/depositos/transferir                                        MERCADERIA
+POST   /api/depositos/transferir                                        GERENCIA_Y_DEPOSITO
 
 # Stock: ver `stock.ver`, ajustar `stock.ajustar`
 GET    /api/stock                                                       TODOS
@@ -155,23 +152,23 @@ GET    /api/stock/movimientos                                           TODOS
 GET    /api/stock/motivos-merma                                         TODOS
 GET    /api/stock/tipos                                                 TODOS
 GET    /api/stock/{pid}                                                 TODOS
-POST   /api/stock/{pid}/ajuste                                          MERCADERIA
+POST   /api/stock/{pid}/ajuste                                          GERENCIA_Y_DEPOSITO
 
 # Productos: leer `catalogo.ver`, escribir `productos.escribir`
 GET    /api/productos                                                   TODOS
-POST   /api/productos                                                   GERENCIA_Y_STAFF
+POST   /api/productos                                                   GERENCIA
 GET    /api/productos/unidades                                          TODOS
 GET    /api/productos/escanear                                          TODOS
 GET    /api/productos/categorias                                        TODOS
-POST   /api/productos/categorias                                        GERENCIA_Y_STAFF
-DELETE /api/productos/categorias/{cid}                                  GERENCIA_Y_STAFF
-PUT    /api/productos/{pid}                                             GERENCIA_Y_STAFF
-DELETE /api/productos/{pid}                                             GERENCIA_Y_STAFF
+POST   /api/productos/categorias                                        GERENCIA
+DELETE /api/productos/categorias/{cid}                                  GERENCIA
+PUT    /api/productos/{pid}                                             GERENCIA
+DELETE /api/productos/{pid}                                             GERENCIA
 GET    /api/productos/{pid}/codigos                                     TODOS
-POST   /api/productos/{pid}/codigos                                     GERENCIA_Y_STAFF
+POST   /api/productos/{pid}/codigos                                     GERENCIA
 GET    /api/productos/{pid}/variantes                                   TODOS
-POST   /api/productos/{pid}/variantes                                   GERENCIA_Y_STAFF
-PUT    /api/productos/{pid}/variantes/{vid}                             GERENCIA_Y_STAFF
+POST   /api/productos/{pid}/variantes                                   GERENCIA
+PUT    /api/productos/{pid}/variantes/{vid}                             GERENCIA
 
 # Listas de precio: leer `precios.consultar`, escribir `precios.escribir`
 GET    /api/listas-precio                                               MOSTRADOR
@@ -201,19 +198,19 @@ POST   /api/actualizacion-masiva/precios/preview                        GERENCIA
 POST   /api/actualizacion-masiva/precios/aplicar                        GERENCIA
 
 # Proveedores y compras: ver `compras.ver` (también el depósito), escribir `compras.escribir`, recibir `compras.recibir` (no el depósito)
-GET    /api/proveedores                                                 MERCADERIA
-POST   /api/proveedores                                                 GERENCIA_Y_STAFF
-PUT    /api/proveedores/{pid}                                           GERENCIA_Y_STAFF
-DELETE /api/proveedores/{pid}                                           GERENCIA_Y_STAFF
-GET    /api/purchase-orders                                             MERCADERIA
-POST   /api/purchase-orders                                             GERENCIA_Y_STAFF
-GET    /api/purchase-orders/{orden_id}                                  MERCADERIA
-POST   /api/purchase-orders/{orden_id}/items                            GERENCIA_Y_STAFF
-POST   /api/purchase-receipts                                           GERENCIA_Y_STAFF
-GET    /api/purchase-receipts                                           MERCADERIA
-GET    /api/purchase-receipts/{recepcion_id}                            MERCADERIA
-POST   /api/purchase-receipts/{recepcion_id}/items                      GERENCIA_Y_STAFF
-POST   /api/purchase-receipts/{recepcion_id}/confirm                    GERENCIA_Y_STAFF
+GET    /api/proveedores                                                 GERENCIA_Y_DEPOSITO
+POST   /api/proveedores                                                 GERENCIA
+PUT    /api/proveedores/{pid}                                           GERENCIA
+DELETE /api/proveedores/{pid}                                           GERENCIA
+GET    /api/purchase-orders                                             GERENCIA_Y_DEPOSITO
+POST   /api/purchase-orders                                             GERENCIA
+GET    /api/purchase-orders/{orden_id}                                  GERENCIA_Y_DEPOSITO
+POST   /api/purchase-orders/{orden_id}/items                            GERENCIA
+POST   /api/purchase-receipts                                           GERENCIA
+GET    /api/purchase-receipts                                           GERENCIA_Y_DEPOSITO
+GET    /api/purchase-receipts/{recepcion_id}                            GERENCIA_Y_DEPOSITO
+POST   /api/purchase-receipts/{recepcion_id}/items                      GERENCIA
+POST   /api/purchase-receipts/{recepcion_id}/confirm                    GERENCIA
 
 # Clientes: ver `clientes.ver`, alta `clientes.alta`, resto `clientes.escribir`, lista `clientes.lista_precio`
 GET    /api/clientes                                                    MOSTRADOR
@@ -226,7 +223,7 @@ DELETE /api/clientes/{cliente_id}/alias-facturacion/{alias_id}          SIN_CAJE
 POST   /api/clientes/{cliente_id}/desactivar                            SIN_CAJERO
 POST   /api/clientes/{cliente_id}/activar                               SIN_CAJERO
 GET    /api/clientes/{cliente_id}/lista-precio                          MOSTRADOR
-PUT    /api/clientes/{cliente_id}/lista-precio                          GERENCIA_Y_STAFF
+PUT    /api/clientes/{cliente_id}/lista-precio                          GERENCIA
 
 # Cuenta corriente y recibos: `cuenta_corriente`; baja de pago y anular recibo `cobranzas.anular`
 GET    /api/cuenta-corriente                                            SIN_CAJERO
@@ -253,16 +250,16 @@ POST   /api/tesoreria/transferencia                                     GERENCIA
 DELETE /api/tesoreria/movimientos/{mid}                                 GERENCIA
 
 # Egresos: `egresos`
-GET    /api/egresos                                                     GERENCIA_Y_STAFF
-POST   /api/egresos                                                     GERENCIA_Y_STAFF
-GET    /api/egresos/tipos-comprobante                                   GERENCIA_Y_STAFF
-GET    /api/egresos/categorias                                          GERENCIA_Y_STAFF
-POST   /api/egresos/categorias                                          GERENCIA_Y_STAFF
-DELETE /api/egresos/categorias/{cid}                                    GERENCIA_Y_STAFF
-GET    /api/egresos/cajas                                               GERENCIA_Y_STAFF
-GET    /api/egresos/{eid}/pagos                                         GERENCIA_Y_STAFF
-POST   /api/egresos/{eid}/pagar                                         GERENCIA_Y_STAFF
-DELETE /api/egresos/{eid}                                               GERENCIA_Y_STAFF
+GET    /api/egresos                                                     GERENCIA
+POST   /api/egresos                                                     GERENCIA
+GET    /api/egresos/tipos-comprobante                                   GERENCIA
+GET    /api/egresos/categorias                                          GERENCIA
+POST   /api/egresos/categorias                                          GERENCIA
+DELETE /api/egresos/categorias/{cid}                                    GERENCIA
+GET    /api/egresos/cajas                                               GERENCIA
+GET    /api/egresos/{eid}/pagos                                         GERENCIA
+POST   /api/egresos/{eid}/pagar                                         GERENCIA
+DELETE /api/egresos/{eid}                                               GERENCIA
 
 # Libros IVA: `libros_iva`
 GET    /api/libros-iva                                                  GERENCIA
@@ -275,12 +272,12 @@ GET    /libros-iva/export/compras-alicuotas                             GERENCIA
 GET    /api/dashboard                                                   GERENCIA
 
 # Cierre diario: `cierre_diario`; reabrir `cierre_diario.reabrir`; el ticket del propio turno `caja.propia`
-GET    /api/cierre-diario/preview                                       GERENCIA_Y_STAFF
-POST   /api/cierre-diario/cerrar                                        GERENCIA_Y_STAFF
+GET    /api/cierre-diario/preview                                       GERENCIA
+POST   /api/cierre-diario/cerrar                                        GERENCIA
 POST   /api/cierre-diario/{cierre_id}/reabrir                           ADMIN
-GET    /api/cierre-diario                                               GERENCIA_Y_STAFF
-GET    /api/cierre-diario/{cierre_id}                                   GERENCIA_Y_STAFF
-GET    /api/cierre-diario/{cierre_id}/ticket                            GERENCIA_Y_STAFF
+GET    /api/cierre-diario                                               GERENCIA
+GET    /api/cierre-diario/{cierre_id}                                   GERENCIA
+GET    /api/cierre-diario/{cierre_id}/ticket                            GERENCIA
 
 # Nota de crédito de una factura con CAE (LibraCore v1.129.0): `facturas.nota_credito`, sólo admin
 POST   /api/facturas/{factura_id}/nota-credito                          ADMIN
@@ -310,7 +307,7 @@ GET    /api/productos/{producto_id}/reposicion/minimos                  GERENCIA
 PUT    /api/productos/{producto_id}/reposicion/minimos/{sucursal_id}    GERENCIA_Y_DEPOSITO
 
 # Vencimientos y lotes: ver `vencimientos.ver` y mover (asignar, cargar con lote, dar de baja) `vencimientos.mover`, el encargado y el depósito; marcar
-# un producto `vencimientos.marcar`, sólo el encargado. NO el staff heredado (pantalla nueva), ni el mostrador.
+# un producto `vencimientos.marcar`, sólo el encargado. NO el mostrador.
 GET    /api/vencimientos                                                GERENCIA_Y_DEPOSITO
 GET    /api/vencimientos/export                                         GERENCIA_Y_DEPOSITO
 GET    /api/vencimientos/productos/{producto_id}/lotes                  GERENCIA_Y_DEPOSITO
@@ -395,7 +392,7 @@ def _demo_encendida(monkeypatch):
 
 @pytest.fixture
 def instancia(_demo_encendida, admin_client):
-    """`{rol: cliente logueado}` para los seis roles, más `demo` (el visitante) y `anonimo` (sin sesión)."""
+    """`{rol: cliente logueado}` para los cinco roles, más `demo` (el visitante) y `anonimo` (sin sesión)."""
     from app.database import set_addon
 
     app = admin_client.app
@@ -512,18 +509,18 @@ def test_cada_rol_entra_solo_donde_la_tabla_dice(instancia, rol):
 
 
 def test_el_visitante_de_la_demo_ve_todo_y_no_escribe_nada_de_mas(instancia):
-    """La demo entra como `staff` y libraauth le abre la LECTURA de cualquier cerrojo de rol (2026-08-06, pedido
-    del humano: «que muestre todos los menús como si fuera admin aunque no deje modificar»).
+    """La demo entra como `encargado` (ADR-070; antes `staff`) y libraauth le abre la LECTURA de cualquier cerrojo de rol
+    (2026-08-06, pedido del humano: «que muestre todos los menús como si fuera admin aunque no deje modificar»).
 
     Preservado con los roles nuevos porque `requiere()` se arma sobre `json_api_require_role`: lee todo lo que
-    lee un admin, y para escribir vale lo que vale para `staff`."""
+    lee un admin, y para escribir vale lo que vale para `encargado`."""
     demo = instancia["demo"]
     desvios = []
     for (metodo, ruta), roles in sorted(_permitidas().items()):
         if (metodo, ruta) in NO_EJECUTAR:
             continue
         rechazada = _rechazada_por_rol(_sondear(demo, metodo, ruta))
-        debe_entrar = metodo == "GET" or "staff" in roles
+        debe_entrar = metodo == "GET" or "encargado" in roles
         if rechazada == debe_entrar:
             desvios.append(f"demo {metodo} {ruta}: {'debía pasar' if debe_entrar else 'NO debía pasar'}")
     assert not desvios, "\n" + "\n".join(desvios)
@@ -549,12 +546,22 @@ def test_una_capacidad_mal_escrita_falla_al_armar_la_guarda_y_no_deja_una_ruta_a
         permisos.requiere_segun_metodo(lectura="reportes", escritura="no.existe")
 
 
-def test_el_staff_heredado_no_tiene_nada_que_un_encargado_no_tenga_salvo_lo_heredado():
-    """`staff` es lo de antes de los roles; el encargado es «todo menos usuarios, configuración, ...». Que el heredado
-    no pueda más que el encargado (salvo la API de unidades y categorías, que era de staff y nadie acotó) es lo que
-    hace que migrar a alguien de `staff` a `encargado` no le quite nada."""
-    de_mas = set(permisos.capacidades_de("staff")) - set(permisos.capacidades_de("encargado"))
-    assert de_mas == {"catalogo.configurar"}
+def test_staff_se_retiro_del_vocabulario_y_con_el_la_capacidad_que_era_solo_suya():
+    """ADR-071: `staff` ya no es un rol ni lista capacidades, y `catalogo.configurar` (la API de unidades y categorías, que sólo
+    existía para él) se eliminó: esa escritura pide `config`, o sea sólo admin."""
+    assert "staff" not in permisos.ROLES
+    assert "staff" not in permisos.matriz_por_rol()
+    assert permisos.capacidades_de("staff") == []
+    assert "catalogo.configurar" not in permisos.CAPACIDADES
+    for capacidad in permisos.CAPACIDADES:
+        assert "staff" not in permisos.roles_con(capacidad), capacidad
+
+
+def test_quien_puede_ajustar_stock_tambien_puede_mover_lotes():
+    """`OpcionesStock.con_lotes` está apagada (`app/depositos_ganchos.py`): el ajuste de stock ignora el lote. Si algún día se
+    prende, un rol con `stock.ajustar` y sin `vencimientos.mover` alteraría lotes por la ruta alternativa; mientras tanto, que
+    no exista ese rol es lo que mantiene la puerta cerrada."""
+    assert set(permisos.roles_con("stock.ajustar")) <= set(permisos.roles_con("vencimientos.mover"))
 
 
 def test_lo_que_el_humano_dejo_solo_para_admin_sigue_siendo_solo_de_admin():
@@ -606,9 +613,9 @@ def test_auth_me_y_login_traen_las_capacidades_del_rol(instancia):
 
 def test_el_visitante_de_la_demo_conserva_su_rol_y_la_bandera(instancia):
     me = instancia["demo"].get("/auth/me").json()
-    assert me["role"] == "staff"
+    assert me["role"] == "encargado"
     assert me["demo_readonly"] is True
-    assert me["capacidades"] == permisos.capacidades_de("staff")
+    assert me["capacidades"] == permisos.capacidades_de("encargado")
 
 
 def _ts(ruta: str) -> str:
@@ -638,46 +645,26 @@ def test_el_archivo_de_capacidades_de_los_tests_del_frontend_es_el_de_permisos()
     )
 
 
-# ── El heredado, por nombre ──────────────────────────────────────────────────
+# ── El `staff` retirado, por nombre ──────────────────────────────────────────
 
 
-#: Lo que un `staff` hacía ANTES de los roles y sigue haciendo (una operación por router del que era `staff_or_admin`).
-STAFF_PUEDE = [
-    ("GET", "/catalog/units"), ("POST", "/catalog/units"), ("GET", "/api/productos"), ("POST", "/api/productos"),
-    ("GET", "/api/stock"), ("POST", "/api/stock/999999/ajuste"), ("POST", "/api/depositos/transferir"),
-    ("GET", "/api/sucursales"), ("GET", "/api/cajas"), ("POST", "/api/turnos/abrir"), ("GET", "/api/turnos"),
-    ("POST", "/api/ventas"), ("POST", "/api/ventas/plan-salida"), ("POST", "/api/ventas/999999/anular"),
-    ("POST", "/api/ventas/999999/devolver"), ("POST", "/api/promociones/calcular"), ("GET", "/api/listas-precio"), ("GET", "/api/listas-precio/999999/precio"),
-    ("GET", "/api/proveedores"), ("POST", "/api/proveedores"), ("POST", "/api/purchase-orders"),
-    ("POST", "/api/purchase-receipts"), ("GET", "/api/clientes"), ("PUT", "/api/clientes/999999"),
-    ("PUT", "/api/clientes/999999/lista-precio"), ("GET", "/api/cuenta-corriente"),
-    ("POST", "/api/cuenta-corriente/999999/pagar"), ("GET", "/api/recibos"), ("GET", "/api/egresos"),
-    ("POST", "/api/egresos"), ("GET", "/api/cierre-diario/preview"), ("POST", "/api/cierre-diario/cerrar"),
-    ("GET", "/api/cierre-diario/turno/999999/ticket"),
-]
-#: Lo que no podía y sigue sin poder.
-STAFF_NO_PUEDE = [
-    ("POST", "/api/listas-precio"), ("PUT", "/api/listas-precio/999999/items/999999/quiebres"),
-    ("POST", "/api/promociones"), ("POST", "/api/actualizacion-masiva/precios/aplicar"),
-    ("GET", "/api/tesoreria"), ("GET", "/api/libros-iva"), ("GET", "/api/dashboard"), ("GET", "/api/reportes"),
-    ("GET", "/api/reportes/margen"), ("GET", "/api/reportes/reposicion"), ("GET", "/api/vencimientos"),
-    ("PUT", "/api/vencimientos/productos/999999"), ("POST", "/api/vencimientos/asignar"), ("POST", "/api/vencimientos/entrada"),
-    ("POST", "/api/vencimientos/merma"),
-    ("GET", "/settings/scale"), ("GET", "/api/config/empresa"),
-    ("GET", "/config/arca"), ("GET", "/users"), ("GET", "/api/logs"), ("POST", "/api/cajas"),
-    ("POST", "/api/sucursales"), ("POST", "/api/depositos"), ("POST", "/api/cierre-diario/999999/reabrir"),
-    ("POST", "/api/facturas/999999/nota-credito"),
-    ("DELETE", "/api/cuenta-corriente/pagos/999999"), ("POST", "/api/recibos/999999/anular"),
-]
+def test_un_staff_de_una_base_vieja_no_entra_a_ninguna_ruta_privada(instancia):
+    """ADR-071: si una base vieja conserva un usuario `staff`, el rol no abre NINGUNA operación de la tabla (ni siquiera lo
+    que hacía antes de los roles): cada una le da el rechazo por rol. Se inserta saltando la validación del router."""
+    from libraauth.repository import UserRepository
 
-
-def test_el_staff_heredado_conserva_exactamente_lo_que_tenia(instancia):
-    staff = instancia["staff"]
-    mal = []
-    for metodo, ruta in STAFF_PUEDE:
-        if _rechazada_por_rol(_sondear(staff, metodo, ruta)):
-            mal.append(f"staff {metodo} {ruta}: lo rechazaron y podía")
-    for metodo, ruta in STAFF_NO_PUEDE:
-        if not _rechazada_por_rol(_sondear(staff, metodo, ruta)):
-            mal.append(f"staff {metodo} {ruta}: pasó y no podía")
-    assert not mal, "\n" + "\n".join(mal)
+    app = instancia["admin"].app
+    viejo = UserRepository(app.state.users.session_factory, roles=(*permisos.ROLES, "staff"))
+    viejo.create(username="u-staff", name="Staff", password="clave-larga-1", role="staff")
+    abiertos = []
+    try:
+        staff = _entrar(app, abiertos, "u-staff", "clave-larga-1")
+        abiertas = [
+            f"staff {metodo} {ruta}: pasó"
+            for (metodo, ruta) in sorted(PRIVADAS)
+            if not _rechazada_por_rol(_sondear(staff, metodo, ruta))
+        ]
+        assert not abiertas, "\n" + "\n".join(abiertas)
+    finally:
+        for c in abiertos:
+            c.close()

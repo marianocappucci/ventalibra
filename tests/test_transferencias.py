@@ -158,19 +158,19 @@ def test_el_historial_de_una_sucursal_trae_los_DOS_lados(admin_client):
     assert len(admin_client.get("/api/depositos/transferencias").json()) == 3
 
 
-def test_un_cajero_SI_puede_transferir(admin_client, staff_client):
+def test_un_encargado_SI_puede_transferir(admin_client, encargado_client):
     """Decisión del humano (2026-09-21): quien mueve la mercadería entre locales es el encargado del mostrador, no
     el dueño. Se afirma el camino COMPLETO (que el stock quede movido de verdad), no un «no da 403».
 
     La preparación va por `admin_client` —el alta de sucursales y de productos SÍ es de admin— y la transferencia por
-    `staff_client`, que es lo que se está probando.
+    `encargado_client`, que es lo que se está probando.
     """
     item = _item(admin_client)
     centro = _sucursal(admin_client, "Centro")
     costanera = _sucursal(admin_client, "Costanera")
     _cargar(admin_client, item, centro, 10)
 
-    r = _transferir(staff_client, item, centro, costanera, 4)
+    r = _transferir(encargado_client, item, centro, costanera, 4)
     assert r.status_code == 200, r.text
     assert _stock(admin_client, item, centro) == 6.0
     assert _stock(admin_client, item, costanera) == 4.0
@@ -178,8 +178,8 @@ def test_un_cajero_SI_puede_transferir(admin_client, staff_client):
     assert admin_client.get("/api/depositos/transferencias").json()[0]["usuario_id"] is not None
 
 
-def test_el_alta_de_sucursales_sigue_siendo_solo_de_admin(staff_client):
+def test_el_alta_de_sucursales_sigue_siendo_solo_de_admin(encargado_client):
     """Control de que abrir la transferencia NO aflojó lo de al lado: con `autorizar_escritura` en el router, un cambio
     que lo sacara pasaría sin que ningún test lo note."""
-    r = staff_client.post("/api/depositos", json={"nombre": "Trucha", "tipo": "store"})
+    r = encargado_client.post("/api/depositos", json={"nombre": "Trucha", "tipo": "store"})
     assert r.status_code == 403, r.text

@@ -99,10 +99,10 @@ def test_el_reporte_de_ventas_de_siempre_sigue_donde_estaba(admin_client):
     assert admin_client.get("/api/reportes/caja-medios").status_code == 200
 
 
-def test_un_cajero_no_ve_el_costo_ni_el_margen(staff_client):
-    assert staff_client.get("/api/reportes/margen").status_code == 403
-    assert staff_client.get("/api/reportes/margen/export/productos").status_code == 403
-    assert staff_client.get("/api/reportes/margen/export/periodos").status_code == 403
+def test_un_cajero_no_ve_el_costo_ni_el_margen(cajero_client):
+    assert cajero_client.get("/api/reportes/margen").status_code == 403
+    assert cajero_client.get("/api/reportes/margen/export/productos").status_code == 403
+    assert cajero_client.get("/api/reportes/margen/export/periodos").status_code == 403
 
 
 def test_el_margen_esta_libre_en_todos_los_planes(admin_client):

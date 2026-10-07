@@ -1,5 +1,5 @@
 // Cierre diario por sucursal (2026-09-16): acto registrado y numerado, con
-// ticket de 80 mm. Lo puede hacer admin o cajero (staff) -- ver
+// ticket de 80 mm. Lo puede hacer admin o encargado (`cierre_diario`; antes también el cajero) -- ver
 // DECISIONS.md, feature de cajas por sucursal.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type ShiftState, type Sucursal } from '../api'
@@ -13,7 +13,8 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { BadgeEstado } from 'libra-ui/badge-estado'
-import { CalendarCheck, Printer, Undo2 } from 'lucide-react'
+import { Printer, Undo2 } from 'lucide-react'
+import { ICONOS } from 'libra-ui/iconos-identidad'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { fecha, fechaHora, hora } from '@/lib/fechas'
 import { abrirTicket } from '@/lib/tickets'
@@ -135,7 +136,7 @@ export function CierreDiario() {
 
   return (
     <div className="grid gap-4">
-      <TituloPantalla icono={CalendarCheck}>Cierre diario</TituloPantalla>
+      <TituloPantalla icono={ICONOS.cierreDiario}>Cierre diario</TituloPantalla>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

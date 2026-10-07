@@ -253,11 +253,11 @@ def test_una_venta_inexistente_no_emite_recibo(admin_client):
     assert admin_client.post("/api/recibos/venta/99999").status_code == 409
 
 
-def test_un_cajero_no_puede_anular_un_recibo(staff_client, admin_client):
+def test_un_cajero_no_puede_anular_un_recibo(cajero_client, admin_client):
     cliente_id = _deudor(admin_client, "Sin anular")
     recibo_id = admin_client.post(f"/api/cuenta-corriente/{cliente_id}/pagar",
                                   json={"fecha": hoy(), "monto": "100.00"}).json()["recibo_id"]
-    assert staff_client.post(f"/api/recibos/{recibo_id}/anular", json={"motivo": "x"}).status_code == 403
+    assert cajero_client.post(f"/api/recibos/{recibo_id}/anular", json={"motivo": "x"}).status_code == 403
 
 
 def test_un_admin_puede_anular_un_recibo(admin_client):

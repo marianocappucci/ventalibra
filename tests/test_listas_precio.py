@@ -101,16 +101,16 @@ def test_los_precios_por_sucursal_y_por_cantidad(admin_client):
     assert admin_client.get(f"/api/listas-precio/{lista['id']}/items/{item_id}/quiebres").json()
 
 
-def test_las_listas_se_leen_con_staff_pero_se_configuran_como_admin(admin_client, staff_client):
+def test_las_listas_se_leen_como_cajero_pero_se_configuran_como_admin(admin_client, cajero_client):
     lista = _lista(admin_client)
     # La card «Lista de precios» de la ficha del cliente las carga para el selector.
-    leidas = staff_client.get("/api/listas-precio")
+    leidas = cajero_client.get("/api/listas-precio")
     assert leidas.status_code == 200 and [l["id"] for l in leidas.json()] == [lista["id"]]
-    assert staff_client.post("/api/listas-precio", json={"nombre": "Del cajero"}).status_code == 403
-    assert staff_client.put(f"/api/listas-precio/{lista['id']}", json={"nombre": "x"}).status_code == 403
-    assert staff_client.delete(f"/api/listas-precio/{lista['id']}").status_code == 403
+    assert cajero_client.post("/api/listas-precio", json={"nombre": "Del cajero"}).status_code == 403
+    assert cajero_client.put(f"/api/listas-precio/{lista['id']}", json={"nombre": "x"}).status_code == 403
+    assert cajero_client.delete(f"/api/listas-precio/{lista['id']}").status_code == 403
     # Quiebres y precios con vigencia siguen siendo de admin.
-    assert staff_client.get(f"/api/listas-precio/{lista['id']}/items/1/quiebres").status_code == 403
+    assert cajero_client.get(f"/api/listas-precio/{lista['id']}/items/1/quiebres").status_code == 403
 
 
 def test_la_ruta_vieja_ya_no_existe(admin_client):

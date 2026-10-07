@@ -238,10 +238,10 @@ def test_el_stock_bajo_es_el_de_los_minimos(admin_client):
     assert _make_unit_and_min["id"] == item_id
 
 
-def test_staff_cannot_access_reports(staff_client):
-    assert staff_client.get("/api/reportes", params={"desde": hoy(), "hasta": hoy()}).status_code == 403
-    assert staff_client.get("/api/reportes/caja-medios").status_code == 403
-    assert staff_client.get("/reportes/export/ventas").status_code == 403
+def test_cajero_cannot_access_reports(cajero_client):
+    assert cajero_client.get("/api/reportes", params={"desde": hoy(), "hasta": hoy()}).status_code == 403
+    assert cajero_client.get("/api/reportes/caja-medios").status_code == 403
+    assert cajero_client.get("/reportes/export/ventas").status_code == 403
 
 
 def test_las_rutas_viejas_ya_no_existen(admin_client):

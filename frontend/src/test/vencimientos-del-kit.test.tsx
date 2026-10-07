@@ -33,7 +33,7 @@ const VENCIMIENTOS = {
   sin_lote: [{ ...LECHE, ...UBICACION, saldo: 8, situacion: 'sin_fecha' }],
 }
 
-type Rol = 'admin' | 'encargado' | 'deposito' | 'cajero' | 'vendedor' | 'staff'
+type Rol = 'admin' | 'encargado' | 'deposito' | 'cajero' | 'vendedor'
 
 /** `filtros`: si `/api/sucursales` y `/api/productos/categorias` contestan bien o con 403. */
 function conSesion(role: Rol, filtros: 'bien' | 'fallan' = 'bien') {

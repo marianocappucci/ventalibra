@@ -8,7 +8,7 @@
 //
 // **El interruptor «Vence»** (vencimientos y lotes, ADR-053; kit v0.92.0): el backend ya trae y acepta `vence` en los productos
 // (`OpcionesCatalogo.con_vencimientos`), pero marcar un producto como perecedero es de quien tiene `vencimientos.marcar` (el
-// encargado y el admin), no de todo el que edita productos (el staff heredado también edita). `conVencimientos` lo decide por esa
+// encargado y el admin), no de todo el que edita productos (`productos.escribir`). `conVencimientos` lo decide por esa
 // capacidad: con ella, el interruptor se fuerza aunque el catálogo todavía esté vacío (el kit lo deduce de los datos y una lista
 // vacía no tiene de dónde); sin ella, no se ofrece (el backend igual contesta 403 a quien intente cambiar la marca).
 //
@@ -16,7 +16,7 @@
 // `reposicion.parametros` (encargado, admin y depósito: el depósito no edita el resto del producto y el kit, desde 0.98.0, guarda sólo estos dos valores si sólo ellos cambiaron); se guardan aparte del producto en `/api/productos/{id}/reposicion`.
 //
 // **Alta y edición del producto por rol** (kit v0.111.0, ADR-061): crear un producto y editar sus datos (nombre, precios, categoría…) es de
-// quien tiene `productos.escribir` (encargado, admin y el staff heredado). El depósito entra a la pantalla para cargar la reposición
+// quien tiene `productos.escribir` (encargado y admin). El depósito entra a la pantalla para cargar la reposición
 // (`reposicion.parametros`) pero no puede crear ni editar el producto: `conAlta` y `conEdicionDelProducto` se apagan JUNTAS (sólo
 // `conEdicionDelProducto={false}` no impide crear) y el kit le deja de sólo lectura el formulario, con una nota, y editable sólo la reposición. Como
 // siempre, el que corta es el backend (403).

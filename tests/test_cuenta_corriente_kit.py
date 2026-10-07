@@ -337,10 +337,10 @@ def test_emitir_el_recibo_del_kit_es_idempotente(admin_client):
     assert primero.json()["id"] == segundo.json()["id"]
 
 
-def test_la_baja_de_pago_es_solo_admin(admin_client, staff_client):
+def test_la_baja_de_pago_no_es_del_mostrador(admin_client, vendedor_client):
     cliente_id, pago_id, _turno_id = _deudor_con_pago(admin_client)
 
-    assert staff_client.delete(
+    assert vendedor_client.delete(
         f"/api/cuenta-corriente/pagos/{pago_id}").status_code == 403
     # El admin de la misma instancia sí puede: el pago se borra, el movimiento
     # queda anulado y el saldo vuelve al valor de antes del pago.

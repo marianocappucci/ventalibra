@@ -60,13 +60,13 @@ def test_prender_y_apagar_tiene_efecto_inmediato(admin_client):
     assert admin_client.get(URL).status_code == 403
 
 
-def test_el_cajero_no_entra_aunque_el_addon_este_prendido(staff_client):
+def test_el_cajero_no_entra_aunque_el_addon_este_prendido(cajero_client):
     from app.database import set_addon
 
     set_addon(ADDON, True)
-    assert staff_client.get(URL).status_code == 403
-    assert staff_client.delete(URL).status_code == 403
-    assert staff_client.post(f"{URL}/drive").status_code == 403
+    assert cajero_client.get(URL).status_code == 403
+    assert cajero_client.delete(URL).status_code == 403
+    assert cajero_client.post(f"{URL}/drive").status_code == 403
 
 
 def test_un_modulo_de_plan_sin_fila_sigue_habilitado(admin_client):
