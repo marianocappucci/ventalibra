@@ -14,7 +14,7 @@ existencias en sus depósitos. Acá quedan las reglas de este producto:
   cajas es de admin);
 - alta, edición, predeterminada y baja son **de admin** (capacidad `sucursales.admin`); la lectura es de todos los
   roles (`catalogo.ver`/`stock.ver`) y **la transferencia** de quien mueve mercadería (`stock.transferir`: encargado,
-  depósito y el staff heredado): quien mueve la mercadería entre locales no es el dueño (2026-09-21, ADR-049);
+  depósito y admin): quien mueve la mercadería entre locales no es el dueño (2026-09-21, ADR-049);
 - **un solo local sin el módulo `multisucursal`** (plan Básico, ADR-048): no se da de alta ni se reactiva una segunda
   sucursal activa, y no se transfiere mercadería entre depósitos de sucursales distintas (403, con el mismo texto
   que `require_module`). La unidad es la **sucursal** y no el depósito: un local con dos depósitos sigue siendo un
@@ -48,13 +48,13 @@ from .services.sucursales import SucursalService
 _ENTERO = TypeAdapter(int)  # mismo modo laxo que los campos `int` del cuerpo de la transferencia
 
 #: 🔴 `con_lotes` queda APAGADA a propósito (ADR-053, hallazgo de la revisión de Codex): con ella `POST /api/stock/{id}/ajuste` aceptaría `lot_code` y
-#: `expires_at` (entrada con lote y conteo de UN lote) con sólo `stock.ajustar`, capacidad que conserva el staff heredado, mientras que las
-#: operaciones de lote de `/api/vencimientos` (asignar, entrada, merma) exigen `vencimientos.mover`, que el staff NO tiene: el staff alteraría lotes
-#: por la ruta alternativa. El kit v0.92.0 no usa el ajuste con lote desde ninguna pantalla («Cargar stock con lote» va por `POST
+#: `expires_at` (entrada con lote y conteo de UN lote) con sólo `stock.ajustar`, mientras que las
+#: operaciones de lote de `/api/vencimientos` (asignar, entrada, merma) exigen `vencimientos.mover`: hoy las dos capacidades las tienen los mismos roles (encargado
+#: y depósito), pero con un rol que tuviera la primera y no la segunda se alterarían lotes por la ruta alternativa. El kit v0.92.0 no usa el ajuste con lote desde ninguna pantalla («Cargar stock con lote» va por `POST
 #: /api/vencimientos/entrada`), así que no se activa. Apagada, el cuerpo es el de siempre y el motor IGNORA `lot_code`/`expires_at`. El FEFO de las
 #: salidas y de los ajustes SIN lote de un producto marcado NO depende de esta opción (es del motor). **Para habilitarla** hace falta antes una
 #: guarda por cuerpo: que un pedido con `lot_code` o `expires_at` exija `vencimientos.mover` (p. ej. una dependencia del router de stock que
-#: lea el cuerpo y llame a `condicion("vencimientos.mover")`), y un test en `tests/test_roles_matriz.py` que lo fije para el staff.
+#: lea el cuerpo y llame a `condicion("vencimientos.mover")`), y un test en `tests/test_roles_matriz.py` que lo fije para un rol con `stock.ajustar` sin `vencimientos.mover` (hoy no existe: `test_quien_puede_ajustar_stock_tambien_puede_mover_lotes`).
 OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True)
 
 Sucursales = Callable[[], SucursalService]

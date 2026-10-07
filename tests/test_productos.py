@@ -361,9 +361,9 @@ def test_update_item_without_session_401(admin_client):
     assert response.status_code == 401
 
 
-def test_el_cajero_carga_y_edita_productos(admin_client, staff_client):
-    """Igual que antes con `/catalog/items`: el catálogo es de staff y admin (sin `autorizar_escritura`)."""
+def test_el_encargado_carga_y_edita_productos(admin_client, encargado_client):
+    """Igual que antes con `/catalog/items`: la escritura del catálogo es de encargado y admin (`productos.escribir`)."""
     _make_unit(admin_client)
-    r = staff_client.post("/api/productos", json={"nombre": "Del cajero", "unidad": "u"})
+    r = encargado_client.post("/api/productos", json={"nombre": "Del cajero", "unidad": "u"})
     assert r.status_code == 200, r.text
-    assert staff_client.put(f"/api/productos/{r.json()['id']}", json=_payload(nombre="Del cajero 2")).status_code == 200
+    assert encargado_client.put(f"/api/productos/{r.json()['id']}", json=_payload(nombre="Del cajero 2")).status_code == 200

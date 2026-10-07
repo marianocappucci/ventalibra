@@ -25,7 +25,7 @@ Lo que queda ACÁ es lo que ese helper no cubre:
 libraauth, sección "Router de usuarios unificado", y el ADR-018) ──────────
 
 - `POST /users` responde `201` (antes `200`, sin `status_code` declarado).
-  Afecta a `conftest.py::staff_client` y a
+  Afecta a `conftest.py::_cliente_con_rol` y a
   `test_token_de_servicio.py::test_el_token_puede_dar_de_alta_un_usuario`,
   actualizados en el mismo commit que este archivo.
 - `PUT /{id}/password` exige ahora el mismo mínimo de 6 caracteres que el
@@ -48,8 +48,8 @@ libraauth, sección "Router de usuarios unificado", y el ADR-018) ────�
 Se montó una vez `build_users_router(prefix="/users",
 admin_guard=lambda: {"id": None, "role": "staff"})` -- un guard que NO exige
 admin -- en lugar de `require_admin_o_servicio`, y se corrió
-`test_staff_no_puede_cambiarle_la_contrasena_a_nadie` (de este archivo) y
-`test_staff_cannot_manage_users` (`test_auth.py`): las dos dieron rojo,
+`test_un_encargado_no_puede_cambiarle_la_contrasena_a_nadie` (de este archivo) y
+`test_encargado_cannot_manage_users` (`test_auth.py`): las dos dieron rojo,
 confirmando que sin el guard correcto la suite lo nota. Se revirtió antes de
 correr el resto de la suite -- ver el reporte de la sesión que agregó esta
 adopción.
@@ -67,7 +67,7 @@ from app.main import create_app
 
 def test_contrato_de_usuarios(admin_client: TestClient):
     """El mismo ciclo que ejerce el backoffice -- ver `libraauth.testing`."""
-    verificar_contrato_de_usuarios(admin_client, "/users", role="staff")
+    verificar_contrato_de_usuarios(admin_client, "/users", role="cajero")
 
 
 def test_contrato_de_usuarios_con_token_de_servicio(monkeypatch, tmp_path):
@@ -80,15 +80,15 @@ def test_contrato_de_usuarios_con_token_de_servicio(monkeypatch, tmp_path):
     db_path = destino_dominio(tmp_path / "ventalibra.db")
     with https_client(create_app(db_path)) as client:
         verificar_contrato_de_usuarios(
-            client, "/users", role="staff",
+            client, "/users", role="cajero",
             username="contrato-servicio",
             headers={SERVICE_TOKEN_HEADER: token},
         )
 
 
-def _alta_de_staff(client: TestClient, **extra) -> dict:
+def _alta_de_cajero(client: TestClient, **extra) -> dict:
     body = {"username": "cristina", "name": "Cristina", "password": "vieja123",
-            "role": "staff"}
+            "role": "cajero"}
     body.update(extra)
     r = client.post("/users", json=body)
     assert r.status_code == 201, r.text
@@ -99,7 +99,7 @@ def test_el_admin_le_cambia_la_contrasena_a_otro_usuario(admin_client: TestClien
     """Se asiertan las DOS puntas: que la vieja deja de entrar y que la nueva
     entra. Con sólo la segunda, un endpoint que no hiciera nada y un login que
     aceptara cualquier cosa darían el mismo verde."""
-    creado = _alta_de_staff(admin_client)
+    creado = _alta_de_cajero(admin_client)
 
     r = admin_client.put(f"/users/{creado['id']}/password", json={"password": "nueva456"})
     assert r.status_code == 204
@@ -115,7 +115,7 @@ def test_la_contrasena_vacia_se_rechaza_y_no_cambia_nada(admin_client: TestClien
     """No alcanza con asertar el 422: un endpoint que devolviera 422 *después*
     de haber hasheado el vacío daría el mismo código y la cuenta quedaría
     abierta. Lo que prueba la guarda es que la anterior sigue entrando."""
-    creado = _alta_de_staff(admin_client)
+    creado = _alta_de_cajero(admin_client)
 
     for vacia in ("", "   "):
         r = admin_client.put(f"/users/{creado['id']}/password", json={"password": vacia})
@@ -135,7 +135,7 @@ def test_la_contrasena_corta_se_rechaza_en_el_reset_ajeno(admin_client: TestClie
     marcada ahí como "nuevo -- ninguno lo exigía". No se pierde cobertura:
     lo que probaba el test viejo (que "x" entraba) es exactamente lo que
     ahora se rechaza, a propósito."""
-    creado = _alta_de_staff(admin_client)
+    creado = _alta_de_cajero(admin_client)
 
     r = admin_client.put(f"/users/{creado['id']}/password", json={"password": "corta"})
     assert r.status_code == 422
@@ -153,8 +153,8 @@ def test_contrasena_de_usuario_inexistente_devuelve_404(admin_client: TestClient
     assert r.json() == {"detail": "no existe el usuario 9999"}
 
 
-def test_staff_no_puede_cambiarle_la_contrasena_a_nadie(
-    admin_client: TestClient, staff_client: TestClient,
+def test_un_encargado_no_puede_cambiarle_la_contrasena_a_nadie(
+    admin_client: TestClient, encargado_client: TestClient,
 ):
     """El router entero cuelga de `require_admin_o_servicio` (pasado ahora
     como `admin_guard=` de la factory, no en `dependencies=` del
@@ -162,13 +162,13 @@ def test_staff_no_puede_cambiarle_la_contrasena_a_nadie(
     Se cubre igual: el día que alguien lo desmonte, el gate se pierde sin
     que nada avise. Mutación verificada a mano -- ver el docstring del
     módulo."""
-    victima = _alta_de_staff(admin_client, username="victima")
-    r = staff_client.put(f"/users/{victima['id']}/password", json={"password": "tomada"})
+    victima = _alta_de_cajero(admin_client, username="victima")
+    r = encargado_client.put(f"/users/{victima['id']}/password", json={"password": "tomada"})
     assert r.status_code == 403
 
 
 def test_el_email_del_alta_se_guarda_y_se_devuelve(admin_client: TestClient):
-    creado = _alta_de_staff(admin_client, email="cristina@empresa.com")
+    creado = _alta_de_cajero(admin_client, email="cristina@empresa.com")
     assert creado["email"] == "cristina@empresa.com"
 
     listado = admin_client.get("/users").json()
@@ -183,10 +183,10 @@ def test_editar_nombre_o_rol_no_borra_el_email(admin_client: TestClient):
     el correo. Con un default vacío, desactivar a alguien le borraba el mail en
     silencio — y el mail es lo único que permite recuperar la contraseña.
     """
-    creado = _alta_de_staff(admin_client, email="cristina@empresa.com")
+    creado = _alta_de_cajero(admin_client, email="cristina@empresa.com")
 
     r = admin_client.put(f"/users/{creado['id']}", json={
-        "name": "Cristina G.", "role": "staff", "active": False})
+        "name": "Cristina G.", "role": "cajero", "active": False})
     assert r.status_code == 200
     assert r.json()["email"] == "cristina@empresa.com"
     assert r.json()["name"] == "Cristina G."
@@ -195,16 +195,16 @@ def test_editar_nombre_o_rol_no_borra_el_email(admin_client: TestClient):
 def test_el_email_se_puede_vaciar_pidiendolo(admin_client: TestClient):
     """La contracara: `""` explícito sí lo borra. Sin esto, un correo cargado
     mal no se podría sacar nunca."""
-    creado = _alta_de_staff(admin_client, email="mal@escrito.com")
+    creado = _alta_de_cajero(admin_client, email="mal@escrito.com")
 
     r = admin_client.put(f"/users/{creado['id']}", json={
-        "name": "Cristina", "role": "staff", "active": True, "email": ""})
+        "name": "Cristina", "role": "cajero", "active": True, "email": ""})
     assert r.status_code == 200
     assert r.json()["email"] == ""
 
 
 def test_borrar_a_un_usuario_con_turno_da_409(
-    admin_client: TestClient, staff_client: TestClient,
+    admin_client: TestClient, cajero_client: TestClient,
 ):
     """Bug conocido de libraauth v0.43.0 (`build_users_router` /
     `UserRepository.delete`), NO de VentaLibra -- reportado por el humano el
@@ -220,12 +220,12 @@ def test_borrar_a_un_usuario_con_turno_da_409(
     `UserRepository.delete` que lo traduce a un 409 con rollback de la
     sesión -- este test confirma ese comportamiento.
 
-    `staff_client` ya viene logueado (ver conftest.py) -- abre un turno con
+    `cajero_client` ya viene logueado (ver conftest.py) -- abre un turno con
     esa sesión y después el admin intenta borrar a ESE usuario."""
-    victima_id = staff_client.get("/auth/me").json()["id"]
+    victima_id = cajero_client.get("/auth/me").json()["id"]
 
-    abierto = staff_client.post(
-        "/api/turnos/abrir", json={"monto_inicial": 100, "caja_id": caja_default(staff_client)}
+    abierto = cajero_client.post(
+        "/api/turnos/abrir", json={"monto_inicial": 100, "caja_id": caja_default(cajero_client)}
     )
     assert abierto.status_code == 200, abierto.text
 

@@ -27,7 +27,7 @@ import { useMediosPago } from '@/lib/medios-pago'
 
 // La sesión de este producto siempre puede anular/devolver (F4, corrección
 // del orquestador): `app/main.py` no le pasa `solo_admin` al motor -- hasta
-// hoy un cajero (staff) podía hacer las dos cosas, y restringirlo sería una
+// hoy un cajero podía hacer las dos cosas, y restringirlo sería una
 // decisión que nadie tomó. Constante y no `user.role === 'admin'` a
 // propósito: acá NO hay chequeo de rol que replicar.
 const PUEDE_ANULAR = true

@@ -89,7 +89,7 @@ describe('Sucursales', () => {
   })
 
   it('un cajero no ve el aviso: no da de alta sucursales', async () => {
-    sesion.rol = 'staff'
+    sesion.rol = 'cajero'
     conModulos(BASICO, <Sucursales />)
     expect(await screen.findByText('Centro')).toBeInTheDocument()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()

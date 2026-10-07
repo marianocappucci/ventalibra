@@ -23,12 +23,12 @@ def test_montado_y_admin_lo_lee(admin_client):
     assert r.json()["password_definida"] is False
 
 
-def test_staff_no_puede_leerlo(staff_client):
+def test_el_cajero_no_puede_leerlo(cajero_client):
     """Quien pueda escribir aca puede redirigir a donde salen los enlaces de
     recuperacion de contrasena de todos los usuarios."""
-    assert staff_client.get("/admin/smtp").status_code == 403
-    assert staff_client.put("/admin/smtp", json={"host": "x.test"}).status_code == 403
-    assert staff_client.delete("/admin/smtp").status_code == 403
+    assert cajero_client.get("/admin/smtp").status_code == 403
+    assert cajero_client.put("/admin/smtp", json={"host": "x.test"}).status_code == 403
+    assert cajero_client.delete("/admin/smtp").status_code == 403
 
 
 def test_guardar_no_devuelve_la_contrasena_y_en_la_base_esta_cifrada(admin_client):
@@ -74,7 +74,7 @@ def test_host_vacio_da_422(admin_client):
 
 # ------------------------------------------------------- probar la conexion
 
-def test_probar_la_conexion(admin_client, staff_client):
+def test_probar_la_conexion(admin_client, cajero_client):
     """`POST /admin/smtp/probar`, del motor (libracore v1.69.0).
 
     🔴 **Las tres cosas en un solo test, y es a proposito.** `admin_client` arma
@@ -83,7 +83,7 @@ def test_probar_la_conexion(admin_client, staff_client):
     cuesta conexiones para el resto de la corrida. Esta suite pasaba con el
     cupo por defecto de PostgreSQL (100) **sin margen**: partido en tres tests,
     el CI moria con "too many clients" a mitad de camino, en los tests del medio
-    y no en estos. `staff_client` cuelga de `admin_client`, asi que pedir los dos
+    y no en estos. `cajero_client` cuelga de `admin_client`, asi que pedir los dos
     aca comparte la app.
 
     Lo que se prueba:
@@ -95,7 +95,7 @@ def test_probar_la_conexion(admin_client, staff_client):
     2. El control de lo anterior: una ruta inventada colgada del mismo prefijo
        **no** contesta. Sin esto, el 400 no distingue "montado" de "cualquier
        cosa bajo /admin/smtp responde".
-    3. Que sea de administrador. Se prueba con un usuario de **staff** y no con
+    3. Que sea de administrador. Se prueba con un usuario **cajero** y no con
        uno anonimo: al anonimo lo rechaza la sesion y no diria nada sobre el
        gate de rol.
     """
@@ -105,4 +105,4 @@ def test_probar_la_conexion(admin_client, staff_client):
 
     assert admin_client.post("/admin/smtp/inventado").status_code in (404, 405)
 
-    assert staff_client.post("/admin/smtp/probar").status_code == 403
+    assert cajero_client.post("/admin/smtp/probar").status_code == 403

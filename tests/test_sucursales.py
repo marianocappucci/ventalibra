@@ -50,20 +50,20 @@ def test_el_listado_cuenta_los_depositos_activos(admin_client):
     assert fila["depositos"] == 2
 
 
-def test_sin_sesion_o_como_cajero_no_se_escribe_pero_se_lista(admin_client, staff_client):
+def test_sin_sesion_o_como_cajero_no_se_escribe_pero_se_lista(admin_client, cajero_client):
     sucursal = crear_sucursal(admin_client, "Sucursal del admin")
 
-    assert staff_client.post("/api/sucursales", json={"nombre": "Del cajero"}).status_code == 403
-    assert staff_client.put(
+    assert cajero_client.post("/api/sucursales", json={"nombre": "Del cajero"}).status_code == 403
+    assert cajero_client.put(
         f"/api/sucursales/{sucursal['id']}", json={"nombre": "Renombrada", "activa": True}
     ).status_code == 403
-    assert staff_client.post(f"/api/sucursales/{sucursal['id']}/set-default").status_code == 403
-    assert staff_client.post(
+    assert cajero_client.post(f"/api/sucursales/{sucursal['id']}/set-default").status_code == 403
+    assert cajero_client.post(
         f"/api/sucursales/{sucursal['id']}/deposito-predeterminado",
         json={"deposito_id": sucursal["deposito_predeterminado_id"]},
     ).status_code == 403
 
-    nombres = {s["nombre"] for s in staff_client.get("/api/sucursales").json()}
+    nombres = {s["nombre"] for s in cajero_client.get("/api/sucursales").json()}
     assert "Sucursal del admin" in nombres and "Del cajero" not in nombres
 
 

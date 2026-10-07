@@ -163,14 +163,14 @@ def test_add_item_with_variant_moves_the_specific_variant_stock(admin_client):
 # precio a partir de un `price_list_id` para poder probarlo acá.
 
 
-def test_staff_can_run_full_pos_flow(admin_client, staff_client):
-    """El catalogo/stock lo carga un admin; el flujo de venta lo corre staff."""
+def test_cajero_can_run_full_pos_flow(admin_client, cajero_client):
+    """El catalogo/stock lo carga un admin; el flujo de venta lo corre un cajero."""
     item_id = _make_item(admin_client)
     location_id = deposito_default(admin_client)
     con_stock(admin_client, item_id, location_id, "5")
 
-    abrir_turno(staff_client)
-    venta = registrar_venta(staff_client, item_id, cantidad="2")
+    abrir_turno(cajero_client)
+    venta = registrar_venta(cajero_client, item_id, cantidad="2")
     assert venta["estado"] == "cobrada"
 
 

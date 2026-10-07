@@ -43,8 +43,8 @@ def _crear_producto(client, codigo="7791234567890", venta="1500.00"):
     return creado.json()["id"]
 
 
-def test_un_cajero_no_puede_usarla(staff_client):
-    assert staff_client.post(
+def test_un_cajero_no_puede_usarla(cajero_client):
+    assert cajero_client.post(
         "/api/actualizacion-masiva/precios/preview", files=_archivo(_planilla([("111", 100)]))
     ).status_code == 403
 

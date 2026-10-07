@@ -214,16 +214,17 @@ def test_el_endpoint_no_tapa_la_ruta_de_la_pantalla(admin_client):
     assert admin_client.get("/logs").status_code == 404
 
 
-def test_el_cajero_no_ve_los_logs(staff_client):
+def test_el_cajero_no_ve_los_logs(cajero_client):
     """Es la pantalla que dice desde qué IP entró cada uno y quién vendió qué."""
-    assert staff_client.get("/api/logs").status_code == 403
+    assert cajero_client.get("/api/logs").status_code == 403
 
 
-def test_lo_que_escribe_el_cajero_queda_a_su_nombre(admin_client, staff_client):
+def test_lo_que_escribe_un_empleado_queda_a_su_nombre(admin_client, encargado_client):
     """El usuario sale de la cookie de cada request, vía el middleware del
     motor de auth. Si quedara pegado del contexto anterior, la venta del
     empleado aparecería como del admin — que es peor que no tener log."""
-    _producto(staff_client, "Producto del cajero")
+    _unidad(admin_client)  # las unidades las da de alta el admin (`config`): el encargado no puede
+    _producto(encargado_client, "Producto del encargado")
 
     filas = [f for f in _logs(admin_client)["actividad"] if f["entidad"] == "producto"]
-    assert filas and filas[0]["usuario"] == "staff-1"
+    assert filas and filas[0]["usuario"] == "encargado-1"

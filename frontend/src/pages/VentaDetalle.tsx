@@ -11,7 +11,7 @@ export function VentaDetalle() {
   const { user } = useAuth()
   return (
     <VentaDetalleComercio
-      // Mismo criterio que `Ventas.tsx`: un cajero (staff) también puede
+      // Mismo criterio que `Ventas.tsx`: un cajero también puede
       // anular -- el motor no está gateado a admin en este producto.
       puedeAnular
       // La nota de crédito de una factura con CAE (libracore v1.129.0): sólo la emite quien tiene `facturas.nota_credito`

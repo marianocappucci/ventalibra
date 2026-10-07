@@ -30,7 +30,7 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
       // Los turnos de caja: cada uno los suyos; el encargado y el admin, los de todos (`turnos.todos`).
       {
         to: '/turnos', label: 'Turnos', icon: ICONOS.turnosDeCaja, hideFor: sinCapacidad('caja.propia'),
-        // El cierre diario es del encargado y el admin (y del staff heredado); el cajero ya no (ADR-049).
+        // El cierre diario es del encargado y el admin; el cajero no (ADR-049).
         children: [{ to: '/cierre-diario', label: 'Cierre diario', icon: ICONOS.cierreDiario, hideFor: sinCapacidad('cierre_diario') }],
       },
       { to: '/cajas', label: 'Cajas', icon: ICONOS.cajas, hideFor: sinCapacidad('caja.admin') },

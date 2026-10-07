@@ -18,7 +18,7 @@ en la capa ERP:
   no hay ningún `/sales` del que colgar, pero el criterio
   (`app/services/mp_qr.py::esta_configurado`) es el mismo. A propósito NO
   exige el módulo `facturacion` (a diferencia de `GET /api/config/
-  mercadopago`, admin-only y gateado por ese módulo): el cajero (staff)
+  mercadopago`, admin-only y gateado por ese módulo): el cajero
   necesita esto para decidir si ofrece el botón de QR, y cobrar por QR no
   depende del plan de facturación -- sólo emitir sola SÍ, que es justo lo que
   filtra `auto_facturar` de acá abajo.

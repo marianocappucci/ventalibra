@@ -239,8 +239,8 @@ def test_un_ancho_de_papel_inexistente_se_rechaza(admin_client):
     assert respuesta.status_code == 422
 
 
-def test_el_cajero_no_configura_el_ticket(staff_client):
-    assert staff_client.get("/settings/ticket").status_code == 403
+def test_el_cajero_no_configura_el_ticket(cajero_client):
+    assert cajero_client.get("/settings/ticket").status_code == 403
 
 
 def test_el_ticket_se_puede_reimprimir(admin_client):

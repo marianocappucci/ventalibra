@@ -319,7 +319,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* Egresos (fase 11, ADR-038): de `egresos` (encargado, y el staff heredado además del admin). */}
+      {/* Egresos (fase 11, ADR-038): de `egresos` (encargado y admin). */}
       <Route path="/egresos" element={<ProtectedRoute cap="egresos"><Egresos /></ProtectedRoute>} />
       <Route path="/egresos/:id" element={<ProtectedRoute cap="egresos"><EgresoDetalle /></ProtectedRoute>} />
       {/* Libros IVA (fase 12, ADR-038): contable-fiscal, de `libros_iva` (admin y encargado). */}
@@ -335,8 +335,8 @@ export default function App() {
       <Route path="/turnos" element={<ProtectedRoute cap="caja.propia"><Turnos /></ProtectedRoute>} />
       <Route path="/turnos/:id" element={<ProtectedRoute cap="caja.propia"><TurnoDetalle /></ProtectedRoute>} />
       <Route path="/turnos/:id/cerrar" element={<ProtectedRoute cap="caja.propia"><TurnoCerrar /></ProtectedRoute>} />
-      {/* El cierre diario es del encargado y del admin (`cierre_diario`; el staff heredado lo sigue teniendo). El
-          cajero nuevo ya no: ADR-049. */}
+      {/* El cierre diario es del encargado y del admin (`cierre_diario`). El
+          cajero no: ADR-049. */}
       <Route
         path="/cierre-diario"
         element={

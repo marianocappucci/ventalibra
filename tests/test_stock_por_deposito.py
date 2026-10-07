@@ -115,28 +115,28 @@ def test_la_transferencia_se_ve_reflejada_en_el_stock(admin_client):
     assert float(fila["stock_actual"]) == 10.0, "una transferencia NO cambia el total"
 
 
-def test_un_cajero_puede_VER_el_stock(staff_client, admin_client):
-    """Mirar cuánto hay es del mostrador: el router va con `staff_or_admin`."""
+def test_un_cajero_puede_VER_el_stock(cajero_client, admin_client):
+    """Mirar cuánto hay es del mostrador: `stock.ver` incluye al cajero."""
     item = _item(admin_client, "Yerba")
     centro = _sucursal(admin_client, "Centro")
     _cargar(admin_client, item, centro, 3)
 
-    r = staff_client.get("/api/stock")
+    r = cajero_client.get("/api/stock")
     assert r.status_code == 200, r.text
     assert _en(_fila(r.json(), "Yerba"), centro) == 3.0
 
 
-def test_ajustar_el_stock_de_un_deposito_es_de_staff_y_admin_y_queda_en_el_historial(staff_client, admin_client):
-    """Antes `POST /stock/adjustments` era de staff y admin (el router entero lo era). Se conserva: el ajuste no
+def test_ajustar_el_stock_de_un_deposito_es_del_encargado_y_admin_y_queda_en_el_historial(encargado_client, admin_client):
+    """Antes `POST /stock/adjustments` era de staff y admin (el router entero lo era); hoy es de `stock.ajustar` (encargado, depósito y admin): el ajuste no
     inventa mercadería que no se pueda ver en el historial, con quien lo hizo."""
     item = _item(admin_client, "Yerba")
     centro = _sucursal(admin_client, "Centro")
 
-    r = ajustar(staff_client, item, centro, "5", motivo="conteo del cajero")
+    r = ajustar(encargado_client, item, centro, "5", motivo="conteo del encargado")
     assert r.status_code == 200, r.text
     assert r.json()["stock_deposito"] == 5.0
     movs = admin_client.get("/api/stock/movimientos", params={"producto_id": item}).json()
-    assert [(m["cantidad"], m["referencia"], m["deposito_id"]) for m in movs] == [(5.0, "conteo del cajero", centro)]
+    assert [(m["cantidad"], m["referencia"], m["deposito_id"]) for m in movs] == [(5.0, "conteo del encargado", centro)]
     assert movs[0]["usuario_id"] is not None
 
 

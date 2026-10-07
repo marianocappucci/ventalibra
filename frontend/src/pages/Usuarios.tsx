@@ -15,8 +15,8 @@ import { ROLES_DE_USUARIO } from '../lib/permisos'
  *  ni al único admin activo ni a uno mismo), así que mostrar el botón deja
  *  de ser "ofrecer algo que el backend no atiende".
  *
- *  `roles` (ADR-049): los cinco roles de la instancia más el `staff` heredado
- *  (`ROLES_DE_USUARIO`, que espeja `app/permisos.py::ROLES`). El kit ya acepta
+ *  `roles` (ADR-049): los cinco roles de la instancia (el `staff` heredado se retiró,
+ *  ADR-071; `ROLES_DE_USUARIO`, que espeja `app/permisos.py::ROLES`). El kit ya acepta
  *  la lista por prop, así que no hizo falta tocarlo. El primero es el que trae
  *  el alta (el cajero, el de menos privilegio que sirve para trabajar). */
 export function Usuarios() {

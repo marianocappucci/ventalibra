@@ -9,11 +9,13 @@ libracommerce (ADR-032).
 from test_billing import _abrir_turno, _make_item, _registrar_venta
 
 
-def _venta_facturada(client):
+def _venta_facturada(client, quien_vende=None):
+    """`client` arma el producto; la venta y la factura las hace `quien_vende` (por defecto, el mismo)."""
+    quien_vende = quien_vende or client
     item_id = _make_item(client, price="1000.00")
-    _abrir_turno(client)
-    vid = _registrar_venta(client, item_id, precio="1000.00").json()["id"]
-    facturada = client.post(f"/api/ventas/{vid}/facturar")
+    _abrir_turno(quien_vende)
+    vid = _registrar_venta(quien_vende, item_id, precio="1000.00").json()["id"]
+    facturada = quien_vende.post(f"/api/ventas/{vid}/facturar")
     assert facturada.status_code == 200, facturada.text
     return vid, facturada.json()["factura"]
 
@@ -27,9 +29,9 @@ def test_la_unica_ruta_de_facturas_es_la_nota_de_credito(admin_client):
     assert rutas == {("POST", "/api/facturas/{factura_id}/nota-credito")}
 
 
-def test_solo_un_admin_emite_la_nota(admin_client, staff_client):
+def test_solo_un_admin_emite_la_nota(admin_client, cajero_client):
     _vid, factura = _venta_facturada(admin_client)
-    assert staff_client.post(f"/api/facturas/{factura['id']}/nota-credito").status_code == 403
+    assert cajero_client.post(f"/api/facturas/{factura['id']}/nota-credito").status_code == 403
     # El admin pasa el gate: la nota se emite (el CAE de dev es el mock del motor).
     assert admin_client.post(f"/api/facturas/{factura['id']}/nota-credito").status_code == 200
 
@@ -57,8 +59,9 @@ def test_una_venta_sin_factura_se_anula_como_siempre(admin_client):
     assert admin_client.post(f"/api/ventas/{vid}/anular").status_code == 200
 
 
-def test_el_cajero_puede_anular_lo_no_facturado_pero_no_emitir_la_nota(admin_client, staff_client):
-    """Decisión del 2026-09-15 (el staff anula) sigue en pie; lo facturado por ARCA pide a un admin."""
-    vid, _factura = _venta_facturada(admin_client)
-    r = staff_client.post(f"/api/ventas/{vid}/anular")
+def test_el_cajero_puede_anular_lo_no_facturado_pero_no_emitir_la_nota(admin_client, cajero_client):
+    """Decisión del 2026-09-15 (el cajero anula) sigue en pie; lo facturado por ARCA pide a un admin."""
+    # La venta es del propio cajero: el mostrador sólo ve las ventas de sus turnos (ADR-068).
+    vid, _factura = _venta_facturada(admin_client, cajero_client)
+    r = cajero_client.post(f"/api/ventas/{vid}/anular")
     assert r.status_code == 409, "con factura CAE hace falta la nota, y la emite un admin"

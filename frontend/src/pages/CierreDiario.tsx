@@ -1,5 +1,5 @@
 // Cierre diario por sucursal (2026-09-16): acto registrado y numerado, con
-// ticket de 80 mm. Lo puede hacer admin o cajero (staff) -- ver
+// ticket de 80 mm. Lo puede hacer admin o encargado (`cierre_diario`; antes también el cajero) -- ver
 // DECISIONS.md, feature de cajas por sucursal.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, ApiError, type CierreDiario as CierreDiarioRow, type CierreDiarioPreview, type ShiftState, type Sucursal } from '../api'

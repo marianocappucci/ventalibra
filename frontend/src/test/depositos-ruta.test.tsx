@@ -1,6 +1,7 @@
 // `/depositos/:id` (el stock de un depósito, al que llega «Ver stock» desde el detalle de una sucursal) lleva el mismo
-// gate que `/sucursales/:id`: lo mira también el cajero. Sin esa capacidad lo mandarían de vuelta al POS. El
-// backend rechaza sus escrituras y la pantalla no se las ofrece (eso lo prueba `sucursales-del-kit.test.tsx`).
+// gate que `/sucursales/:id` (`sucursales.admin` o `stock.transferir`): lo mira también el encargado, que no es admin. Sin esa
+// capacidad lo mandarían de vuelta al POS. El backend rechaza sus escrituras y la pantalla no se las ofrece (eso lo prueba
+// `sucursales-del-kit.test.tsx`).
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +13,7 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
 
-function conSesion(role: 'admin' | 'staff') {
+function conSesion(role: 'admin' | 'encargado') {
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     const u = String(url)
     if (u.includes('/auth/me')) {
@@ -33,7 +34,7 @@ function conSesion(role: 'admin' | 'staff') {
 beforeEach(() => { vi.unstubAllGlobals() })
 
 describe('ruta /depositos/:id', () => {
-  it.each(['admin', 'staff'] as const)('la abre el rol %s, sin mandarlo al POS', async (rol) => {
+  it.each(['admin', 'encargado'] as const)('la abre el rol %s, sin mandarlo al POS', async (rol) => {
     conSesion(rol)
     render(
       <MemoryRouter initialEntries={['/depositos/12']}>

@@ -2,7 +2,7 @@
 // variantes por producto, el stock total, sin eliminar y las unidades de la instalación. El detalle de la pantalla lo prueban
 // los tests del kit; acá, que el wrapper activa las variantes y que el contrato de la API (`/api/productos`, `/api/stock`)
 // es el que el kit espera. Y, desde el kit v0.92.0 (ADR-053), el interruptor «Vence»: lo ofrece el wrapper sólo a quien tiene
-// `vencimientos.marcar` (encargado y admin), aunque el catálogo esté vacío, y nunca a quien no (el staff heredado edita productos pero el
+// `vencimientos.marcar` (encargado y admin), aunque el catálogo esté vacío, y nunca a quien no (el depósito abre el producto para cargar la reposición pero el
 // backend le contesta 403 si cambia la marca).
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -187,8 +187,8 @@ it('desmarcar un producto que vence manda `vence: false`', async () => {
   expect(llamadas.find((l) => l.metodo === 'PUT')!.cuerpo).toMatchObject({ vence: false })
 })
 
-it('el staff heredado edita productos pero no ve el interruptor (marcar es de `vencimientos.marcar`), aunque el backend traiga `vence`', async () => {
-  rol = 'staff'
+it('el depósito abre el producto pero no ve el interruptor (marcar es de `vencimientos.marcar`), aunque el backend traiga `vence`', async () => {
+  rol = 'deposito'
   respuestas['GET /api/productos'] = [{ ...YERBA, vence: true }]
   const user = userEvent.setup()
   abrir()
@@ -241,7 +241,7 @@ it.each(['vendedor', 'cajero'] as const)('el %s no ve esos campos ni se pide nad
   expect(llamadas.some((l) => l.url.includes('/reposicion'))).toBe(false)
 })
 
-// El depósito decide la reposición pero no edita el producto (`productos.escribir` es del encargado y el staff): el kit (0.98.0) guarda sólo el
+// El depósito decide la reposición pero no edita el producto (`productos.escribir` es del encargado): el kit (0.98.0) guarda sólo el
 // plazo y el techo cuando sólo ellos cambiaron, sin pasar por el PUT del producto, que le daría 403.
 it('el depósito cambia sólo el plazo/techo: se guarda la reposición y NO se manda el PUT del producto', async () => {
   rol = 'deposito'

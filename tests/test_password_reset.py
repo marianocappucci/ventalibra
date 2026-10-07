@@ -42,7 +42,7 @@ def test_forgot_password_responde_igual_exista_o_no(monkeypatch, tmp_path):
 def test_flujo_completo(monkeypatch, tmp_path):
     app, enviados = _app_con_mailbox(monkeypatch, tmp_path)
     app.state.users.create(username="ana", name="Ana", password="vieja123",
-                           role="staff", email="ana@empresa.com")
+                           role="cajero", email="ana@empresa.com")
     client = https_client(app)
 
     assert client.post("/auth/forgot-password",

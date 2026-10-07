@@ -238,8 +238,8 @@ describe('Cierre diario', () => {
     expect(screen.getAllByRole('button', { name: /Reabrir día/ }).length).toBe(1)
   })
 
-  it('el staff no ve «Reabrir día»', async () => {
-    sesion.rol = 'staff'
+  it('el encargado no ve «Reabrir día»', async () => {
+    sesion.rol = 'encargado'
     montarRed({ preview: PREVIEW_LISTO, historial: [CIERRE_ACTIVO] })
     montar()
 

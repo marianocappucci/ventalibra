@@ -2,7 +2,7 @@
 el router del motor extraído del add-on mayorista de Contalibra (ADR-010 de
 libracommerce). A diferencia de Contalibra no hay add-on que lo gatee —listas
 de precio es un módulo siempre libre desde la fase 7—, así que el permiso es
-el mismo que el resto de la ficha del cliente: staff o admin. La lógica en sí
+el de gerencia (encargado o admin): `clientes.lista_precio`. La lógica en sí
 (upsert, FK, 404/422) la prueba `libracommerce/tests/test_web_cliente_lista.py`;
 acá sólo el montaje y el gate en VentaLibra.
 """
@@ -20,14 +20,14 @@ def _lista(admin_client, nombre="Mayorista"):
     return r.json()["id"]
 
 
-def test_un_staff_puede_asignar_y_leer_la_lista(admin_client, staff_client):
+def test_un_encargado_puede_asignar_y_leer_la_lista(admin_client, encargado_client):
     cid = _cliente(admin_client)
     lid = _lista(admin_client)
 
     # El selector de la card carga las listas por este camino: con 403 quedaba sólo «precio base».
-    assert [l["id"] for l in staff_client.get("/api/listas-precio").json()] == [lid]
-    assert staff_client.get(f"/api/clientes/{cid}/lista-precio").json() == {"lista_id": None, "lista": None}
-    r = staff_client.put(f"/api/clientes/{cid}/lista-precio", json={"lista_id": lid})
+    assert [l["id"] for l in encargado_client.get("/api/listas-precio").json()] == [lid]
+    assert encargado_client.get(f"/api/clientes/{cid}/lista-precio").json() == {"lista_id": None, "lista": None}
+    r = encargado_client.put(f"/api/clientes/{cid}/lista-precio", json={"lista_id": lid})
     assert r.status_code == 200 and r.json()["lista_id"] == lid
     assert admin_client.get(f"/api/clientes/{cid}/lista-precio").json()["lista_id"] == lid
 

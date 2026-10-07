@@ -54,9 +54,9 @@ def test_desactivar_y_reactivar_un_cliente(admin_client):
     assert admin_client.post(f"/api/clientes/{cliente_id}/activar").json()["activo"] == 1
 
 
-def test_un_cajero_puede_dar_de_alta_un_cliente(staff_client):
-    """El POS da de alta clientes al vuelo: staff o admin, como el resto del mostrador."""
-    r = staff_client.post("/api/clientes", json={"name": "Del cajero"})
+def test_un_cajero_puede_dar_de_alta_un_cliente(cajero_client):
+    """El POS da de alta clientes al vuelo: cajero, vendedor, encargado o admin, como el resto del mostrador."""
+    r = cajero_client.post("/api/clientes", json={"name": "Del cajero"})
     assert r.status_code == 200, r.text
 
 
