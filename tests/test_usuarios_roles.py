@@ -120,9 +120,9 @@ def test_un_staff_existente_sigue_entrando_sin_migrar(admin_client, staff_client
     assert staff_client.get("/api/reportes").status_code == 403
 
 
-def test_el_arranque_con_la_demo_sigue_creando_al_visitante_como_staff(monkeypatch, tmp_path):
-    """`ensure_demo_user` levanta el arranque si el rol de la demo no está en el vocabulario del producto. `staff` sigue
-    estando: si alguien lo sacara de `ROLES`, la demo dejaría de arrancar (se nota acá y no en el deploy)."""
+def test_el_arranque_con_la_demo_crea_al_visitante_como_encargado(monkeypatch, tmp_path):
+    """ADR-070 (decisión del humano, 2026-10-07): el visitante de la demo nace `encargado`, no `staff`. `ensure_demo_user`
+    levanta el arranque si el rol no está en el vocabulario del producto: se nota acá y no en el deploy."""
     monkeypatch.setenv("DEMO_MODE", "1")
     monkeypatch.setenv("DEMO_USERNAME", "visitante")
     from motor_de_test import limpiar_entre_tests
@@ -131,6 +131,6 @@ def test_el_arranque_con_la_demo_sigue_creando_al_visitante_como_staff(monkeypat
     app = create_app(destino_dominio(tmp_path / "ventalibra.db"))
     try:
         visitante = app.state.users.get_by_username("visitante")
-        assert visitante["role"] == "staff"
+        assert visitante["role"] == "encargado"
     finally:
         app.state.auth_engine.dispose()

@@ -110,6 +110,7 @@ from .depositos_ganchos import (
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .permisos import (
+    ENCARGADO,
     ROLES,
     condicion,
     requiere,
@@ -324,7 +325,8 @@ def create_app(db_path: str) -> FastAPI:
     # `503 demo user not provisioned`. Cablear `incluir_demo=True` en el router
     # no alcanza — la ruta y la siembra las conecta el producto, cada una por
     # su lado.
-    ensure_demo_user(user_repository)
+    # ADR-070: el visitante de la demo es `encargado` (decisión del humano, 2026-10-07), no el `staff` heredado que se retira.
+    ensure_demo_user(user_repository, rol=ENCARGADO)
 
     app = FastAPI(title="VentaLibra")
 

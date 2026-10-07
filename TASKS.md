@@ -83,8 +83,8 @@ no usar este archivo como historial (para eso está `CHANGELOG.md`).
   tiene `costos.ver` (`app/costos.py`), pero Productos muestra `$ NaN` en «Precio costo» (pide una prop para ocultar la columna, y lo mismo el costo y el
   subtotal del detalle de una orden de compra), más una prop `soloLectura` por pantalla (ADR-049). Recibir compras es del encargado
   (el depósito no: decisión del humano, 2026-09-29).
-- [ ] Roles: migrar los usuarios `staff` existentes a un rol concreto (hoy siguen con los permisos de siempre) y, cuando no quede
-  ninguno, retirar el rol y `catalogo.configurar`.
+- [x] Roles: migrar los usuarios `staff` existentes a un rol concreto (2026-10-07, ADR-070: dev `cajero` → cajero, visitante de la demo → encargado).
+- [ ] Roles: retirar el rol `staff` y `catalogo.configurar` del código (ya no queda ningún usuario con ese rol).
 
 ## Bloqueadas
 

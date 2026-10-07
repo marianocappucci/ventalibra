@@ -512,18 +512,18 @@ def test_cada_rol_entra_solo_donde_la_tabla_dice(instancia, rol):
 
 
 def test_el_visitante_de_la_demo_ve_todo_y_no_escribe_nada_de_mas(instancia):
-    """La demo entra como `staff` y libraauth le abre la LECTURA de cualquier cerrojo de rol (2026-08-06, pedido
-    del humano: «que muestre todos los menús como si fuera admin aunque no deje modificar»).
+    """La demo entra como `encargado` (ADR-070; antes `staff`) y libraauth le abre la LECTURA de cualquier cerrojo de rol
+    (2026-08-06, pedido del humano: «que muestre todos los menús como si fuera admin aunque no deje modificar»).
 
     Preservado con los roles nuevos porque `requiere()` se arma sobre `json_api_require_role`: lee todo lo que
-    lee un admin, y para escribir vale lo que vale para `staff`."""
+    lee un admin, y para escribir vale lo que vale para `encargado`."""
     demo = instancia["demo"]
     desvios = []
     for (metodo, ruta), roles in sorted(_permitidas().items()):
         if (metodo, ruta) in NO_EJECUTAR:
             continue
         rechazada = _rechazada_por_rol(_sondear(demo, metodo, ruta))
-        debe_entrar = metodo == "GET" or "staff" in roles
+        debe_entrar = metodo == "GET" or "encargado" in roles
         if rechazada == debe_entrar:
             desvios.append(f"demo {metodo} {ruta}: {'debía pasar' if debe_entrar else 'NO debía pasar'}")
     assert not desvios, "\n" + "\n".join(desvios)
@@ -606,9 +606,9 @@ def test_auth_me_y_login_traen_las_capacidades_del_rol(instancia):
 
 def test_el_visitante_de_la_demo_conserva_su_rol_y_la_bandera(instancia):
     me = instancia["demo"].get("/auth/me").json()
-    assert me["role"] == "staff"
+    assert me["role"] == "encargado"
     assert me["demo_readonly"] is True
-    assert me["capacidades"] == permisos.capacidades_de("staff")
+    assert me["capacidades"] == permisos.capacidades_de("encargado")
 
 
 def _ts(ruta: str) -> str:
