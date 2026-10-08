@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DevolucionDeVenta } from '../pages/Ventas'
+import { opcionesDe } from './buscable'
 import { _resetCacheDeMedios } from '@/lib/medios-pago'
 import type { Venta } from '../api'
 
@@ -99,8 +100,6 @@ beforeEach(() => {
   _resetCacheDeMedios()
 })
 
-// Radix Select usa pointer capture, que jsdom no trae.
-if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
 
 async function abrirDialogo(user: ReturnType<typeof userEvent.setup>) {
@@ -119,12 +118,11 @@ describe('La devolución de una venta', () => {
     const dialogo = await screen.findByRole('dialog')
     expect(within(dialogo).getByRole('button', { name: 'Cancelar' }).className).toContain('max-lg:h-11')
     // Los dos selectores y la X de cierre (el componente `Dialog` del producto, que usan todos sus diálogos) también: medían 36 y 16 px.
-    // El selector fija su alto con `data-[size=default]:h-9`: un `max-lg:h-11` suelto pierde por especificidad (pasó en #471,
-    // medido en demo). Tiene que ir con la misma variante de atributo.
+    // Son `SelectBuscable`: el campo de texto fija su alto con `h-9` y el componente no admite clase propia en el input, así que el 44 va en
+    // el contenedor, sobre el input de adentro (`max-lg:[&_input]:h-11`). Un `max-lg:h-11` en el contenedor no alcanzaba al campo.
     for (const etiqueta of ['Depósito', 'Devolver por']) {
-      const clase = within(dialogo).getByLabelText(etiqueta).className
-      expect(clase).toContain('max-lg:data-[size=default]:h-11')
-      expect(clase.split(/\s+/)).not.toContain('max-lg:h-11')
+      const clase = within(dialogo).getByLabelText(etiqueta).parentElement!.className
+      expect(clase).toContain('max-lg:[&_input]:h-11')
     }
     // Las cantidades a devolver, también 44 (medían 32).
     for (const campo of within(dialogo).getAllByPlaceholderText(/máx\./)) expect(campo.className).toContain('max-lg:h-11')
@@ -167,7 +165,7 @@ describe('La devolución de una venta', () => {
     // El combobox de depósito (no el de "Devolver por") tiene que mostrar
     // "Bodega Centro" como valor ya elegido -- no hace falta abrirlo.
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveTextContent('Bodega Centro')
+      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveValue('Bodega Centro')
     })
   })
 
@@ -177,10 +175,8 @@ describe('La devolución de una venta', () => {
     await abrirDialogo(user)
 
     const combo = await screen.findByRole('combobox', { name: 'Depósito' })
-    await waitFor(() => expect(combo).toHaveTextContent('Salón Centro'))
-    await user.click(combo)
-    const nombres = (await screen.findAllByRole('option')).map((o) => o.textContent)
-    expect(nombres).toEqual(['Salón Centro', 'Bodega Centro', 'Salón Norte'])
+    await waitFor(() => expect(combo).toHaveValue('Salón Centro'))
+    expect(await opcionesDe(user, combo)).toEqual(['Salón Centro', 'Bodega Centro', 'Salón Norte'])
   })
 
   it('con turno en una sucursal ofrece sólo los depósitos activos de ésa, y manda el elegido', async () => {
@@ -191,11 +187,9 @@ describe('La devolución de una venta', () => {
     await abrirDialogo(user)
 
     const combo = await screen.findByRole('combobox', { name: 'Depósito' })
-    await waitFor(() => expect(combo).toHaveTextContent('Salón Norte'))
-    await user.click(combo)
+    await waitFor(() => expect(combo).toHaveValue('Salón Norte'))
     // Ni los depósitos de la sucursal 1 ni el dado de baja de la 7.
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Salón Norte'])
-    await user.keyboard('{Escape}')
+    expect(await opcionesDe(user, combo)).toEqual(['Salón Norte'])
 
     await user.type(await screen.findByPlaceholderText(/máx\. 5/), '1')
     await user.click(await screen.findByRole('button', { name: /Confirmar devolución/ }))
@@ -213,7 +207,7 @@ describe('La devolución de una venta', () => {
     await abrirDialogo(user)
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveTextContent('Bodega Centro')
+      expect(screen.getByRole('combobox', { name: 'Depósito' })).toHaveValue('Bodega Centro')
     })
   })
 

@@ -37,9 +37,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
+import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Ban, FileText, Hash, LockKeyhole, Plus, Printer, QrCode, Scan, Split, Trash2, User } from 'lucide-react'
 import type { ComponentType } from 'react'
@@ -762,14 +760,11 @@ export function Pos() {
           ) : (
             <>
               <span className="text-xs">Sucursal</span>
-              <Select value={locationId} onValueChange={setLocationId}>
-                <SelectTrigger className="h-8 w-48" aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
-                <SelectContent>
-                  {locations.map((loc) => (
-                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectBuscable
+                value={locationId} onChange={setLocationId} className="w-48 [&_input]:h-8" ariaLabel="Sucursal" limpiable={false}
+                placeholder="Buscar sucursal…"
+                opciones={locations.map((loc) => ({ value: String(loc.id), label: loc.nombre }))}
+              />
               {turno && !turno.caja && (
                 <span className="text-xs text-amber-600 dark:text-amber-500">
                   Turno sin caja asignada: convendría cerrarlo y abrir uno nuevo en una caja.
@@ -1626,14 +1621,11 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
           {pagos.map((pago, i) => (
             <div key={i} className="grid gap-2 rounded-md border p-3">
               <div className="flex items-center gap-2">
-                <Select value={pago.medio} onValueChange={(v) => actualizar(i, 'medio', v)}>
-                  <SelectTrigger className="h-9 flex-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {medios.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{etiquetaEnElPos(m)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SelectBuscable
+                  value={pago.medio} onChange={(v) => actualizar(i, 'medio', v)} className="flex-1" ariaLabel="Medio de pago" limpiable={false}
+                  placeholder="Buscar medio…"
+                  opciones={medios.map((m) => ({ value: m.id, label: etiquetaEnElPos(m) }))}
+                />
                 {mixto && (
                   <Button
                     type="button" size="icon" variant="ghost"
@@ -2011,34 +2003,21 @@ function AbrirTurno({ onAbierto }: { onAbierto: (t: Shift) => void }) {
         <form onSubmit={abrir} className="mt-5 grid gap-3">
           <div className="grid gap-2">
             <Label>Sucursal</Label>
-            {/* `v && ...`: el `<select>` nativo que Radix mantiene en sombra
-                para accesibilidad dispara un `onChange` con valor vacío en
-                cuanto sus `<option>` cambian (acá, cuando `locations` pasa
-                de `[]` a la lista real) -- sin este guard, esa señal
-                espuria pisaba la sucursal recién preseleccionada, antes de
-                que el cajero llegara a tocar nada. Medido con la suite de
-                este archivo (`pos-turno-por-caja.test.tsx`). */}
-            <Select value={sucursalId} onValueChange={(v) => v && setSucursalId(v)}>
-              <SelectTrigger aria-label="Sucursal"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
-              <SelectContent>
-                {locations.map((l) => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SelectBuscable
+              value={sucursalId} onChange={setSucursalId} ariaLabel="Sucursal" limpiable={false}
+              placeholder="Buscar sucursal…"
+              opciones={locations.map((l) => ({ value: String(l.id), label: l.nombre }))}
+            />
           </div>
           <div className="grid gap-2">
             <Label>Caja</Label>
-            <Select value={cajaId} onValueChange={(v) => v && setCajaId(v)} disabled={!sucursalId}>
-              <SelectTrigger aria-label="Caja"><SelectValue placeholder="Elegí una caja…" /></SelectTrigger>
-              <SelectContent>
-                {cajas.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)} disabled={c.tiene_turno_abierto}>
-                    {c.nombre}{c.tiene_turno_abierto ? ' (en uso)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SelectBuscable
+              value={cajaId} onChange={setCajaId} ariaLabel="Caja" limpiable={false} disabled={!sucursalId}
+              placeholder="Buscar caja…"
+              opciones={cajas.map((c) => ({
+                value: String(c.id), label: `${c.nombre}${c.tiene_turno_abierto ? ' (en uso)' : ''}`, disabled: c.tiene_turno_abierto,
+              }))}
+            />
             {sucursalId && cajas.length > 0 && cajas.every((c) => c.tiene_turno_abierto) && (
               <p className="text-xs text-muted-foreground">
                 Todas las cajas de esta sucursal tienen un turno abierto.

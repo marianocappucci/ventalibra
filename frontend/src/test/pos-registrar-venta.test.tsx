@@ -151,6 +151,50 @@ describe('Registrar la venta (D1: una sola llamada)', () => {
     expect(registro.body).not.toMatchObject({ deposito_id: 7 })
   })
 
+  // El POS se usa con lector y teclado: el medio de cobro es un campo de texto buscable (libra-ui ADR-039) y no tiene que romper
+  // el flujo rápido. Con la lista abierta Enter elige; con la lista cerrada Enter es del formulario y cobra.
+  it('el medio de cobro se elige escribiendo: Enter elige sin cobrar, y un segundo Enter cobra con ese medio', async () => {
+    const { llamadas } = montarRed()
+    const user = userEvent.setup()
+    montar()
+    await escanear(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
+
+    const medio = await screen.findByRole('combobox', { name: 'Medio de pago' })
+    expect(medio).toHaveValue('Efectivo')
+    await user.click(medio)
+    await user.keyboard('{Control>}a{/Control}tarj')
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Tarjeta de débito'])
+    await user.keyboard('{Enter}')
+    expect(medio).toHaveValue('Tarjeta de débito')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    // Elegir no cobra: Enter con la lista abierta es de la lista.
+    expect(llamadas.some((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))).toBe(false)
+
+    await user.keyboard('{Enter}')
+    const registro = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/ventas'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(registro.body).toMatchObject({ pagos: [{ medio: 'tarjeta_debito', monto: 3000 }] })
+  })
+
+  it('en el cobro, Tab sale del campo del medio, cierra la lista y no cambia el medio elegido', async () => {
+    montarRed()
+    const user = userEvent.setup()
+    montar()
+    await escanear(user)
+    await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
+
+    const medio = await screen.findByRole('combobox', { name: 'Medio de pago' })
+    await user.click(medio)
+    await user.keyboard('{Control>}a{/Control}merc{Tab}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(medio).toHaveValue('Efectivo')
+    expect(medio).not.toHaveFocus()
+  })
+
   it('la sucursal predeterminada (preseleccionada) también manda su depósito de venta, no su id', async () => {
     const { llamadas } = montarRed()
     const user = userEvent.setup()
@@ -173,7 +217,7 @@ describe('Registrar la venta (D1: una sola llamada)', () => {
     const user = userEvent.setup()
     montar()
     await escanear(user)
-    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Sucursal Norte')
+    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveValue('Sucursal Norte')
     await user.click(await screen.findByRole('button', { name: /Cobrar/ }))
     await user.click(screen.getByRole('button', { name: /Cobrar/ }))
 
@@ -289,8 +333,8 @@ describe('La sucursal inicial del POS', () => {
     await escanear(user)
 
     // La etiqueta accesible del combobox es fija ("Sucursal"); lo que cambia
-    // con la selección es su TEXTO visible (el valor elegido).
-    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Salón')
+    // con la selección es el VALOR del campo (la etiqueta de lo elegido).
+    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveValue('Salón')
   })
 
   it('sin ninguna marcada is_default, cae a la primera de la lista', async () => {
@@ -304,7 +348,7 @@ describe('La sucursal inicial del POS', () => {
     montar()
     await escanear(user)
 
-    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveTextContent('Sucursal Sur')
+    expect(await screen.findByRole('combobox', { name: 'Sucursal' })).toHaveValue('Sucursal Sur')
   })
 
   it('la lista sale de /api/sucursales: no se le piden los depósitos al motor para elegir dónde vender', async () => {

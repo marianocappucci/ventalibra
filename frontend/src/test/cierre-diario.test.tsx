@@ -15,6 +15,7 @@ vi.mock('../context/AuthContext', () => ({
 }))
 
 import { CierreDiario } from '../pages/CierreDiario'
+import { opcionesDe } from './buscable'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -135,9 +136,8 @@ describe('Cierre diario', () => {
     montar()
 
     const combo = await screen.findByRole('combobox')
-    await waitFor(() => expect(combo).toHaveTextContent('Sucursal Centro'))
-    await user.click(combo)
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Sucursal Centro', 'Sucursal Norte'])
+    await waitFor(() => expect(combo).toHaveValue('Sucursal Centro'))
+    expect(await opcionesDe(user, combo)).toEqual(['Sucursal Centro', 'Sucursal Norte'])
     // Las sucursales vienen de /api/sucursales, no de /api/depositos.
     expect(llamadas.some((l) => l.url.includes('/api/depositos'))).toBe(false)
     await waitFor(() => expect(llamadas.some((l) => l.url.includes('/api/cierre-diario/preview?sucursal_id=1'))).toBe(true))
@@ -147,7 +147,7 @@ describe('Cierre diario', () => {
     const { llamadas } = montarRed({ preview: PREVIEW_LISTO, turnoEnSucursal: 7 })
     montar()
 
-    await waitFor(() => expect(screen.getByRole('combobox')).toHaveTextContent('Sucursal Norte'))
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('Sucursal Norte'))
     await waitFor(() => expect(llamadas.some((l) => l.url.includes('/api/cierre-diario/preview?sucursal_id=7'))).toBe(true))
   })
 
