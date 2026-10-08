@@ -86,6 +86,10 @@ GET    /config/arca/estado                                              ADMIN
 GET    /config/arca/servicios                                           ADMIN
 GET    /config/arca/certificado-info                                    ADMIN
 POST   /config/arca/probar                                              ADMIN
+POST   /config/arca/pedido                                              ADMIN
+GET    /config/arca/pedido                                              ADMIN
+GET    /config/arca/pedido.csr                                          ADMIN
+DELETE /config/arca/pedido                                              ADMIN
 GET    /api/config/mercadopago                                          ADMIN
 PUT    /api/config/mercadopago                                          ADMIN
 DELETE /api/config/mercadopago/credenciales                             ADMIN
