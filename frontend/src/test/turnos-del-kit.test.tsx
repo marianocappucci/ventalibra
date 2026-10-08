@@ -63,7 +63,7 @@ it('abrir un turno ofrece sólo las cajas libres y manda caja_id', async () => {
   await user.click(screen.getByRole('button', { name: /Abrir turno/ }))
   const dialogo = await screen.findByRole('dialog')
   // La única libre es «Barra» (Mostrador ya tiene un turno abierto) y queda preseleccionada.
-  await waitFor(() => expect(within(dialogo).getByRole('combobox', { name: 'Caja' })).toHaveTextContent('Barra'))
+  await waitFor(() => expect(within(dialogo).getByRole('combobox', { name: 'Caja' })).toHaveValue('Barra — Salón'))
   await user.click(within(dialogo).getByRole('button', { name: /Abrir turno ahora/ }))
   await waitFor(() => expect(llamadas.some((l) => l.url === '/api/turnos/abrir')).toBe(true))
   expect(llamadas.find((l) => l.url === '/api/turnos/abrir')!.body).toMatchObject({ caja_id: 3 })

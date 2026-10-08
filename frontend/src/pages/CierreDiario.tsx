@@ -7,15 +7,13 @@ import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { BadgeEstado } from 'libra-ui/badge-estado'
 import { Printer, Undo2 } from 'lucide-react'
 import { ICONOS } from 'libra-ui/iconos-identidad'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
+import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { fecha, fechaHora, hora } from '@/lib/fechas'
 import { abrirTicket } from '@/lib/tickets'
 import { puede } from '@/lib/permisos'
@@ -141,14 +139,11 @@ export function CierreDiario() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Vista previa del día</CardTitle>
-          <Select value={sucursalId} onValueChange={setSucursalId}>
-            <SelectTrigger className="h-8 w-56"><SelectValue placeholder="Elegí una sucursal…" /></SelectTrigger>
-            <SelectContent>
-              {locations.map((l) => (
-                <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelectBuscable
+            value={sucursalId} onChange={setSucursalId} className="w-56" ariaLabel="Sucursal" limpiable={false}
+            placeholder="Buscar sucursal…"
+            opciones={locations.map((l) => ({ value: String(l.id), label: l.nombre }))}
+          />
         </CardHeader>
         <CardContent className="grid gap-3">
           {error && <p className="text-sm text-destructive">{error}</p>}

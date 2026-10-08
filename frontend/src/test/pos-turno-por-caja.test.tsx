@@ -146,6 +146,74 @@ describe('Abrir turno pide sucursal y caja', () => {
     }
   })
 
+  // El POS se usa con teclado: el selector de la caja es un campo de texto buscable (libra-ui ADR-039) y no tiene que
+  // romper el flujo rápido. Enter con la lista cerrada es del formulario (abre el turno); con la lista abierta elige.
+  it('con la lista cerrada, Enter en el campo de la caja abre el turno (el flujo rápido sigue andando)', async () => {
+    const { llamadas } = montarRedBase()
+    montar()
+
+    await screen.findByText(/No hay ningún turno de caja abierto/)
+    const combo = await screen.findByRole('combobox', { name: 'Caja' })
+    await waitFor(() => expect(combo).toHaveValue('Caja 1'))
+
+    const user = userEvent.setup()
+    await user.click(combo)
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await user.keyboard('{Enter}')
+
+    const abrir = await waitFor(() => {
+      const encontrada = llamadas.find((l) => l.metodo === 'POST' && l.url.endsWith('/api/turnos/abrir'))
+      expect(encontrada).toBeDefined()
+      return encontrada!
+    })
+    expect(abrir.body).toMatchObject({ caja_id: 10 })
+  })
+
+  it('escribir el nombre de una caja en uso y apretar Enter no la elige ni envía el formulario', async () => {
+    const { llamadas } = montarRedBase()
+    montar()
+
+    await screen.findByText(/No hay ningún turno de caja abierto/)
+    const combo = await screen.findByRole('combobox', { name: 'Caja' })
+    await waitFor(() => expect(combo).toHaveValue('Caja 1'))
+
+    const user = userEvent.setup()
+    await user.click(combo)
+    await user.keyboard('{Control>}a{/Control}Caja 2')
+    const opcion = await screen.findByRole('option', { name: /Caja 2/ })
+    expect(opcion).toHaveAttribute('aria-disabled', 'true')
+    await user.keyboard('{Enter}')
+
+    // Enter con la lista abierta es de la lista: ni elige la caja ocupada ni envía el formulario.
+    expect(llamadas.some((l) => l.url.endsWith('/api/turnos/abrir'))).toBe(false)
+    await user.keyboard('{Escape}')
+    expect(combo).toHaveValue('Caja 1')
+  })
+
+  it('escribir parte del nombre de la caja libre y Enter la elige; Tab sigue al campo de al lado y cierra la lista', async () => {
+    montarRedBase()
+    montar()
+
+    await screen.findByText(/No hay ningún turno de caja abierto/)
+    const combo = await screen.findByRole('combobox', { name: 'Caja' })
+    await waitFor(() => expect(combo).toHaveValue('Caja 1'))
+
+    const user = userEvent.setup()
+    await user.click(combo)
+    await user.keyboard('{Control>}a{/Control}caj')
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Caja 1', 'Caja 2 (en uso)'])
+    await user.keyboard('{Enter}')
+    expect(combo).toHaveValue('Caja 1')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    await user.click(combo)
+    await user.keyboard('{Control>}a{/Control}caj{Tab}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(combo).toHaveValue('Caja 1')
+    expect(combo).not.toHaveFocus()
+  })
+
   it('no ofrece una caja que ya tiene un turno abierto', async () => {
     montarRedBase()
     montar()
