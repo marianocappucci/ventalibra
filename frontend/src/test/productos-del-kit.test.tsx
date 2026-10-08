@@ -281,7 +281,7 @@ it.each(['encargado', 'deposito'] as const)('el %s elige el proveedor habitual y
   await user.click(screen.getByLabelText('Editar producto'))
   const dialogo = await screen.findByRole('dialog')
   const selector = await within(dialogo).findByLabelText('Proveedor habitual')
-  await waitFor(() => expect(selector).toHaveTextContent('Distribuidora Norte'))
+  await waitFor(() => expect(selector).toHaveValue('Distribuidora Norte'))
   await user.click(selector)
   await user.click(await screen.findByRole('option', { name: 'Mayorista Sur' }))
   await user.click(within(dialogo).getByRole('button', { name: /Guardar/ }))

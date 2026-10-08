@@ -19,10 +19,8 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { Undo2 } from 'lucide-react'
+import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { useMediosPago } from '@/lib/medios-pago'
 
 // La sesión de este producto siempre puede anular/devolver (F4, corrección
@@ -197,30 +195,23 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
             </table>
           </div>
 
-          {/* `max-lg:data-[size=default]:h-11` y no `max-lg:h-11`: el `SelectTrigger` del kit fija su alto con `data-[size=default]:h-9`,
-              que por el selector de atributo pesa más y le ganaba (medido en Chromium contra demo: seguían en 36 px). */}
+          {/* `max-lg:[&_input]:h-11` en el contenedor: el `SelectBuscable` es un campo de texto (`h-9`) y no admite clase propia en el input. */}
           <div className="flex flex-wrap items-end gap-3">
             <div className="grid gap-1">
               <Label className="text-xs">Depósito</Label>
-              <Select value={locationId} onValueChange={setLocationId}>
-                <SelectTrigger className="w-48 max-lg:data-[size=default]:h-11" aria-label="Depósito"><SelectValue placeholder="Elegí un depósito…" /></SelectTrigger>
-                <SelectContent>
-                  {locations.map((l) => (
-                    <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectBuscable
+                value={locationId} onChange={setLocationId} className="w-48 max-lg:[&_input]:h-11" ariaLabel="Depósito" limpiable={false}
+                placeholder="Buscar depósito…"
+                opciones={locations.map((l) => ({ value: String(l.id), label: l.nombre }))}
+              />
             </div>
             <div className="grid gap-1">
               <Label className="text-xs">Devolver por</Label>
-              <Select value={medio} onValueChange={setMedio}>
-                <SelectTrigger className="w-48 max-lg:data-[size=default]:h-11" aria-label="Devolver por"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {medios.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectBuscable
+                value={medio} onChange={setMedio} className="w-48 max-lg:[&_input]:h-11" ariaLabel="Devolver por" limpiable={false}
+                placeholder="Buscar medio…"
+                opciones={medios.map((m) => ({ value: m.id, label: m.label }))}
+              />
             </div>
           </div>
 
