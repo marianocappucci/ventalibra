@@ -15,9 +15,10 @@ existencias en sus depósitos. Acá quedan las reglas de este producto:
 - alta, edición, predeterminada y baja son **de admin** (capacidad `sucursales.admin`); la lectura es de todos los
   roles (`catalogo.ver`/`stock.ver`) y **la transferencia** de quien mueve mercadería (`stock.transferir`: encargado,
   depósito y admin): quien mueve la mercadería entre locales no es el dueño (2026-09-21, ADR-049);
-- **un solo local sin el módulo `multisucursal`** (plan Básico, ADR-048): no se da de alta ni se reactiva una segunda
-  sucursal activa, y no se transfiere mercadería entre depósitos de sucursales distintas (403, con el mismo texto
-  que `require_module`). La unidad es la **sucursal** y no el depósito: un local con dos depósitos sigue siendo un
+- **un solo local sin el módulo `multisucursal`** (ADR-048; desde el plan único, ADR-072, el módulo viene prendido en toda
+  instancia y sólo queda apagado por una decisión administrativa): no se da de alta ni se reactiva una segunda
+  sucursal activa, y no se transfiere mercadería entre depósitos de sucursales distintas (403, con el vocabulario
+  de `require_module`: «modulo 'multisucursal' …»). La unidad es la **sucursal** y no el depósito: un local con dos depósitos sigue siendo un
   local, así que transferir entre ellos es libre. El gate mira el módulo en cada request (`app.state.modules`, como
   `require_module`) y no toca lo que ya existe: una instalación con varias sucursales creadas antes sigue leyéndose,
   editándose y vendiendo igual; sólo se le impide crear más y cruzar mercadería.
@@ -64,8 +65,8 @@ Modulos = Callable[[], Any]
 MULTISUCURSAL = "multisucursal"
 
 _MENSAJE_SUCURSAL = (
-    "El plan Básico es de un solo local: para {accion} hace falta el plan Premium "
-    "(modulo '" + MULTISUCURSAL + "' no incluido en el plan actual)."
+    "Esta instancia es de un solo local: para {accion} hace falta habilitar el módulo de multisucursal "
+    "(modulo '" + MULTISUCURSAL + "' no habilitado en esta instancia; escribinos para activarlo)."
 )
 
 
@@ -126,7 +127,7 @@ def gate_de_transferencias(conexion: Callable[[], Any], modulos: Modulos):
     Se monta sobre TODO el router de depósitos y actúa sólo sobre esa ruta: cualquier otra pasa sin tocar nada, ni el
     cuerpo. Si el motor un día suma un gancho propio, esto se muda a él y este test (`test_planes_y_sucursales.py`)
     dice si la ruta se movió: reconoce la ruta por su forma (`POST …/transferir`), y si dejara de reconocerla el
-    caso «Básico rechaza la transferencia entre sucursales» se pone en rojo.
+    caso «sin el módulo, la transferencia entre sucursales se rechaza» se pone en rojo.
 
     Sin el módulo, deja pasar la transferencia entre depósitos de la MISMA sucursal y rechaza (403) la que cruza de
     sucursal. Lo que no puede resolver (cuerpo ilegible, un id que no existe, campos que faltan) lo deja pasar: lo

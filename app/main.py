@@ -655,7 +655,7 @@ def create_app(db_path: str) -> FastAPI:
     # una entidad propia y el stock vive en sus depósitos. Leer es de todos los roles (`catalogo.ver`/`stock.ver`);
     # transferir, de quien mueve mercadería (`stock.transferir`); crear, editar, predeterminar y borrar, de admin
     # (`sucursales.admin`, en la guarda del router y también en `autorizar_escritura`).
-    # Un solo local sin el módulo `multisucursal` (plan Básico, ADR-048): el alta de una segunda sucursal y la transferencia
+    # Un solo local sin el módulo `multisucursal` (ADR-048; con el plan único, ADR-072, sólo si se lo apagó en la instancia): el alta de una segunda sucursal y la transferencia
     # entre sucursales dan 403 (`app/depositos_ganchos.py`). `_modulos` lee `app.state.modules` en cada pedido, como
     # `require_module` y `_facturacion_habilitada`: un cambio de plan a mitad de proceso se ve en el pedido siguiente.
     def _modulos():
@@ -895,14 +895,12 @@ def create_app(db_path: str) -> FastAPI:
     # devoluciones se restan (lo resuelve el motor); fiar SÍ es vender, así que acá no hay `sin_fiado`. Los CSV cuelgan del mismo
     # prefijo, bajo `/api`: no hace falta una ruta más en el proxy de Vite.
     #
-    # 🔴 **Sin gate de plan, a propósito (decisión de negocio pendiente).** `require_module("margen")` haría falta si el margen fuera
-    # de un plan (`plans.py` anticipa que Premium "tiene margen para reportes"); no se asignó ninguno porque no lo decidió el humano.
-    # Mientras tanto queda disponible para todo el que tenga `margen`, igual que Reportes. Para gatearlo: sumar `"margen"` al plan elegido en
-    # `plans.py` y `Depends(require_module("margen"))` en este `dependencies=`.
+    # **Sin gate de plan.** El margen es libre (ADR-048) y con el plan único (ADR-072) todo está incluido: no hay plan al que atarlo.
+    # Queda disponible para todo el que tenga `margen`, igual que Reportes.
     app.include_router(build_margen_router(conexion=lc_get_connection), dependencies=[Depends(requiere("margen"))])
     # Reposición sugerida (roadmap de producto, B-3, ADR-051): el router del motor (`libracommerce.web.reposicion_router`, v0.28.0; sólo
     # lectura: por producto, cuánto conviene pedir según lo que se vende, lo que hay y lo que ya viene en órdenes abiertas, con export
-    # CSV). Capacidad `reposicion.ver` (admin y encargado, como `margen`); sin gate de plan (libre en Básico y Premium, ADR-048). Sólo
+    # CSV). Capacidad `reposicion.ver` (admin y encargado, como `margen`); sin gate de plan (libre, ADR-048). Sólo
     # sugiere: no genera la orden de compra. No lleva costos: `/api/reportes` no está en los prefijos de `SinCostos` (`app/costos.py`)
     # y `tests/test_reposicion.py` fija que ninguna clave de costo viaja.
     app.include_router(
@@ -940,7 +938,7 @@ def create_app(db_path: str) -> FastAPI:
         resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
     ))
     # Vencimientos y lotes (roadmap de producto, A-3, ADR-052): los DOS routers del motor (`libracommerce.web.vencimientos_router`, v0.30.0,
-    # ADR-018 del motor), que cuelgan de `/api/vencimientos`. Sin gate de plan (libre en Básico y Premium, ADR-048). Desde v0.30.0 (A-4,
+    # ADR-018 del motor), que cuelgan de `/api/vencimientos`. Sin gate de plan (libre, ADR-048). Desde v0.30.0 (A-4,
     # ADR-053) las salidas de un producto marcado siguen el lote, y las opciones de productos, stock y ventas lo completan (más arriba).
     #   - Lectura (`GET ""`, `/export`, `/productos/{id}/lotes`): `vencimientos.ver` (encargado y depósito). No trae costos.
     #   - Escritura: `usuario_actual` (con `id` entero: sale como `created_by` de los movimientos) y una guarda POR OPERACIÓN, porque el

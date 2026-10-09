@@ -104,7 +104,11 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
   del humano): quedan dos planes —Básico $20k, un solo local, todo libre; Premium
   $55k, suma facturación ARCA y multisucursal— y Dashboard deja de ser de un
   plan. Estándar se retira (una instancia que lo tenga se trata como Premium,
-  con aviso). Reemplaza la propuesta del PR #344.
+  con aviso). Reemplaza la propuesta del PR #344. 🔵 **Revisado otra vez el
+  2026-10-09** (ADR-072, decisión del humano): queda **un único plan, `unico`
+  («Plan único», $39.900 de lista, una sucursal incluida), con todo incluido**;
+  Básico y Premium se retiran y una instancia que los tenga se migra sola al
+  arrancar. La sucursal adicional ($19.950) es comercial, no la modela el sistema.
 - [x] Infraestructura de deploy: `Dockerfile`/`docker-compose.yml`/
   `scripts/nuevo_cliente.py`/`panel_admin.py`/`npm_api.py`/`npm_setup.py`,
   deploy keys SSH (`libracommerce` solo lectura + `ventalibra` propia).

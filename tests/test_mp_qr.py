@@ -536,8 +536,9 @@ def test_la_automatica_no_factura_una_venta_que_no_se_cobro_por_qr(admin_client)
 def test_sin_el_modulo_de_facturacion_el_cobro_por_qr_no_se_cae(admin_client, mp):
     """La automática no puede convertir un cobro en un 403.
 
-    Una instancia con un plan sin facturación tiene que poder cobrar igual: la
-    venta se confirma y queda sin comprobante, que es lo que el plan dice.
+    Una instancia con la facturación apagada (ya no por plan: ADR-072 lo trae
+    todo; lo apaga un administrador) tiene que poder cobrar igual: la venta se
+    confirma y queda sin comprobante, que es lo que el módulo dice.
     """
     _configurar_mp(admin_client, auto_facturar=True)
     # El plan se aplica sobre el repositorio, no por HTTP: no hay endpoint
