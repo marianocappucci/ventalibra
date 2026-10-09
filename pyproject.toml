@@ -95,7 +95,8 @@ dependencies = [
     # v0.40.2 -> v0.41.0 (2026-10-04, ADR-032 de libracommerce): `anular_venta` NO anula una venta cuya factura tiene CAE y no tiene nota de credito (`VentaConFacturaCAE`, 409 en `POST /api/ventas/{id}/anular`); con la nota emitida anula sin acreditar dos veces la cuenta corriente. `obtener_venta` trae `factura_cae`. Va junto con la ruta de la nota (ADR de este producto), si no esas ventas quedarian sin forma de anularse. Sin migracion.
     # v0.44.0 -> v0.45.0 (2026-10-05, ADR-037 de libracommerce): `GET /api/reportes/reposicion` y su `/export` aceptan `orden` y `sentido`, para que el CSV salga en el orden de la tabla. Sin migracion; sin `orden`, nada cambia.
     # v0.47.0 -> v0.48.0 (2026-10-09): listado y reportes de ventas por dia completo (ADR-039 de libracommerce). Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.48.0",
+    # v0.48.0 -> v0.49.0 (2026-10-09): la devolucion reintegra lo pagado (prorrateado) y cada devolucion sucesiva escribe su egreso de caja (ADR-040). Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.49.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
