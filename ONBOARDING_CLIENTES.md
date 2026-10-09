@@ -204,10 +204,10 @@ reemplaza a ADR-048). Ya no existen Básico, Estándar ni Premium. **El plan de 
 > etiqueta a `unico`) y deja un aviso en el log. Una instancia que estaba en Básico pasa a poder
 > facturar y a dar de alta más sucursales en cuanto reinicia con esta versión.
 >
-> **Al dar de alta un cliente**, el wizard (`scripts/nuevo_cliente.py`, que es del motor
-> `libracore`) valida el plan contra `plans.PLANES`: escribí `unico`. Si el wizard propone
-> `basico` por defecto, ese valor ya no es válido hasta que el motor tome el plan de
-> `plans.PLANES`.
+> **Al dar de alta un cliente**, el plan es siempre `unico`. El wizard
+> (`scripts/nuevo_cliente.py`) y el backoffice todavía proponen `basico` por defecto, pero
+> desde libracore v1.151.0 el motor lo resuelve con `PLANES_RETIRADOS` y da de alta en
+> `unico` (con un `WARNING`).
 
 ---
 

@@ -2908,8 +2908,8 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   `multisucursal` no está habilitado en esta instancia (sigue nombrándolo, como `require_module`). Esos avisos sólo aparecen si un
   administrador apagó el módulo.
 - Consecuencias:
-  - **El motor (`libracore`) todavía propone `basico` como plan por defecto** en el wizard `nuevo_cliente` y en el alta del backoffice
-    (`plan="basico"`), y valida contra `plans.PLANES`: hasta que lo cambie para tomar `plans.PLANES[0]`, hay que escribir `unico` a mano.
-    Es un arreglo de fondo del motor, no de este repo.
+  - **El motor propone `basico` por defecto** en el wizard `nuevo_cliente` y en el alta del backoffice (`plan="basico"`). Desde
+    libracore v1.151.0 (`provisioning.resolver_plan`, libracore#375) un plan retirado se resuelve con `PLANES_RETIRADOS`, así que ese
+    `basico` da de alta en `unico` con un `WARNING`. El pin de este repo sube a v1.151.0 en el mismo PR.
   - Los ADR viejos (009, 039, 048) no se reescriben: llevan una nota de que ADR-072 los reemplaza en lo de planes.
-- Depende de: nada externo.
+- Depende de: libracore v1.151.0 (resolución de planes retirados en el alta).
