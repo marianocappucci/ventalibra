@@ -5,6 +5,7 @@ compras, ventas) y la tabla `users` propia de VentaLibra -- ver
 DECISIONS.md ADR-002/ADR-003. No hay pool ni ORM, mismo estilo que
 libracommerce/libracore.db.
 """
+import logging
 import sqlite3
 
 from libracommerce.db.schema import init_schema
@@ -12,6 +13,8 @@ from libracore.db import core
 from libracore.db.core import Conexion
 
 from .normalizacion_medios import normalizar_dominio
+
+logger = logging.getLogger(__name__)
 
 
 def connect(db_path: str):
@@ -166,9 +169,17 @@ def init_modules_schema(conn: Conexion) -> None:
     creada, o con planes mezclados o desconocidos, sigue con el sembrado de
     siempre.
 
-    Un plan retirado (`plans.PLANES_RETIRADOS`, hoy `estandar`) se lee como su
-    reemplazo y deja un `WARNING` en cada arranque: no se reescribe la etiqueta
-    aca (eso es del provisioning), pero tampoco pasa desapercibido."""
+    🔴 **Un plan retirado se MIGRA, no solo se avisa** (ADR-072, plan unico). Si las
+    filas de plan dicen UN plan y es retirado (`plans.PLANES_RETIRADOS`: `basico`,
+    `premium`, `estandar`), este arranque **prende** (`habilitado=1`) los modulos
+    del plan vigente y reescribe la etiqueta `plan` de las filas al vigente
+    (`unico`), con un `WARNING` que dice que se migro. Una instancia guardada como
+    `basico` tiene `facturacion` y `multisucursal` APAGADOS: si el arranque solo
+    avisara, quedaria asi para siempre aunque el producto ya no tenga ese plan.
+    Solo PRENDE, nunca apaga, y no toca los add-ons (`plan='addon'`): son un
+    servicio aparte y se prenden desde el backoffice. Es idempotente: tras la
+    migracion la etiqueta ya es la vigente y los arranques siguientes no hacen
+    nada."""
     import plans
 
     conn.executescript(
@@ -176,24 +187,35 @@ def init_modules_schema(conn: Conexion) -> None:
         CREATE TABLE IF NOT EXISTS modulos (
             modulo TEXT PRIMARY KEY,
             habilitado INTEGER NOT NULL DEFAULT 1,
-            plan TEXT NOT NULL DEFAULT 'premium'
+            plan TEXT NOT NULL DEFAULT 'unico'
         );
         """
     )
-    existentes = {fila[0] for fila in conn.execute("SELECT modulo FROM modulos").fetchall()}
+    estado = {fila[0]: bool(fila[1]) for fila in conn.execute("SELECT modulo, habilitado FROM modulos").fetchall()}
+    existentes = set(estado)
     planes = {
         fila[0] for fila in conn.execute("SELECT DISTINCT plan FROM modulos WHERE plan <> 'addon'").fetchall()
     }
     plan = next(iter(planes)) if len(planes) == 1 else None
     if plan is not None and plan not in plans.PLAN_MODULOS and plan not in plans.PLANES_RETIRADOS:
         plan = None  # un plan que este codigo no conoce: no se adivina
-    # Para un plan retirado esto es lo que deja el WARNING (ver `plans.plan_vigente`).
-    activos = plans.modulos_de_plan(plan) if plan is not None else None
+    # Para un plan retirado `plan_vigente` es lo que deja el WARNING (una sola vez por arranque).
+    vigente = plans.plan_vigente(plan) if plan is not None else None
+    activos = plans.modulos_de_plan(vigente) if vigente is not None else None
+    if plan is not None and plan != vigente:
+        a_prender = sorted(m for m in activos if estado.get(m) is False)
+        conn.execute("UPDATE modulos SET plan = ? WHERE plan = ?", (vigente, plan))
+        for modulo in a_prender:
+            conn.execute("UPDATE modulos SET habilitado = ? WHERE modulo = ?", (1, modulo))
+        logger.warning(
+            "Instancia con el plan retirado %r migrada al plan %r (ADR-072): etiqueta reescrita%s.",
+            plan, vigente, f" y modulos prendidos: {', '.join(a_prender)}" if a_prender else "",
+        )
     for modulo in sorted(plans.TODOS_LOS_MODULOS - existentes):
         habilitado = 1 if activos is None else int(modulo in activos)
         conn.execute(
             "INSERT OR IGNORE INTO modulos (modulo, habilitado, plan) VALUES (?, ?, ?)",
-            (modulo, habilitado, plan or "premium"),
+            (modulo, habilitado, vigente or "unico"),
         )
     conn.commit()
 

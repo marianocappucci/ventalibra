@@ -38,7 +38,7 @@
 import { createConfiguracion } from 'libra-ui/Configuracion'
 import { Printer, Ruler, Scale, ShieldCheck, Tags } from 'lucide-react'
 
-import { AvisoPremium } from '../components/aviso-premium'
+import { AvisoModulo } from '../components/aviso-modulo'
 import { FACTURACION, useTieneModulo } from '../lib/modulos'
 import { ConfigBalanza } from './ConfigBalanza'
 import { ConfigCategorias } from './ConfigCategorias'
@@ -71,7 +71,7 @@ const COMUN = {
 // Ver el docstring: acá no hay webhook, y es deliberado.
 const MERCADOPAGO = { webhook: false }
 
-// Plan Premium: ARCA completa.
+// Con el módulo `facturacion` prendido (el plan único lo trae): ARCA completa.
 const ConfiguracionConArca = createConfiguracion({
   ...COMUN,
   integraciones: {
@@ -84,7 +84,7 @@ const ConfiguracionConArca = createConfiguracion({
   },
 })
 
-// Plan Básico (ADR-048): la facturación ARCA es del plan Premium y `/config/arca` contesta 403 sin el módulo, así
+// Sin el módulo `facturacion` (ADR-048; con el plan único, ADR-072, sólo si se lo apagó): `/config/arca` contesta 403, así
 // que el kit no la ofrece: en su lugar, en el mismo lugar de la barra, el aviso. Las otras dos integraciones no
 // cambian.
 const ConfiguracionSinArca = createConfiguracion({
@@ -97,9 +97,10 @@ const ConfiguracionSinArca = createConfiguracion({
       label: 'ARCA / AFIP',
       icono: ShieldCheck,
       contenido: (
-        <AvisoPremium titulo="Facturación electrónica ARCA">
-          Emitir facturas y configurar el certificado y el punto de venta es del plan Premium.
-        </AvisoPremium>
+        <AvisoModulo titulo="Facturación electrónica ARCA">
+          Emitir facturas y configurar el certificado y el punto de venta no está habilitado en esta instancia;
+          escribinos para activarlo.
+        </AvisoModulo>
       ),
     }],
   },

@@ -284,7 +284,7 @@ reemplazadas.
 ## ADR-009 — Fase 5: planes y gating por módulo (onboarding multi-cliente)
 
 - Estado: aceptada; **el esquema de tres planes y el módulo `facturacion` «desde Estándar» quedaron reemplazados por
-  ADR-048** (dos planes: Básico y Premium). El mecanismo (tabla `modulos`, `require_module`) sigue vigente.
+  ADR-048** (dos planes: Básico y Premium) **y éste por ADR-072** (un único plan). El mecanismo (tabla `modulos`, `require_module`) sigue vigente.
 - Fecha: 2026-07-26
 - Contexto: para poder onboardear clientes reales hace falta un modelo de
   planes (mismo patrón que Gestiolibra/MedLibra) que gatee qué funciona
@@ -2112,7 +2112,9 @@ decisión explícita del humano, y no forman parte de esta ADR.
 
 ## ADR-048 — Dos planes: Básico (un solo local) y Premium (facturación ARCA + multisucursal)
 
-- Estado: aceptada (decisión del humano, 2026-09-29); reemplaza el esquema de planes de ADR-009, el gate de Dashboard de ADR-039 y
+- Estado: aceptada (decisión del humano, 2026-09-29); **en lo de planes la reemplaza ADR-072 (plan único, 2026-10-09)**: el gate de
+  «un solo local» por módulo, los módulos `facturacion`/`multisucursal`, `MODULOS_RETIRADOS` y la SPA siguen vigentes; Básico y Premium
+  ya no existen. Reemplaza el esquema de planes de ADR-009, el gate de Dashboard de ADR-039 y
   la propuesta del PR #344 (rama `feature/planes-dos-niveles`), que queda superada
 - Fecha: 2026-09-29
 - Contexto: ADR-009 fijó tres planes diferenciados sólo por `facturacion`; ADR-039 le sumó `dashboard` a Premium y dejó a Estándar y
@@ -2870,3 +2872,44 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
 - La tabla de ADR-049 conserva la columna `staff` como registro de cómo era; la matriz vigente es `app/permisos.py`.
 - libraauth no cambia: `staff` sigue siendo su vocabulario por defecto para los productos que no pasan el suyo; VentaLibra pasa `ROLES`.
 
+
+## ADR-072 — Plan único: todo incluido
+
+- Estado: aceptada (decisión del humano, 2026-10-09); **reemplaza a ADR-048 en lo de planes** (Básico y Premium dejan de existir). Del ADR-048
+  siguen vigentes los módulos `facturacion` y `multisucursal`, el gate de «un solo local» cuando `multisucursal` está apagado, el retiro de
+  `dashboard` como módulo y lo que lee la SPA.
+- Fecha: 2026-10-09
+- Contexto: ADR-048 separaba Básico ($20.000, un solo local, sin facturación) de Premium ($55.000, facturación ARCA + multisucursal). La
+  landing ya publica **un único plan con todas las funcionalidades**; el producto tenía que dejar de ofrecer dos.
+- Decisión:
+  - **Un solo plan**, nombre interno `unico`, etiqueta «Plan único», **precio de lista $39.900 por instancia con una sucursal incluida**.
+    `plans.py`: `PLANES = ["unico"]`, `PLAN_LABELS = {"unico": "Plan único"}`, `PLAN_PRECIOS = {"unico": 39900}`,
+    `PLAN_MODULOS = {"unico": {"facturacion", "multisucursal"}}`.
+  - **`TODOS_LOS_MODULOS` no se vacía** (sigue siendo `{"facturacion", "multisucursal"}`): la SPA arma la pantalla con la lista `modulos` de
+    `/auth/me`, que sale de `TODOS_LOS_MODULOS | ADDONS` filtrado por los habilitados. Si el set quedara vacío, la facturación desaparecería de
+    la pantalla aunque estuviera prendida. Que un módulo esté apagado en una instancia pasa a ser una decisión administrativa, no de plan.
+  - **`ADDONS` no cambia**: `resguardo_externo` es un servicio aparte, viene apagado y se prende por instancia desde el backoffice.
+  - **El precio por sucursal adicional ($19.950) es comercial**: el sistema no lo modela (no cuenta sucursales ni cobra por ellas). Dar de
+    alta la segunda sucursal es libre.
+- **Planes retirados y migración automática.** `plans.PLANES_RETIRADOS = {"estandar": "unico", "basico": "unico", "premium": "unico"}`.
+  - `modulos_de_plan` y `aplicar_plan_en_db` los resuelven como `unico`, avisando con un `WARNING`; `aplicar_plan_en_db("basico")` deja los dos
+    módulos PRENDIDOS con la etiqueta `unico`. Un plan que no es de ninguna lista (un typo) sigue levantando `ValueError`.
+  - **El arranque migra la instancia** (`app.db.init_modules_schema`). Antes un plan retirado sólo dejaba un `WARNING`: con el plan único eso
+    habría dejado a toda instancia guardada como `basico` con facturación y sucursales APAGADAS para siempre. Ahora, si las filas de plan
+    dicen UN plan y es retirado, el arranque **prende** (`habilitado=1`) los módulos del plan vigente, **reescribe la etiqueta** `plan` de
+    esas filas a `unico` y avisa qué migró. **Sólo prende, nunca apaga**; los add-ons (`plan='addon'`) no se tocan; es idempotente (con la
+    etiqueta ya vigente no hace nada). Planes mezclados o desconocidos no se adivinan, y una base nueva se siembra toda prendida con plan
+    `unico` (el default de la columna y del sembrado pasa de `premium` a `unico`). La fila vieja de `dashboard` no se borra ni se lee: se
+    reetiqueta con las demás y sigue sin cortar nada.
+  - **Efecto visible**: una instancia que estaba en Básico pasa a poder facturar y a dar de alta más sucursales en cuanto reinicia con esta
+    versión. Es lo que decidió el humano (todo incluido); si alguna no debía, hay que avisar antes de desplegar.
+- **Lo que cambia en la pantalla y en el backend:** el aviso de módulo apagado (`AvisoModulo`, antes `AvisoPremium`) dice «sin activar en
+  esta instancia» y «escribinos para activarlo» en vez de «disponible en Premium»; el 403 del gate de sucursales dice que el módulo
+  `multisucursal` no está habilitado en esta instancia (sigue nombrándolo, como `require_module`). Esos avisos sólo aparecen si un
+  administrador apagó el módulo.
+- Consecuencias:
+  - **El motor (`libracore`) todavía propone `basico` como plan por defecto** en el wizard `nuevo_cliente` y en el alta del backoffice
+    (`plan="basico"`), y valida contra `plans.PLANES`: hasta que lo cambie para tomar `plans.PLANES[0]`, hay que escribir `unico` a mano.
+    Es un arreglo de fondo del motor, no de este repo.
+  - Los ADR viejos (009, 039, 048) no se reescriben: llevan una nota de que ADR-072 los reemplaza en lo de planes.
+- Depende de: nada externo.

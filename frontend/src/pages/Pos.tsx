@@ -1244,7 +1244,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
     return [{ medio: 'efectivo', monto: total.toFixed(2), recibido: '' }]
   })
   const [factura, setFactura] = useState(false)
-  // La facturación ARCA es del plan Premium (ADR-048): sin el módulo el backend contesta 403 a `/facturar`, así que
+  // La facturación ARCA es un módulo (ADR-048; con el plan único, ADR-072, viene prendido): si se lo apagó, sin el módulo el backend contesta 403 a `/facturar`, así que
   // el casillero se ofrece apagado y con el motivo en vez de dejar la venta cobrada con un error de factura.
   const facturacion = useTieneModulo(FACTURACION)
   const [registrando, setRegistrando] = useState(false)

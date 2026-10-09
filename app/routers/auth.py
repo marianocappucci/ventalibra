@@ -36,15 +36,15 @@ def _extras(request, user) -> dict:
 
     **`modulos`**: los habilitados de ESTA instancia (los del plan en `TODOS_LOS_MODULOS` y los add-ons
     encendidos), la misma forma que ya usan LibraDesk y Contalibra. Sale en el usuario de `/auth/login` y
-    `/auth/me` (ADR-048): sin esto la SPA no sabia que la facturacion ni las sucursales de mas son del plan
-    Premium.
+    `/auth/me` (ADR-048): sin esto la SPA no sabria si la facturacion y las sucursales de mas estan habilitadas
+    en esta instancia (con el plan unico, ADR-072, lo estan siempre salvo que se las apague a mano).
 
     Los modulos se leen en cada request y no al importar: el plan se cambia con la app corriendo
     (`aplicar_plan_en_db`) y un valor cacheado dejaria la pantalla ofreciendo lo que el backend ya rechaza.
 
     🔑 **Ante una falla NO devuelve una lista vacia de modulos: omite el campo.** Es el reves de LibraDesk, y a
     proposito: aca el gate de verdad es del backend (un 403 por endpoint) y la SPA tolera la falta del campo
-    ofreciendo todo (ver `frontend/src/lib/modulos.ts`). Una lista vacia le esconderia a un cliente Premium la
+    ofreciendo todo (ver `frontend/src/lib/modulos.ts`). Una lista vacia le esconderia a un cliente la
     facturacion que pago porque una consulta fallo un instante."""
     extras: dict = {"capacidades": capacidades_de((user or {}).get("role"))}
     # El nombre del negocio, para el subtítulo de la barra lateral (igual que Contalibra, Restolibra y LibraDesk). Es la config de

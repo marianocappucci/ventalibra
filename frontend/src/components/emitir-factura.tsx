@@ -1,4 +1,4 @@
-// El casillero «Emitir factura» del cobro del POS. Sin el módulo `facturacion` (plan Básico, ADR-048) se ofrece
+// El casillero «Emitir factura» del cobro del POS. Sin el módulo `facturacion` (con el plan único, ADR-072, sólo si se lo apagó en la instancia) se ofrece
 // apagado y con el motivo: el backend contesta 403 a `/facturar`, y dejar marcarlo terminaba en una venta cobrada
 // con un error de factura.
 export function EmitirFactura({ marcado, disponible, onChange }: {
@@ -13,7 +13,7 @@ export function EmitirFactura({ marcado, disponible, onChange }: {
         onChange={(e) => onChange(e.target.checked)}
       />
       Emitir factura
-      {!disponible && <span className="text-muted-foreground">(disponible en Premium)</span>}
+      {!disponible && <span className="text-muted-foreground">(no está habilitada en esta instancia; escribinos para activarla)</span>}
     </label>
   )
 }
