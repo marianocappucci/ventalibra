@@ -248,7 +248,7 @@ dependencies = [
     # v1.148.0 -> v1.149.0 (2026-10-09): en una demo (`DEMO_MODE=1`) la empresa es siempre ficticia: `config_manager.load()` pisa los datos de la empresa y `resolve_logo_path()` solo devuelve el logo de demo (ADR-038 de libracore). Fuera de una demo no cambia nada. Sin migracion.
     # v1.149.0 -> v1.150.0 (2026-10-09): `libracore-demo-codigos` (ADR-039): el reset de la demo guarda y devuelve los codigos de acceso. Sin migracion.
     # v1.150.0 -> v1.151.0 (2026-10-09): un plan retirado se resuelve con `PLANES_RETIRADOS` en el alta y en el cambio de plan (`provisioning.resolver_plan`, libracore#375): el `plan="basico"` por defecto del backoffice da de alta en `unico`. Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.151.0",
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.152.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
