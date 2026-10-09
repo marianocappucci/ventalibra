@@ -2,35 +2,49 @@
 plans.py de gestiolibra/medlibra (PLANES/PLAN_MODULOS/aplicar_plan_en_db),
 consumido por libracore.provisioning via import diferido.
 
-Dos planes, y lo que los separa es lo **fiscal y lo multisucursal**, no un
-tablero (ADR-048, decision del humano 2026-09-29):
+**Un unico plan, con todo incluido** (ADR-072, decision del humano 2026-10-09).
+Se llama `unico` (etiqueta «Plan unico», $39.900 de lista por instancia, con UNA
+sucursal incluida) y trae todas las funcionalidades: POS, stock, compras, caja,
+clientes y proveedores, cuenta corriente, promociones, margen, dashboard,
+etiquetas, tesoreria, egresos, libros IVA, `facturacion` (ARCA) y
+`multisucursal` (mas de una sucursal y la transferencia de mercaderia entre
+sucursales). Ya no existen los planes Basico ni Premium.
 
-- **Basico**: un solo local (UNA sucursal, con los depositos que necesite).
-  Todo lo demas -- POS, stock, compras, caja, clientes y proveedores, cuenta
-  corriente, promociones, margen, dashboard, etiquetas, tesoreria, egresos y
-  libros IVA -- esta libre.
-- **Premium**: suma `facturacion` (ARCA) y `multisucursal` (mas de una
-  sucursal y la transferencia de mercaderia entre sucursales).
+El precio por sucursal adicional ($19.950) es **comercial**: el sistema no lo
+modela, no cuenta sucursales ni cobra por ellas. `multisucursal` sigue siendo un
+modulo gateable (`TODOS_LOS_MODULOS`) y NO se vacia: la SPA arma la pantalla con
+la lista `modulos` de `/auth/me` (`TODOS_LOS_MODULOS | ADDONS` filtrado por los
+habilitados), asi que si el set quedara vacio la facturacion desapareceria de la
+pantalla. El plan unico los prende a los dos; que un modulo este apagado en una
+instancia es una decision administrativa (una instancia suspendida, un
+add-on...), ya no una diferencia de plan.
 
-Catalogo, inventario, ventas, compras, tesoreria, egresos y libros IVA son
-siempre libres en todos los planes (equivalente a "turnos" en Gestiolibra /
-todo el dominio clinico en MedLibra) -- lo mismo que caja, que en VentaLibra
-es "siempre" por decision de negocio (ver DECISIONS.md ADR-007, independiente
-del tema fiscal). `dashboard` dejo de ser un modulo gateable: ya no distingue
-un plan (ADR-048, que reemplaza a ADR-039 en ese punto).
+Historia: ADR-009 fijo tres planes (Basico, Estandar, Premium) separados por
+`facturacion`; ADR-048 (2026-09-29) los redujo a dos separados por lo fiscal y
+lo multisucursal; ADR-072 los reduce a uno. Catalogo, inventario, ventas,
+compras, tesoreria, egresos y libros IVA son siempre libres -- lo mismo que
+caja, que en VentaLibra es "siempre" por decision de negocio (ver DECISIONS.md
+ADR-007, independiente del tema fiscal). `dashboard` dejo de ser un modulo
+gateable en ADR-048.
 
 ## Lo que ya no existe, y que pasa con las instancias que lo tienen guardado
 
 El estado de una instancia vive en la tabla `modulos` (`modulo`, `habilitado`,
 `plan`), y el gate lee **solo `habilitado`** (`ModuleRepository.is_enabled`).
 
-- **Plan retirado (`estandar`)**: ver `PLANES_RETIRADOS`. Se lo trata como
-  `premium` -- tenia facturacion y, hasta ADR-048, las sucursales eran libres --,
-  **a la vista**: `modulos_de_plan`, `aplicar_plan_en_db` y el arranque de la
-  app (`app.db.init_modules_schema`) lo registran con un `WARNING`, y
-  `aplicar_plan_en_db` reescribe la etiqueta a `premium`. Un plan que no es de
-  ninguna de las dos listas **no** se aplica: `aplicar_plan_en_db` levanta
-  `ValueError` en vez de apagar todos los modulos de la instancia por un typo.
+- **Planes retirados (`basico`, `premium`, `estandar`)**: ver `PLANES_RETIRADOS`.
+  Todos se resuelven como `unico`, **a la vista**: `modulos_de_plan`,
+  `aplicar_plan_en_db` y el arranque de la app (`app.db.init_modules_schema`) lo
+  registran con un `WARNING`. `aplicar_plan_en_db` los aplica como `unico`
+  (todo prendido, etiqueta `unico`). **Y el arranque migra la instancia sola**:
+  una instancia que quedo guardada como `basico` tiene `facturacion` y
+  `multisucursal` APAGADAS; si el arranque solo avisara, quedaria asi para
+  siempre sin que nadie reaplique nada. Por eso `init_modules_schema`
+  **prende** los modulos del plan vigente y reescribe la etiqueta a `unico`.
+  Solo prende, nunca apaga, y no toca los add-ons.
+- Un plan que no es de ninguna de las dos listas **no** se aplica:
+  `aplicar_plan_en_db` levanta `ValueError` en vez de apagar todos los modulos
+  de la instancia por un typo.
 - **Modulo retirado (`dashboard`)**: ver `MODULOS_RETIRADOS`. La fila que quede
   en `modulos` no se borra ni se lee: `is_enabled` da `True` para todo modulo
   fuera de `TODOS_LOS_MODULOS`, asi que aunque diga `habilitado=0` (lo tenian
@@ -40,22 +54,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-PLANES = ["basico", "premium"]
-PLAN_LABELS = {"basico": "Básico", "premium": "Premium"}
-PLAN_PRECIOS = {"basico": 20000, "premium": 55000}
+PLANES = ["unico"]
+PLAN_LABELS = {"unico": "Plan único"}
+# Precio de lista por instancia, con una sucursal incluida. La sucursal adicional
+# ($19.950) es comercial y no se modela aca (ADR-072).
+PLAN_PRECIOS = {"unico": 39900}
 
-_BASICO: set[str] = set()
-_PREMIUM = _BASICO | {"facturacion", "multisucursal"}
-PLAN_MODULOS = {"basico": set(_BASICO), "premium": set(_PREMIUM)}
+_UNICO = {"facturacion", "multisucursal"}
+PLAN_MODULOS = {"unico": set(_UNICO)}
 
-TODOS_LOS_MODULOS = set(PLAN_MODULOS["premium"]) | _BASICO
+# 🔴 NO vaciar: la SPA arma la pantalla con `modulos` de `/auth/me`, que sale de
+# esto (mas los add-ons) filtrado por los habilitados.
+TODOS_LOS_MODULOS = set(_UNICO)
 
-# Planes que existieron y ya no se venden, con el plan que los reemplaza. Hoy se
-# reduce a `estandar` (ADR-009, tres planes; ADR-048 lo retira): tenia
-# `facturacion`, asi que el reemplazo es `premium` -- el unico plan con
-# facturacion --, y la instancia no pierde nada de lo que ya usaba. La unica que
-# lo tenia guardado al 2026-09-29 era `demo`.
-PLANES_RETIRADOS = {"estandar": "premium"}
+# Planes que existieron y ya no se venden, con el plan que los reemplaza. Hoy
+# los tres se resuelven como `unico`: `estandar` (ADR-009; retirado en ADR-048),
+# `basico` y `premium` (ADR-048; retirados en ADR-072). El reemplazo trae todo lo
+# que cualquiera de ellos tenia, asi que la instancia no pierde nada. Solo
+# `basico` tenia modulos apagados: ahi el arranque los PRENDE (ver
+# `app.db.init_modules_schema`).
+PLANES_RETIRADOS = {"estandar": "unico", "basico": "unico", "premium": "unico"}
 
 # Modulos que existieron como gateables y ya no lo son. Quedan listados para
 # que quien lea una fila vieja de `modulos` sepa que no es un olvido.
@@ -81,15 +99,15 @@ def plan_vigente(plan: str) -> str:
     """El plan con el que se opera hoy: el mismo, o el que reemplaza a uno retirado.
 
     Un plan retirado (`PLANES_RETIRADOS`) se resuelve **avisando**, no en
-    silencio: cada vez que alguien pregunta por `estandar` queda un `WARNING`
-    en el log. Un plan desconocido vuelve igual (no es un plan retirado y no
-    hay a que mapearlo); quien lo aplica decide que hacer.
+    silencio: cada vez que alguien pregunta por `basico`, `premium` o `estandar`
+    queda un `WARNING` en el log. Un plan desconocido vuelve igual (no es un
+    plan retirado y no hay a que mapearlo); quien lo aplica decide que hacer.
     """
     reemplazo = PLANES_RETIRADOS.get(plan)
     if reemplazo is None:
         return plan
     logger.warning(
-        "El plan %r ya no se vende (ADR-048): se lo trata como %r. "
+        "El plan %r ya no se vende (ADR-072): se lo trata como %r. "
         "Reaplicalo con plans.aplicar_plan_en_db(<db>, %r) para actualizar la etiqueta guardada.",
         plan, reemplazo, reemplazo,
     )
@@ -114,7 +132,9 @@ def aplicar_plan_en_db(db_path: str, plan: str) -> None:
     aplica, y no depende de que nadie los sume al set por error.
 
     Un plan retirado se aplica como su reemplazo y **con la etiqueta del
-    reemplazo** (`estandar` -> `premium`), avisando (ver `plan_vigente`). Un
+    reemplazo** (`basico`/`premium`/`estandar` -> `unico`), avisando (ver
+    `plan_vigente`); como el reemplazo trae todo, aplicar `basico` PRENDE los
+    modulos que tenia apagados. Un
     plan desconocido levanta `ValueError`: sin esto `modulos_de_plan` daria un
     set vacio y la instancia quedaria con TODO apagado, facturacion incluida,
     por un error de tipeo."""

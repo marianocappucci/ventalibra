@@ -75,7 +75,7 @@ function ProtectedRoute({ children, cap }: { children: ReactNode; cap?: Capacida
       </div>
     )
   }
-  // Los módulos del plan que la SPA lee para ofrecer (o no) lo que es de Premium; ver `lib/modulos.ts`.
+  // Los módulos habilitados que la SPA lee para ofrecer (o no) la facturación y las sucursales de más; ver `lib/modulos.ts`.
   return (
     <ModulosContext.Provider value={modulosDe(user)}>
       <Layout>{children}</Layout>

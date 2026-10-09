@@ -64,7 +64,7 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
         children: [
           // A-3 (ADR-052): qué vence y qué lote sacar. Del encargado y del depósito.
           { to: '/vencimientos', label: 'Vencimientos y lotes', icon: CalendarClock, hideFor: sinCapacidad('vencimientos.ver') },
-          // Sin `module`: en Básico sirve entre los depósitos de la misma sucursal; lo que cruza de sucursal lo corta el
+          // Sin `module`: sin `multisucursal` sirve entre los depósitos de la misma sucursal; lo que cruza de sucursal lo corta el
           // backend y la pantalla avisa (ADR-048).
           { to: '/transferencias', label: 'Transferencias', icon: ArrowRightLeft, hideFor: sinCapacidad('stock.transferir') },
         ],

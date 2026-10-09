@@ -6,7 +6,7 @@ contratación hasta que está operando.
 
 > **Qué es VentaLibra y qué no.** Es el vertical de **retail**: catálogo, inventario, compras a
 > proveedores, ventas y POS, caja por turno, listas de precios, cuenta corriente y reportes. La
-> facturación electrónica y la multisucursal son lo que se vende como plan Premium, pero el
+> facturación electrónica y la multisucursal vienen incluidas en el plan único, pero el
 > centro del producto es el mostrador. Si el cliente lo que necesita es contabilidad, el producto es Contalibra; si es un
 > restaurante, Restolibra.
 
@@ -19,8 +19,8 @@ contratación hasta que está operando.
 3. Primer acceso
 4. Configurar el comercio y las sucursales
 5. Cargar catálogo, precios y stock inicial
-6. Aplicar el plan contratado
-7. Configurar integraciones (ARCA, SMTP) según el plan
+6. Aplicar el plan (siempre `unico`)
+7. Configurar integraciones (ARCA, SMTP)
 8. Crear los usuarios
 9. Handoff: primer ingreso con el cliente
 
@@ -34,7 +34,7 @@ contratación hasta que está operando.
 | Slug | Nombre corto sin espacios: define `clientes/<slug>/` y el subdominio |
 | CUIT y condición ante IVA | Determina el tipo de comprobante (A, B o C) |
 | Domicilio fiscal | Aparece en los comprobantes |
-| Plan contratado | Define si tiene facturación ARCA y más de una sucursal |
+| Cantidad de sucursales | El plan único incluye una; cada sucursal adicional se cobra aparte (el sistema no lo modela) |
 | Sucursales / depósitos | Dónde se vende y dónde está el stock |
 | Catálogo | Listado de productos: si es grande, pedirlo en Excel |
 | Precios y listas | Si maneja más de una lista (mayorista/minorista) |
@@ -112,7 +112,7 @@ En el servidor, desde `/root/ventalibra`:
 ./.venv-scripts/bin/python3 scripts/nuevo_cliente.py
 ```
 
-El wizard pide nombre, slug, puerto, dominio, plan y credenciales de admin; crea
+El wizard pide nombre, slug, puerto, dominio, plan (siempre `unico`) y credenciales de admin; crea
 `<LIBRA_CLIENTES_DIR>/<slug>/` (compose + `data/` con base, config y adjuntos aislados), levanta el
 contenedor y —si hay dominio— crea el proxy y el certificado en Nginx Proxy Manager.
 
@@ -180,33 +180,40 @@ capacitación:
 
 ## 6. Plan y módulos
 
-Dos planes desde el 2026-09-29 (`DECISIONS.md` ADR-048): lo que los separa es **lo fiscal y lo
-multisucursal**, no un tablero. El plan Estándar ya no existe.
+Hay **un único plan, con todo incluido**, desde el 2026-10-09 (`DECISIONS.md` ADR-072, que
+reemplaza a ADR-048). Ya no existen Básico, Estándar ni Premium. **El plan de toda instancia es
+`unico`**: no hay nada que elegir.
 
-| Plan | Precio | Qué habilita |
-|------|--------|--------------|
-| Básico | $20.000 | **Un solo local** (una sucursal, con los depósitos que necesite): POS, stock, compras, caja, clientes y proveedores, cuenta corriente, promociones, margen, reposición sugerida, vencimientos y lotes, dashboard, etiquetas, tesorería, egresos y libros IVA |
-| Premium | $55.000 | Todo lo anterior + **facturación ARCA** + **multisucursal** (más de una sucursal y transferencias de mercadería entre sucursales) |
+| Plan | Precio de lista | Qué habilita |
+|------|-----------------|--------------|
+| Plan único (`unico`) | $39.900 por instancia, con **una sucursal incluida** | Todo: POS, stock, compras, caja, clientes y proveedores, cuenta corriente, promociones, margen, reposición sugerida, vencimientos y lotes, dashboard, etiquetas, tesorería, egresos y libros IVA, **facturación ARCA** y **multisucursal** (más de una sucursal y transferencias de mercadería entre sucursales) |
 
-> **El core no se gatea**: catálogo, inventario, ventas, compras y caja están en todos los
-> planes (caja por decisión de negocio, `DECISIONS.md` ADR-007), y el dashboard también. Los
-> únicos módulos gateados son `facturacion` y `multisucursal`, los dos exclusivos de Premium. La
-> fuente de verdad es `plans.py` de este repo.
+> **Sucursales adicionales**: $19.950 por cada una. Es un precio **comercial**: el sistema no
+> cuenta sucursales ni cobra por ellas, así que dar de alta la segunda es libre y el cobro se
+> acuerda con el cliente.
 >
-> **Un solo local en Básico**: sin `multisucursal` el sistema no deja dar de alta una segunda
-> sucursal ni pasar mercadería de una sucursal a otra (avisa «disponible en Premium»). Un local
-> con varios depósitos sigue siendo un local: mover mercadería entre sus depósitos es libre. Si
-> un cliente Básico ya tiene varias sucursales cargadas, las conserva; sólo no puede crear más.
+> **Los módulos**: `facturacion` y `multisucursal` quedan como módulos de la instancia (la
+> pantalla los lee de `/auth/me`) y el plan único los prende a los dos. Sólo aparece el aviso
+> «sin activar en esta instancia» si alguien apagó uno a mano. La fuente de verdad es `plans.py`
+> de este repo. El add-on `resguardo_externo` no es del plan: es un servicio aparte, viene
+> apagado y se prende por instancia desde el backoffice.
 >
-> **Si encontrás una instancia con el plan `estandar` guardado** (sólo la demo lo tenía), se
-> opera como Premium y deja un aviso en el log al arrancar. Reaplicá `premium` con
-> `plans.aplicar_plan_en_db` para actualizar la etiqueta.
+> **Si encontrás una instancia con un plan viejo guardado** (`basico`, `premium` o `estandar`),
+> **no hace falta tocarla**: el arranque de la app la migra sola al plan único (prende los
+> módulos que tuviera apagados, nunca apaga ninguno, no toca los add-ons, y reescribe la
+> etiqueta a `unico`) y deja un aviso en el log. Una instancia que estaba en Básico pasa a poder
+> facturar y a dar de alta más sucursales en cuanto reinicia con esta versión.
+>
+> **Al dar de alta un cliente**, el plan es siempre `unico`. El wizard
+> (`scripts/nuevo_cliente.py`) y el backoffice todavía proponen `basico` por defecto, pero
+> desde libracore v1.151.0 el motor lo resuelve con `PLANES_RETIRADOS` y da de alta en
+> `unico` (con un `WARNING`).
 
 ---
 
 ## 7. Integraciones
 
-### ARCA / facturación electrónica (plan Premium)
+### ARCA / facturación electrónica (incluida en el plan único)
 
 La configuración vive en `/config/arca` de la instancia: certificado `.crt`, clave `.key`, CUIT
 y punto de venta. El punto de venta tiene que estar habilitado en AFIP como "Facturación
@@ -282,7 +289,7 @@ Al terminar:
 ```
 DATOS
 [ ] Razón social, CUIT, domicilio, IVA recopilados
-[ ] Plan definido
+[ ] Sucursales a dar de alta definidas (una incluida en el plan único)
 [ ] Catálogo, listas de precios y stock inicial conseguidos
 
 INSTANCIA
@@ -294,7 +301,7 @@ CONFIGURACIÓN
 [ ] Sucursales y depósitos cargados
 [ ] Catálogo, precios y stock inicial cargados
 [ ] Proveedores cargados
-[ ] Plan aplicado y módulos correctos
+[ ] Plan `unico` aplicado y módulos correctos (facturación y multisucursal prendidos)
 [ ] ARCA en homologación probada (si aplica)
 [ ] SMTP configurado y probado (si aplica)
 

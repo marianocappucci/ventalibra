@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { AuthProvider } from '../context/AuthContext'
 
-const PREMIUM = ['facturacion', 'multisucursal']
-const BASICO: string[] = []
+const TODOS = ['facturacion', 'multisucursal'] // el plan único
+const SIN_MODULOS: string[] = [] // alguno apagado por un administrador
 
 const CENTRO = {
   id: 1, nombre: 'Centro', codigo: null, direccion: null, activa: true, es_default: true,
@@ -41,13 +41,13 @@ describe('App: los módulos salen del usuario en sesión', () => {
     )
   }
 
-  it('un usuario de Básico ve el aviso en /sucursales', async () => {
-    conSesion(BASICO)
-    expect(await screen.findByRole('note')).toHaveTextContent('Más de una sucursal: disponible en Premium')
+  it('un usuario de una instancia sin `multisucursal` ve el aviso en /sucursales', async () => {
+    conSesion(SIN_MODULOS)
+    expect(await screen.findByRole('note')).toHaveTextContent('Más de una sucursal: sin activar en esta instancia')
   })
 
-  it('un usuario de Premium, no', async () => {
-    conSesion(PREMIUM)
+  it('un usuario del plan único, no', async () => {
+    conSesion(TODOS)
     expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeInTheDocument()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })

@@ -1,5 +1,6 @@
-// Dos planes (ADR-048): Básico es un solo local; Premium suma facturación ARCA y multisucursal. La SPA lee los módulos
-// de `/auth/me` (`modulos`: los habilitados) y avisa «disponible en Premium» donde el backend cortaría con 403:
+// Plan único (ADR-072; antes ADR-048 con Básico y Premium): trae facturación ARCA y multisucursal, así que la SPA no avisa
+// nada. La SPA lee los módulos de `/auth/me` (`modulos`: los habilitados) y, si un administrador apagó alguno, avisa
+// «sin activar en esta instancia» donde el backend cortaría con 403:
 // el alta de una segunda sucursal, la transferencia entre sucursales y la facturación (config de ARCA y casillero del
 // POS). **Sólo avisa**: el que corta es el backend (`tests/test_planes_y_sucursales.py`), así que si el campo falta se
 // ofrece todo.
@@ -20,8 +21,8 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'u', name: 'U', role: sesion.rol }, loading: false }),
 }))
 
-const PREMIUM = ['facturacion', 'multisucursal']
-const BASICO: string[] = []
+const TODOS = ['facturacion', 'multisucursal'] // el plan único
+const SIN_MODULOS: string[] = [] // alguno apagado por un administrador
 
 const CENTRO = {
   id: 1, nombre: 'Centro', codigo: null, direccion: null, activa: true, es_default: true,
@@ -61,23 +62,23 @@ describe('lib/modulos', () => {
   })
 
   it('con la lista, el módulo está o no; sin lista se ofrece todo', () => {
-    expect(tieneModulo(PREMIUM, 'multisucursal')).toBe(true)
-    expect(tieneModulo(BASICO, 'multisucursal')).toBe(false)
+    expect(tieneModulo(TODOS, 'multisucursal')).toBe(true)
+    expect(tieneModulo(SIN_MODULOS, 'multisucursal')).toBe(false)
     expect(tieneModulo(undefined, 'multisucursal')).toBe(true)
   })
 })
 
 describe('Sucursales', () => {
-  it('en Básico avisa que más de una sucursal es Premium y lo dice en el botón', async () => {
-    conModulos(BASICO, <Sucursales />)
-    expect(await screen.findByRole('note')).toHaveTextContent('Más de una sucursal: disponible en Premium')
-    expect(await screen.findByRole('button', { name: /Nueva sucursal \(Premium\)/ })).toBeInTheDocument()
+  it('sin `multisucursal` avisa que más de una sucursal está sin activar y lo dice en el botón', async () => {
+    conModulos(SIN_MODULOS, <Sucursales />)
+    expect(await screen.findByRole('note')).toHaveTextContent('Más de una sucursal: sin activar en esta instancia')
+    expect(await screen.findByRole('button', { name: /Nueva sucursal \(sin activar\)/ })).toBeInTheDocument()
     // Lo que ya hay sigue a la vista y editable.
     expect(await screen.findByText('Centro')).toBeInTheDocument()
   })
 
-  it('en Premium no avisa nada', async () => {
-    conModulos(PREMIUM, <Sucursales />)
+  it('con el plan único no avisa nada', async () => {
+    conModulos(TODOS, <Sucursales />)
     expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeInTheDocument()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
@@ -90,22 +91,22 @@ describe('Sucursales', () => {
 
   it('un cajero no ve el aviso: no da de alta sucursales', async () => {
     sesion.rol = 'cajero'
-    conModulos(BASICO, <Sucursales />)
+    conModulos(SIN_MODULOS, <Sucursales />)
     expect(await screen.findByText('Centro')).toBeInTheDocument()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 })
 
 describe('Transferencias', () => {
-  it('en Básico avisa que entre sucursales es Premium, y deja la pantalla', async () => {
-    conModulos(BASICO, <Transferencias />)
-    expect(await screen.findByRole('note')).toHaveTextContent('Transferencias entre sucursales: disponible en Premium')
+  it('sin `multisucursal` avisa que entre sucursales está sin activar, y deja la pantalla', async () => {
+    conModulos(SIN_MODULOS, <Transferencias />)
+    expect(await screen.findByRole('note')).toHaveTextContent('Transferencias entre sucursales: sin activar en esta instancia')
     expect(screen.getByRole('note')).toHaveTextContent('entre los depósitos de tu sucursal')
     expect(await screen.findByRole('heading', { name: 'Transferir stock' })).toBeInTheDocument()
   })
 
-  it('en Premium no avisa nada', async () => {
-    conModulos(PREMIUM, <Transferencias />)
+  it('con el plan único no avisa nada', async () => {
+    conModulos(TODOS, <Transferencias />)
     expect(await screen.findByRole('heading', { name: 'Transferir stock' })).toBeInTheDocument()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
@@ -114,20 +115,20 @@ describe('Transferencias', () => {
 describe('Configuración: la integración con ARCA', () => {
   const irAArca = () => '/configuracion?seccion=integraciones&integracion=arca'
 
-  it('en Básico la sección ARCA dice que es Premium y no llama a /config/arca', async () => {
-    conModulos(BASICO, <Configuracion />, irAArca())
-    expect(await screen.findByRole('note')).toHaveTextContent('Facturación electrónica ARCA: disponible en Premium')
+  it('sin `facturacion` la sección ARCA dice que está sin activar y no llama a /config/arca', async () => {
+    conModulos(SIN_MODULOS, <Configuracion />, irAArca())
+    expect(await screen.findByRole('note')).toHaveTextContent('Facturación electrónica ARCA: sin activar en esta instancia')
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining('/config/arca'), expect.anything())
   })
 
-  it('en Basico las otras integraciones siguen', async () => {
-    conModulos(BASICO, <Configuracion />, irAArca())
+  it('sin `facturacion` las otras integraciones siguen', async () => {
+    conModulos(SIN_MODULOS, <Configuracion />, irAArca())
     expect(await screen.findByRole('button', { name: /Email \/ SMTP/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /ARCA \/ AFIP/ })).toBeInTheDocument()
   })
 
-  it('en Premium es la configuración de ARCA de siempre', async () => {
-    conModulos(PREMIUM, <Configuracion />, irAArca())
+  it('con el plan único es la configuración de ARCA de siempre', async () => {
+    conModulos(TODOS, <Configuracion />, irAArca())
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/config/arca'), expect.anything()))
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
@@ -140,7 +141,7 @@ describe('Casillero «Emitir factura» del POS', () => {
     const casillero = screen.getByRole('checkbox', { name: /Emitir factura/ })
     expect(casillero).toBeDisabled()
     expect(casillero).not.toBeChecked()
-    expect(screen.getByText('(disponible en Premium)')).toBeInTheDocument()
+    expect(screen.getByText('(no está habilitada en esta instancia; escribinos para activarla)')).toBeInTheDocument()
     await userEvent.click(casillero)
     expect(onChange).not.toHaveBeenCalled()
   })
@@ -150,6 +151,6 @@ describe('Casillero «Emitir factura» del POS', () => {
     render(<EmitirFactura marcado={false} disponible onChange={onChange} />)
     await userEvent.click(screen.getByRole('checkbox', { name: 'Emitir factura' }))
     expect(onChange).toHaveBeenCalledWith(true)
-    expect(screen.queryByText('(disponible en Premium)')).not.toBeInTheDocument()
+    expect(screen.queryByText('(no está habilitada en esta instancia; escribinos para activarla)')).not.toBeInTheDocument()
   })
 })
