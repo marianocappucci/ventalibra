@@ -30,6 +30,16 @@ REPO="/root/ventalibra"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
+# Pasa por `log`, linea por linea, lo que le entra por stdin: la salida de los
+# comandos del motor termina en el log del cron con el mismo formato que el resto.
+log_lineas() {
+  local linea
+  while IFS= read -r linea; do
+    [ -n "$linea" ] && log "$linea"
+  done
+  return 0
+}
+
 # --- La guarda ------------------------------------------------------------
 # Si el nombre no es el de una demo, no se sigue. Es barato, y es lo unico que
 # separa "resetear la demo" de "borrarle la base a un cliente".
@@ -140,6 +150,22 @@ case "$URL_BASE" in
     fi
     log "motor: PostgreSQL (sidecar $SIDECAR)"
 
+    # --- Los codigos de acceso: guardarlos ---------------------------------------
+    # Antes el reset borraba los codigos de acceso entregados a clientes
+    # potenciales: `demo_codigos` vive en la misma base que vacia el `DROP SCHEMA`.
+    # Ahora se guardan ANTES de borrar y se devuelven despues del arranque; la
+    # logica vive en el motor, `libracore.provisioning.demo_codigos` (ADR-039).
+    # Si falla NO se aborta: la demo igual tiene que quedar limpia.
+    CODIGOS_DUMP=/tmp/demo-codigos-$CONTENEDOR.sql
+    DEMO_CODIGOS="$REPO/.venv-scripts/bin/libracore-demo-codigos"
+    rm -f "$CODIGOS_DUMP"
+    if [ -x "$DEMO_CODIGOS" ]; then
+      "$DEMO_CODIGOS" guardar --sidecar "$SIDECAR" --archivo "$CODIGOS_DUMP" 2>&1 | log_lineas \
+        || { log "OJO: no se pudieron guardar los codigos de acceso: fallo \`guardar\`."; rm -f "$CODIGOS_DUMP"; }
+    else
+      log "OJO: no se pudieron guardar los codigos de acceso: no existe $DEMO_CODIGOS"
+    fi
+
     # Se para la app ANTES de tocar el schema. Con el contenedor arriba, sus
     # conexiones abiertas dejan el `DROP SCHEMA` esperando un lock: no falla,
     # se cuelga -- ya pasó, veinte minutos en silencio.
@@ -222,6 +248,7 @@ CADENAS_EOF
     ;;
   *)
     log "motor: SQLite ($URL_BASE)"
+    log "sin sidecar (SQLite): los codigos de acceso no se preservan"
     # Se borran tambien los `-wal` y `-shm`: sin eso SQLite puede reconstruir
     # parte de lo borrado desde el journal, y el reset queda a medias.
     docker exec "$CONTENEDOR" sh -c 'rm -f /app/data/*.db /app/data/*.db-wal /app/data/*.db-shm'
@@ -260,6 +287,15 @@ if [ "$DESPUES" != "0" ]; then
 fi
 if [ "$ANTES" = "0" ]; then
   log "OJO: antes tambien habia 0 filas -- el chequeo no probo nada esta vez."
+fi
+
+# --- Los codigos de acceso: devolverlos ---------------------------------------
+# La tabla ya existe: la crea `libraauth` al arrancar. Si falla no aborta: la
+# demo ya quedo usable y se puede emitir un codigo nuevo (el comando dice OJO y
+# deja el archivo en su lugar).
+if [ -n "$SIDECAR" ] && [ -x "$DEMO_CODIGOS" ]; then
+  "$DEMO_CODIGOS" devolver --sidecar "$SIDECAR" --archivo "$CODIGOS_DUMP" 2>&1 | log_lineas \
+    || log "OJO: fallo \`devolver\`; los codigos siguen en $CODIGOS_DUMP."
 fi
 
 # --- 2. Sembrar -----------------------------------------------------------
