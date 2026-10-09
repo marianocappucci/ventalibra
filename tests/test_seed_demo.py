@@ -22,6 +22,7 @@ Lo que fijan estos tests, en orden de lo que se rompe sin que se note:
 import json
 
 import pytest
+from ventas_helpers import caja_default
 
 from scripts.seed_demo import Api, sembrar, url_no_productiva
 
@@ -205,6 +206,70 @@ def test_la_segunda_corrida_no_agrega_ventas(api):
     sembrar(api)
 
     assert len(_ventas(api)) == antes
+
+
+# ── 🔴 La caja queda libre para el visitante ───────────────────────────────
+
+def _turnos(api) -> list:
+    """Todos los turnos (el admin ve los de todos), abiertos y cerrados."""
+    return api.get("/api/turnos")["turnos"]
+
+
+def test_el_seed_no_deja_la_caja_tomada(api):
+    """🔴 El seed abre un turno como admin para confirmar ventas y cobrar. Si lo dejara abierto, el visitante de la demo
+    (otro usuario) no podría abrir el suyo: la sucursal tiene una sola caja y un turno por caja. Medido en la demo real:
+    el POS decía «No hay ningún turno de caja abierto» y «Todas las cajas de esta sucursal tienen un turno abierto»."""
+    sembrar(api)
+
+    turnos = _turnos(api)
+    assert turnos, "la semilla tenía que haber abierto su turno para confirmar las ventas"
+    assert [t for t in turnos if t["estado"] == "abierto"] == []
+    assert api.get("/api/turnos/actual") == {"turno": None}
+
+
+def test_el_turno_de_la_semilla_cierra_con_diferencia_cero(api):
+    sembrar(api)
+
+    (turno,) = _turnos(api)
+    assert turno["estado"] == "cerrado"
+    # El esperado lo calcula el motor al cerrar (inicial + efectivo que entró); la semilla declara eso mismo.
+    assert float(turno["monto_esperado_cierre"]) > 20000, "hubo ventas en efectivo: el esperado no es sólo el inicial"
+    assert float(turno["monto_declarado_cierre"]) == float(turno["monto_esperado_cierre"])
+
+
+def test_un_segundo_usuario_puede_abrir_su_turno_tras_el_seed(api, encargado_client):
+    """El visitante de la demo es un encargado: tras el seed tiene que poder abrir su turno en la única caja."""
+    sembrar(api)
+
+    abierto = encargado_client.post(
+        "/api/turnos/abrir", json={"monto_inicial": 10000, "caja_id": caja_default(encargado_client)})
+
+    assert abierto.status_code == 200, abierto.text
+    assert abierto.json()["estado"] == "abierto"
+
+
+def test_correr_el_seed_dos_veces_tambien_deja_la_caja_libre(api, encargado_client, capsys):
+    sembrar(api)
+    sembrar(api)
+
+    salida = capsys.readouterr().out
+    assert "ventas       0 creados" in salida, "la segunda corrida no vuelve a vender"
+    assert all(t["estado"] == "cerrado" for t in _turnos(api))
+    abierto = encargado_client.post(
+        "/api/turnos/abrir", json={"monto_inicial": 0, "caja_id": caja_default(encargado_client)})
+    assert abierto.status_code == 200, abierto.text
+
+
+def test_no_toca_un_turno_abierto_que_no_es_el_de_la_semilla(api):
+    """Si el admin ya tenía un turno abierto por su cuenta (otras notas), el seed lo deja como está."""
+    from scripts.seed_demo import _cerrar_turno
+
+    caja = caja_default(api.client)
+    api.post("/api/turnos/abrir", {"monto_inicial": 500, "notas": "a mano", "caja_id": caja})
+
+    _cerrar_turno(api, lambda clave, nuevo: None)
+
+    assert api.get("/api/turnos/actual")["turno"]["notas"] == "a mano"
 
 
 # ── La guarda ─────────────────────────────────────────────────────────────
