@@ -177,6 +177,11 @@ STOCK = {
     "Lavandina 1 L": 3,                 # bajo
 }
 
+#: Las notas con que la semilla abre su turno. Sirven de marca: al final, `_cerrar_turno` sólo cierra un turno abierto
+#: que lleve exactamente esto, o sea el que abrió ella y no uno que alguien haya abierto a mano con el mismo usuario.
+NOTAS_APERTURA = "Apertura de la demo"
+NOTAS_CIERRE = "Cierre de la semilla de la demo"
+
 
 def sembrar(api: Api) -> None:
     hechos = {}
@@ -260,6 +265,10 @@ def sembrar(api: Api) -> None:
     # un cliente y no con un hueco arriba.
     _cargar_logo(api, "Almacén Don Aldo", "A", (217, 119, 6), contar)
 
+    # Último paso, después de todo lo que necesita un turno abierto (ventas, cobranza): ver `_cerrar_turno`.
+    print("Cierre del turno de la semilla…")
+    _cerrar_turno(api, contar)
+
     print()
     for clave, (creados, existentes) in sorted(hechos.items()):
         print(f"  {clave:<12} {creados} creados, {existentes} ya estaban")
@@ -286,7 +295,7 @@ def _abrir_turno(api: Api, sucursal_id: int, contar) -> None:
     """
     try:
         api.post("/api/turnos/abrir", {"monto_inicial": 20000,
-                                       "notas": "Apertura de la demo",
+                                       "notas": NOTAS_APERTURA,
                                        "caja_id": _caja_default(api, sucursal_id)})
         contar("turno", True)
     except RuntimeError as e:
@@ -294,6 +303,34 @@ def _abrir_turno(api: Api, sucursal_id: int, contar) -> None:
             contar("turno", False)
         else:
             raise
+
+
+def _cerrar_turno(api: Api, contar) -> None:
+    """Cierra, con su arqueo exacto, el turno que abrió la semilla.
+
+    🔴 **El visitante de la demo es otro usuario y la sucursal tiene una sola caja.** Un turno es por usuario y
+    por caja (`app/cajas_ganchos.py::validar_apertura_de`), así que si la semilla —que corre como admin— dejara
+    el suyo abierto, el visitante caería en el POS con «No hay ningún turno de caja abierto» y, a la vez,
+    «Todas las cajas de esta sucursal tienen un turno abierto»: no podría vender nada. Cerrado, la caja queda
+    libre y el visitante abre el suyo desde el POS («Abrir turno»). Hay que abrir el turno para poder confirmar
+    ventas y cobrar, pero no hay por qué dejarlo abierto.
+
+    El esperado no se inventa: es la cuenta del motor al cerrar (`libracore.db.turnos.cerrar_turno_caja`),
+    `monto_inicial` más el efectivo que entró a la caja. `GET /api/turnos/actual` trae las dos cosas (el turno y
+    su `resumen.efectivo_ventas`, el arqueo sobre `caja_movimientos` y sin fiado), así que se declara exactamente
+    eso y la diferencia da 0.
+
+    Idempotente: sólo toca el turno abierto de quien corre la semilla **y** con las notas de `NOTAS_APERTURA`.
+    Sin turno abierto, o con uno que no es el suyo, no hace nada.
+    """
+    actual = api.get("/api/turnos/actual") or {}
+    turno = actual.get("turno")
+    if not turno or turno.get("notas") != NOTAS_APERTURA:
+        contar("cierre_turno", False)
+        return
+    esperado = round(float(turno["monto_inicial"]) + float(actual["resumen"]["efectivo_ventas"]), 2)
+    api.post(f"/api/turnos/{turno['id']}/cerrar", {"monto_declarado": esperado, "notas": NOTAS_CIERRE})
+    contar("cierre_turno", True)
 
 
 def _sembrar_stock(api: Api, articulos: dict, deposito: int, contar) -> None:
