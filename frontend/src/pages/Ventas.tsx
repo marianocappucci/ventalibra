@@ -7,11 +7,11 @@
 // `/api/ventas` -- lo que sigue siendo propio de VentaLibra es la devolución
 // parcial, que el kit no implementa (cada producto la resuelve distinto), así
 // que se monta como `accionesExtra`.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Ventas as VentasComercio } from 'libra-ui/comercio/Ventas'
 import type { VentaDetalleAccionesExtraCtx } from 'libra-ui/comercio/VentaDetalle'
 import {
-  api, ApiError, type Deposito, type ShiftState, type Sucursal, type VentaDevuelto,
+  api, ApiError, type Deposito, type DevolucionPayload, type ShiftState, type Sucursal, type VentaDevuelto,
 } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,7 @@ import {
 import { Undo2 } from 'lucide-react'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { useMediosPago } from '@/lib/medios-pago'
+import { nuevaClaveDeOperacion } from '@/lib/clave-de-operacion'
 
 // La sesión de este producto siempre puede anular/devolver (F4, corrección
 // del orquestador): `app/main.py` no le pasa `solo_admin` al motor -- hasta
@@ -68,6 +69,20 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { medios } = useMediosPago()
+  // 🔑 La `clave_operacion` del intento (ADR-041 de libracommerce). Una por INTENTO de devolución, no por clic: el motor la usa para
+  // distinguir un reintento (doble clic, timeout y el usuario vuelve a apretar) de una segunda devolución legítima, y a un reintento
+  // le contesta lo mismo (`repetida: true`) sin reponer stock ni escribir otro egreso. Se reusa mientras lo que se manda sea
+  // exactamente lo mismo (también tras un error de red, un timeout o un 5xx, donde no se sabe si el motor escribió), y se descarta al
+  // terminar bien o al cerrar el diálogo. Cambiar cantidades, depósito o medio es otro pedido: otra clave.
+  const clave = useRef<{ firma: string; valor: string } | null>(null)
+  function claveDelIntento(firma: string): string {
+    if (clave.current?.firma !== firma) clave.current = { firma, valor: nuevaClaveDeOperacion() }
+    return clave.current.valor
+  }
+  function cerrar() {
+    clave.current = null
+    setOpen(false)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -131,10 +146,12 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
     setBusy(true)
     setError(null)
     try {
-      await api.post(`/api/ventas/${detalle.id}/devolver`, {
-        lineas, deposito_id: Number(locationId), medio_pago: medio,
-      })
-      setOpen(false)
+      const datos = { lineas, deposito_id: Number(locationId), medio_pago: medio }
+      // Si la respuesta trae `repetida: true` (el motor ya había aplicado este intento) es el mismo resultado que la primera vez:
+      // se trata como éxito, sin aviso.
+      const cuerpo: DevolucionPayload = { ...datos, clave_operacion: claveDelIntento(JSON.stringify(datos)) }
+      await api.post(`/api/ventas/${detalle.id}/devolver`, cuerpo)
+      cerrar()
       recargar()
     } catch (err) {
       setError(describeError(err))
@@ -150,7 +167,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
         <Undo2 />Devolver productos
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(abierto) => (abierto ? setOpen(true) : cerrar())}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Devolver productos de la venta {detalle.numero}</DialogTitle></DialogHeader>
 
@@ -218,7 +235,7 @@ export function DevolucionDeVenta({ detalle, recargar }: VentaDetalleAccionesExt
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
           <DialogFooter>
-            <Button variant="outline" className="max-lg:h-11" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" className="max-lg:h-11" onClick={cerrar}>Cancelar</Button>
             <Button className="max-lg:h-11" onClick={devolver} disabled={busy || lineas.length === 0 || !locationId}>
               {busy ? 'Devolviendo…' : 'Confirmar devolución'}
             </Button>
