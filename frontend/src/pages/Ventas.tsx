@@ -22,7 +22,7 @@ import {
 import { Undo2 } from 'lucide-react'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { useMediosPago } from '@/lib/medios-pago'
-import { nuevaClaveDeOperacion } from '@/lib/clave-de-operacion'
+import { nuevaClaveDeOperacion } from 'libra-ui/comercio/clave-de-operacion'
 
 // La sesión de este producto siempre puede anular/devolver (F4, corrección
 // del orquestador): `app/main.py` no le pasa `solo_admin` al motor -- hasta

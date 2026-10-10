@@ -98,7 +98,8 @@ dependencies = [
     # v0.48.0 -> v0.49.0 (2026-10-09): la devolucion reintegra lo pagado (prorrateado) y cada devolucion sucesiva escribe su egreso de caja (ADR-040). Sin migracion.
     # v0.49.0 -> v0.50.0 (2026-10-10): devolver_items acepta clave_operacion; un reintento (doble clic) no duplica stock ni caja (ADR-041). Sin migracion.
     # v0.50.0 -> v0.51.0 (2026-10-10): la reposicion toma «hoy» de Argentina y sus routers lo reciben de un reloj (ADR-042). Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.51.0",
+    # v0.51.0 -> v0.52.0 (2026-10-10): «hoy» de Argentina en ajustes, transferencias y margen (ADR-044); return_sale_items reintegra lo pagado (ADR-043). Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.52.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
