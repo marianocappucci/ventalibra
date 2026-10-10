@@ -21,7 +21,11 @@ existencias en sus depósitos. Acá quedan las reglas de este producto:
   de `require_module`: «modulo 'multisucursal' …»). La unidad es la **sucursal** y no el depósito: un local con dos depósitos sigue siendo un
   local, así que transferir entre ellos es libre. El gate mira el módulo en cada request (`app.state.modules`, como
   `require_module`) y no toca lo que ya existe: una instalación con varias sucursales creadas antes sigue leyéndose,
-  editándose y vendiendo igual; sólo se le impide crear más y cruzar mercadería.
+  editándose y vendiendo igual; sólo se le impide crear más y cruzar mercadería;
+- **no más sucursales activas que las CONTRATADAS** (ADR-073): si la instancia tiene cargado cuántas contrató
+  (`libracore.limites`, lo carga el backoffice), el alta y la reactivación que las superarían dan 409 con «Tu plan incluye N
+  sucursales. Para sumar otra, comunicate con nosotros.». Sin dato cargado no hay límite. Las dadas de baja no cuentan, y lo que
+  ya existe no se toca: si el contrato se achica por debajo de las activas, siguen andando; sólo se frena sumar.
 
 **Stock:** `OpcionesStock(por_deposito=True)`: el listado trae una columna por depósito y el ajuste va a uno.
 """
@@ -40,6 +44,7 @@ from libracommerce.web.catalogo_router import (
     SucursalCreatePayload,
     SucursalUpdatePayload,
 )
+from libracore.limites import LimiteExcedido, verificar_alta_de_sucursal
 from pydantic import TypeAdapter, ValidationError
 
 from .permisos import requiere
@@ -75,6 +80,14 @@ def _exigir_multisucursal(modulos: Modulos, accion: str) -> None:
         raise HTTPException(403, _MENSAJE_SUCURSAL.format(accion=accion))
 
 
+def _exigir_contratadas(activas_actuales: int) -> None:
+    """409 si una sucursal activa más superaría las contratadas (ADR-073). `activas_actuales` son las de ANTES de la nueva."""
+    try:
+        verificar_alta_de_sucursal(activas_actuales)
+    except LimiteExcedido as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 def opciones_de_depositos() -> OpcionesDepositos:
     def validar_alta(payload: DepositoCreatePayload) -> None:
         if payload.branch_id is None:
@@ -87,14 +100,18 @@ def opciones_de_sucursales(sucursales: Sucursales, modulos: Modulos) -> Opciones
     def validar_alta(payload: SucursalCreatePayload) -> None:
         # Sin `multisucursal` la única sucursal activa que puede haber es la que ya existe (`list()` trae sólo las
         # activas, y el motor no deja quedarse sin ninguna). Las dadas de baja no cuentan como un local más.
-        if sucursales().list():
+        activas = sucursales().list()
+        if activas:
             _exigir_multisucursal(modulos, "dar de alta otra sucursal")
+        _exigir_contratadas(len(activas))
 
     def validar_edicion(payload: SucursalUpdatePayload, actual: dict) -> None:
         if payload.activa and not actual["activa"]:
             # Reactivar una dada de baja es abrir otra sucursal: mismo tope que el alta.
-            if [s for s in sucursales().list() if s.id != actual["id"]]:
+            otras = [s for s in sucursales().list() if s.id != actual["id"]]
+            if otras:
                 _exigir_multisucursal(modulos, "reactivar una sucursal mientras hay otra activa")
+            _exigir_contratadas(len(otras))
             return
         if payload.activa or not actual["activa"]:
             return  # sólo la baja tiene guardas

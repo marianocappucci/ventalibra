@@ -40,7 +40,7 @@ afloja una capacidad acá, esa tabla se pone roja a propósito.
 import re
 from collections.abc import Callable, Iterable
 
-from fastapi import Depends, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 from libraauth.session_auth import SERVICE_USER, token_de_servicio_valido
 
 from .auth import get_current_user, get_session_auth, require_role
@@ -326,6 +326,23 @@ def requiere_o_servicio(capacidad: str) -> Guarda:
 
     return _dependency
 
+
+
+def requiere_solo_servicio() -> Guarda:
+    """SÓLO el token de servicio del backoffice: ningún usuario de la instancia, ni siquiera el admin.
+
+    Es para lo que el cliente no puede decidir por su cuenta: hoy, la cantidad de sucursales contratadas (`PUT /api/limites/sucursales`,
+    ADR-073). Si la pudiera cargar el admin de la instancia, el tope comercial no toparía nada. Sin sesión da 401 (como todo lo privado) y
+    con sesión de cualquier rol, 403 `forbidden`. Sin `LIBRA_SERVICE_TOKEN` en el entorno nadie entra por acá.
+    """
+
+    def _dependency(request: Request, response: Response = None) -> dict:
+        if token_de_servicio_valido(request):
+            return dict(SERVICE_USER)
+        get_current_user(request, get_session_auth(request), response)  # 401 si no hay sesión
+        raise HTTPException(403, "forbidden")
+
+    return _dependency
 
 
 if __name__ == "__main__":  # pragma: no cover
