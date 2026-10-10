@@ -56,10 +56,15 @@ const sucursal = (id: number, nombre: string, deposito_predeterminado_id: number
 )
 const SUCURSALES = [sucursal(1, 'Centro', 11, true), sucursal(7, 'Norte', 12)]
 
+// Cómo contesta `POST /api/ventas/42/devolver`, en orden (la última se repite): `ok`, `repetida` (el motor ya había aplicado ese intento),
+// `red` (se corta la conexión: no se sabe si escribió), `5xx` (error del servidor) o `409` (la clave ya se usó con otros datos).
+type Respuesta = 'ok' | 'repetida' | 'red' | '5xx' | '409'
+
 function montarRed(opciones: {
-  yaDevuelto?: number; depositoId?: number | null; turnoEnSucursal?: number | null
+  yaDevuelto?: number; depositoId?: number | null; turnoEnSucursal?: number | null; respuestas?: Respuesta[]
 } = {}) {
   const llamadas: Llamada[] = []
+  const respuestas = [...(opciones.respuestas ?? ['ok'])]
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
     const metodo = init?.method ?? 'GET'
@@ -88,7 +93,13 @@ function montarRed(opciones: {
     }
     if (u.includes('/api/sucursales')) return Promise.resolve(json(SUCURSALES))
     if (u.includes('/api/depositos')) return Promise.resolve(json(DEPOSITOS))
-    if (u.includes('/api/ventas/42/devolver')) return Promise.resolve(json({ importe: 1500, venta: DETALLE }))
+    if (u.includes('/api/ventas/42/devolver')) {
+      const cual = respuestas.length > 1 ? respuestas.shift()! : respuestas[0]
+      if (cual === 'red') return Promise.reject(new TypeError('Failed to fetch'))
+      if (cual === '5xx') return Promise.resolve(json({ detail: 'Error interno' }, 502))
+      if (cual === '409') return Promise.resolve(json({ detail: 'la clave_operacion ya se usó en esta venta con otras cantidades' }, 409))
+      return Promise.resolve(json({ ...DETALLE, repetida: cual === 'repetida' }))
+    }
     return Promise.resolve(json([]))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -218,5 +229,116 @@ describe('La devolución de una venta', () => {
 
     // Vendido 5, ya devuelto 4: queda 1 disponible.
     await screen.findByPlaceholderText(/máx\. 1/)
+  })
+
+  // ── ADR-041: la `clave_operacion` distingue un reintento de una segunda devolución ──
+
+  const devoluciones = (llamadas: Llamada[]) => llamadas.filter((l) => l.metodo === 'POST' && l.url.includes('/api/ventas/42/devolver'))
+  const claveDe = (l: Llamada) => (l.body as { clave_operacion?: string }).clave_operacion
+
+  async function devolverCon(user: ReturnType<typeof userEvent.setup>, cantidad: string) {
+    const campo = await screen.findByPlaceholderText(/máx\. 5/)
+    await user.clear(campo)
+    await user.type(campo, cantidad)
+    await user.click(await screen.findByRole('button', { name: /Confirmar devolución/ }))
+  }
+
+  it('manda una clave_operacion (un UUID) en el body', async () => {
+    const { llamadas } = montarRed()
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+    await devolverCon(user, '2')
+
+    await waitFor(() => expect(devoluciones(llamadas)).toHaveLength(1))
+    expect(claveDe(devoluciones(llamadas)[0])).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  })
+
+  it.each<Respuesta>(['red', '5xx'])('tras un error (%s) el reintento con los mismos datos reusa la misma clave', async (falla) => {
+    const { llamadas } = montarRed({ respuestas: [falla, 'ok'] })
+    const recargar = vi.fn()
+    const user = userEvent.setup()
+    render(<DevolucionDeVenta detalle={DETALLE} recargar={recargar} />)
+    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await devolverCon(user, '2')
+
+    await screen.findByRole('alert')                       // el error a la vista, el diálogo sigue abierto
+    expect(recargar).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: /Confirmar devolución/ }))
+
+    await waitFor(() => expect(devoluciones(llamadas)).toHaveLength(2))
+    const [primera, segunda] = devoluciones(llamadas)
+    expect(claveDe(primera)).toBeTruthy()
+    expect(claveDe(segunda)).toBe(claveDe(primera))
+    expect(segunda.body).toEqual(primera.body)             // exactamente lo mismo
+    await waitFor(() => expect(recargar).toHaveBeenCalled())
+  })
+
+  it('si cambian las cantidades es otro pedido: otra clave', async () => {
+    const { llamadas } = montarRed({ respuestas: ['red', 'ok'] })
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+    await devolverCon(user, '2')
+    await screen.findByRole('alert')
+
+    await devolverCon(user, '3')                           // cambia la cantidad y vuelve a confirmar
+    await waitFor(() => expect(devoluciones(llamadas)).toHaveLength(2))
+    const [primera, segunda] = devoluciones(llamadas)
+    expect(claveDe(segunda)).toBeTruthy()
+    expect(claveDe(segunda)).not.toBe(claveDe(primera))
+    expect(segunda.body).toMatchObject({ lineas: [{ sale_item_id: 501, cantidad: 3 }] })
+  })
+
+  it('al cerrar el diálogo se descarta la clave: la próxima devolución es otro intento', async () => {
+    const { llamadas } = montarRed({ respuestas: ['red', 'ok'] })
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+    await devolverCon(user, '2')
+    await screen.findByRole('alert')
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await devolverCon(user, '2')                           // mismos datos, pero otro diálogo
+    await waitFor(() => expect(devoluciones(llamadas)).toHaveLength(2))
+    const [primera, segunda] = devoluciones(llamadas)
+    expect(claveDe(segunda)).not.toBe(claveDe(primera))
+  })
+
+  it('al terminar bien se descarta la clave: otra devolución de lo mismo lleva otra', async () => {
+    const { llamadas } = montarRed({ respuestas: ['ok'] })
+    const user = userEvent.setup()
+    await abrirDialogo(user)
+    await devolverCon(user, '1')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await devolverCon(user, '1')
+    await waitFor(() => expect(devoluciones(llamadas)).toHaveLength(2))
+    const [primera, segunda] = devoluciones(llamadas)
+    expect(claveDe(segunda)).not.toBe(claveDe(primera))
+  })
+
+  it('una respuesta `repetida: true` es el mismo resultado: cierra y recarga, sin aviso de error', async () => {
+    montarRed({ respuestas: ['repetida'] })
+    const recargar = vi.fn()
+    const user = userEvent.setup()
+    render(<DevolucionDeVenta detalle={DETALLE} recargar={recargar} />)
+    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await devolverCon(user, '2')
+
+    await waitFor(() => expect(recargar).toHaveBeenCalled())
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('un 409 (clave usada con otros datos) se muestra como error y el diálogo sigue abierto', async () => {
+    montarRed({ respuestas: ['409'] })
+    const recargar = vi.fn()
+    const user = userEvent.setup()
+    render(<DevolucionDeVenta detalle={DETALLE} recargar={recargar} />)
+    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await devolverCon(user, '2')
+
+    expect((await screen.findByRole('alert')).textContent).toContain('clave_operacion')
+    expect(recargar).not.toHaveBeenCalled()
   })
 })

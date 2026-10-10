@@ -338,6 +338,9 @@ export type DevolucionPayload = {
   lineas: DevolucionLineaPayload[]
   deposito_id: number
   medio_pago?: string
+  /** Una por intento (un UUID): un reintento con la misma clave no repone stock ni escribe otro egreso, y el motor contesta lo mismo
+   *  con `repetida: true`. La misma clave con otros datos es 409. Opcional en el motor; este producto la manda siempre. */
+  clave_operacion?: string
 }
 
 /** Cuánto se devolvió ya de una venta, por (producto, variante) -- lo que
