@@ -70,6 +70,7 @@ from libracore.db.url_de_instancia import url_de_instancia
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
 from libracore.facturas_router import build_nota_de_credito_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
+from libracore.limites import build_limites_router
 from libracore.mp_config_router import build_mp_config_router
 from libracore.recibos_router import build_recibos_router
 from libracore.reportes_router import build_reportes_export_router, build_reportes_router
@@ -117,6 +118,7 @@ from .permisos import (
     requiere_o_servicio,
     requiere_segun_metodo,
     requiere_segun_ruta,
+    requiere_solo_servicio,
 )
 from .productos_ganchos import OPCIONES_DE_CATALOGO
 from .proveedores_guarda import no_eliminar_con_compras
@@ -667,6 +669,15 @@ def create_app(db_path: str) -> FastAPI:
             opciones=opciones_de_sucursales(_sucursales, _modulos),
         ),
         dependencies=[Depends(requiere_segun_metodo(lectura="catalogo.ver", escritura="sucursales.admin"))],
+    )
+    # Las sucursales CONTRATADAS (ADR-073): `GET`/`PUT /api/limites/sucursales`. Leerlas es de admin o del backoffice (el cliente ve «activas vs contratadas»);
+    # CARGARLAS es sólo del token de servicio: es un tope comercial y, si lo cargara el admin del cliente, no toparía nada. El que lo hace cumplir es el
+    # gancho de alta y de reactivación de `opciones_de_sucursales`, que lee el mismo dato del `config.json`; sin dato cargado no hay límite.
+    app.include_router(
+        build_limites_router(
+            guard_lectura=requiere_o_servicio("sucursales.admin"), guard_escritura=requiere_solo_servicio(),
+            medir_activas=lambda: len(_sucursales().list()),
+        ),
     )
     app.include_router(
         build_depositos_router(

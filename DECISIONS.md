@@ -2913,3 +2913,45 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
     `basico` da de alta en `unico` con un `WARNING`. El pin de este repo sube a v1.151.0 en el mismo PR.
   - Los ADR viejos (009, 039, 048) no se reescriben: llevan una nota de que ADR-072 los reemplaza en lo de planes.
 - Depende de: libracore v1.151.0 (resolución de planes retirados en el alta).
+
+
+## ADR-073 — Las sucursales se cobran por lo contratado y pasarse bloquea el alta (y la reactivación)
+
+- Estado: aceptada (decisión del dueño, 2026-10-10). **Completa ADR-072** en lo que dejó «comercial»: el precio de la sucursal adicional
+  ($19.950) ahora lo modela el sistema. De ADR-072 sigue vigente todo lo demás (plan único, módulos, migración del arranque).
+- Fecha: 2026-10-10
+- Contexto: el plan único cuesta **$39.900 por mes por instancia con UNA sucursal incluida**; cada sucursal adicional en la misma instancia suma
+  **$19.950** (precios finales, IVA incluido). ADR-072 dejó ese precio como un dato comercial: nada contaba sucursales ni las limitaba, así que
+  una instancia podía abrir diez locales pagando por uno.
+- Qué ya existía (se miró antes de diseñar): `PLAN_PRECIOS` en `plans.py` y su lectura por `libracore.admin.services.planes_info()` y `GET /api/planes`
+  del backoffice; el token de servicio (`requiere_o_servicio`) que usan el router de usuarios y el tema; los ganchos de alta y de edición de
+  `opciones_de_sucursales` (`app/depositos_ganchos.py`), que ya cubren los **dos** caminos que crean una sucursal activa (`POST /api/sucursales` y
+  `PUT /api/sucursales/{id}` con `activa: true` sobre una dada de baja) y ya aplican el gate de `multisucursal`; `SucursalService.list()` (sólo las activas).
+- Decisión (las tres, del dueño):
+  1. **Se cobra lo contratado**: la cantidad de sucursales contratadas es un dato de la instancia que se carga desde el backoffice; el sistema
+     calcula el abono `39.900 + max(0, contratadas − 1) × 19.950` y muestra «activas vs contratadas».
+  2. **Si se supera lo contratado, se bloquea el alta**: ni se crea ni se reactiva una sucursal si con ella las activas superarían las contratadas.
+     **409** con «Tu plan incluye N sucursales. Para sumar otra, comunicate con nosotros.» (singular con 1).
+  3. **Sin dato cargado, no hay límite** (ninguna instancia existente ni la demo cambia). El backoffice lo muestra «Sin cargar».
+- Cómo:
+  - **La lógica de fondo es de libracore v1.153.0** (ADR-041 del motor): `libracore.abono.calcular_abono`, `libracore.limites` (el dato en la clave
+    `limite_sucursales` del `config.json` de la instancia, `verificar_alta_de_sucursal`, `LimiteExcedido`, `build_limites_router`) y `planes_info()`
+    con `adicional`. Este producto aporta las costuras:
+  - `plans.PLAN_UNIDADES_ADICIONALES = {"unico": {"unidad": "sucursal", "incluidas": 1, "precio": 19950}}`.
+  - `app/main.py` monta `build_limites_router`: `GET /api/limites/sucursales` (`{contratadas, activas}`; admin o token de servicio,
+    `requiere_o_servicio("sucursales.admin")`) y `PUT` (**sólo el token de servicio**, `requiere_solo_servicio()`, nueva en `app/permisos.py`). El medidor
+    de activas es `len(SucursalService.list())`.
+  - `opciones_de_sucursales`: `validar_alta` y la reactivación de `validar_edicion` llaman a `verificar_alta_de_sucursal(activas_de_antes)` y traducen
+    `LimiteExcedido` a 409. Va **después** del gate de `multisucursal` (un módulo apagado sigue dando su 403). Editar una sucursal que ya está activa
+    no cuenta como sumar otra.
+- **Por qué sólo el backoffice escribe el tope.** El admin de una instancia puede todo lo demás de su local; si pudiera cargar también su cantidad
+  contratada, el límite no limitaría nada. Por eso el `PUT` no acepta a un usuario, ni al admin: sólo al token de servicio. El `GET` sí lo ve el admin,
+  para que el cliente sepa cuánto tiene contratado. (El pedido original decía «admin o servicio» para las dos rutas; se separó por esto.)
+- Consecuencias:
+  - Nada cambia hasta que el backoffice cargue un número en una instancia. Cuando lo haga, rige en el pedido siguiente (se lee en cada alta, sin reiniciar).
+  - **Lo que ya existe no se toca**: si el contrato se achica por debajo de las activas, las sucursales siguen andando; sólo se frena sumar otra.
+  - El tope lo hace cumplir el gancho de alta; el arranque (`app/sucursales_migracion.py`, que arma las sucursales de una base vieja) y la base a mano no
+    pasan por él. No hacen falta: el arranque sólo migra lo que ya estaba.
+  - **El sistema calcula y muestra el abono, no lo factura.**
+  - La pantalla de Sucursales de la SPA no muestra «N de M contratadas» todavía: el `GET` está listo para eso. Hoy el cliente ve el mensaje al intentar sumar.
+  - Depende de libracore v1.153.0 (el pin sube a ese tag cuando se corte; hasta entonces la suite local corre con libracore instalado en modo editable).

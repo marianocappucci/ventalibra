@@ -10,8 +10,13 @@ etiquetas, tesoreria, egresos, libros IVA, `facturacion` (ARCA) y
 `multisucursal` (mas de una sucursal y la transferencia de mercaderia entre
 sucursales). Ya no existen los planes Basico ni Premium.
 
-El precio por sucursal adicional ($19.950) es **comercial**: el sistema no lo
-modela, no cuenta sucursales ni cobra por ellas. `multisucursal` sigue siendo un
+La sucursal adicional cuesta $19.950 por mes (`PLAN_UNIDADES_ADICIONALES`) y **el
+sistema la cuenta y la hace cumplir** (ADR-073, decision del humano 2026-10-10):
+se cobra lo CONTRATADO (un dato de la instancia que carga el backoffice,
+`libracore.limites`), el abono lo calcula `libracore.abono.calcular_abono` y, si se
+supera lo contratado, no se deja dar de alta ni reactivar otra sucursal. Sin dato
+cargado no hay limite. Lo que el sistema NO hace es facturar ese abono.
+`multisucursal` sigue siendo un
 modulo gateable (`TODOS_LOS_MODULOS`) y NO se vacia: la SPA arma la pantalla con
 la lista `modulos` de `/auth/me` (`TODOS_LOS_MODULOS | ADDONS` filtrado por los
 habilitados), asi que si el set quedara vacio la facturacion desapareceria de la
@@ -56,9 +61,13 @@ logger = logging.getLogger(__name__)
 
 PLANES = ["unico"]
 PLAN_LABELS = {"unico": "Plan único"}
-# Precio de lista por instancia, con una sucursal incluida. La sucursal adicional
-# ($19.950) es comercial y no se modela aca (ADR-072).
+# Precio de lista por instancia, con una sucursal incluida (ADR-072).
 PLAN_PRECIOS = {"unico": 39900}
+# Lo que se suma por cada unidad de mas (ADR-073): `libracore.admin.services.planes_info()` lo
+# lee con `getattr` y lo lleva al backoffice, que calcula el abono con
+# `libracore.abono.calcular_abono(PLAN_PRECIOS[plan], incluidas, precio, contratadas)`.
+# Precios finales, IVA incluido.
+PLAN_UNIDADES_ADICIONALES = {"unico": {"unidad": "sucursal", "incluidas": 1, "precio": 19950}}
 
 _UNICO = {"facturacion", "multisucursal"}
 PLAN_MODULOS = {"unico": set(_UNICO)}
