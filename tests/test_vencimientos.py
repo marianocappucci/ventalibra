@@ -166,7 +166,7 @@ def test_la_instancia_de_pruebas_tiene_la_revision_0002_del_motor(admin_client):
     # La cabeza de la cadena del motor: la 0002 sigue verificada arriba (columna e índice); la 0003 (v0.32.0, plazo y techo de reposición,
     # ADR-055) agrega sus dos columnas, la 0004 (v0.33.0, proveedor habitual, ADR-056) la suya y la 0005 (v0.36.0, mínimo por sucursal, ADR-059) su tabla.
     assert [tuple(v) for v in conn.execute("SELECT version_num FROM alembic_version_libracommerce").fetchall()] == [
-        ("0005_min_stock_por_sucursal",)]
+        ("0006_clave_operacion_recepciones",)]
     propias = conn.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'catalog_items' "
         "AND column_name IN ('lead_time_days', 'max_stock', 'supplier_party_id') ORDER BY column_name"
