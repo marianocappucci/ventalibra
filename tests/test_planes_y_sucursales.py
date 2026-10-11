@@ -509,3 +509,22 @@ def test_los_ids_como_texto_no_saltean_el_gate_de_sucursales(admin_client):
     for o, d in ((str(origen), str(destino)), (float(origen), float(destino)), (origen, str(destino))):
         assert _transferir(admin_client, item, o, d).status_code == 403, (o, d)
     assert float(stock(admin_client, item, destino)) == 0.0
+
+
+# ── La sucursal adicional: el catálogo la declara (ADR-073) ──────────────────────────────────────────────────────────
+
+
+def test_el_plan_unico_declara_su_sucursal_adicional():
+    """Lo lee `libracore.admin.services.planes_info()` con `getattr` y el backoffice calcula el abono con eso (39.900 + N × 19.950)."""
+    assert plans.PLAN_UNIDADES_ADICIONALES == {"unico": {"unidad": "sucursal", "incluidas": 1, "precio": 19950}}
+    assert set(plans.PLAN_UNIDADES_ADICIONALES) <= set(plans.PLANES)
+
+
+def test_el_abono_del_plan_unico_con_la_cuenta_del_dueno():
+    from libracore.abono import calcular_abono
+
+    adicional = plans.PLAN_UNIDADES_ADICIONALES["unico"]
+    totales = [
+        calcular_abono(plans.PLAN_PRECIOS["unico"], adicional["incluidas"], adicional["precio"], n)["total"] for n in (None, 1, 2, 3)
+    ]
+    assert totales == [39900, 39900, 59850, 79800]

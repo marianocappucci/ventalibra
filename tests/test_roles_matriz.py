@@ -40,6 +40,8 @@ GRUPOS = {
     "SIN_CAJERO": frozenset({"admin", "encargado", "vendedor"}),
     "GERENCIA_Y_DEPOSITO": frozenset({"admin", "encargado", "deposito"}),
     "TODOS": TODOS,
+    # Ningún usuario de la instancia, ni el admin: sólo el token de servicio del backoffice (que esta tabla no sondea; ver `test_limite_de_sucursales`).
+    "SOLO_SERVICIO": frozenset(),
 }
 PUBLICA = "PUBLICA"
 
@@ -140,6 +142,9 @@ GET    /api/sucursales/{sid}                                            TODOS
 PUT    /api/sucursales/{sid}                                            ADMIN
 POST   /api/sucursales/{sid}/set-default                                ADMIN
 POST   /api/sucursales/{sid}/deposito-predeterminado                    ADMIN
+# Sucursales contratadas (ADR-073): leerlas, admin o servicio; CARGARLAS, sólo el token de servicio (un tope que el admin del cliente se sube no topa nada)
+GET    /api/limites/sucursales                                          ADMIN
+PUT    /api/limites/sucursales                                          SOLO_SERVICIO
 GET    /api/depositos                                                   TODOS
 POST   /api/depositos                                                   ADMIN
 PUT    /api/depositos/{did}                                             ADMIN
