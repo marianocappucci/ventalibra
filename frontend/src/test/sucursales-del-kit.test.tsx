@@ -3,7 +3,7 @@
 // depósitos (`/api/depositos`, con `branch_id`) y el stock vive en éstos. El detalle de cada pantalla lo prueban los
 // tests del kit; acá, que cada página monta la pantalla con SUS rutas y su `soloLectura` según el rol, que la ruta
 // `/depositos/:id` existe para el rol que mira, y que el contrato de la API es el que el kit espera.
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -122,6 +122,64 @@ describe('Sucursales', () => {
     expect(screen.queryByRole('button', { name: /Nueva/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Editar/ })).not.toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: /Ver depósitos/ })).toHaveLength(2)
+  })
+
+  // Las sucursales contratadas (ADR-073): el kit (0.136.0) lee `/api/limites/sucursales` y, al llegar al tope, frena el alta. Acá se prueba que
+  // VentaLibra le pasa la ruta al admin —y sólo a él— y que la pantalla no se rompe si la lectura no anda.
+  const LIMITE = 'GET /api/limites/sucursales'
+  const leyoElLimite = () => llamadas.some((l) => l.url === '/api/limites/sucursales')
+
+  it('el admin lee las contratadas y, en el tope, «Nueva sucursal» queda deshabilitada con el motivo', async () => {
+    respuestas[LIMITE] = { contratadas: 2, activas: 2 }
+    enRuta('/sucursales')
+    expect(await screen.findByText('2 de 2 sucursales contratadas')).toBeInTheDocument()
+    expect(screen.getByText('Tu plan incluye 2 sucursales. Para sumar otra, comunicate con nosotros.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Nueva sucursal/ })).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: /Editar/ })).toHaveLength(2) // sólo frena sumar otra
+  })
+
+  it('con cupo muestra «N de M» y deja el alta habilitada', async () => {
+    respuestas[LIMITE] = { contratadas: 3, activas: 2 }
+    enRuta('/sucursales')
+    expect(await screen.findByText('2 de 3 sucursales contratadas')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Nueva sucursal/ })).toBeEnabled()
+  })
+
+  it('🔴 sin tope, o con la lectura caída (403 o 500), queda como hoy: sin aviso y con el alta habilitada', async () => {
+    for (const lectura of [{ contratadas: null, activas: 2 }, { status: 403, detail: 'No tenés permiso para hacer esto.' }, { status: 500, detail: 'Falla.' }]) {
+      respuestas = { [LIMITE]: lectura }
+      enRuta('/sucursales')
+      await waitFor(() => expect(leyoElLimite()).toBe(true))
+      await screen.findAllByText('Norte')
+      expect(screen.queryByText(/contratadas?$/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/comunicate con nosotros/)).not.toBeInTheDocument()
+      expect(screen.queryByText('Falla.')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Nueva sucursal/ })).toBeEnabled()
+      cleanup()
+      llamadas = []
+    }
+  })
+
+  it('si el alta igual da 409 (cupo usado en otra pestaña), el formulario muestra el detail del backend', async () => {
+    respuestas[LIMITE] = { contratadas: 3, activas: 2 }
+    respuestas['POST /api/sucursales'] = { status: 409, detail: 'Tu plan incluye 3 sucursales. Para sumar otra, comunicate con nosotros.' }
+    const user = userEvent.setup()
+    enRuta('/sucursales')
+    await screen.findByText('2 de 3 sucursales contratadas')
+    await user.click(screen.getByRole('button', { name: /Nueva sucursal/ }))
+    const dialogo = await screen.findByRole('dialog')
+    await user.type(within(dialogo).getByLabelText(/^Nombre\s*\*/), 'Oeste')
+    await user.click(within(dialogo).getByRole('button', { name: /Guardar|Crear/ }))
+    expect(await within(dialogo).findByText(/Tu plan incluye 3 sucursales/)).toBeInTheDocument()
+  })
+
+  it('quien no administra no pide las contratadas (la ruta es de admin): ni un 403 de más ni el cupo a la vista', async () => {
+    sesion.rol = 'cajero'
+    respuestas[LIMITE] = { contratadas: 2, activas: 2 }
+    enRuta('/sucursales')
+    await screen.findByText('Norte')
+    expect(leyoElLimite()).toBe(false)
+    expect(screen.queryByText(/contratadas?$/)).not.toBeInTheDocument()
   })
 })
 
