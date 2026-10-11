@@ -9,6 +9,11 @@
 // sucursal (403). El kit no tiene una prop para apagar sólo ese botón —`soloLectura` esconde también la edición, y
 // renombrar la sucursal que ya existe tiene que seguir andando—, así que acá se avisa arriba y el botón lo dice; el
 // que corta es el backend, cuyo mensaje el kit muestra en el formulario.
+//
+// **Sucursales contratadas (ADR-073 del producto, ADR-048 del kit, libra-ui 0.136.0).** `rutaDelLimite` le dice al kit dónde leer «activas vs
+// contratadas» (`GET /api/limites/sucursales`, del motor): con tope muestra «N de M» y, al llegar, deshabilita «Nueva sucursal» con el motivo.
+// Sólo lo lee el admin (la ruta es de `sucursales.admin` o del token de servicio): al resto no se le pide, para no provocar un 403 de más.
+// Si la lectura falla, la pantalla queda como siempre; el que corta es el 409 del backend.
 import { Sucursales as SucursalesComercio } from 'libra-ui/comercio/Sucursales'
 import { AvisoModulo } from '../components/aviso-modulo'
 import { useAuth } from '../context/AuthContext'
@@ -35,6 +40,7 @@ export function Sucursales() {
         etiquetaNuevo={multisucursal ? 'Nueva sucursal' : 'Nueva sucursal (sin activar)'}
         rutaDelDetalle={(id) => `/sucursales/${id}`}
         rutaDeTransferencia="/transferencias"
+        rutaDelLimite={esAdmin ? '/api/limites/sucursales' : undefined}
       />
     </div>
   )
