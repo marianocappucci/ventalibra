@@ -216,6 +216,7 @@ POST   /api/purchase-orders                                             GERENCIA
 GET    /api/purchase-orders/{orden_id}                                  GERENCIA_Y_DEPOSITO
 POST   /api/purchase-orders/{orden_id}/items                            GERENCIA
 POST   /api/purchase-receipts                                           GERENCIA
+POST   /api/purchase-receipts/recibir                                   GERENCIA
 GET    /api/purchase-receipts                                           GERENCIA_Y_DEPOSITO
 GET    /api/purchase-receipts/{recepcion_id}                            GERENCIA_Y_DEPOSITO
 POST   /api/purchase-receipts/{recepcion_id}/items                      GERENCIA
