@@ -279,7 +279,7 @@ export function Pos() {
 
   const [candidatos, setCandidatos] = useState<Producto[]>([])
   const [variantes, setVariantes] = useState<VarianteProducto[]>([])
-  const [pendiente, setPendiente] = useState<{ item: Producto; cantidad: string } | null>(null)
+  const [pendiente, setPendiente] = useState<{ item: Producto; cantidad: string; precioUnitario?: string | null } | null>(null)
 
   // Sugerencias mientras se tipea (sin Enter) -- distintas de `candidatos`,
   // que es el modal que dispara `buscar()` cuando el Enter no matcheo un
@@ -478,11 +478,16 @@ export function Pos() {
    *  producto). `null` si no hay lista default, no hay precio para ese
    *  producto, o la consulta falla: en los tres casos el llamador cae al
    *  precio plano de siempre, nunca bloquea la venta por esto. */
-  async function resolverPrecioEfectivo(productoId: number, cantidad: string): Promise<string | null> {
+  async function resolverPrecioEfectivo(
+    productoId: number, cantidad: string, varianteId?: number | null,
+  ): Promise<string | null> {
     if (listaPrecioDefaultId === null) return null
     try {
+      // La variante no tiene precio propio (`item_prices` no tiene esa columna): se cobra el de su producto. Se la manda
+      // igual para que el motor valide que es de ese producto, y un par inventado cae al precio plano como cualquier falla.
+      const deVariante = varianteId == null ? '' : `&variante_id=${varianteId}`
       const { precio } = await api.get<{ precio: number | null }>(
-        `/api/listas-precio/${listaPrecioDefaultId}/precio?producto_id=${productoId}`
+        `/api/listas-precio/${listaPrecioDefaultId}/precio?producto_id=${productoId}${deVariante}`
         + `&cantidad=${encodeURIComponent(cantidad || '1')}&en=${encodeURIComponent(new Date().toISOString())}`,
       )
       return precio === null ? null : String(precio)
@@ -499,7 +504,7 @@ export function Pos() {
     try {
       const vs = (await api.get<VarianteProducto[]>(`/api/productos/${item.id}/variantes`)).filter((v) => v.activa)
       if (vs.length > 0) {
-        setPendiente({ item, cantidad })
+        setPendiente({ item, cantidad, precioUnitario })
         setVariantes(vs)
         setCandidatos([])
         return
@@ -512,6 +517,19 @@ export function Pos() {
     // lista predeterminada.
     const efectivo = precioUnitario === undefined ? await resolverPrecioEfectivo(item.id, cantidad) : precioUnitario
     agregar(item, cantidad, undefined, efectivo)
+  }
+
+  /** La variante elegida en el diálogo: la línea entra al mismo precio que el producto sin variantes (ADR-074), o sea el
+   *  de la lista predeterminada para esa cantidad y a esta hora (ADR-042); un precio de balanza no se pisa. El diálogo se
+   *  cierra antes del `await` para que un segundo clic no agregue la línea dos veces. */
+  async function elegirVariante(variante: VarianteProducto) {
+    if (!pendiente) return
+    const { item, cantidad, precioUnitario } = pendiente
+    setVariantes([])
+    const efectivo = precioUnitario === undefined
+      ? await resolverPrecioEfectivo(item.id, cantidad, variante.id)
+      : precioUnitario
+    agregar(item, cantidad, variante, efectivo)
   }
 
   /** Elegir una sugerencia de la busqueda en vivo -- mismo camino que
@@ -591,6 +609,7 @@ export function Pos() {
 
   async function cambiarCantidad(index: number, cantidad: string) {
     const productoId = cart[index]?.producto_id
+    const varianteId = cart[index]?.variante_id
     setCart((prev) => prev.map((linea, i) => (i === index ? { ...linea, qty: cantidad } : linea)))
     setCantidadOpen(false)
     enfocarEscaneo()
@@ -598,7 +617,7 @@ export function Pos() {
     // después, sin bloquear el cierre del diálogo ni el resto de la venta --
     // la cantidad ya quedó cargada aunque esto tarde o falle.
     if (productoId !== null && productoId !== undefined) {
-      const efectivo = await resolverPrecioEfectivo(productoId, cantidad)
+      const efectivo = await resolverPrecioEfectivo(productoId, cantidad, varianteId)
       if (efectivo !== null) {
         setCart((prev) => prev.map((linea, i) => (i === index && linea.producto_id === productoId ? { ...linea, precio: efectivo } : linea)))
       }
@@ -918,7 +937,7 @@ export function Pos() {
 
       <ElegirVariante
         variantes={variantes}
-        onElegir={(v) => pendiente && agregar(pendiente.item, pendiente.cantidad, v)}
+        onElegir={elegirVariante}
         onCerrar={() => { setVariantes([]); setPendiente(null); enfocarEscaneo() }}
       />
 
