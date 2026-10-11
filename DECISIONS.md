@@ -2955,3 +2955,36 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   - **El sistema calcula y muestra el abono, no lo factura.**
   - La pantalla de Sucursales de la SPA no muestra «N de M contratadas» todavía: el `GET` está listo para eso. Hoy el cliente ve el mensaje al intentar sumar.
   - Depende de libracore v1.153.0 (el pin sube a ese tag cuando se corte; hasta entonces la suite local corre con libracore instalado en modo editable).
+
+## ADR-074 — La ruta de variantes del POS cobra como el producto: precio de la lista, y las promociones ya contaban juntas
+
+- Estado: aceptada. **Cierra** lo que ADR-042 y ADR-043 dejaron afuera («la ruta de variantes del POS, que sigue al precio plano»).
+- Fecha: 2026-10-11
+- Contexto: el pendiente técnico decía «la ruta de variantes sigue al precio plano, sin promoción». Se midió antes de tocar y eran dos cosas distintas:
+  - **«llevá N pagá M» y combos (ADR-043): ya andaban.** El POS manda al motor el `producto_id` de cada línea (con variante o sin ella) y el motor
+    agrupa por producto: dos talles de la misma remera arman un 2x1 (el POS lo mostraba y el servidor lo cobraba igual). No faltaba código; faltaban
+    los tests, y quedó dicho en ADR-045 del motor.
+  - **El precio de la lista (ADR-042): ahí estaba el defecto.** `elegirItem` pregunta la variante y sale por el diálogo; el diálogo llamaba a
+    `agregar(...)` sin pasar por `resolverPrecioEfectivo`, así que la línea entraba a `precio_venta` aunque hubiera un quiebre por cantidad o una
+    promoción con vigencia en la lista predeterminada. Peor: `cambiarCantidad` sí resolvía por `producto_id`, así que **el mismo producto cobraba
+    distinto según cómo hubiera entrado**: plano al agregarlo, y al precio de la lista apenas se tocaba la cantidad.
+- Qué ya existía (se miró antes de diseñar): `GET /api/listas-precio/{id}/precio` ya acepta `variante_id` (el motor lo valida contra el producto y
+  resuelve el precio del producto: `item_prices` no tiene precio por variante); `calcular` del motor ya agrupa por producto. El kit no tiene POS.
+- Decisión (sólo en el POS de este producto; es cableado de su pantalla, la regla de fondo está en ADR-045 del motor):
+  1. `elegirVariante` (nueva) resuelve el precio efectivo con producto, **variante**, cantidad y hora, igual que `elegirItem` para un producto sin
+     variantes, y recién ahí agrega la línea. El diálogo se cierra antes del `await` para que un segundo clic no duplique la línea.
+  2. `cambiarCantidad` conserva la `variante_id` de la línea al volver a consultar.
+  3. Un precio de etiqueta de balanza no se pisa también en la ruta de variantes (antes se perdía: `pendiente` no lo guardaba).
+  4. Las fallas siguen igual: sin lista predeterminada, sin precio o error de red, la variante se vende al precio plano sin bloquear.
+- Consecuencias:
+  - Las reglas para una variante son las del producto: promoción por producto (alcanza a todas sus variantes), 2x1 mezclando variantes (cuentan
+    juntas) y combos. **No hay promoción por categoría ni por variante**: no existen en el motor (ADR-045 explica cómo se leería la categoría si se agrega).
+  - **El quiebre por cantidad sigue siendo por línea.** Dos talles en dos líneas no suman para un quiebre de 2 unidades; un producto sin variantes
+    escaneado dos veces tampoco. Es el comportamiento de siempre; cambiarlo (re-precificar todas las líneas de un producto con la cantidad total) toca
+    a los productos sin variantes y queda como decisión aparte.
+  - Pendiente aparte: `GET /api/productos/escanear` devuelve la `variante` cuando el código es el SKU de una, pero `buscar()` la ignora y vuelve a preguntar
+    la variante al cajero.
+  - Sin migración ni cambio de API. Hace falta `libracommerce` con ADR-045 sólo para el comentario y los tests del motor: el POS funciona con el pin actual.
+- Tests: `frontend/src/test/pos-variantes-promociones.test.tsx` (7). Con el POS anterior fallaban cinco: el precio de la lista al elegir la variante, el
+  quiebre con multiplicador, el cambio de cantidad con variante, la consulta que debía hacerse aun cuando falla, y el 2x1 con los precios de lista; el de
+  «sin lista predeterminada» es de control. El de la balanza se escribió después y se puso rojo quitando la línea que guarda el precio.
