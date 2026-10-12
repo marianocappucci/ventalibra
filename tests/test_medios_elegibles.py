@@ -102,8 +102,8 @@ def test_registrar_con_cualquier_elegible_pasa_la_validacion(admin_client, medio
     item_id = _make_item(admin_client)
     payload = {
         "fecha": hoy(),
-        "items": [{"nombre": "línea", "qty": 1, "precio": 100, "producto_id": item_id}],
-        "pagos": [{"medio": medio, "monto": 100}],
+        "items": [{"nombre": "línea", "qty": 1, "precio": 1500, "producto_id": item_id}],
+        "pagos": [{"medio": medio, "monto": 1500}],
     }
     if medio == "cuenta_corriente":
         # `exigir_cliente_para_fiar` (F3, ADR-025, prendida en `app/main.py`)

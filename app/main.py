@@ -590,6 +590,13 @@ def create_app(db_path: str) -> FastAPI:
                 # (lectura pura: de qué lote saldría cada línea) para que el POS confirme antes de cobrar. Las dos rutas cuelgan
                 # del router de ventas, así que heredan `ventas.pos`: quien puede vender puede consultarlo.
                 con_avisos_de_vencimiento=True,
+                # El servidor valida el precio de cada línea en vez de guardar el que manda el POS (libracommerce ADR-049; ADR-079 de
+                # este producto): lo recalcula con la lista predeterminada activa (el quiebre cuenta por producto) o con el precio
+                # plano, y si alguna línea no coincide contesta 409 `precios_distintos` con los precios esperados SIN escribir nada
+                # (el POS los toma y le avisa al cajero). Una línea de balanza se valida contra su etiqueta (`etiqueta` en el
+                # item). 422 si una línea no trae `producto_id` o si el pedido trae un `descuento` manual: `Pos.tsx` no manda
+                # ninguno de los dos, y el ahorro de las promociones lo sigue calculando el servidor.
+                validar_precios=True,
             ),
         ),
         dependencies=[Depends(requiere("ventas.pos"))],

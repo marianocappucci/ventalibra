@@ -284,7 +284,7 @@ def test_dos_cajeros_en_dos_sucursales_arquean_por_separado(admin_client, cajero
     sucursal2 = _crear_sucursal(admin_client)
     caja2 = _cajas_de(admin_client, sucursal2["id"])[0]["id"]
 
-    item_id = crear_item(admin_client)
+    item_id = crear_item(admin_client, price="1000.00")
     # Cada venta sale del depósito de SU sucursal: desde el 2026-09-17 el
     # backend rechaza otro (`app/ganchos.py::validar_deposito`).
     con_stock(admin_client, item_id, sucursal1["id"])
@@ -387,7 +387,7 @@ def test_el_movimiento_de_caja_de_la_venta_toma_la_caja_del_turno(admin_client):
     # ser DISTINTA de la default para que la mutación se note.
     assert caja["id"] != default
 
-    item_id = crear_item(admin_client)
+    item_id = crear_item(admin_client, price="1000.00")
     con_stock(admin_client, item_id, sucursal["id"])
     tid = abrir_turno(admin_client, caja_id=caja["id"])
 
@@ -533,7 +533,7 @@ def test_el_resumen_del_turno_trae_las_ventas_y_el_arqueo_sin_fiado(admin_client
     """La pantalla de turnos del kit lee `resumen.ventas`; el arqueo sale de la caja y sin la cuenta
     corriente (fiar no es cobrar)."""
     sucursal = _sembrada(admin_client)
-    item_id = crear_item(admin_client)
+    item_id = crear_item(admin_client, price="1000.00")
     con_stock(admin_client, item_id, sucursal["id"])
     tid = abrir_turno(admin_client, monto_inicial=100)
     registrar_venta(admin_client, item_id, precio="1000.00", cantidad="2", deposito_id=sucursal["id"])

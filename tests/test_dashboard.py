@@ -39,7 +39,7 @@ def test_fiar_no_es_cobrar_en_el_tablero(admin_client):
     cliente = admin_client.post("/api/clientes", json={"name": "Kiosco"}).json()["id"]
     _abrir_turno(admin_client)
     registrar_venta(admin_client, item_id, precio="1000.00", cantidad="1")  # efectivo: 1000
-    registrar_venta(admin_client, item_id, precio="2000.00", cantidad="1", cliente_id=cliente,
+    registrar_venta(admin_client, item_id, precio="1000.00", cantidad="2", cliente_id=cliente,
                     pagos=[{"medio": "cuenta_corriente", "monto": 2000.0}])
 
     d = admin_client.get("/api/dashboard").json()

@@ -48,6 +48,7 @@ import { EmitirFactura } from '../components/emitir-factura'
 import { DialogoAvisosDeVencimiento } from '../components/avisos-de-vencimiento'
 import { consultarAvisosDeSalida, describirAviso, type AvisoDeVencimiento } from '../lib/avisos-de-vencimiento'
 import { FACTURACION, useTieneModulo } from '../lib/modulos'
+import { avisoDePreciosDistintos, preciosDistintosDe, type PrecioDistinto } from '../lib/precios-distintos'
 
 /** El medio que representa el fiado. No es plata: no entra al arqueo del
  *  turno y genera deuda en la cuenta del cliente. */
@@ -247,9 +248,13 @@ type CartLine = {
   precio: string
   producto_id: number | null
   variante_id: number | null
-  /** El precio lo trajo la etiqueta de la balanza (ya incluye cuánto se pesó): la lista no lo pisa, ni al agregar ni al
-   *  cambiar la cantidad. Sus kilos sí cuentan para el quiebre del producto. */
+  /** El precio lo trajo la etiqueta de la balanza (ya incluye cuánto se pesó): la lista no lo pisa al agregar. Sus kilos sí
+   *  cuentan para el quiebre del producto. La cantidad de una línea de balanza no se cambia (ver `pedirCantidad`). */
   de_balanza: boolean
+  /** El EAN-13 crudo de la etiqueta de balanza de la que salió la línea. Viaja al servidor, que lo decodifica con el formato
+   *  de la balanza del comercio y valida la línea contra él (por importe, el precio; por peso, la cantidad: ADR-079). `null`
+   *  en cualquier línea que no salió de una etiqueta. */
+  etiqueta: string | null
 }
 
 /** La respuesta de `POST /api/listas-precio/{id}/precios`: una entrada por línea enviada, en el mismo orden. */
@@ -257,6 +262,7 @@ type PreciosDeLaLista = { precios: { precio: number | null }[] }
 
 function lineaVacia(
   clave: number, item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null,
+  etiqueta?: string | null,
 ): CartLine {
   return {
     clave,
@@ -266,6 +272,7 @@ function lineaVacia(
     producto_id: item.id,
     variante_id: variante?.id ?? null,
     de_balanza: precioUnitario != null,
+    etiqueta: etiqueta ?? null,
   }
 }
 
@@ -285,6 +292,9 @@ export function Pos() {
   const [confirmada, setConfirmada] = useState<Venta | null>(null)
   const [facturaError, setFacturaError] = useState<string | null>(null)
   const [avisoQr, setAvisoQr] = useState<string | null>(null)
+  // El servidor no aceptó el precio de alguna línea (409, ADR-079): el carrito ya quedó con los precios vigentes y esto se lo
+  // dice al cajero. Se va cuando abre el cobro de nuevo, cancela la venta o la registra.
+  const [avisoPrecios, setAvisoPrecios] = useState<string | null>(null)
 
   // Linea marcada: sobre ella actuan F4 (quitar) y F6 (cantidad). Arranca en
   // la ultima agregada, que es la que el cajero suele querer corregir.
@@ -293,7 +303,9 @@ export function Pos() {
 
   const [candidatos, setCandidatos] = useState<Producto[]>([])
   const [variantes, setVariantes] = useState<VarianteProducto[]>([])
-  const [pendiente, setPendiente] = useState<{ item: Producto; cantidad: string; precioUnitario?: string | null } | null>(null)
+  const [pendiente, setPendiente] = useState<{
+    item: Producto; cantidad: string; precioUnitario?: string | null; etiqueta?: string | null
+  } | null>(null)
 
   // Sugerencias mientras se tipea (sin Enter) -- distintas de `candidatos`,
   // que es el modal que dispara `buscar()` cuando el Enter no matcheo un
@@ -474,9 +486,10 @@ export function Pos() {
 
   function agregar(
     item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null,
+    etiqueta?: string | null,
   ) {
     setCart((prev) => {
-      const nueva = [...prev, lineaVacia(++claveDeLineaRef.current, item, cantidad, variante, precioUnitario)]
+      const nueva = [...prev, lineaVacia(++claveDeLineaRef.current, item, cantidad, variante, precioUnitario, etiqueta)]
       setReciente(nueva.length - 1)
       setMarcada(nueva.length - 1)
       return nueva
@@ -492,14 +505,14 @@ export function Pos() {
   /** Agrega la línea. El precio de la lista (cantidad por producto y vigencia, ADR-042 y ADR-078) no se pide acá: la línea
    *  entra y el efecto de `repreciando` se lo pone, a ella y a las otras del mismo producto, en una sola consulta. */
   async function elegirItem(
-    item: Producto, cantidad: string, precioUnitario?: string | null,
+    item: Producto, cantidad: string, precioUnitario?: string | null, etiqueta?: string | null,
   ) {
     // Un item con variantes no se puede vender sin elegir cual: se pregunta
     // solo en ese caso, no en cada producto.
     try {
       const vs = (await api.get<VarianteProducto[]>(`/api/productos/${item.id}/variantes`)).filter((v) => v.activa)
       if (vs.length > 0) {
-        setPendiente({ item, cantidad, precioUnitario })
+        setPendiente({ item, cantidad, precioUnitario, etiqueta })
         setVariantes(vs)
         setCandidatos([])
         return
@@ -509,7 +522,7 @@ export function Pos() {
     }
     // `precioUnitario` sólo viene definido cuando una etiqueta de balanza trae el
     // suyo: ese no se pisa. En cualquier otro caso (`undefined`) manda la lista predeterminada.
-    agregar(item, cantidad, undefined, precioUnitario)
+    agregar(item, cantidad, undefined, precioUnitario, etiqueta)
   }
 
   /** La variante elegida en el diálogo: la línea entra al mismo precio que el producto sin variantes (ADR-074), o sea el
@@ -517,9 +530,9 @@ export function Pos() {
    *  balanza no se pisa. */
   function elegirVariante(variante: VarianteProducto) {
     if (!pendiente) return
-    const { item, cantidad, precioUnitario } = pendiente
+    const { item, cantidad, precioUnitario, etiqueta } = pendiente
     setVariantes([])
-    agregar(item, cantidad, variante, precioUnitario)
+    agregar(item, cantidad, variante, precioUnitario, etiqueta)
   }
 
   /** Elegir una sugerencia de la busqueda en vivo -- mismo camino que
@@ -565,13 +578,16 @@ export function Pos() {
       // no aplica: cada etiqueta es de un paquete concreto, no de N iguales.
       const cantidadEscaneada = escaneado.de_balanza ? String(escaneado.cantidad) : cantidad
       const precioEscaneado = escaneado.precio_unitario === null ? undefined : String(escaneado.precio_unitario)
+      // La etiqueta cruda viaja con la línea (ADR-079): el servidor valida contra ella el importe o el peso, y el precio de la
+      // balanza deja de ser un número que el cliente afirma.
+      const etiquetaEscaneada = escaneado.de_balanza ? resto : null
       // El SKU de una variante ya dice cual es: no se vuelve a preguntar (ADR-075). El codigo del producto, en
       // cambio, no trae `variante` y `elegirItem` pregunta si el producto las tiene.
       if (escaneado.variante) {
         // La variante identificada por su SKU entra directo (ADR-075), al precio de la lista salvo que traiga el de la balanza.
-        agregar(escaneado.producto, cantidadEscaneada, escaneado.variante, precioEscaneado)
+        agregar(escaneado.producto, cantidadEscaneada, escaneado.variante, precioEscaneado, etiquetaEscaneada)
       } else {
-        await elegirItem(escaneado.producto, cantidadEscaneada, precioEscaneado)
+        await elegirItem(escaneado.producto, cantidadEscaneada, precioEscaneado, etiquetaEscaneada)
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -602,6 +618,17 @@ export function Pos() {
     enfocarEscaneo()
   }
 
+  /** Abre el diálogo de cantidad de la línea marcada. **Una línea que salió de una etiqueta de balanza no la cambia**: el
+   *  servidor valida contra la etiqueta (por peso, la cantidad es la que pesó la balanza; por importe, es 1: ADR-079), así que
+   *  otra cantidad no se cobraría. Para llevar más se escanea otra etiqueta. */
+  function pedirCantidad() {
+    if (marcada !== null && cart[marcada]?.etiqueta) {
+      setError('La cantidad de un producto de balanza la fija su etiqueta: quitá la línea y escaneá otra etiqueta.')
+      return
+    }
+    setCantidadOpen(true)
+  }
+
   function cambiarCantidad(index: number, cantidad: string) {
     // El precio nuevo (si cambia el quiebre del producto) llega después, sin bloquear el cierre del diálogo ni el resto de
     // la venta -- la cantidad ya quedó cargada aunque esto tarde o falle. Lo pide el efecto de `repreciando`.
@@ -611,6 +638,7 @@ export function Pos() {
   }
 
   function cancelarVenta() {
+    setAvisoPrecios(null)
     setCart([])
     setMarcada(null)
     setQuery('')
@@ -622,6 +650,24 @@ export function Pos() {
   }
 
   const total = cart.reduce((acc, l) => acc + (Number(l.qty) || 0) * (Number(l.precio) || 0), 0)
+
+  useEffect(() => { if (cobroOpen) setAvisoPrecios(null) }, [cobroOpen])
+
+  /** El servidor rechazó el cobro porque el precio de alguna línea ya no es el vigente (409, ADR-079) y **no escribió nada**:
+   *  el carrito toma los precios que el servidor espera (`esperado`, por posición: el pedido es el carrito tal cual), se cierra el
+   *  cobro y se le avisa al cajero. No se cobra solo: el total cambió y lo tiene que ver. Las promociones se vuelven a calcular
+   *  porque el carrito cambió, y `Cobrar` espera esa respuesta como siempre. */
+  function aplicarPreciosVigentes(distintos: PrecioDistinto[]) {
+    const esperado = new Map(distintos.map((d) => [d.indice, d]))
+    setCart((prev) => prev.map((linea, i) => {
+      const d = esperado.get(i)
+      // Si la línea no es la que el servidor dijo (el carrito no cambia con el cobro abierto, pero por las dudas), no se toca.
+      return d && d.producto_id === linea.producto_id ? { ...linea, precio: String(d.esperado) } : linea
+    }))
+    setAvisoPrecios(avisoDePreciosDistintos(distintos))
+    setCobroOpen(false)
+    enfocarEscaneo()
+  }
 
   // El precio de cada línea según la lista predeterminada (ADR-042), con el quiebre por cantidad contado POR PRODUCTO
   // (ADR-078): dos talles de una remera, de a uno, llegan juntos a un quiebre de 2 -- igual que las promociones (ADR-074).
@@ -711,7 +757,7 @@ export function Pos() {
         if (marcada !== null && cart.length) quitarLinea(marcada)
       } else if (e.key === 'F6') {
         e.preventDefault()
-        if (marcada !== null && cart.length) setCantidadOpen(true)
+        if (marcada !== null && cart.length) pedirCantidad()
       } else if (e.key === 'F7') {
         e.preventDefault()
         setClienteOpen(true)
@@ -877,6 +923,11 @@ export function Pos() {
       </form>
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+      {avisoPrecios && (
+        <div role="alert" className="rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm font-medium dark:bg-amber-950/30">
+          {avisoPrecios}
+        </div>
+      )}
 
       <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         <Ticket
@@ -925,7 +976,7 @@ export function Pos() {
               disabled={marcada === null || cart.length === 0 || busy} onClick={() => marcada !== null && quitarLinea(marcada)} />
             <BotonFuncion tecla="F6" etiqueta="Cantidad" icono={Hash} className="col-span-2"
               color="border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 focus-visible:ring-amber-500 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-              disabled={marcada === null || cart.length === 0 || busy} onClick={() => setCantidadOpen(true)} />
+              disabled={marcada === null || cart.length === 0 || busy} onClick={pedirCantidad} />
             <BotonFuncion tecla="F7" etiqueta="Cliente" detalle={cliente ? cliente.name : 'Consumidor final'} icono={User} className="col-span-2"
               color="border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100 focus-visible:ring-violet-500 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
               disabled={busy} onClick={() => setClienteOpen(true)} />
@@ -1002,7 +1053,9 @@ export function Pos() {
           mp={mp}
           onPedirCliente={() => setClienteOpen(true)}
           onCerrar={() => { setCobroOpen(false); enfocarEscaneo() }}
+          onPreciosCambiaron={aplicarPreciosVigentes}
           onRegistrado={(venta, errorFactura, aviso) => {
+            setAvisoPrecios(null)
             setCobroOpen(false)
             setCart([])
             setMarcada(null)
@@ -1261,7 +1314,7 @@ type QrEstado = 'idle' | 'creando' | 'esperando' | 'acreditado'
  *  - "Cobrar con QR" (`cobrarConQr`): registra con `cobrar_con_qr: true`
  *    (nace `pendiente`, D2), pone el monto en el QR de la caja y pollea hasta
  *    que MercadoPago avisa. */
-function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar, onPedirCliente, onRegistrado }: {
+function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar, onPedirCliente, onPreciosCambiaron, onRegistrado }: {
   cart: CartLine[]
   total: number
   depositoId: number | null
@@ -1271,6 +1324,9 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
   dividir?: boolean
   onCerrar: () => void
   onPedirCliente: () => void
+  /** El servidor rechazó la venta porque el precio de alguna línea ya no es el vigente (409, ADR-079) y no escribió nada: el POS
+   *  toma los precios esperados, cierra el cobro y avisa. Se llama en vez de mostrar un error. */
+  onPreciosCambiaron: (distintos: PrecioDistinto[]) => void
   /** `aviso` es sólo para el caso de `verificarYAnular`: el pago se acreditó
    *  justo en el hueco antes de anular. No es un error -- es información
    *  sobre CÓMO se cerró la venta. */
@@ -1371,6 +1427,8 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
     return cart.map((l) => ({
       nombre: l.nombre, qty: Number(l.qty) || 0, precio: Number(l.precio) || 0,
       producto_id: l.producto_id, variante_id: l.variante_id,
+      // Sólo las líneas de balanza la llevan: el resto del pedido queda como siempre.
+      ...(l.etiqueta ? { etiqueta: l.etiqueta } : {}),
     }))
   }
 
@@ -1427,7 +1485,9 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
       const [final, facturaErr] = await conFacturaSiHaceFalta(venta)
       onRegistrado(final, facturaErr)
     } catch (err) {
-      setError(describeError(err))
+      const distintos = preciosDistintosDe(err)
+      if (distintos) onPreciosCambiaron(distintos)
+      else setError(describeError(err))
     } finally {
       setRegistrando(false)
       enviandoRef.current = false
@@ -1600,8 +1660,11 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
           deposito_id: depositoId,
         })
       } catch (err) {
-        setQrError(describeError(err))
         setQrEstado('idle')
+        // Un 409 por precios no escribió nada (ni venta, ni QR): se corrige el carrito y se vuelve a cobrar.
+        const distintos = preciosDistintosDe(err)
+        if (distintos) onPreciosCambiaron(distintos)
+        else setQrError(describeError(err))
         return
       }
       ventaQrRef.current = venta
