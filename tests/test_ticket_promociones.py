@@ -50,6 +50,9 @@ def test_el_ticket_muestra_cuantas_veces_se_aplico(admin_client):
 
 
 def test_un_descuento_manual_junto_a_la_promocion_sigue_saliendo(admin_client):
+    """Una venta con promoción Y un descuento manual: el ticket imprime los dos. La caja ya no deja registrar un descuento
+    manual (`validar_precios`, ADR-079: el POS no lo manda), pero las ventas de antes lo tienen guardado y el ticket tiene que
+    seguir mostrándolo. Se arma como estaba guardada una de esas: la venta con promoción y 30 más de descuento."""
     item_id = crear_item(admin_client, "Alfajor", "100.00")
     _promo_2x1(admin_client, item_id)
     abrir_turno(admin_client)
@@ -58,8 +61,17 @@ def test_un_descuento_manual_junto_a_la_promocion_sigue_saliendo(admin_client):
         "items": [{"nombre": "Alfajor", "qty": 2, "precio": 100.0, "producto_id": item_id}],
         "pagos": [{"medio": "efectivo", "monto": 70.0}],
     })
-    assert r.status_code == 200, r.text
-    texto = _ticket(admin_client, r.json()["id"])
+    # Hoy el servidor lo rechaza (ADR-079)...
+    assert r.status_code == 422 and "descuento manual" in r.json()["detail"], r.text
+    # ...así que la venta de antes se arma con la promoción y se le suma el descuento manual en la base.
+    venta = registrar_venta(
+        admin_client, item_id, precio="100.00", cantidad="2",
+        pagos=[{"medio": "efectivo", "monto": 100.0}],
+    )
+    conn = admin_client.app.state.conn
+    conn.execute("UPDATE sales SET discount_total = 130, total = 70 WHERE id = ?", (venta["id"],))
+    conn.commit()
+    texto = _ticket(admin_client, venta["id"])
     assert "Promo 2x1 alfajor" in texto and "Descuento" in texto
 
 

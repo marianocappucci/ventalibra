@@ -40,7 +40,7 @@ def _numero_de(monkeypatch):
 
 
 def _facturar(client) -> dict:
-    item_id = _make_item(client, price="1000.00")
+    item_id = _make_item(client, price="1500.00")
     location_id = _make_location(client)
     r = _confirmed_sale(client, item_id, location_id, invoice=True)
     assert r.status_code == 200, r.text

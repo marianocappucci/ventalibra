@@ -154,7 +154,7 @@ def test_una_venta_anterior_sin_snapshot_sigue_marcada_como_estimada(admin_clien
     """Sin backfill (ADR-050): la línea con `unit_cost_snapshot` NULL —las de antes de v0.27.0— usa el costo de HOY y sale
     `costo_estimado`; la línea de una venta nueva, del mismo reporte, no."""
     nueva_id = _make_item(admin_client, name="Nueva", cost="900.00")
-    vieja_id = _make_item(admin_client, name="Vieja", cost="500.00")
+    vieja_id = _make_item(admin_client, name="Vieja", cost="500.00", price="1000.00")
     _abrir_turno(admin_client)
     registrar_venta(admin_client, nueva_id, precio="1500.00", cantidad="1")
     vieja = registrar_venta(admin_client, vieja_id, precio="1000.00", cantidad="1")

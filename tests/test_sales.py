@@ -207,8 +207,10 @@ def test_update_item_quantity_rejects_zero_and_negative(admin_client):
 # --- cobro: pago mixto y vuelto -----------------------------------------
 
 
-def _venta_lista_items(cantidad="2", precio="1500.00"):
-    return [{"nombre": "línea", "qty": float(cantidad), "precio": float(precio), "producto_id": None}]
+def _venta_lista_items(item_id, cantidad="2", precio="1500.00"):
+    """La línea de un producto real y a su precio: con `validar_precios` (ADR-079) un ítem libre o un precio distinto se
+    rechazan antes de mirar los pagos, y estos tests miden los pagos."""
+    return [{"nombre": "línea", "qty": float(cantidad), "precio": float(precio), "producto_id": item_id}]
 
 
 def test_cash_payment_records_the_change(admin_client):
@@ -253,10 +255,10 @@ def test_payments_below_total_are_rejected(admin_client):
     (prendida en `app/main.py`) rechaza con 422 -- no 409, que es el código
     del modelo viejo -- una venta cuyos pagos declarados no cubren el total,
     antes de escribir nada."""
-    _make_item(admin_client)
+    item_id = _make_item(admin_client)
     abrir_turno(admin_client)
     respuesta = admin_client.post("/api/ventas", json={
-        "fecha": hoy(), "items": _venta_lista_items(),
+        "fecha": hoy(), "items": _venta_lista_items(item_id),
         "pagos": [{"medio": "efectivo", "monto": 1000.00}],
     })
     assert respuesta.status_code == 422, respuesta.text
@@ -266,20 +268,20 @@ def test_payments_below_total_are_rejected(admin_client):
 def test_received_less_than_the_payment_is_rejected(admin_client):
     """Cerrado en libracommerce v0.16.2: `PagoPayload` valida `recibido >=
     monto` -- un vuelto negativo es un dato imposible."""
-    _make_item(admin_client)
+    item_id = _make_item(admin_client)
     abrir_turno(admin_client)
     respuesta = admin_client.post("/api/ventas", json={
-        "fecha": hoy(), "items": _venta_lista_items(),
+        "fecha": hoy(), "items": _venta_lista_items(item_id),
         "pagos": [{"medio": "efectivo", "monto": 3000.00, "recibido": 2000.00}],
     })
     assert respuesta.status_code == 422
 
 
 def test_confirm_without_any_payment_info_is_rejected(admin_client):
-    _make_item(admin_client)
+    item_id = _make_item(admin_client)
     abrir_turno(admin_client)
     respuesta = admin_client.post("/api/ventas", json={
-        "fecha": hoy(), "items": _venta_lista_items(), "pagos": [],
+        "fecha": hoy(), "items": _venta_lista_items(item_id), "pagos": [],
     })
     assert respuesta.status_code == 422
 
