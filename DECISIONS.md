@@ -3031,3 +3031,36 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   —cuatro formas— y el ajuste común sin lote pasa**); `tests/test_roles_matriz.py` (la guarda es `vencimientos.mover` para cada rol; el invariante `stock.ajustar ⊆ vencimientos.mover` sigue fijado); `frontend/src/test/vencimientos-puede-mermar.test.tsx` (qué capacidad manda en cada prop). Con la opción apagada, los de VentaLibra fallan (seis); sin la guarda del motor, fallan los del motor.
 - Depende de: libracommerce con ADR-047 (`OpcionesStock.autorizar_lotes`; la versión que se corte con ese cambio) y libra-ui con ADR-051 (`puedeMermar`; 0.139.0). **Orden: motor, kit, y recién después el pin de este producto.** Con el pin viejo del motor, `OpcionesStock(autorizar_lotes=…)` es un `TypeError` al arrancar.
 - Nota sobre ADR-053: la frase «`con_lotes` queda apagada» y el test por rol que la fijaba quedan como la historia de ese momento; la vigente es ésta.
+
+
+## ADR-077 — Sin el módulo `multisucursal`, «Nueva sucursal» queda deshabilitada con un solo motivo
+
+- Estado: aceptada (pendiente §3.4 del wiki, «Nueva sucursal» en Básico). **Completa ADR-048 y ADR-072** en lo que se ve; no cambia el backend.
+- Fecha: 2026-10-12
+- Contexto: el pendiente decía que en Básico el botón «Nueva sucursal» no se ocultaba. **Básico ya no existe** (ADR-072: plan único con `multisucursal`
+  prendido, y el arranque prende los módulos de una instancia que quedó guardada como `basico`). Lo que queda es la instancia con `multisucursal`
+  apagado por una decisión administrativa; ahí el backend rechaza con 403 el alta y la reactivación de una segunda sucursal (`app/depositos_ganchos.py`,
+  `_exigir_multisucursal`), antes del 409 de las contratadas (ADR-073). La pantalla le mostraba al admin dos avisos para lo mismo: una caja `AvisoModulo`
+  («Más de una sucursal: sin activar en esta instancia») y el botón rotulado «Nueva sucursal (sin activar)», **habilitado**; el rechazo llegaba recién al
+  guardar el formulario.
+- Qué ya existía (se miró antes de cambiar): `useTieneModulo(MULTISUCURSAL)` y `AvisoModulo`; la prop `rutaDelLimite` del kit (ADR-048 del kit), que
+  deshabilita el alta al llegar al tope con el motivo debajo del título; `soloLectura`, que no sirve porque esconde también la edición.
+- Decisión:
+  1. El kit suma `motivoSinAlta` (libra-ui ADR-052): deshabilita «Nueva sucursal» y muestra el motivo en el mismo lugar y con el mismo estilo que el aviso de
+     las contratadas, apuntado por `aria-describedby`.
+  2. La página de Sucursales le pasa `motivoSinAlta` cuando falta `multisucursal`: «Esta instancia es de un solo local: podés tener todos los depósitos que
+     necesites dentro de él. Para sumar otra sucursal, escribinos para activarlo.» Se retira la caja `AvisoModulo` de esa pantalla y el rótulo «(sin activar)»:
+     un aviso, no dos. Con el tope de contratadas también alcanzado, el motivo va una sola vez (no se suma el «Tu plan incluye N…»); el «N de M» se conserva.
+  3. Editar, predeterminar y «Ver depósitos» siguen andando: sólo se frena sumar otra. El cajero y el resto de quienes no administran no ven el botón ni el
+     motivo (`soloLectura`), como antes.
+  4. **Sin cambios en el motor ni en el backend**: el 403 ya corta el alta y la reactivación (`tests/test_planes_y_sucursales.py`); la pantalla sólo lo anticipa.
+     La reactivación de una sucursal dada de baja se hace desde «Editar» (switch «Activa») y sigue ofrecida: su rechazo llega por el 403 en el formulario.
+  5. `Transferencias` y la sección de ARCA conservan su `AvisoModulo`: ahí no hay otro aviso que lo duplique.
+- Consecuencias:
+  - Sólo se ve con el módulo apagado; con el plan único (lo normal) la pantalla no cambia.
+  - El botón queda deshabilitado hasta recargar si el módulo se prende con la pantalla abierta.
+- Tests: `frontend/src/test/planes-y-modulos.test.tsx` (deshabilitado, con motivo, sin caja ni «(sin activar)», con editar andando; motivo una sola vez con el tope
+  alcanzado; con el módulo y sin el campo `modulos` queda habilitado y sin aviso; el cajero no ve ni botón ni motivo) y `planes-y-modulos-app.test.tsx` (la app
+  entera con sesión). Los nuevos fallan con el kit sin `motivoSinAlta`.
+- Depende de: libra-ui con ADR-052 (`motivoSinAlta`; versión a definir al cortar el tag del kit). Hasta subir el pin, el kit 0.140.0 ignora la prop y la
+  pantalla queda sin aviso y con el botón habilitado: **subir el pin en el mismo cambio**.
