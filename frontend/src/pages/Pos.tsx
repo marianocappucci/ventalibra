@@ -526,6 +526,14 @@ export function Pos() {
     if (!pendiente) return
     const { item, cantidad, precioUnitario } = pendiente
     setVariantes([])
+    await agregarConVariante(item, cantidad, variante, precioUnitario)
+  }
+
+  /** Agrega la línea de una variante ya identificada -- la elegida en el diálogo o la que trajo el escaneo de su SKU
+   *  (ADR-075) -- al precio de la lista predeterminada, salvo que una etiqueta de balanza traiga el suyo. */
+  async function agregarConVariante(
+    item: Producto, cantidad: string, variante: VarianteProducto, precioUnitario?: string | null,
+  ) {
     const efectivo = precioUnitario === undefined
       ? await resolverPrecioEfectivo(item.id, cantidad, variante.id)
       : precioUnitario
@@ -573,11 +581,15 @@ export function Pos() {
       )
       // Una etiqueta de balanza ya trae cuanto se peso, y el multiplicador
       // no aplica: cada etiqueta es de un paquete concreto, no de N iguales.
-      await elegirItem(
-        escaneado.producto,
-        escaneado.de_balanza ? String(escaneado.cantidad) : cantidad,
-        escaneado.precio_unitario === null ? undefined : String(escaneado.precio_unitario),
-      )
+      const cantidadEscaneada = escaneado.de_balanza ? String(escaneado.cantidad) : cantidad
+      const precioEscaneado = escaneado.precio_unitario === null ? undefined : String(escaneado.precio_unitario)
+      // El SKU de una variante ya dice cual es: no se vuelve a preguntar (ADR-075). El codigo del producto, en
+      // cambio, no trae `variante` y `elegirItem` pregunta si el producto las tiene.
+      if (escaneado.variante) {
+        await agregarConVariante(escaneado.producto, cantidadEscaneada, escaneado.variante, precioEscaneado)
+      } else {
+        await elegirItem(escaneado.producto, cantidadEscaneada, precioEscaneado)
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         try {
