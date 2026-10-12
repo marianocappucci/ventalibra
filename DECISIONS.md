@@ -2981,7 +2981,7 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
     juntas) y combos. **No hay promoción por categoría ni por variante**: no existen en el motor (ADR-045 explica cómo se leería la categoría si se agrega).
   - **El quiebre por cantidad sigue siendo por línea.** Dos talles en dos líneas no suman para un quiebre de 2 unidades; un producto sin variantes
     escaneado dos veces tampoco. Es el comportamiento de siempre; cambiarlo (re-precificar todas las líneas de un producto con la cantidad total) toca
-    a los productos sin variantes y queda como decisión aparte.
+    a los productos sin variantes y queda como decisión aparte. **Resuelto en ADR-078.**
   - Pendiente aparte (cerrado en ADR-075): `GET /api/productos/escanear` devuelve la `variante` cuando el código es el SKU de una, pero `buscar()` la ignoraba y volvía a preguntar
     la variante al cajero.
   - Sin migración ni cambio de API. Hace falta `libracommerce` con ADR-045 sólo para el comentario y los tests del motor: el POS funciona con el pin actual.
@@ -3031,3 +3031,60 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   —cuatro formas— y el ajuste común sin lote pasa**); `tests/test_roles_matriz.py` (la guarda es `vencimientos.mover` para cada rol; el invariante `stock.ajustar ⊆ vencimientos.mover` sigue fijado); `frontend/src/test/vencimientos-puede-mermar.test.tsx` (qué capacidad manda en cada prop). Con la opción apagada, los de VentaLibra fallan (seis); sin la guarda del motor, fallan los del motor.
 - Depende de: libracommerce con ADR-047 (`OpcionesStock.autorizar_lotes`; la versión que se corte con ese cambio) y libra-ui con ADR-051 (`puedeMermar`; 0.139.0). **Orden: motor, kit, y recién después el pin de este producto.** Con el pin viejo del motor, `OpcionesStock(autorizar_lotes=…)` es un `TypeError` al arrancar.
 - Nota sobre ADR-053: la frase «`con_lotes` queda apagada» y el test por rol que la fijaba quedan como la historia de ese momento; la vigente es ésta.
+
+
+## ADR-077 — Sin el módulo `multisucursal`, «Nueva sucursal» queda deshabilitada con un solo motivo
+
+- Estado: aceptada (pendiente §3.4 del wiki, «Nueva sucursal» en Básico). **Completa ADR-048 y ADR-072** en lo que se ve; no cambia el backend.
+- Fecha: 2026-10-12
+- Contexto: el pendiente decía que en Básico el botón «Nueva sucursal» no se ocultaba. **Básico ya no existe** (ADR-072: plan único con `multisucursal`
+  prendido, y el arranque prende los módulos de una instancia que quedó guardada como `basico`). Lo que queda es la instancia con `multisucursal`
+  apagado por una decisión administrativa; ahí el backend rechaza con 403 el alta y la reactivación de una segunda sucursal (`app/depositos_ganchos.py`,
+  `_exigir_multisucursal`), antes del 409 de las contratadas (ADR-073). La pantalla le mostraba al admin dos avisos para lo mismo: una caja `AvisoModulo`
+  («Más de una sucursal: sin activar en esta instancia») y el botón rotulado «Nueva sucursal (sin activar)», **habilitado**; el rechazo llegaba recién al
+  guardar el formulario.
+- Qué ya existía (se miró antes de cambiar): `useTieneModulo(MULTISUCURSAL)` y `AvisoModulo`; la prop `rutaDelLimite` del kit (ADR-048 del kit), que
+  deshabilita el alta al llegar al tope con el motivo debajo del título; `soloLectura`, que no sirve porque esconde también la edición.
+- Decisión:
+  1. El kit suma `motivoSinAlta` (libra-ui ADR-052): deshabilita «Nueva sucursal» y muestra el motivo en el mismo lugar y con el mismo estilo que el aviso de
+     las contratadas, apuntado por `aria-describedby`.
+  2. La página de Sucursales le pasa `motivoSinAlta` cuando falta `multisucursal`: «Esta instancia es de un solo local: podés tener todos los depósitos que
+     necesites dentro de él. Para sumar otra sucursal, escribinos para activarlo.» Se retira la caja `AvisoModulo` de esa pantalla y el rótulo «(sin activar)»:
+     un aviso, no dos. Con el tope de contratadas también alcanzado, el motivo va una sola vez (no se suma el «Tu plan incluye N…»); el «N de M» se conserva.
+  3. Editar, predeterminar y «Ver depósitos» siguen andando: sólo se frena sumar otra. El cajero y el resto de quienes no administran no ven el botón ni el
+     motivo (`soloLectura`), como antes.
+  4. **Sin cambios en el motor ni en el backend**: el 403 ya corta el alta y la reactivación (`tests/test_planes_y_sucursales.py`); la pantalla sólo lo anticipa.
+     La reactivación de una sucursal dada de baja se hace desde «Editar» (switch «Activa») y sigue ofrecida: su rechazo llega por el 403 en el formulario.
+  5. `Transferencias` y la sección de ARCA conservan su `AvisoModulo`: ahí no hay otro aviso que lo duplique.
+- Consecuencias:
+  - Sólo se ve con el módulo apagado; con el plan único (lo normal) la pantalla no cambia.
+  - El botón queda deshabilitado hasta recargar si el módulo se prende con la pantalla abierta.
+- Tests: `frontend/src/test/planes-y-modulos.test.tsx` (deshabilitado, con motivo, sin caja ni «(sin activar)», con editar andando; motivo una sola vez con el tope
+  alcanzado; con el módulo y sin el campo `modulos` queda habilitado y sin aviso; el cajero no ve ni botón ni motivo) y `planes-y-modulos-app.test.tsx` (la app
+  entera con sesión). Los nuevos fallan con el kit sin `motivoSinAlta`.
+- Depende de: libra-ui con ADR-052 (`motivoSinAlta`; versión a definir al cortar el tag del kit). Hasta subir el pin, el kit 0.140.0 ignora la prop y la
+  pantalla queda sin aviso y con el botón habilitado: **subir el pin en el mismo cambio**.
+
+## ADR-078 — El quiebre por cantidad cuenta por producto: el POS le pide al motor el precio de todo el carrito
+
+- Estado: aceptada (decisión del orquestador con aval del humano, 2026-10-12). **Cierra** lo que ADR-074 dejó dicho: «el quiebre por cantidad sigue siendo por línea».
+- Fecha: 2026-10-12
+- Contexto: el POS resolvía el precio de cada línea con `GET /api/listas-precio/{id}/precio` y **la cantidad de esa línea**. Dos talles de una remera, de a una unidad, no llegaban a un quiebre de 2; un producto sin variantes escaneado dos veces en dos líneas, tampoco. Las promociones «llevá N pagá M» ya contaban por producto (ADR-074, ADR-045 del motor): el mismo carrito tenía dos reglas para «cuántas unidades llevó».
+- Qué ya existía (se miró antes de diseñar):
+  - **Quién decide el precio que queda en la venta.** El motor **no lo recalcula**: `POST /api/ventas` guarda el `precio` de cada línea tal como lo manda el POS (`max(0, precio)`; `web/ventas_router.crear`, `erp/ventas.crear_venta_directa`) y sólo recalcula las promociones, a partir de esos precios. O sea que el cliente (el POS) decide el precio, y el arreglo tenía que estar en el POS.
+  - Aun así la cuenta «cuánto lleva el producto» es de fondo y va en el motor (regla de la familia): `erp.listas_precio.precios_por_producto` y `POST /api/listas-precio/{id}/precios` (libracommerce ADR-048), que reusan `resolve_price`, la validación de variante y la hora local de `precio_vigente`. El POS no suma nada.
+  - `secuenciaPromosRef` y `calculandoPromos` (el POS ya consultaba las promociones después de cada cambio del carrito, con una consulta tardía que no pisa a la última): se imita ese molde.
+- Decisión:
+  1. **El POS deja de pedir el precio por línea.** Se retira `resolverPrecioEfectivo` y, con él, el `await` al agregar: la línea entra al precio plano (o al de la balanza) y un efecto le pide al motor, **con todas las líneas**, el precio de cada una. Se vuelve a pedir cuando cambia lo que decide un precio: agregar, cambiar la cantidad, **quitar** (al quitar uno de los dos talles, el que queda vuelve al precio base; si no, quedaba al del quiebre con una sola unidad) o aparecer la lista predeterminada.
+  2. **`CartLine` lleva `clave` y `de_balanza`.** La respuesta llega con una entrada por línea enviada y se aplica por `clave` (el índice cambia al quitar otra línea). `de_balanza` marca las líneas cuyo precio trajo la etiqueta: **sus kilos cuentan para el quiebre del producto, pero su precio no se pisa** (ni al agregar ni al cambiar la cantidad).
+  3. **`Cobrar` espera los precios.** `repreciando` se calcula al renderizar (la firma de lo que se cotizó contra la firma actual) y entra en `puedeCobrar` junto a `calculandoPromos`: en el mismo render en que entra una línea ya no se puede cobrar con el total viejo. Si la consulta falla, la firma se da por cotizada y se vende al precio que ya tenían las líneas, sin bloquear (el criterio de siempre).
+  4. **Permisos.** La ruta nueva es un POST dentro del router de quiebres, que es de `precios.escribir`; el POS la usa con el cajero. `requiere_segun_ruta` suma `("POST", ".../precios", "precios.consultar")` (no escribe nada: el POST es por el cuerpo) y la matriz de roles su fila (`MOSTRADOR`).
+- Consecuencias:
+  - Dos talles de a una unidad con un quiebre de 2 se cobran los dos al precio del quiebre; un producto sin variantes en dos líneas, igual; productos distintos no se suman.
+  - **Cambio de comportamiento a propósito, en la balanza:** antes, cambiar la cantidad de una línea de balanza (F6) la volvía al precio de la lista; ahora conserva el de la etiqueta, como al agregarla.
+  - **El servidor sigue sin validar el precio de la línea** (ver el contexto): un cliente que no sea este POS puede mandar otro. No es nuevo ni cambia con esto.
+  - Un instante con el precio viejo: la línea nueva se ve a precio plano hasta que llega la respuesta (decenas de ms); el cobro está bloqueado mientras tanto.
+  - Los productos con el mismo quiebre de la lista en distintos carritos no cambian; `GET /precio` sigue existiendo para quien resuelva una sola línea.
+  - Sin migración.
+- Tests: `frontend/src/test/pos-quiebre-por-producto.test.tsx` (7: dos talles; dos escaneos del mismo producto; productos distintos; cambiar la cantidad de un talle; quitar uno; cobrar espera los precios; la balanza suma pero no se pisa), los de `pos-precio-por-lista`, `pos-escanear-variante` y `pos-variantes-promociones` pasados al endpoint nuevo (más uno: la balanza no se pisa al cambiar la cantidad), y `tests/test_promociones.py` (el cajero pide el precio de su carrito con el quiebre por producto) más la fila de `tests/test_roles_matriz.py`. Con el POS anterior fallan los de quiebre por producto del POS; sin la suma del motor, el del backend.
+- Depende de: libracommerce con ADR-048 (la ruta nueva; la versión que se corte con ese cambio). **Orden: motor y recién después el pin de este producto**, junto con el de ADR-076 (ADR-047 del motor): el pin actual (v0.54.0) no tiene la ruta, y la fila de la matriz y el test del cajero se ponen rojos hasta subirlo. El POS contra un motor sin la ruta no rompe: la consulta falla y vende al precio plano.

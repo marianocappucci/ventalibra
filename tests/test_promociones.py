@@ -94,6 +94,35 @@ def test_el_cajero_lee_el_precio_de_la_lista_pero_no_los_quiebres(admin_client, 
     assert cajero_client.post(f"/api/listas-precio/{lista['id']}/set-default").status_code == 403
 
 
+def test_el_cajero_pide_el_precio_de_todo_su_carrito_con_el_quiebre_por_producto(admin_client, cajero_client):
+    """Lo que hace el POS desde el ADR-078: `POST /api/listas-precio/{id}/precios` con todas las líneas. Dos talles de a una
+    unidad llegan juntos al quiebre de 2 (libracommerce ADR-048). Va en el router de quiebres, que es de admin: sin la regla
+    `("POST", ".../precios", "precios.consultar")` el cajero recibía 403 y el POS caía al precio plano en silencio."""
+    item_id = crear_item(admin_client, "Remera", "100.00")
+    otro_id = crear_item(admin_client, "Gorra", "50.00")
+    lista = admin_client.post("/api/listas-precio", json={"nombre": "General"}).json()
+    admin_client.post(f"/api/listas-precio/{lista['id']}/set-default")
+    admin_client.put(f"/api/listas-precio/{lista['id']}/items", json={"precios": {str(item_id): 100.0, str(otro_id): 50.0}})
+    admin_client.put(f"/api/listas-precio/{lista['id']}/items/{item_id}/quiebres",
+                     json={"quiebres": [{"min_quantity": 2, "amount": 80.0}]})
+    talles = [admin_client.post(f"/api/productos/{item_id}/variantes", json={"sku": f"REM-{t}", "nombre": t}).json()["id"]
+              for t in ("M", "L")]
+
+    r = cajero_client.post(f"/api/listas-precio/{lista['id']}/precios", json={"lineas": [
+        {"producto_id": item_id, "variante_id": talles[0], "cantidad": 1},
+        {"producto_id": item_id, "variante_id": talles[1], "cantidad": 1},
+        {"producto_id": otro_id, "cantidad": 1},
+    ]})
+    assert r.status_code == 200, r.text
+    assert [p["precio"] for p in r.json()["precios"]] == [80.0, 80.0, 50.0]  # la gorra no suma con la remera
+    # Con una sola línea de la remera no hay quiebre, y el GET de siempre sigue resolviendo una línea por su cantidad.
+    solo = cajero_client.post(f"/api/listas-precio/{lista['id']}/precios",
+                              json={"lineas": [{"producto_id": item_id, "cantidad": 1}]})
+    assert [p["precio"] for p in solo.json()["precios"]] == [100.0]
+    assert cajero_client.get(f"/api/listas-precio/{lista['id']}/precio",
+                             params={"producto_id": item_id, "cantidad": 1}).json() == {"precio": 100.0}
+
+
 def test_el_cajero_no_lee_el_precio_con_otro_metodo(admin_client, cajero_client):
     item_id = crear_item(admin_client, "Alfajor", "100.00")
     lista = admin_client.post("/api/listas-precio", json={"nombre": "General"}).json()

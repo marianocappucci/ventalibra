@@ -69,31 +69,57 @@ describe('lib/modulos', () => {
 })
 
 describe('Sucursales', () => {
-  it('sin `multisucursal` avisa que más de una sucursal está sin activar y lo dice en el botón', async () => {
+  const UN_SOLO_LOCAL = /Esta instancia es de un solo local.*escribinos para activarlo/
+
+  it('sin `multisucursal` el alta queda deshabilitada con el motivo, sin caja aparte ni «(sin activar)» en el botón', async () => {
     conModulos(SIN_MODULOS, <Sucursales />)
-    expect(await screen.findByRole('note')).toHaveTextContent('Más de una sucursal: sin activar en esta instancia')
-    expect(await screen.findByRole('button', { name: /Nueva sucursal \(sin activar\)/ })).toBeInTheDocument()
+    const boton = await screen.findByRole('button', { name: 'Nueva sucursal' })
+    expect(boton).toBeDisabled()
+    expect(await screen.findByText(UN_SOLO_LOCAL)).toBeInTheDocument()
+    expect(boton).toHaveAccessibleDescription(UN_SOLO_LOCAL)
+    // Un solo aviso: la caja de módulo apagado ya no está en esta pantalla.
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.queryByText(/sin activar/)).not.toBeInTheDocument()
     // Lo que ya hay sigue a la vista y editable.
     expect(await screen.findByText('Centro')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Editar/ })).toBeEnabled()
+  })
+
+  it('sin `multisucursal` y con el tope de contratadas alcanzado, el motivo va una sola vez', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const u = String(url)
+      if (u.includes('/api/limites/sucursales')) return Promise.resolve(json({ contratadas: 1, activas: 1 }))
+      if (u.includes('/api/sucursales')) return Promise.resolve(json([CENTRO]))
+      return Promise.resolve(json([]))
+    }))
+    conModulos(SIN_MODULOS, <Sucursales />)
+    expect(await screen.findByText('1 de 1 sucursal contratada')).toBeInTheDocument()
+    expect(screen.getByText(UN_SOLO_LOCAL)).toBeInTheDocument()
+    expect(screen.queryByText(/Tu plan incluye/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nueva sucursal' })).toBeDisabled()
   })
 
   it('con el plan único no avisa nada', async () => {
     conModulos(TODOS, <Sucursales />)
-    expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeEnabled()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.queryByText(UN_SOLO_LOCAL)).not.toBeInTheDocument()
   })
 
   it('si el backend no manda los módulos, no avisa (el 403 del backend es el que corta)', async () => {
     conModulos(undefined, <Sucursales />)
-    expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeEnabled()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.queryByText(UN_SOLO_LOCAL)).not.toBeInTheDocument()
   })
 
-  it('un cajero no ve el aviso: no da de alta sucursales', async () => {
+  it('un cajero no ve el aviso ni el botón: no da de alta sucursales', async () => {
     sesion.rol = 'cajero'
     conModulos(SIN_MODULOS, <Sucursales />)
     expect(await screen.findByText('Centro')).toBeInTheDocument()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.queryByText(UN_SOLO_LOCAL)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Nueva sucursal/ })).not.toBeInTheDocument()
   })
 })
 
