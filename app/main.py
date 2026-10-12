@@ -716,8 +716,9 @@ def create_app(db_path: str) -> FastAPI:
         build_listas_precio_router(conexion=lc_get_connection),
         dependencies=[Depends(requiere_segun_metodo(lectura="precios.consultar", escritura="precios.escribir"))],
     )
-    # El POS le pide el precio de cada línea a la lista predeterminada (`GET .../{id}/precio`, que vive
-    # en el router de quiebres): esa ruta se lee con `precios.consultar`; los quiebres y todo lo que escribe
+    # El POS le pide el precio de cada línea a la lista predeterminada (`GET .../{id}/precio` y, desde el quiebre por
+    # producto, `POST .../{id}/precios` con todo el carrito, ADR-078; los dos viven en el router de quiebres): esas rutas se
+    # leen con `precios.consultar` (el POST no escribe nada, lleva cuerpo); los quiebres y todo lo que escribe
     # siguen siendo de `precios.escribir`.
     #
     # 🔴 Sin esta separación el cajero recibía 403 y el POS caía al precio plano **en silencio**: lo custodia
@@ -726,6 +727,7 @@ def create_app(db_path: str) -> FastAPI:
         build_quiebres_router(conexion=lc_get_connection),
         dependencies=[Depends(requiere_segun_ruta(
             ("GET", r"/api/listas-precio/\d+/precio", "precios.consultar"),
+            ("POST", r"/api/listas-precio/\d+/precios", "precios.consultar"),
             por_defecto="precios.escribir",
         ))],
     )

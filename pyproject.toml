@@ -101,7 +101,8 @@ dependencies = [
     # v0.51.0 -> v0.52.0 (2026-10-10): «hoy» de Argentina en ajustes, transferencias y margen (ADR-044); return_sale_items reintegra lo pagado (ADR-043). Sin migracion.
     # v0.52.0 -> v0.53.0 (2026-10-11): «Recibir mercaderia» idempotente con `POST /api/purchase-receipts/recibir` (ADR-046, **migracion 0006**: `purchase_receipts.clave_operacion`, aditiva); las variantes cuentan como su producto en las promociones (ADR-045, sin cambio de logica).
     # v0.53.0 -> v0.54.0 (2026-10-12): el ajuste de stock con lote exige `OpcionesStock.autorizar_lotes` (ADR-047); con `con_lotes=True` sin la guarda, la factory falla. Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.54.0",
+    # v0.54.0 -> v0.55.0 (2026-10-12): `POST /api/listas-precio/{id}/precios`, el quiebre por cantidad cuenta por producto (ADR-048). Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.55.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #

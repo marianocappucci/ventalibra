@@ -239,20 +239,33 @@ function parseMultiplicador(texto: string): { cantidad: string; resto: string } 
 /** Una línea del carrito, ANTES de registrarse (D1): todavía no tiene `id`
  *  de `sale_items` -- eso lo pone el backend recién en `POST /api/ventas`. */
 type CartLine = {
+  /** Identifica la línea mientras está en el carrito (el índice cambia al quitar otra): a qué línea le toca el precio que
+   *  llega de la lista (`POST .../precios`). No viaja al servidor. */
+  clave: number
   nombre: string
   qty: string
   precio: string
   producto_id: number | null
   variante_id: number | null
+  /** El precio lo trajo la etiqueta de la balanza (ya incluye cuánto se pesó): la lista no lo pisa, ni al agregar ni al
+   *  cambiar la cantidad. Sus kilos sí cuentan para el quiebre del producto. */
+  de_balanza: boolean
 }
 
-function lineaVacia(item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null): CartLine {
+/** La respuesta de `POST /api/listas-precio/{id}/precios`: una entrada por línea enviada, en el mismo orden. */
+type PreciosDeLaLista = { precios: { precio: number | null }[] }
+
+function lineaVacia(
+  clave: number, item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null,
+): CartLine {
   return {
+    clave,
     nombre: variante ? `${item.nombre} (${variante.nombre})` : item.nombre,
     qty: cantidad,
     precio: precioUnitario ?? String(item.precio_venta),
     producto_id: item.id,
     variante_id: variante?.id ?? null,
+    de_balanza: precioUnitario != null,
   }
 }
 
@@ -265,6 +278,7 @@ export function Pos() {
   )
 
   const [cart, setCart] = useState<CartLine[]>([])
+  const claveDeLineaRef = useRef(0)
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -329,7 +343,9 @@ export function Pos() {
   // La lista de precios predeterminada (roadmap de producto, 2026-09-28): si la
   // instalación tiene una marcada, cada línea se cobra al precio que resulte de
   // aplicar cantidad y vigencia (`libracommerce.erp.listas_precio.resolve_price`)
-  // en vez del precio plano del producto. `null` mientras carga o si no hay
+  // en vez del precio plano del producto. La cantidad que decide un quiebre es la
+  // del PRODUCTO en el carrito, sumando sus líneas (ADR-078; ver `repreciando`,
+  // más abajo). `null` mientras carga o si no hay
   // ninguna marcada -- en los dos casos el POS sigue vendiendo al precio de
   // siempre, sin bloquear nada (mismo criterio que `mp-estado`, arriba).
   const [listaPrecioDefaultId, setListaPrecioDefaultId] = useState<number | null>(null)
@@ -460,7 +476,7 @@ export function Pos() {
     item: Producto, cantidad: string, variante?: VarianteProducto, precioUnitario?: string | null,
   ) {
     setCart((prev) => {
-      const nueva = [...prev, lineaVacia(item, cantidad, variante, precioUnitario)]
+      const nueva = [...prev, lineaVacia(++claveDeLineaRef.current, item, cantidad, variante, precioUnitario)]
       setReciente(nueva.length - 1)
       setMarcada(nueva.length - 1)
       return nueva
@@ -473,29 +489,8 @@ export function Pos() {
     enfocarEscaneo()
   }
 
-  /** El precio de `productoId` para `cantidad`, AHORA, según la lista
-   *  predeterminada (cantidad y vigencia por fecha/hora -- roadmap de
-   *  producto). `null` si no hay lista default, no hay precio para ese
-   *  producto, o la consulta falla: en los tres casos el llamador cae al
-   *  precio plano de siempre, nunca bloquea la venta por esto. */
-  async function resolverPrecioEfectivo(
-    productoId: number, cantidad: string, varianteId?: number | null,
-  ): Promise<string | null> {
-    if (listaPrecioDefaultId === null) return null
-    try {
-      // La variante no tiene precio propio (`item_prices` no tiene esa columna): se cobra el de su producto. Se la manda
-      // igual para que el motor valide que es de ese producto, y un par inventado cae al precio plano como cualquier falla.
-      const deVariante = varianteId == null ? '' : `&variante_id=${varianteId}`
-      const { precio } = await api.get<{ precio: number | null }>(
-        `/api/listas-precio/${listaPrecioDefaultId}/precio?producto_id=${productoId}${deVariante}`
-        + `&cantidad=${encodeURIComponent(cantidad || '1')}&en=${encodeURIComponent(new Date().toISOString())}`,
-      )
-      return precio === null ? null : String(precio)
-    } catch {
-      return null
-    }
-  }
-
+  /** Agrega la línea. El precio de la lista (cantidad por producto y vigencia, ADR-042 y ADR-078) no se pide acá: la línea
+   *  entra y el efecto de `repreciando` se lo pone, a ella y a las otras del mismo producto, en una sola consulta. */
   async function elegirItem(
     item: Producto, cantidad: string, precioUnitario?: string | null,
   ) {
@@ -513,31 +508,18 @@ export function Pos() {
       // sin variantes accesibles: se vende el item pelado
     }
     // `precioUnitario` sólo viene definido cuando una etiqueta de balanza trae el
-    // suyo: ese no se pisa. En cualquier otro caso (`undefined`) se consulta la
-    // lista predeterminada.
-    const efectivo = precioUnitario === undefined ? await resolverPrecioEfectivo(item.id, cantidad) : precioUnitario
-    agregar(item, cantidad, undefined, efectivo)
+    // suyo: ese no se pisa. En cualquier otro caso (`undefined`) manda la lista predeterminada.
+    agregar(item, cantidad, undefined, precioUnitario)
   }
 
   /** La variante elegida en el diálogo: la línea entra al mismo precio que el producto sin variantes (ADR-074), o sea el
-   *  de la lista predeterminada para esa cantidad y a esta hora (ADR-042); un precio de balanza no se pisa. El diálogo se
-   *  cierra antes del `await` para que un segundo clic no agregue la línea dos veces. */
-  async function elegirVariante(variante: VarianteProducto) {
+   *  de la lista predeterminada para lo que lleva el PRODUCTO en el carrito y a esta hora (ADR-042, ADR-078); un precio de
+   *  balanza no se pisa. */
+  function elegirVariante(variante: VarianteProducto) {
     if (!pendiente) return
     const { item, cantidad, precioUnitario } = pendiente
     setVariantes([])
-    await agregarConVariante(item, cantidad, variante, precioUnitario)
-  }
-
-  /** Agrega la línea de una variante ya identificada -- la elegida en el diálogo o la que trajo el escaneo de su SKU
-   *  (ADR-075) -- al precio de la lista predeterminada, salvo que una etiqueta de balanza traiga el suyo. */
-  async function agregarConVariante(
-    item: Producto, cantidad: string, variante: VarianteProducto, precioUnitario?: string | null,
-  ) {
-    const efectivo = precioUnitario === undefined
-      ? await resolverPrecioEfectivo(item.id, cantidad, variante.id)
-      : precioUnitario
-    agregar(item, cantidad, variante, efectivo)
+    agregar(item, cantidad, variante, precioUnitario)
   }
 
   /** Elegir una sugerencia de la busqueda en vivo -- mismo camino que
@@ -586,7 +568,8 @@ export function Pos() {
       // El SKU de una variante ya dice cual es: no se vuelve a preguntar (ADR-075). El codigo del producto, en
       // cambio, no trae `variante` y `elegirItem` pregunta si el producto las tiene.
       if (escaneado.variante) {
-        await agregarConVariante(escaneado.producto, cantidadEscaneada, escaneado.variante, precioEscaneado)
+        // La variante identificada por su SKU entra directo (ADR-075), al precio de la lista salvo que traiga el de la balanza.
+        agregar(escaneado.producto, cantidadEscaneada, escaneado.variante, precioEscaneado)
       } else {
         await elegirItem(escaneado.producto, cantidadEscaneada, precioEscaneado)
       }
@@ -619,21 +602,12 @@ export function Pos() {
     enfocarEscaneo()
   }
 
-  async function cambiarCantidad(index: number, cantidad: string) {
-    const productoId = cart[index]?.producto_id
-    const varianteId = cart[index]?.variante_id
+  function cambiarCantidad(index: number, cantidad: string) {
+    // El precio nuevo (si cambia el quiebre del producto) llega después, sin bloquear el cierre del diálogo ni el resto de
+    // la venta -- la cantidad ya quedó cargada aunque esto tarde o falle. Lo pide el efecto de `repreciando`.
     setCart((prev) => prev.map((linea, i) => (i === index ? { ...linea, qty: cantidad } : linea)))
     setCantidadOpen(false)
     enfocarEscaneo()
-    // El nuevo precio (si cambia el quiebre de cantidad alcanzado) llega
-    // después, sin bloquear el cierre del diálogo ni el resto de la venta --
-    // la cantidad ya quedó cargada aunque esto tarde o falle.
-    if (productoId !== null && productoId !== undefined) {
-      const efectivo = await resolverPrecioEfectivo(productoId, cantidad, varianteId)
-      if (efectivo !== null) {
-        setCart((prev) => prev.map((linea, i) => (i === index && linea.producto_id === productoId ? { ...linea, precio: efectivo } : linea)))
-      }
-    }
   }
 
   function cancelarVenta() {
@@ -648,6 +622,47 @@ export function Pos() {
   }
 
   const total = cart.reduce((acc, l) => acc + (Number(l.qty) || 0) * (Number(l.precio) || 0), 0)
+
+  // El precio de cada línea según la lista predeterminada (ADR-042), con el quiebre por cantidad contado POR PRODUCTO
+  // (ADR-078): dos talles de una remera, de a uno, llegan juntos a un quiebre de 2 -- igual que las promociones (ADR-074).
+  // La cuenta la hace el motor (`POST /api/listas-precio/{id}/precios`, libracommerce ADR-048) con TODAS las líneas, así que
+  // se pide después de cada cambio de lo que decide el precio (agregar, cantidad, quitar), y no sólo por la línea tocada: al
+  // quitar uno de los dos talles, el que queda vuelve al precio base. Sigue el molde de las promociones (`secuenciaPromosRef`):
+  // una consulta tardía no pisa a la última, y si falla las líneas quedan como estaban -- vender no se bloquea por esto.
+  // `Cobrar` espera la respuesta (`repreciando`) para no abrir el cobro con un precio viejo. La etiqueta de una balanza trae el
+  // precio de su paquete: sus kilos suman al producto, pero su precio no se pisa.
+  const secuenciaPreciosRef = useRef(0)
+  // Lo que decide un precio (qué se vende, cuánto y en qué lista) y no el precio mismo: si el precio entrara, aplicar la
+  // respuesta volvería a disparar la consulta. Se calcula al renderizar, así `repreciando` es verdadero en el mismo render en
+  // que la línea entra (un efecto lo prendería un instante después, y un F2 en medio abriría el cobro con el precio viejo).
+  const lineasDePrecio = listaPrecioDefaultId === null ? [] : cart.filter((l) => l.producto_id !== null)
+  const firmaDePrecios = lineasDePrecio.map((l) => `${l.clave}:${l.producto_id}:${l.variante_id}:${l.qty}:${l.de_balanza}`).join('|')
+  const [firmaCotizada, setFirmaCotizada] = useState('')
+  const repreciando = lineasDePrecio.length > 0 && firmaDePrecios !== firmaCotizada
+  useEffect(() => {
+    const secuencia = ++secuenciaPreciosRef.current // también invalida una consulta en vuelo si el carrito se vació
+    if (lineasDePrecio.length === 0) return
+    api.post<PreciosDeLaLista>(`/api/listas-precio/${listaPrecioDefaultId}/precios`, {
+      lineas: lineasDePrecio.map((l) => ({ producto_id: l.producto_id, variante_id: l.variante_id, cantidad: Number(l.qty) || 0 })),
+      en: new Date().toISOString(),
+    })
+      .then((r) => {
+        if (secuenciaPreciosRef.current !== secuencia) return
+        const precioDe = new Map(lineasDePrecio.map((l, i) => [l.clave, r.precios[i]?.precio ?? null]))
+        setCart((prev) => {
+          const nuevo = prev.map((l) => {
+            const precio = precioDe.get(l.clave)
+            return l.de_balanza || precio == null || String(precio) === l.precio ? l : { ...l, precio: String(precio) }
+          })
+          return nuevo.some((l, i) => l !== prev[i]) ? nuevo : prev
+        })
+      })
+      // Sin respuesta, las líneas quedan al precio que tenían (el plano o el último de la lista).
+      .catch(() => {})
+      .finally(() => { if (secuenciaPreciosRef.current === secuencia) setFirmaCotizada(firmaDePrecios) })
+    // Corre cuando cambia la firma: `lineasDePrecio` sale de la misma render que la firma, y depender de él (un arreglo nuevo en cada render) la repetiría siempre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firmaDePrecios, listaPrecioDefaultId])
 
   // Las promociones (roadmap de producto, 2026-09-28: «llevá N pagá M» y combos): el
   // ahorro lo calcula el motor (`POST /api/promociones/calcular`) y es el mismo que el
@@ -680,7 +695,7 @@ export function Pos() {
   const promosAplicadas = Array.isArray(promos?.aplicadas) ? promos.aplicadas : []
   const ahorro = promosAplicadas.length > 0 ? Number(promos?.ahorro) || 0 : 0
   const totalConPromos = Math.max(0, Math.round((total - ahorro) * 100) / 100)
-  const puedeCobrar = cart.length > 0 && Boolean(locationId) && !calculandoPromos
+  const puedeCobrar = cart.length > 0 && Boolean(locationId) && !calculandoPromos && !repreciando
   // 🔴 El `deposito_id` de la venta NO es el id de la sucursal: es su depósito de venta. Son entidades distintas
   // (la sucursal 7 puede vender del depósito 12) y el backend rechaza con 422 un depósito de otra sucursal.
   const depositoDeVenta = locations.find((l) => String(l.id) === locationId)?.deposito_predeterminado_id ?? null
