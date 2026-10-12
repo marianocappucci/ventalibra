@@ -27,7 +27,7 @@ existencias en sus depósitos. Acá quedan las reglas de este producto:
   sucursales. Para sumar otra, comunicate con nosotros.». Sin dato cargado no hay límite. Las dadas de baja no cuentan, y lo que
   ya existe no se toca: si el contrato se achica por debajo de las activas, siguen andando; sólo se frena sumar.
 
-**Stock:** `OpcionesStock(por_deposito=True)`: el listado trae una columna por depósito y el ajuste va a uno.
+**Stock:** `OpcionesStock(por_deposito=True, con_lotes=True, autorizar_lotes=…)`: el listado trae una columna por depósito, el ajuste va a uno y, con lote en el cuerpo, es de quien mueve lotes (ADR-076).
 """
 from __future__ import annotations
 
@@ -47,21 +47,19 @@ from libracommerce.web.catalogo_router import (
 from libracore.limites import LimiteExcedido, verificar_alta_de_sucursal
 from pydantic import TypeAdapter, ValidationError
 
-from .permisos import requiere
+from .permisos import condicion, requiere
 from .services import cajas as cajas_service
 from .services.sucursales import SucursalService
 
 _ENTERO = TypeAdapter(int)  # mismo modo laxo que los campos `int` del cuerpo de la transferencia
 
-#: 🔴 `con_lotes` queda APAGADA a propósito (ADR-053, hallazgo de la revisión de Codex): con ella `POST /api/stock/{id}/ajuste` aceptaría `lot_code` y
-#: `expires_at` (entrada con lote y conteo de UN lote) con sólo `stock.ajustar`, mientras que las
-#: operaciones de lote de `/api/vencimientos` (asignar, entrada, merma) exigen `vencimientos.mover`: hoy las dos capacidades las tienen los mismos roles (encargado
-#: y depósito), pero con un rol que tuviera la primera y no la segunda se alterarían lotes por la ruta alternativa. El kit v0.92.0 no usa el ajuste con lote desde ninguna pantalla («Cargar stock con lote» va por `POST
-#: /api/vencimientos/entrada`), así que no se activa. Apagada, el cuerpo es el de siempre y el motor IGNORA `lot_code`/`expires_at`. El FEFO de las
-#: salidas y de los ajustes SIN lote de un producto marcado NO depende de esta opción (es del motor). **Para habilitarla** hace falta antes una
-#: guarda por cuerpo: que un pedido con `lot_code` o `expires_at` exija `vencimientos.mover` (p. ej. una dependencia del router de stock que
-#: lea el cuerpo y llame a `condicion("vencimientos.mover")`), y un test en `tests/test_roles_matriz.py` que lo fije para un rol con `stock.ajustar` sin `vencimientos.mover` (hoy no existe: `test_quien_puede_ajustar_stock_tambien_puede_mover_lotes`).
-OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True)
+#: `con_lotes` está PRENDIDA (ADR-076): `POST /api/stock/{id}/ajuste` acepta `lot_code` y `expires_at` (el conteo de UN lote y la entrada a un lote), pero
+#: sólo de quien puede mover lotes. Hasta el 2026-10-12 estaba apagada (ADR-053, hallazgo de la revisión de Codex): el ajuste se monta con `stock.ajustar`
+#: y las operaciones de lote de `/api/vencimientos` (asignar, entrada, merma) con `vencimientos.mover`, y un rol con la primera y sin la segunda habría
+#: alterado lotes por la ruta alternativa. La guarda es la costura del motor `OpcionesStock.autorizar_lotes` (libracommerce ADR-047): se consulta por cuerpo,
+#: sólo si el pedido trae `lot_code` o `expires_at`, y es `vencimientos.mover`; el ajuste sin lote sigue siendo el de `stock.ajustar`. El FEFO de las salidas
+#: y de los ajustes SIN lote de un producto marcado no depende de esta opción (es del motor).
+OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True, con_lotes=True, autorizar_lotes=condicion("vencimientos.mover"))
 
 Sucursales = Callable[[], SucursalService]
 #: Quien dice qué módulos tiene la instancia (`ModuleRepository`): se pide en cada request, no al armar el router.

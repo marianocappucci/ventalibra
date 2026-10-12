@@ -3007,3 +3007,27 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
 - Consecuencias: un producto sin variantes no cambia. No se vuelve a pedir `/api/productos/{id}/variantes` cuando el escaneo ya la identificó.
 - Tests: `frontend/src/test/pos-escanear-variante.test.tsx` (5). Con el POS anterior fallaban los tres de SKU de variante (línea directa al precio de la lista,
   multiplicador, precio de balanza); los otros dos (código del producto con variantes, producto sin variantes) son de control y pasaban.
+
+## ADR-076 — El ajuste de stock con lote se prende, con la guarda `vencimientos.mover`; la baja de un lote tiene su prop en la pantalla
+
+- Estado: aceptada. **Cierra** dos pendientes técnicos del 2026-09-30 y el 2026-10-01 («Ajuste de stock con lote por API, deshabilitado a propósito» y el pedido al kit de `puedeMermar`); **revierte** la decisión «`con_lotes` queda apagada» de ADR-053, que dejaba dicho cómo habilitarla («hace falta antes una guarda por cuerpo… y su test en la matriz de roles»).
+- Fecha: 2026-10-12
+- Contexto: con `OpcionesStock(con_lotes=True)` el cuerpo de `POST /api/stock/{id}/ajuste` acepta `lot_code` y `expires_at` (el conteo de UN lote y la entrada a un lote). La ruta se monta con `stock.ajustar`; asignar, cargar con lote y dar de baja (`/api/vencimientos`) con `vencimientos.mover`. Mientras
+  hubiera un rol con la primera y sin la segunda, el ajuste habría sido una vía lateral para alterar lotes. Hoy los dos conjuntos coinciden (encargado y depósito, más el admin), pero la matriz no lo garantiza hacia adelante.
+- Qué ya existía (se miró antes de cambiar): el motor **ya respeta** `lot_code` y `expires_at` en el ajuste desde A-4 PR-3 (libracommerce ADR-018): la nota de ADR-053 («el motor IGNORA `lot_code`») describía la opción **apagada**, que lo descarta a propósito. Lo que faltaba era la guarda, que se hizo en el motor
+  (libracommerce ADR-047, `OpcionesStock.autorizar_lotes`, la costura va en el motor y no en el producto). En el kit, un 409 de la baja ya se mostraba con su `detail`.
+- Decisión:
+  1. **`OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True, con_lotes=True, autorizar_lotes=condicion("vencimientos.mover"))`** (`app/depositos_ganchos.py`). La guarda se consulta por cuerpo: sólo si el pedido trae `lot_code` o `expires_at` (aunque venga vacío, en un modo inválido o para un producto sin marcar o
+     inexistente: 403 primero). Sin esos campos el ajuste es el común, con la protección de la ruta (`stock.ajustar`).
+  2. **No hay una capacidad nueva.** La baja de un lote sigue siendo `vencimientos.mover` (ADR-053): no se distingue de asignar y cargar con lote, y con la matriz de hoy cualquier capacidad nueva tendría los mismos roles. El ajuste con lote usa la misma. Si el humano quiere separar la baja, hace falta una costura
+     por operación en el router de vencimientos del motor (hoy `dependencias_movimientos` cubre las tres) y recién después una capacidad propia.
+  3. **La pantalla de Vencimientos pasa `puedeMermar={puede(user, 'vencimientos.mover')}`** además de `puedeMover` (libra-ui ADR-051): hoy valen lo mismo, pero van separadas para que el día que se distingan la pantalla sólo oculte la baja.
+- Consecuencias:
+  - **El ajuste de stock con lote por API está habilitado para admin, encargado y depósito.** El vendedor y el cajero siguen sin `stock.ajustar` (403 por la ruta). El esquema de OpenAPI del ajuste cambia (`AjusteConLotePayload`, con `lot_code` y `expires_at` opcionales); la matriz de rutas no (no hay ruta nueva: `POST /api/stock/{pid}/ajuste` ya tenía su fila).
+  - **Sin migración.**
+  - Lo que no cambia ni depende de esta opción: un ajuste o una salida SIN lote de un producto marcado sigue yendo por FEFO (A-4): quien tiene `stock.ajustar` puede consumir lotes con un ajuste común, como antes.
+  - Ninguna pantalla del kit usa hoy el ajuste con lote (la carga con lote de la pantalla de Vencimientos va por `POST /api/vencimientos/entrada`): se habilita la API, no una pantalla.
+- Tests: `tests/test_vencimientos.py` (el ajuste con lote para admin, encargado y depósito: la entrada va al lote y a nombre de quien la hizo, el conteo de un lote baja sólo ese lote; vendedor y cajero, 403 con y sin lote; **el router de stock de VentaLibra montado sin el gate de la ruta y con la sesión de un rol que no mueve lotes: 403 con lote en el cuerpo
+  —cuatro formas— y el ajuste común sin lote pasa**); `tests/test_roles_matriz.py` (la guarda es `vencimientos.mover` para cada rol; el invariante `stock.ajustar ⊆ vencimientos.mover` sigue fijado); `frontend/src/test/vencimientos-puede-mermar.test.tsx` (qué capacidad manda en cada prop). Con la opción apagada, los de VentaLibra fallan (seis); sin la guarda del motor, fallan los del motor.
+- Depende de: libracommerce con ADR-047 (`OpcionesStock.autorizar_lotes`; la versión que se corte con ese cambio) y libra-ui con ADR-051 (`puedeMermar`; 0.139.0). **Orden: motor, kit, y recién después el pin de este producto.** Con el pin viejo del motor, `OpcionesStock(autorizar_lotes=…)` es un `TypeError` al arrancar.
+- Nota sobre ADR-053: la frase «`con_lotes` queda apagada» y el test por rol que la fijaba quedan como la historia de ese momento; la vigente es ésta.
