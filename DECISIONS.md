@@ -2982,9 +2982,28 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   - **El quiebre por cantidad sigue siendo por línea.** Dos talles en dos líneas no suman para un quiebre de 2 unidades; un producto sin variantes
     escaneado dos veces tampoco. Es el comportamiento de siempre; cambiarlo (re-precificar todas las líneas de un producto con la cantidad total) toca
     a los productos sin variantes y queda como decisión aparte.
-  - Pendiente aparte: `GET /api/productos/escanear` devuelve la `variante` cuando el código es el SKU de una, pero `buscar()` la ignora y vuelve a preguntar
+  - Pendiente aparte (cerrado en ADR-075): `GET /api/productos/escanear` devuelve la `variante` cuando el código es el SKU de una, pero `buscar()` la ignoraba y volvía a preguntar
     la variante al cajero.
   - Sin migración ni cambio de API. Hace falta `libracommerce` con ADR-045 sólo para el comentario y los tests del motor: el POS funciona con el pin actual.
 - Tests: `frontend/src/test/pos-variantes-promociones.test.tsx` (7). Con el POS anterior fallaban cinco: el precio de la lista al elegir la variante, el
   quiebre con multiplicador, el cambio de cantidad con variante, la consulta que debía hacerse aun cuando falla, y el 2x1 con los precios de lista; el de
   «sin lista predeterminada» es de control. El de la balanza se escribió después y se puso rojo quitando la línea que guarda el precio.
+
+## ADR-075 — Escanear el SKU de una variante la agrega directo, sin volver a preguntar cuál
+
+- Estado: aceptada. **Cierra** el «pendiente aparte» de ADR-074.
+- Fecha: 2026-10-12
+- Contexto: `GET /api/productos/escanear?code=` ya devolvía `variante` cuando el código es el SKU de una variante activa (`catalogo.escanear` de
+  libracommerce, `_variante_por_sku`), y el tipo `Escaneo` del POS ya la declara. Pero `buscar()` sólo usaba `escaneado.producto` y lo pasaba a `elegirItem`,
+  que ante un producto con variantes abre «Elegí la variante». El cajero escaneaba la etiqueta del talle M y el sistema le preguntaba si era M o L.
+- Qué ya existía (se miró antes de tocar): la respuesta del motor trae todo lo necesario (`variante` con `id`, `sku`, `nombre`, `activa`), así que **el
+  arreglo es sólo del POS**; no hay cambio de API ni de motor. El POS no está en el kit.
+- Decisión (sólo en el POS de este producto):
+  1. Si el escaneo trae `variante`, `buscar()` agrega la línea con esa variante y no abre el diálogo.
+  2. El precio sale por el mismo camino que al elegirla en el diálogo (ADR-074): `agregarConVariante` (nueva, la usan también `elegirVariante` y el escaneo)
+     resuelve la lista predeterminada con producto, variante, cantidad y hora; un precio de etiqueta de balanza no se pisa; y las fallas siguen igual (precio plano
+     sin bloquear). El multiplicador tipeado («3 * REM-M») se respeta.
+  3. Si el código es el del producto (código de barras), el escaneo no trae `variante` y todo sigue como hoy: si el producto tiene variantes, se pregunta cuál.
+- Consecuencias: un producto sin variantes no cambia. No se vuelve a pedir `/api/productos/{id}/variantes` cuando el escaneo ya la identificó.
+- Tests: `frontend/src/test/pos-escanear-variante.test.tsx` (5). Con el POS anterior fallaban los tres de SKU de variante (línea directa al precio de la lista,
+  multiplicador, precio de balanza); los otros dos (código del producto con variantes, producto sin variantes) son de control y pasaban.
