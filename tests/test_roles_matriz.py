@@ -568,10 +568,23 @@ def test_staff_se_retiro_del_vocabulario_y_con_el_la_capacidad_que_era_solo_suya
 
 
 def test_quien_puede_ajustar_stock_tambien_puede_mover_lotes():
-    """`OpcionesStock.con_lotes` está apagada (`app/depositos_ganchos.py`): el ajuste de stock ignora el lote. Si algún día se
-    prende, un rol con `stock.ajustar` y sin `vencimientos.mover` alteraría lotes por la ruta alternativa; mientras tanto, que
-    no exista ese rol es lo que mantiene la puerta cerrada."""
+    """Mientras las dos capacidades coincidan, el ajuste de stock con lote (`OpcionesStock.con_lotes`, ADR-076) no tiene a nadie a quien frenar. Si algún día un
+    rol tiene `stock.ajustar` y no `vencimientos.mover`, lo frena la guarda por cuerpo (`test_el_ajuste_de_stock_con_lote_sin_vencimientos_mover_es_403_*`
+    y `test_la_guarda_del_ajuste_con_lote_es_vencimientos_mover`); este test avisa que ese día llegó."""
     assert set(permisos.roles_con("stock.ajustar")) <= set(permisos.roles_con("vencimientos.mover"))
+
+
+def test_la_guarda_del_ajuste_con_lote_es_vencimientos_mover():
+    """Escrito a mano (ADR-076): el ajuste con lote está PRENDIDO y quien puede tocar un lote por `POST /api/stock/{id}/ajuste` es quien puede
+    `vencimientos.mover` (asignar, cargar con lote y dar de baja), ni más ni menos, para CADA rol. `condicion` resuelve la capacidad al armar la
+    guarda; acá se contrasta con la lista a mano de los roles."""
+    from app.depositos_ganchos import OPCIONES_DE_STOCK
+
+    assert OPCIONES_DE_STOCK.con_lotes is True and OPCIONES_DE_STOCK.autorizar_lotes is not None
+    mueven = {"admin", "encargado", "deposito"}
+    for rol in sorted(TODOS):
+        assert OPCIONES_DE_STOCK.autorizar_lotes({"role": rol}) == (rol in mueven), rol
+    assert OPCIONES_DE_STOCK.autorizar_lotes({}) is False and OPCIONES_DE_STOCK.autorizar_lotes({"role": "staff"}) is False
 
 
 def test_lo_que_el_humano_dejo_solo_para_admin_sigue_siendo_solo_de_admin():

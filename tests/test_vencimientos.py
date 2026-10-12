@@ -527,8 +527,8 @@ def test_transferir_un_marcado_es_un_par_por_tramo_y_el_lote_viaja_al_destino(es
 
 
 def test_ajustar_un_marcado_sigue_el_lote(admin_client, escenario):
-    """El ajuste del total (baja por FEFO) y la salida manual (FEFO). El conteo de UN lote por este endpoint no está habilitado
-    (`OpcionesStock.con_lotes` apagada, ADR-053): ver `test_el_ajuste_de_stock_no_acepta_lote_para_ningun_rol`."""
+    """El ajuste del total (baja por FEFO) y la salida manual (FEFO), sin lote en el cuerpo. El conteo de UN lote por este endpoint es de quien mueve
+    lotes (`OpcionesStock.con_lotes` con la guarda `vencimientos.mover`, ADR-076): ver `test_el_ajuste_de_stock_con_lote_*`."""
     leche, dep = escenario["leche"], escenario["deposito"]
     # Llevar el total de 28 a 20 sin indicar lote: baja 8 por FEFO (los 4 del vencido y 4 de L-PRONTO), no del «sin lote».
     antes = len(_movimientos(admin_client, leche))
@@ -549,28 +549,75 @@ def test_ajustar_un_marcado_sigue_el_lote(admin_client, escenario):
 
 
 @pytest.mark.parametrize("rol", ["admin", "encargado", "deposito"])
-def test_el_ajuste_de_stock_no_acepta_lote_para_ningun_rol(escenario, rol):
-    """`OpcionesStock.con_lotes` está APAGADA (ADR-053): `POST /api/stock/{id}/ajuste` no maneja lotes. Con la opción apagada el cuerpo es el de
-    siempre y el motor IGNORA `lot_code` y `expires_at` (pydantic descarta lo que no declara): no se crea ni se toca ningún lote por esa
-    ruta, ni siquiera por quien tiene `stock.ajustar` (la carga con lote es de `vencimientos.mover`, por
-    `POST /api/vencimientos/entrada`). Lo que se escribe es la entrada de siempre, SIN lote, y el reporte no ve ningún lote nuevo."""
+def test_el_ajuste_de_stock_con_lote_es_de_quien_mueve_lotes(escenario, rol):
+    """`OpcionesStock.con_lotes` está PRENDIDA con la guarda `vencimientos.mover` (ADR-076, libracommerce ADR-047): quien mueve lotes (admin, encargado y
+    depósito) puede contar UN lote y entrar a un lote por `POST /api/stock/{id}/ajuste`, y el movimiento va a ESE bucket y a nombre de quien lo hizo.
+    El saldo de los otros lotes y el «sin lote» no se tocan."""
     leche, dep = escenario["leche"], escenario["deposito"]
     cliente = escenario["clientes"][rol]
     admin = escenario["clientes"]["admin"]
-    lotes_antes = _saldos(admin)
+    quien = int(cliente.get("/auth/me").json()["id"])
+    # Entrada a un lote nuevo: queda en ESE lote (antes, con la opción apagada, el lote se ignoraba y entraba «sin lote»).
     antes = len(_movimientos(admin, leche))
     r = cliente.post(f"/api/stock/{leche}/ajuste", json={
-        "modo": "entrada", "cantidad": 5, "deposito_id": dep, "lot_code": "L-COLADO", "expires_at": _dia(30), "referencia": "carga"})
+        "modo": "entrada", "cantidad": 5, "deposito_id": dep, "lot_code": "L-AJUSTE", "expires_at": _dia(30), "referencia": "carga"})
     assert r.status_code == 200, (rol, r.text)
     (fila,) = _movimientos(admin, leche)[antes:]
-    assert (fila[1], float(fila[2]), fila[3], fila[4]) == ("entrada", 5.0, None, None), (rol, fila)  # sin lote ni vencimiento
-    lotes, sin_lote = _saldos(admin)
-    assert "L-COLADO" not in lotes and lotes == lotes_antes[0] and sin_lote == lotes_antes[1] + 5
-    # El camino con lote es el de vencimientos: los tres roles tienen `vencimientos.mover` y entran.
-    cuerpo = {"producto_id": leche, "deposito_id": dep, "lote": "L-COLADO", "vence": _dia(30), "cantidad": 1, "clave_operacion": f"carga-{rol}"}
-    r = cliente.post("/api/vencimientos/entrada", json=cuerpo)
+    assert (fila[1], float(fila[2]), fila[3], fila[4], fila[5]) == ("entrada", 5.0, "L-AJUSTE", _dia(30), quien), (rol, fila)
+    assert _saldos(admin) == ({"L-VENCIDO": 4, "L-PRONTO": 10, "L-LEJANO": 6, "L-AJUSTE": 5}, 8)
+    # El conteo de UN lote: L-PRONTO tiene 10 y se cuenta 7 -> baja 3 de ESE lote, no del total ni por FEFO.
+    antes = len(_movimientos(admin, leche))
+    r = cliente.post(f"/api/stock/{leche}/ajuste", json={
+        "modo": "absoluto", "cantidad": 7, "deposito_id": dep, "lot_code": "L-PRONTO", "expires_at": _dia(5), "referencia": "conteo del lote"})
     assert r.status_code == 200, (rol, r.text)
-    assert "L-COLADO" in _saldos(admin)[0]
+    assert _filas(admin, leche, antes) == [("adjustment", "ajuste", -3.0, "L-PRONTO")]
+    assert _saldos(admin) == ({"L-VENCIDO": 4, "L-PRONTO": 7, "L-LEJANO": 6, "L-AJUSTE": 5}, 8)
+    assert _stock(admin, leche) == 28 + 5 - 3
+
+
+@pytest.mark.parametrize("rol", ROLES_SIN_ACCESO)
+def test_el_mostrador_no_ajusta_stock_con_lote_ni_sin_lote(escenario, rol):
+    """El vendedor y el cajero no tienen `stock.ajustar`: la ruta les da 403 antes de mirar el cuerpo, con o sin lote."""
+    leche, dep = escenario["leche"], escenario["deposito"]
+    antes = _movimientos(escenario["clientes"]["admin"], leche)
+    for extra in ({}, {"lot_code": "L-X", "expires_at": _dia(9)}):
+        r = escenario["clientes"][rol].post(f"/api/stock/{leche}/ajuste", json={"modo": "entrada", "cantidad": 1, "deposito_id": dep, **extra})
+        assert r.status_code == 403 and r.json()["detail"] == "forbidden", (rol, extra, r.text)
+    assert _movimientos(escenario["clientes"]["admin"], leche) == antes
+
+
+@pytest.mark.parametrize("rol", ["vendedor", "cajero"])
+def test_el_ajuste_de_stock_con_lote_sin_vencimientos_mover_es_403_aunque_la_ruta_lo_deje_pasar(escenario, rol):
+    """La guarda por cuerpo, aislada de la guarda de la ruta (`stock.ajustar`): el router de stock de VentaLibra, tal como lo arma `OPCIONES_DE_STOCK`,
+    montado SIN el gate de la ruta y con la sesión de un rol que no mueve lotes. Es el rol con `stock.ajustar` y sin `vencimientos.mover` que hoy no
+    existe (`test_quien_puede_ajustar_stock_tambien_puede_mover_lotes`), simulado: con lote en el cuerpo, 403 y no se escribe nada; sin lote, el ajuste común."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from libracommerce.web.catalogo_router import build_stock_router
+    from libracore.db.core import get_connection
+
+    from app.depositos_ganchos import OPCIONES_DE_STOCK
+
+    leche, dep = escenario["leche"], escenario["deposito"]
+    admin = escenario["clientes"]["admin"]
+    app = FastAPI()
+    app.include_router(build_stock_router(conexion=get_connection, usuario_actual=lambda: {"id": 99, "role": rol}, opciones=OPCIONES_DE_STOCK))
+    cliente = TestClient(app)
+    antes = _movimientos(admin, leche)
+    for cuerpo in (
+        {"modo": "entrada", "cantidad": 5, "lot_code": "L-X", "expires_at": _dia(9)},
+        {"modo": "absoluto", "cantidad": 7, "lot_code": "L-PRONTO", "expires_at": _dia(5)},
+        {"modo": "absoluto", "cantidad": 7, "expires_at": _dia(5)},
+        {"modo": "entrada", "cantidad": 5, "lot_code": "L-X"},
+    ):
+        r = cliente.post(f"/api/stock/{leche}/ajuste", json={**cuerpo, "deposito_id": dep})
+        assert r.status_code == 403 and "lotes" in r.json()["detail"], (rol, cuerpo, r.text)
+    assert _movimientos(admin, leche) == antes
+    # Sin lote en el cuerpo la guarda ni se consulta: es el ajuste común, que la ruta real protege con `stock.ajustar`.
+    r = cliente.post(f"/api/stock/{leche}/ajuste", json={"modo": "entrada", "cantidad": 2, "deposito_id": dep, "referencia": "sin lote"})
+    assert r.status_code == 200, r.text
+    (fila,) = _movimientos(admin, leche)[len(antes):]
+    assert (fila[1], float(fila[2]), fila[3], fila[4]) == ("entrada", 2.0, None, None)
 
 
 def test_un_marcado_con_stock_por_variante_exige_la_variante_en_el_ajuste(admin_client, escenario):
