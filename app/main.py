@@ -22,7 +22,6 @@ from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
 from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
-from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.erp.reportes import puerto_de_reportes
 from libracommerce.web.catalogo_router import (
     build_depositos_router,
@@ -51,6 +50,7 @@ from libracommerce.web.reposicion_router import (
 )
 from libracommerce.web.vencimientos_router import build_vencimientos_escritura_router, build_vencimientos_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_guarda_de_venta, build_ventas_router
+from libracore import auditoria as auditoria_del_motor
 from libracore import config_manager
 from libracore.arca_router import build_arca_router
 from libracore.caja_router import build_cajas_router, build_cierre_diario_router, build_turnos_router
@@ -99,6 +99,7 @@ from .cajas_ganchos import (
     usuario_de_turnos,
     validar_apertura_de,
 )
+from .commerce import REGISTRADOR, entidades_del_log
 from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
@@ -252,6 +253,12 @@ def create_app(db_path: str) -> FastAPI:
         "ventalibra", core=True, default="./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
+    # Las escrituras de `clients` (`/api/clientes`, el fiado) son del motor de core y le avisan a este registrador dentro de
+    # la misma transaccion (libracore v1.157.0, ADR-043): el MISMO que usa el repositorio de LibraCommerce (`app/commerce.py`),
+    # asi que el log tiene un solo formato. Va despues de `billing.configure` (la conexion por la que escribe el motor) y
+    # presupone que `actividad_log` esta en esa misma base: lo crea `db.connect()` -> `init_schema` en la del dominio, y en
+    # VentaLibra son la misma (`_UNA_SOLA_BASE` del motor). `test_clientes_auditados.py` lo fija.
+    auditoria_del_motor.configurar_auditoria(REGISTRADOR)
     # Cajas por sucursal (2026-09-16): toda sucursal (`branches`, del dominio)
     # tiene al menos una caja, idempotente. `billing.configure()` (via
     # `libracore.db.schema.init_core_schema()`) ya garantiza que exista AL
@@ -1066,7 +1073,7 @@ def create_app(db_path: str) -> FastAPI:
     # un F5 o un link pegado a la pantalla devolvia el JSON crudo (medido en
     # Chromium contra dev, 2026-10-05). El frontend lo pide con `basePath`.
     app.include_router(
-        build_logs_router(entidades_auditadas(), prefix="/api/logs"), dependencies=[Depends(requiere("logs"))],
+        build_logs_router(entidades_del_log(), prefix="/api/logs"), dependencies=[Depends(requiere("logs"))],
     )
 
     return app
