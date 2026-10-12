@@ -12,6 +12,7 @@
 // Un producto vencido SE VENDE (decisión de producto 1, ADR-018 del motor): el aviso informa, no bloquea.
 import { api } from '../api'
 import { fecha } from './fechas'
+import { formatoCantidad } from 'libra-ui/formatos'
 
 /** Cuánto se espera al plan de salida antes de cobrar igual. El cajero no espera más que esto por una consulta opcional. */
 export const PLAN_SALIDA_TIMEOUT_MS = 1500
@@ -79,9 +80,8 @@ export function cuandoVence(d: number | null): string {
   return `vence en ${dias(d)}`
 }
 
-function cantidadTexto(n: number): string {
-  return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(n)
-}
+// Sin tope de 3 decimales: una unidad de 4 a 6 decimales mostraba «0» donde había 0,0004 (libra-ui/formatos, ADR-050).
+const cantidadTexto = formatoCantidad
 
 /** Una línea por aviso: «Yerba 500g, lote L1, vence 12-10-2026 (vencido hace 3 días)» (la fecha en dd-mm-aaaa). */
 export function describirAviso(a: AvisoDeVencimiento): string {
