@@ -192,6 +192,7 @@ POST   /api/listas-precio/{lista_id}/importar                           GERENCIA
 GET    /api/listas-precio/{lista_id}/items/{producto_id}/quiebres       GERENCIA
 PUT    /api/listas-precio/{lista_id}/items/{producto_id}/quiebres       GERENCIA
 GET    /api/listas-precio/{lista_id}/precio                             MOSTRADOR
+POST   /api/listas-precio/{lista_id}/precios                            MOSTRADOR
 POST   /api/listas-precio/{lista_id}/items/{producto_id}/precio-vigente GERENCIA
 GET    /api/listas-precio/items/{producto_id}/vigencias                 GERENCIA
 DELETE /api/listas-precio/items/{producto_id}/vigencias/{vigencia_id}   GERENCIA

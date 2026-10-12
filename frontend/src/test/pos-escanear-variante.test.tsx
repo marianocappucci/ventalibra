@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Pos } from '../pages/Pos'
 import { _resetCacheDeMedios } from '@/lib/medios-pago'
+import { lineasDelPedido, responderPrecios } from './precios-de-lista'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -32,12 +33,12 @@ const LOCATIONS = [{
 /** Lo que responde `escanear` según el código, como el motor: el SKU de una variante trae `variante`; el código de
  *  barras del producto, no. El precio de la lista (2.500) difiere del plano (3.000) para ver cuál se cobra. */
 function montarRed({ precioBalanza = null }: { precioBalanza?: number | null } = {}) {
-  const llamadas: { url: string }[] = []
-  vi.stubGlobal('fetch', vi.fn((url: string) => {
+  const llamadas: { url: string; lineas?: ReturnType<typeof lineasDelPedido> }[] = []
+  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
-    llamadas.push({ url: u })
+    llamadas.push({ url: u, lineas: u.endsWith('/precios') ? lineasDelPedido(init) : undefined })
     if (u.includes('/api/promociones/calcular')) return Promise.resolve(json({ aplicadas: [], ahorro: 0 }))
-    if (u.includes('/api/listas-precio/5/precio?')) return Promise.resolve(json({ precio: 2500 }))
+    if (u === '/api/listas-precio/5/precios') return Promise.resolve(responderPrecios(init, () => 2500))
     if (u === '/api/listas-precio') return Promise.resolve(json([LISTA]))
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
@@ -89,10 +90,7 @@ describe('Escanear: el SKU de una variante la identifica', () => {
     // La lista (2.500), no el precio plano (3.000): igual que al elegir la variante en el diálogo (ADR-074).
     expect((await screen.findAllByText(/2\.500,00/)).length).toBeGreaterThan(0)
     expect(screen.queryByText(/3\.000,00/)).not.toBeInTheDocument()
-    const consulta = llamadas.find((l) => l.url.includes('/api/listas-precio/5/precio?'))!.url
-    expect(consulta).toContain('producto_id=3')
-    expect(consulta).toContain('variante_id=31')
-    expect(consulta).toContain('cantidad=1')
+    expect(llamadas.find((l) => l.url === '/api/listas-precio/5/precios')!.lineas).toEqual([{ producto_id: 3, variante_id: 31, cantidad: 1 }])
     // La variante ya vino en el escaneo: no hace falta pedir las del producto.
     expect(llamadas.some((l) => l.url.includes('/api/productos/3/variantes'))).toBe(false)
   })
@@ -103,7 +101,7 @@ describe('Escanear: el SKU de una variante la identifica', () => {
 
     await screen.findByText(/Remera \(Talle M\)/)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(llamadas.some((l) => l.url.includes('/precio?') && l.url.includes('cantidad=3') && l.url.includes('variante_id=31'))).toBe(true)
+    expect(llamadas.some((l) => l.lineas?.some((x) => x.cantidad === 3 && x.variante_id === 31))).toBe(true)
   })
 
   it('el precio de una etiqueta de balanza no se pisa con el de la lista', async () => {
@@ -113,7 +111,9 @@ describe('Escanear: el SKU de una variante la identifica', () => {
     await screen.findByText(/Remera \(Talle M\)/)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect((await screen.findAllByText(/4\.200,00/)).length).toBeGreaterThan(0)
-    expect(llamadas.some((l) => l.url.includes('/precio?'))).toBe(false)
+    // Se consulta igual (el peso suma al producto), pero la lista no pisa el precio de la etiqueta.
+    await waitFor(() => expect(llamadas.some((l) => l.url.endsWith('/precios'))).toBe(true))
+    expect(screen.queryByText(/2\.500,00/)).not.toBeInTheDocument()
   })
 })
 
@@ -135,8 +135,6 @@ describe('Escanear: lo que no identifica la variante sigue como siempre', () => 
     await screen.findByText('Café')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect((await screen.findAllByText(/2\.500,00/)).length).toBeGreaterThan(0)
-    const consulta = llamadas.find((l) => l.url.includes('/api/listas-precio/5/precio?'))!.url
-    expect(consulta).toContain('producto_id=4')
-    expect(consulta).not.toContain('variante_id')
+    expect(llamadas.find((l) => l.url === '/api/listas-precio/5/precios')!.lineas).toEqual([{ producto_id: 4, variante_id: null, cantidad: 1 }])
   })
 })

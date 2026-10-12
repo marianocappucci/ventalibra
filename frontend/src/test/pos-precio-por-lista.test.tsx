@@ -1,7 +1,9 @@
 // El POS carga la lista de precio predeterminada (si existe) y aplica cantidad y
 // vigencia por fecha/hora en vez del precio plano cuando:
-// 1. Agrega un ítem (`elegirItem`) -- consulta `/api/listas-precio/{id}/precio`
+// 1. Agrega un ítem (`elegirItem`) -- consulta `POST /api/listas-precio/{id}/precios`
 // 2. Cambia la cantidad de una línea (`cambiarCantidad`) -- igual
+// 3. Quita una línea -- las que quedan del mismo producto se vuelven a cotizar (ADR-078)
+// El quiebre cuenta la cantidad del PRODUCTO, sumando sus líneas (ADR-078); el motor hace la cuenta.
 // El fallback a precio plano nunca bloquea (mismo criterio que `mp-estado`).
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -10,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Pos } from '../pages/Pos'
 import { _resetCacheDeMedios } from '@/lib/medios-pago'
+import { lineasDelPedido, responderPrecios } from './precios-de-lista'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -40,15 +43,16 @@ function montarRed(
   precioBalanza: number | null = null,
 ) {
   const llamadas: string[] = []
-  vi.stubGlobal('fetch', vi.fn((url: string) => {
+  const pedidosDePrecios: { lineas: ReturnType<typeof lineasDelPedido>; en: string }[] = []
+  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
     llamadas.push(u)
     if (u.includes('/api/cajas/medios-disponibles')) return Promise.resolve(json([{ id: 'efectivo', label: 'Efectivo' }]))
     if (u.includes('/pos/mp-estado')) return Promise.resolve(json({ disponible: false, auto_facturar: false }))
-    if (u.includes('/api/listas-precio/5/precio?')) {
+    if (u === '/api/listas-precio/5/precios') {
+      pedidosDePrecios.push({ lineas: lineasDelPedido(init), en: JSON.parse(String(init?.body)).en })
       if (fallaPrecio) return Promise.resolve(json({ detail: 'boom' }, 500))
-      const cantidad = Number(new URL(u, 'http://x').searchParams.get('cantidad') || 1)
-      return Promise.resolve(json({ precio: cantidad >= 2 ? precioMuchos : precioUno }))
+      return Promise.resolve(responderPrecios(init, (cantidad) => (cantidad >= 2 ? precioMuchos : precioUno)))
     }
     if (u === '/api/listas-precio') return Promise.resolve(json(listas))
     if (u.includes('/api/turnos/actual')) return Promise.resolve(json({ turno: TURNO }))
@@ -59,7 +63,7 @@ function montarRed(
     }
     return Promise.resolve(json([]))
   }))
-  return { llamadas }
+  return { llamadas, pedidosDePrecios }
 }
 
 async function escanear(user: ReturnType<typeof userEvent.setup>, texto = '779000001') {
@@ -88,7 +92,7 @@ describe('Precio de lista (cantidad + vigencia)', () => {
   })
 
   it('al agregar, el precio sale de la lista (no del precio plano) y consulta con cantidad y fecha', async () => {
-    const { llamadas } = montarRed(2500)
+    const { llamadas, pedidosDePrecios } = montarRed(2500)
     const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
     await screen.findByText(/Turno #/)
@@ -98,14 +102,12 @@ describe('Precio de lista (cantidad + vigencia)', () => {
 
     expect((await screen.findAllByText(/2\.500,00/)).length).toBeGreaterThan(0)
     expect(screen.queryByText(/3\.000,00/)).not.toBeInTheDocument()
-    const consulta = llamadas.find((u) => u.includes('/api/listas-precio/5/precio?'))!
-    expect(consulta).toContain('producto_id=3')
-    expect(consulta).toContain('cantidad=1')
-    expect(consulta).toMatch(/en=\d{4}-\d{2}-\d{2}T/)
+    expect(pedidosDePrecios[0].lineas).toEqual([{ producto_id: 3, variante_id: null, cantidad: 1 }])
+    expect(pedidosDePrecios[0].en).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
   it('al cambiar la cantidad, vuelve a consultar y aplica el quiebre alcanzado', async () => {
-    const { llamadas } = montarRed(2500, 2000)
+    const { llamadas, pedidosDePrecios } = montarRed(2500, 2000)
     const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
     await screen.findByText(/Turno #/)
@@ -123,7 +125,7 @@ describe('Precio de lista (cantidad + vigencia)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     // 3 x 2.000 = 6.000: la cantidad quedó cargada y el precio se refrescó al del quiebre.
     await waitFor(() => expect(screen.getAllByText(/6\.000,00/).length).toBeGreaterThan(0))
-    expect(llamadas.some((u) => u.includes('/api/listas-precio/5/precio?') && u.includes('cantidad=3'))).toBe(true)
+    expect(pedidosDePrecios.at(-1)!.lineas).toEqual([{ producto_id: 3, variante_id: null, cantidad: 3 }])
   })
 
   it('sin lista predeterminada vende al precio plano y no consulta precios', async () => {
@@ -136,7 +138,7 @@ describe('Precio de lista (cantidad + vigencia)', () => {
     await screen.findByText(/Yerba 1kg/)
 
     expect((await screen.findAllByText(/3\.000,00/)).length).toBeGreaterThan(0)
-    expect(llamadas.some((u) => u.includes('/precio?'))).toBe(false)
+    expect(llamadas.some((u) => u.includes('/precios'))).toBe(false)
   })
 
   it('si la consulta de precio falla, vende al precio plano sin bloquear', async () => {
@@ -149,7 +151,7 @@ describe('Precio de lista (cantidad + vigencia)', () => {
     await screen.findByText(/Yerba 1kg/)
 
     expect((await screen.findAllByText(/3\.000,00/)).length).toBeGreaterThan(0)
-    expect(llamadas.some((u) => u.includes('/precio?'))).toBe(true)
+    expect(llamadas.some((u) => u.includes('/precios'))).toBe(true)
   })
 
   it('una etiqueta de balanza con precio propio no se pisa con el de la lista', async () => {
@@ -162,6 +164,30 @@ describe('Precio de lista (cantidad + vigencia)', () => {
     await screen.findByText(/Yerba 1kg/)
 
     expect((await screen.findAllByText(/4\.200,00/)).length).toBeGreaterThan(0)
-    expect(llamadas.some((u) => u.includes('/precio?'))).toBe(false)
+    // Se consulta igual (sus kilos suman al producto), pero la respuesta no pisa el precio de la etiqueta.
+    await waitFor(() => expect(llamadas.some((u) => u.includes('/precios'))).toBe(true))
+    expect(screen.queryByText(/2\.500,00/)).not.toBeInTheDocument()
+  })
+
+  it('el precio de la balanza tampoco se pisa al cambiar la cantidad de esa línea', async () => {
+    const { llamadas } = montarRed(2500, 2000, [LISTA], false, 4200)
+    const user = userEvent.setup()
+    render(<MemoryRouter><Pos /></MemoryRouter>)
+    await screen.findByText(/Turno #/)
+    await waitFor(() => expect(llamadas.some((u) => u === '/api/listas-precio')).toBe(true))
+    await escanear(user)
+    await screen.findByText(/Yerba 1kg/)
+    await screen.findAllByText(/4\.200,00/)
+
+    const dialogo = await abrirCantidad()
+    const campo = within(dialogo).getByLabelText('Cantidad')
+    await user.clear(campo)
+    await user.type(campo, '3')
+    await user.click(within(dialogo).getByRole('button', { name: 'Aceptar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // 3 x 4.200: la lista diría 2.000 para esa cantidad, pero el precio de la etiqueta manda.
+    await waitFor(() => expect(screen.getAllByText(/12\.600,00/).length).toBeGreaterThan(0))
+    expect(screen.queryByText(/6\.000,00/)).not.toBeInTheDocument()
   })
 })
