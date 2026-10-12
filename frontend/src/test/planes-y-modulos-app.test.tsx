@@ -41,9 +41,10 @@ describe('App: los módulos salen del usuario en sesión', () => {
     )
   }
 
-  it('un usuario de una instancia sin `multisucursal` ve el aviso en /sucursales', async () => {
+  it('un usuario de una instancia sin `multisucursal` ve «Nueva sucursal» deshabilitada y el motivo en /sucursales', async () => {
     conSesion(SIN_MODULOS)
-    expect(await screen.findByRole('note')).toHaveTextContent('Más de una sucursal: sin activar en esta instancia')
+    expect(await screen.findByRole('button', { name: 'Nueva sucursal' })).toBeDisabled()
+    expect(screen.getByText(/Esta instancia es de un solo local/)).toBeInTheDocument()
   })
 
   it('un usuario del plan único, no', async () => {
