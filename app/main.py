@@ -53,6 +53,7 @@ from libracommerce.web.vencimientos_router import build_vencimientos_escritura_r
 from libracommerce.web.ventas_router import OpcionesVentas, build_guarda_de_venta, build_ventas_router
 from libracore import auditoria as auditoria_del_motor
 from libracore import config_manager
+from libracore.adicionales_router import build_adicionales_router
 from libracore.arca_router import build_arca_router
 from libracore.caja_router import build_cajas_router, build_cierre_diario_router, build_turnos_router
 from libracore.candados import una_vez_al_arrancar
@@ -87,7 +88,9 @@ from libracore.ventas_cobro_router import build_cobro_de_ventas_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from . import db, db_ventas, venta_facturacion
+import plans
+
+from . import database, db, db_ventas, venta_facturacion
 from .auth import (
     build_session_auth,
     get_current_user,
@@ -712,6 +715,14 @@ def create_app(db_path: str) -> FastAPI:
         build_limites_router(
             guard_lectura=requiere_o_servicio("sucursales.admin"), guard_escritura=requiere_solo_servicio(),
             medir_activas=lambda: len(_sucursales().list()),
+        ),
+    )
+    # Los adicionales (ADR-082): `GET`/`PUT /api/adicionales[/{clave}]`, el catálogo de `plans.ADICIONALES` con lo contratado y lo usado. Mismas guardas y
+    # mismo motivo que el router de arriba, que sigue andando como alias de `PUT /api/adicionales/sucursal` (los dos escriben `limite_sucursales`).
+    app.include_router(
+        build_adicionales_router(
+            requiere_o_servicio("sucursales.admin"), requiere_solo_servicio(), medir={"sucursal": lambda: len(_sucursales().list())},
+            plans=plans, leer_modulos=database.get_modulos, escribir_modulo=database.set_addon,
         ),
     )
     app.include_router(

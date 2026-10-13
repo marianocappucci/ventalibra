@@ -145,6 +145,9 @@ POST   /api/sucursales/{sid}/deposito-predeterminado                    ADMIN
 # Sucursales contratadas (ADR-073): leerlas, admin o servicio; CARGARLAS, sólo el token de servicio (un tope que el admin del cliente se sube no topa nada)
 GET    /api/limites/sucursales                                          ADMIN
 PUT    /api/limites/sucursales                                          SOLO_SERVICIO
+# Adicionales fuera de la escalera (ADR-082): mismas guardas que las sucursales contratadas (el router nuevo las generaliza)
+GET    /api/adicionales                                                 ADMIN
+PUT    /api/adicionales/{clave}                                         SOLO_SERVICIO
 GET    /api/depositos                                                   TODOS
 POST   /api/depositos                                                   ADMIN
 PUT    /api/depositos/{did}                                             ADMIN
