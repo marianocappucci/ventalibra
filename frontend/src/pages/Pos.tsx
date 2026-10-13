@@ -682,7 +682,10 @@ export function Pos() {
   // respuesta volvería a disparar la consulta. Se calcula al renderizar, así `repreciando` es verdadero en el mismo render en
   // que la línea entra (un efecto lo prendería un instante después, y un F2 en medio abriría el cobro con el precio viejo).
   const lineasDePrecio = listaPrecioDefaultId === null ? [] : cart.filter((l) => l.producto_id !== null)
-  const firmaDePrecios = lineasDePrecio.map((l) => `${l.clave}:${l.producto_id}:${l.variante_id}:${l.qty}:${l.de_balanza}`).join('|')
+  // La sucursal por la que se vende (`locationId`: la del turno, o la elegida sin turno) decide el precio desde libracommerce 0.59.0
+  // (ADR-058 del motor; ADR-083): entra a la firma para que cambiarla re-cotice el carrito, y viaja en la cotización y en la venta.
+  const sucursalId = locationId ? Number(locationId) : null
+  const firmaDePrecios = `${sucursalId ?? ''}#` + lineasDePrecio.map((l) => `${l.clave}:${l.producto_id}:${l.variante_id}:${l.qty}:${l.de_balanza}`).join('|')
   const [firmaCotizada, setFirmaCotizada] = useState('')
   const repreciando = lineasDePrecio.length > 0 && firmaDePrecios !== firmaCotizada
   useEffect(() => {
@@ -691,6 +694,8 @@ export function Pos() {
     api.post<PreciosDeLaLista>(`/api/listas-precio/${listaPrecioDefaultId}/precios`, {
       lineas: lineasDePrecio.map((l) => ({ producto_id: l.producto_id, variante_id: l.variante_id, cantidad: Number(l.qty) || 0 })),
       en: new Date().toISOString(),
+      // Sin sucursal (todavía no cargaron las sucursales) la clave no viaja y el motor cotiza el precio general, como siempre.
+      ...(sucursalId !== null ? { sucursal_id: sucursalId } : {}),
     })
       .then((r) => {
         if (secuenciaPreciosRef.current !== secuencia) return
@@ -1049,6 +1054,7 @@ export function Pos() {
           cart={cart}
           total={totalConPromos}
           depositoId={depositoDeVenta}
+          sucursalId={sucursalId}
           cliente={cliente}
           mp={mp}
           onPedirCliente={() => setClienteOpen(true)}
@@ -1322,10 +1328,13 @@ type QrEstado = 'idle' | 'creando' | 'esperando' | 'acreditado'
  *  - "Cobrar con QR" (`cobrarConQr`): registra con `cobrar_con_qr: true`
  *    (nace `pendiente`, D2), pone el monto en el QR de la caja y pollea hasta
  *    que MercadoPago avisa. */
-function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar, onPedirCliente, onPreciosCambiaron, onRegistrado }: {
+function Cobro({ cart, total, depositoId, sucursalId, cliente, mp, dividir = false, onCerrar, onPedirCliente, onPreciosCambiaron, onRegistrado }: {
   cart: CartLine[]
   total: number
   depositoId: number | null
+  /** La sucursal por la que se cotizó (la del turno): viaja en `POST /api/ventas` para que el servidor valide el precio de la
+   *  sucursal y no el general (libracommerce ADR-058). Es la misma que la del depósito de la venta. */
+  sucursalId: number | null
   cliente: Cliente | null
   mp: MpDisponible | null
   /** Arranca con el pago ya dividido en dos medios (la mitad en efectivo y el resto en tarjeta; se editan): es el F3. */
@@ -1489,6 +1498,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
         cliente_id: cliente?.id ?? null,
         pagos: pagosPayload,
         deposito_id: depositoId,
+        sucursal_id: sucursalId,
       })
       const [final, facturaErr] = await conFacturaSiHaceFalta(venta)
       onRegistrado(final, facturaErr)
@@ -1666,6 +1676,7 @@ function Cobro({ cart, total, depositoId, cliente, mp, dividir = false, onCerrar
           cliente_id: cliente?.id ?? null,
           pagos: [{ medio: MERCADO_PAGO, monto: total, cobrar_con_qr: true }],
           deposito_id: depositoId,
+          sucursal_id: sucursalId,
         })
       } catch (err) {
         setQrEstado('idle')
