@@ -103,6 +103,16 @@ MODULOS_RETIRADOS = {"dashboard"}
 #   (`libracore.resguardo_enlace`, montado en `app/main.py`).
 ADDONS = {"resguardo_externo"}
 
+# Los adicionales fuera de la escalera (ADR-082; ADR-048 del motor): el catalogo de `libracore.adicionales`, que el backoffice lista y carga por
+# `GET/PUT /api/adicionales` y que arma las lineas del Anexo I. Declara lo MISMO que ya decian `ADDONS` y `PLAN_UNIDADES_ADICIONALES` (que quedan:
+# el backoffice con un libracore anterior a v1.162.0 todavia los lee), sin ningun precio nuevo. `precio=None` es «a cotizar».
+ADICIONALES = {
+    "sucursal": {
+        "label": "Sucursales adicionales", "precio": 19950, "unidad": "sucursal", "incluidas": {"unico": 1}, "limite": "sucursales",
+    },
+    "resguardo_externo": {"label": "Resguardo externo", "precio": None},
+}
+
 
 def plan_vigente(plan: str) -> str:
     """El plan con el que se opera hoy: el mismo, o el que reemplaza a uno retirado.

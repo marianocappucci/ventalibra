@@ -169,7 +169,9 @@ describe('Precio de lista (cantidad + vigencia)', () => {
     expect(screen.queryByText(/2\.500,00/)).not.toBeInTheDocument()
   })
 
-  it('el precio de la balanza tampoco se pisa al cambiar la cantidad de esa línea', async () => {
+  it('la cantidad de una línea de balanza no se cambia: la fija su etiqueta, y el precio de la etiqueta queda (ADR-079)', async () => {
+    // Antes (ADR-078) se podía cambiar y el precio de la etiqueta no se pisaba: 3 x 4.200. El servidor ahora valida la línea
+    // contra la etiqueta (por importe, la cantidad es 1), así que otra cantidad no se cobraría: el POS no la deja cambiar.
     const { llamadas } = montarRed(2500, 2000, [LISTA], false, 4200)
     const user = userEvent.setup()
     render(<MemoryRouter><Pos /></MemoryRouter>)
@@ -179,15 +181,10 @@ describe('Precio de lista (cantidad + vigencia)', () => {
     await screen.findByText(/Yerba 1kg/)
     await screen.findAllByText(/4\.200,00/)
 
-    const dialogo = await abrirCantidad()
-    const campo = within(dialogo).getByLabelText('Cantidad')
-    await user.clear(campo)
-    await user.type(campo, '3')
-    await user.click(within(dialogo).getByRole('button', { name: 'Aceptar' }))
+    fireEvent.keyDown(window, { key: 'F6' })
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    // 3 x 4.200: la lista diría 2.000 para esa cantidad, pero el precio de la etiqueta manda.
-    await waitFor(() => expect(screen.getAllByText(/12\.600,00/).length).toBeGreaterThan(0))
-    expect(screen.queryByText(/6\.000,00/)).not.toBeInTheDocument()
+    expect(await screen.findByText(/la fija su etiqueta/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByText(/12\.600,00/)).not.toBeInTheDocument()
   })
 })

@@ -102,7 +102,7 @@ services:
     # hay un test que ata las dos puntas.
     #
     # `exec` para que uvicorn quede como PID 1 y `docker stop` le llegue.
-    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && libraauth-migrar upgrade --prefijo ventalibra --base core && libracommerce-migrar upgrade --prefijo ventalibra && alembic upgrade head && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000"
+    command: sh -c "libracore-migrar upgrade --prefijo ventalibra && libraauth-migrar upgrade --prefijo ventalibra --base core && libracommerce-migrar upgrade --prefijo ventalibra && alembic upgrade head && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-1}"
     environment:
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY es obligatorio tambien en dev (sin default en un repo publico)}
       - TZ=America/Argentina/Buenos_Aires
@@ -155,6 +155,12 @@ services:
       - LIBRAAUTH_SMTP_FROM_EMAIL=${LIBRAAUTH_SMTP_FROM_EMAIL:-}
       - LIBRAAUTH_SMTP_FROM_NAME=${LIBRAAUTH_SMTP_FROM_NAME:-VentaLibra}
       - DOCS_AUTH_SECRET=${DOCS_AUTH_SECRET:-}
+      # El registro de errores (ADR-045 de libracore): de qué instancia es cada línea de `errores/errores.jsonl` bajo `DATA_DIR`.
+      # En las instancias de cliente y demo las escribe el panel; `-dev` no pasa por el panel, así que van acá.
+      # `LIBRA_VERSION` la fija quien despliega (`LIBRA_VERSION=... docker compose up`); sin ella dice `dev`.
+      - LIBRA_ENTORNO=dev
+      - LIBRA_INSTANCIA=ventalibra-dev
+      - LIBRA_VERSION=${LIBRA_VERSION:-dev}
     networks:
       - stack-net
       - datos

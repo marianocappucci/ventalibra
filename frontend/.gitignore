@@ -25,3 +25,8 @@ dist-ssr
 
 # Reporte JUnit que emite el paso de tests del CI para su gate.
 vitest.xml
+
+# Tests de navegador (Playwright): la sesión de cada rol que deja el proyecto `setup`, y la salida de cada corrida.
+.auth
+test-results
+playwright-report

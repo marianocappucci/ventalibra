@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
 from libraauth.auth_events import AuthEventRepository
 from libraauth.bootstrap import ensure_demo_user
+from libraauth.captcha import Captcha, UsadosEnBase
 from libraauth.demo_codigos import DemoCodigoRepository
 from libraauth.migrar import exigir_schema_al_dia
 from libraauth.models import Base as AuthBase
@@ -22,7 +23,6 @@ from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
 from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
-from libracommerce.db.auditoria import entidades as entidades_auditadas
 from libracommerce.erp.reportes import puerto_de_reportes
 from libracommerce.web.catalogo_router import (
     build_depositos_router,
@@ -51,9 +51,12 @@ from libracommerce.web.reposicion_router import (
 )
 from libracommerce.web.vencimientos_router import build_vencimientos_escritura_router, build_vencimientos_router
 from libracommerce.web.ventas_router import OpcionesVentas, build_guarda_de_venta, build_ventas_router
+from libracore import auditoria as auditoria_del_motor
 from libracore import config_manager
+from libracore.adicionales_router import build_adicionales_router
 from libracore.arca_router import build_arca_router
 from libracore.caja_router import build_cajas_router, build_cierre_diario_router, build_turnos_router
+from libracore.candados import una_vez_al_arrancar
 from libracore.clientes_router import build_clientes_router
 from libracore.config_router import (
     build_backup_router,
@@ -68,6 +71,7 @@ from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
 from libracore.db.url_de_instancia import url_de_instancia
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
+from libracore.errores import instalar_registro_de_errores
 from libracore.facturas_router import build_nota_de_credito_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.limites import build_limites_router
@@ -84,7 +88,9 @@ from libracore.ventas_cobro_router import build_cobro_de_ventas_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from . import db, db_ventas, venta_facturacion
+import plans
+
+from . import database, db, db_ventas, venta_facturacion
 from .auth import (
     build_session_auth,
     get_current_user,
@@ -99,6 +105,7 @@ from .cajas_ganchos import (
     usuario_de_turnos,
     validar_apertura_de,
 )
+from .commerce import REGISTRADOR, entidades_del_log
 from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
@@ -252,6 +259,12 @@ def create_app(db_path: str) -> FastAPI:
         "ventalibra", core=True, default="./data/ventalibra_libracore.db"
     )
     billing.configure(libracore_db_path)
+    # Las escrituras de `clients` (`/api/clientes`, el fiado) son del motor de core y le avisan a este registrador dentro de
+    # la misma transaccion (libracore v1.157.0, ADR-043): el MISMO que usa el repositorio de LibraCommerce (`app/commerce.py`),
+    # asi que el log tiene un solo formato. Va despues de `billing.configure` (la conexion por la que escribe el motor) y
+    # presupone que `actividad_log` esta en esa misma base: lo crea `db.connect()` -> `init_schema` en la del dominio, y en
+    # VentaLibra son la misma (`_UNA_SOLA_BASE` del motor). `test_clientes_auditados.py` lo fija.
+    auditoria_del_motor.configurar_auditoria(REGISTRADOR)
     # Cajas por sucursal (2026-09-16): toda sucursal (`branches`, del dominio)
     # tiene al menos una caja, idempotente. `billing.configure()` (via
     # `libracore.db.schema.init_core_schema()`) ya garantiza que exista AL
@@ -261,20 +274,27 @@ def create_app(db_path: str) -> FastAPI:
     # segundo no crea nada (ver `app/services/cajas.py::
     # asegurar_cajas_de_todas`).
     # La sucursal y el depósito mínimos los garantiza `db.connect()` (ya corrió arriba).
-    _sucursales_activas = SucursalService(conn).list()
-    _sucursal_default = next((s for s in _sucursales_activas if s.is_default), None)
-    cajas_service.asegurar_cajas_de_todas(
-        [s.id for s in _sucursales_activas],
-        (_sucursal_default or next(iter(_sucursales_activas), None)).id
-        if _sucursales_activas else None,
-    )
+    # 🔴 Esta siembra y la del admin y el visitante de la demo (más abajo) son «si no existe, crear», y con `uvicorn --workers N`
+    # (ADR-044 de libracore; hoy N = 1) cada worker corre este arranque: las dos preguntas «¿existe?» se contestan «no» antes de que
+    # ninguna haya creado. `una_vez_al_arrancar` las serializa (el segundo espera al primero y ve lo que dejó), y por eso cada una
+    # **sigue preguntando adentro**: el candado las ordena, no las saltea. `destino` es la base del dominio.
+    with una_vez_al_arrancar("ventalibra-sembrar", destino=db_path):
+        _sucursales_activas = SucursalService(conn).list()
+        _sucursal_default = next((s for s in _sucursales_activas if s.is_default), None)
+        cajas_service.asegurar_cajas_de_todas(
+            [s.id for s in _sucursales_activas],
+            (_sucursal_default or next(iter(_sucursales_activas), None)).id
+            if _sucursales_activas else None,
+        )
     # La URL de SQLAlchemy salia siempre como `sqlite:///...`, aunque el destino
     # fuera una URL PostgreSQL: la interpolacion la convertia en una ruta
     # relativa sin sentido. `postgresql://` se pasa tal cual (con el driver
     # psycopg, que es el de la familia), y `connect_args` es de SQLite.
     if libracore_db_path.startswith(("postgresql://", "postgresql+psycopg://")):
+        # `pool_pre_ping=True` (ADR-044 del motor): con varios workers, tras un restore en caliente los que no lo atendieron
+        # siguen con conexiones viejas; el pool las prueba al sacarlas y descarta la muerta en vez de entregarla.
         auth_engine = create_engine(
-            libracore_db_path.replace("postgresql://", "postgresql+psycopg://", 1)
+            libracore_db_path.replace("postgresql://", "postgresql+psycopg://", 1), pool_pre_ping=True
         )
     else:
         auth_engine = create_engine(
@@ -317,18 +337,19 @@ def create_app(db_path: str) -> FastAPI:
     # (el `staff` heredado se retiró: ADR-071). El MISMO `ROLES` se le pasa al router de usuarios, para que alta y edición validen contra lo
     # mismo que el repositorio (y un rol inválido sea 422 y no un 500).
     user_repository = UserRepository(auth_sessions, roles=ROLES)
-    ensure_default_admin(user_repository)
-    # Crea al visitante de la demo, **solo si esta instancia es una demo**: se
-    # guia por `DEMO_MODE` + `DEMO_USERNAME`, las mismas dos variables que
-    # registran `POST /auth/demo`. En la instancia de un cliente devuelve None
-    # y no toca la base.
-    #
-    # 🔴 Sin esta llamada la ruta existe y no tiene a quien loguear: contesta
-    # `503 demo user not provisioned`. Cablear `incluir_demo=True` en el router
-    # no alcanza — la ruta y la siembra las conecta el producto, cada una por
-    # su lado.
-    # ADR-070: el visitante de la demo es `encargado` (decisión del humano, 2026-10-07), no el `staff` heredado, que ya se retiró.
-    ensure_demo_user(user_repository, rol=ENCARGADO)
+    with una_vez_al_arrancar("ventalibra-sembrar", destino=db_path):
+        ensure_default_admin(user_repository)
+        # Crea al visitante de la demo, **solo si esta instancia es una demo**: se
+        # guia por `DEMO_MODE` + `DEMO_USERNAME`, las mismas dos variables que
+        # registran `POST /auth/demo`. En la instancia de un cliente devuelve None
+        # y no toca la base.
+        #
+        # 🔴 Sin esta llamada la ruta existe y no tiene a quien loguear: contesta
+        # `503 demo user not provisioned`. Cablear `incluir_demo=True` en el router
+        # no alcanza — la ruta y la siembra las conecta el producto, cada una por
+        # su lado.
+        # ADR-070: el visitante de la demo es `encargado` (decisión del humano, 2026-10-07), no el `staff` heredado, que ya se retiró.
+        ensure_demo_user(user_repository, rol=ENCARGADO)
 
     app = FastAPI(title="VentaLibra")
 
@@ -344,6 +365,12 @@ def create_app(db_path: str) -> FastAPI:
     app.state.conn = conn
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
+    # Los desafios del captcha ya resueltos se anotan en `libraauth_captcha_usados` (libraauth v0.50.0, ADR-023) y no en la memoria
+    # del proceso: con `uvicorn --workers N` (hoy N = 1) una lista por proceso deja que un desafio resuelto sirva **una vez por
+    # worker**. Necesita la migracion `0003` de la cadena de libraauth (base `core`, la misma de `usuarios`), que corre antes de
+    # uvicorn. Se arma ACA y no en el router (`app/routers/auth.py`, que se construye al importar) porque `auth_sessions` nace en
+    # esta funcion; `app.state.captcha` es de donde lo toma el router de `/auth`. Mismo secreto que derivaria el router.
+    app.state.captcha = Captcha(app.state.session_auth.secret_key, usados=UsadosEnBase(auth_sessions))
     # Recuperación de contraseña por correo (libraauth v0.5.0). Usa el mismo
     # session_factory que el UserRepository: la tabla de tokens tiene FK a
     # `usuarios`. Sin SMTP configurado la app levanta igual y el endpoint
@@ -407,6 +434,10 @@ def create_app(db_path: str) -> FastAPI:
     # `CSP_SPA` y no la CSP por defecto: esa habilita `cdn.jsdelivr.net` para las
     # apps Jinja2, y este producto no carga nada externo. Ver libracore.
     app.add_middleware(SecurityHeadersMiddleware, csp=CSP_SPA)
+    # El registro de errores de la familia (ADR-045 de libracore): un 500 deja una línea en `DATA_DIR/errores/errores.jsonl` y
+    # responde con un `ref`; monta `POST /api/errores-cliente` para los errores del navegador. Una sola línea, **al construir
+    # la app**: Starlette no deja sumar handlers después.
+    instalar_registro_de_errores(app, "ventalibra")
 
     app.include_router(health.router)
     app.include_router(auth_router.router)
@@ -590,6 +621,13 @@ def create_app(db_path: str) -> FastAPI:
                 # (lectura pura: de qué lote saldría cada línea) para que el POS confirme antes de cobrar. Las dos rutas cuelgan
                 # del router de ventas, así que heredan `ventas.pos`: quien puede vender puede consultarlo.
                 con_avisos_de_vencimiento=True,
+                # El servidor valida el precio de cada línea en vez de guardar el que manda el POS (libracommerce ADR-049; ADR-079 de
+                # este producto): lo recalcula con la lista predeterminada activa (el quiebre cuenta por producto) o con el precio
+                # plano, y si alguna línea no coincide contesta 409 `precios_distintos` con los precios esperados SIN escribir nada
+                # (el POS los toma y le avisa al cajero). Una línea de balanza se valida contra su etiqueta (`etiqueta` en el
+                # item). 422 si una línea no trae `producto_id` o si el pedido trae un `descuento` manual: `Pos.tsx` no manda
+                # ninguno de los dos, y el ahorro de las promociones lo sigue calculando el servidor.
+                validar_precios=True,
             ),
         ),
         dependencies=[Depends(requiere("ventas.pos"))],
@@ -677,6 +715,14 @@ def create_app(db_path: str) -> FastAPI:
         build_limites_router(
             guard_lectura=requiere_o_servicio("sucursales.admin"), guard_escritura=requiere_solo_servicio(),
             medir_activas=lambda: len(_sucursales().list()),
+        ),
+    )
+    # Los adicionales (ADR-082): `GET`/`PUT /api/adicionales[/{clave}]`, el catálogo de `plans.ADICIONALES` con lo contratado y lo usado. Mismas guardas y
+    # mismo motivo que el router de arriba, que sigue andando como alias de `PUT /api/adicionales/sucursal` (los dos escriben `limite_sucursales`).
+    app.include_router(
+        build_adicionales_router(
+            requiere_o_servicio("sucursales.admin"), requiere_solo_servicio(), medir={"sucursal": lambda: len(_sucursales().list())},
+            plans=plans, leer_modulos=database.get_modulos, escribir_modulo=database.set_addon,
         ),
     )
     app.include_router(
@@ -1059,7 +1105,7 @@ def create_app(db_path: str) -> FastAPI:
     # un F5 o un link pegado a la pantalla devolvia el JSON crudo (medido en
     # Chromium contra dev, 2026-10-05). El frontend lo pide con `basePath`.
     app.include_router(
-        build_logs_router(entidades_auditadas(), prefix="/api/logs"), dependencies=[Depends(requiere("logs"))],
+        build_logs_router(entidades_del_log(), prefix="/api/logs"), dependencies=[Depends(requiere("logs"))],
     )
 
     return app

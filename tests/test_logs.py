@@ -88,9 +88,9 @@ def test_los_tres_servicios_pasan_por_la_fabrica():
 
     🔴 Y son SIETE desde la migración `0004` (2026-09-26): `customers.py` y `suppliers.py`
     pasaron a `libracore.db.clients`/`egresos` (el modelo de Contalibra) y ya no construyen un
-    repositorio de LibraCommerce. **Consecuencia conocida:** el alta de un cliente o de un proveedor
-    ya no queda en `actividad_log` por esta vía (tampoco en Contalibra: `build_clientes_router` no
-    la registra); si se quiere auditarla, es un cambio del motor.
+    repositorio de LibraCommerce. **Consecuencia que tuvo:** el alta de un cliente o de un proveedor
+    dejó de quedar en `actividad_log` por esta vía. Los clientes volvieron el 2026-10-12 por el registrador del motor
+    de core (ADR-080, `test_clientes_auditados.py`); los proveedores siguen sin auditarse.
 
     🔴 Y son SEIS desde la fase 6 (2026-09-26, ADR-033): `stock.py` se retiró con `/stock` (el ajuste y la
     transferencia son del router del motor, que escribe sin el repositorio envuelto). **Consecuencia conocida:** un

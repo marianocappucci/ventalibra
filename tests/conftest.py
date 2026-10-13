@@ -39,6 +39,20 @@ def _sin_almacen_de_secretos_colgado():
     config_manager.usar_almacen_de_secretos(None)
 
 
+@pytest.fixture(autouse=True)
+def _sin_registrador_de_auditoria_colgado():
+    """El registrador de auditoria del motor no se filtra entre tests.
+
+    `create_app()` llama a `libracore.auditoria.configurar_auditoria(REGISTRADOR)`, un global del proceso. Sin esto, un test
+    que no construye la app heredaria un registrador que inserta en `actividad_log` de una base que ya se vacio.
+    """
+    from libracore import auditoria
+
+    auditoria.configurar_auditoria(None)
+    yield
+    auditoria.configurar_auditoria(None)
+
+
 def _construir_armada(url: str) -> None:
     """Deja `url` como la deja `admin_client` antes de loguear: auth + `create_app` + las dos cadenas de Alembic.
 
@@ -327,6 +341,8 @@ def _captcha_resuelto(request):
 
     doble = _CaptchaSiempreValido()
     mp = pytest.MonkeyPatch()
-    mp.setattr("libraauth.session_auth._captcha_de", lambda _request: doble)
+    # libraauth v0.50.0 (ADR-023) llama `_captcha_de(request, usados)`: el segundo argumento es el `captcha_usados=` del
+    # router, que el doble ignora.
+    mp.setattr("libraauth.session_auth._captcha_de", lambda _request, _usados=None: doble)
     yield
     mp.undo()
