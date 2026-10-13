@@ -23,8 +23,10 @@ export async function json<T = Record<string, unknown>>(respuesta: APIResponse, 
 
 export type Producto = { id: number; nombre: string; precio: number; unidad: string }
 
-async function depositoPredeterminado(api: APIRequestContext): Promise<number> {
-  const depositos = await json<Array<{ id: number; es_default?: boolean }>>(await api.get('/api/depositos'), 'GET /api/depositos')
+// Las lecturas que un spec repite DESPUÉS de varios segundos de navegador llevan `maxRetries`: Playwright reintenta sólo ECONNRESET («socket hang up»),
+// que apareció una vez, suelto, en una repetición. Un GET se puede repetir sin efecto; las escrituras no llevan reintento.
+export async function depositoPredeterminado(api: APIRequestContext): Promise<number> {
+  const depositos = await json<Array<{ id: number; es_default?: boolean }>>(await api.get('/api/depositos', { maxRetries: 3 }), 'GET /api/depositos')
   const deposito = depositos.find((d) => d.es_default)
   expect(deposito, 'la instancia no tiene un depósito predeterminado').toBeTruthy()
   return deposito!.id
@@ -33,10 +35,14 @@ async function depositoPredeterminado(api: APIRequestContext): Promise<number> {
 /** Un producto por unidad (o por la que se pida) con stock en el depósito predeterminado, que es del que descuenta el POS. */
 export async function crearProducto(
   api: APIRequestContext,
-  { nombre = unico('Producto e2e'), precio, stock = 100, unidad = 'UN' }: { nombre?: string; precio: number; stock?: number; unidad?: string },
+  { nombre = unico('Producto e2e'), precio, stock = 100, unidad = 'UN', stockMinimo = 0 }: {
+    nombre?: string; precio: number; stock?: number; unidad?: string; stockMinimo?: number
+  },
 ): Promise<Producto> {
   const creado = await json<{ id: number }>(
-    await api.post('/api/productos', { data: { nombre, unidad, precio_venta: precio, precio_costo: Math.round(precio / 2) } }),
+    await api.post('/api/productos', {
+      data: { nombre, unidad, precio_venta: precio, precio_costo: Math.round(precio / 2), stock_minimo: stockMinimo },
+    }),
     'POST /api/productos',
   )
   if (stock > 0) {
@@ -50,6 +56,15 @@ export async function crearProducto(
   return { id: creado.id, nombre, precio, unidad }
 }
 
+/** Le saca el stock mínimo a un producto. Un spec que deja productos por debajo de su mínimo los deja en el reporte de stock bajo de `/reportes`,
+ *  y esa tabla se ensancha con cada nombre largo: a 390 px el spec de desbordes de otra corrida (o de otro spec) se pondría rojo. */
+export async function quitarMinimo(api: APIRequestContext, producto: Producto): Promise<void> {
+  await json(
+    await api.put(`/api/productos/${producto.id}`, { data: { nombre: producto.nombre, unidad: producto.unidad, precio_venta: producto.precio, stock_minimo: 0 } }),
+    'PUT /api/productos/{id}',
+  )
+}
+
 export async function cambiarPrecio(api: APIRequestContext, producto: Producto, precio: number): Promise<Producto> {
   await json(await api.put(`/api/productos/${producto.id}`, { data: { nombre: producto.nombre, unidad: producto.unidad, precio_venta: precio } }), 'PUT /api/productos/{id}')
   return { ...producto, precio }
@@ -59,9 +74,47 @@ export async function cambiarPrecio(api: APIRequestContext, producto: Producto, 
 export async function stockDe(api: APIRequestContext, producto: { id: number }): Promise<number> {
   const deposito = await depositoPredeterminado(api)
   const datos = await json<{ stock_deposito: number }>(
-    await api.get(`/api/stock/${producto.id}`, { params: { deposito_id: deposito } }), 'GET /api/stock/{id}',
+    await api.get(`/api/stock/${producto.id}`, { params: { deposito_id: deposito }, maxRetries: 3 }), 'GET /api/stock/{id}',
   )
   return Number(datos.stock_deposito)
+}
+
+// ── Lotes y vencimientos ────────────────────────────────────────────────────
+
+/** La fecha ISO (`AAAA-MM-DD`) de hoy más `dias` (negativos: ya pasó), en Buenos Aires, que es la fecha con la que el motor decide qué está vencido. */
+export function enDias(dias: number): string {
+  const fecha = new Date(Date.now() + dias * 86_400_000)
+  return fecha.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+}
+
+/** Un producto de los que vencen (lo marca el admin) con un lote por cada `{ lote, vence, cantidad }`, en el depósito predeterminado.
+ *  El stock del producto es la suma de los lotes: entran por `POST /api/vencimientos/entrada`, la misma carga con lote de la pantalla. */
+export async function crearPerecedero(
+  admin: APIRequestContext,
+  { lotes, precio = 1_000, stockMinimo = 0 }: { lotes: Array<{ lote: string; vence: string; cantidad: number }>; precio?: number; stockMinimo?: number },
+): Promise<Producto> {
+  const producto = await crearProducto(admin, { nombre: unico('Yogur e2e'), precio, stock: 0, stockMinimo })
+  await json(await admin.put(`/api/vencimientos/productos/${producto.id}`, { data: { vence: true } }), 'PUT /api/vencimientos/productos/{id}')
+  const deposito = await depositoPredeterminado(admin)
+  for (const { lote, vence, cantidad } of lotes) {
+    await json(
+      await admin.post('/api/vencimientos/entrada', {
+        data: { producto_id: producto.id, deposito_id: deposito, lote, vence, cantidad, clave_operacion: randomUUID() },
+      }),
+      'POST /api/vencimientos/entrada',
+    )
+  }
+  return producto
+}
+
+/** El saldo de cada lote de un producto en el depósito predeterminado, por código de lote (los lotes con saldo 0 no vienen). */
+export async function saldosPorLote(api: APIRequestContext, producto: { id: number }): Promise<Record<string, number>> {
+  const deposito = await depositoPredeterminado(api)
+  const datos = await json<{ lotes: Array<{ lote: string | null; saldo: number }> }>(
+    await api.get(`/api/vencimientos/productos/${producto.id}/lotes`, { params: { deposito_id: deposito }, maxRetries: 3 }),
+    'GET /api/vencimientos/productos/{id}/lotes',
+  )
+  return Object.fromEntries(datos.lotes.map((l) => [l.lote ?? '', Number(l.saldo)]))
 }
 
 // ── La balanza ──────────────────────────────────────────────────────────────
