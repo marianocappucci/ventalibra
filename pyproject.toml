@@ -104,7 +104,8 @@ dependencies = [
     # v0.54.0 -> v0.55.0 (2026-10-12): `POST /api/listas-precio/{id}/precios`, el quiebre por cantidad cuenta por producto (ADR-048). Sin migracion.
     # v0.55.0 -> v0.56.0 (2026-10-12): `OpcionesVentas.validar_precios` (ADR-049), VentaLibra la prende (ADR-079). Sin migracion.
     # v0.56.0 -> v0.57.0 (2026-10-12): `RepositorioAuditado` arma la fila del log con el formato de libraauth (ADR-050): el registrador es obligatorio y `usuario=` ya no existe (`app/commerce.py`, ADR-080 de este repo). Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.57.0",
+    # v0.57.0 -> v0.58.0 (2026-10-13): deposito por defecto siempre activo, relojes con zona y se retira `return_sale_items`. Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.58.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -261,7 +262,8 @@ dependencies = [
     # v1.154.0 -> v1.155.0 (2026-10-12): migracion 0024 retira cc_resumenes_enviados y clients.cc_resumen_* (ADR-042). Desplegar el producto ANTES de migrar.
     # v1.155.0 -> v1.157.0 (2026-10-12): `libracore.auditoria` y `crear_cliente`/`actualizar_cliente` (ADR-043): las escrituras de `clients` (`/api/clientes`, el fiado) le avisan a un registrador dentro de la misma transaccion, y este producto le enchufa el de libraauth (ADR-080 de este repo). `actividad_log` entra solo a la pantalla de Logs del motor, que este producto no monta. Sin migracion. (La v1.156.0 es un tag erroneo: no usar.)
     # v1.157.0 -> v1.159.0 (2026-10-13): varios procesos (ADR-044: `libracore.candados`, la nota de credito con `conn=`) y el registro de errores (ADR-045: `libracore.errores.instalar_registro_de_errores`, `POST /api/errores-cliente`). Sin migracion. (La v1.156.0 es un tag erroneo: no usar.)
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.159.0",
+    # v1.159.0 -> v1.162.0 (2026-10-13): concepto sin «Factura» doble con migracion 0025 (corre al migrar, backup antes), alta por CLI con aviso de casilla y `panel_admin casilla`, se retira `get_cc_movimientos_periodo` y los adicionales quedan fuera de la escalera de planes (ADR-048, sin migracion).
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.162.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

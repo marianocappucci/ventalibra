@@ -10,8 +10,8 @@ importa fijar aca es el borde:
 1. Sin `LIBRA_SERVICE_TOKEN` en el entorno, nada cambia.
 2. Con la variable puesta, un token equivocado tampoco entra.
 3. El ensanchamiento alcanza SOLO al router de usuarios, a `/admin/smtp` (que
-   lo trae el motor) y a `/api/limites/sucursales` (las sucursales contratadas,
-   ADR-073). Todo el resto tiene que responder igual con token que sin el.
+   lo trae el motor), a `/api/limites/sucursales` (las sucursales contratadas,
+   ADR-073) y a `/api/adicionales` (el router que lo generaliza, ADR-082). Todo el resto tiene que responder igual con token que sin el.
 """
 import pytest
 from conftest import https_client
@@ -24,7 +24,7 @@ TOKEN = "un-token-de-servicio-de-prueba"
 RUTA_USERS = "/users"
 
 # Lo que SI acepta el token, a proposito. El resto no.
-ACEPTAN_TOKEN = {RUTA_USERS, "/admin/smtp", "/api/limites/sucursales"}
+ACEPTAN_TOKEN = {RUTA_USERS, "/admin/smtp", "/api/limites/sucursales", "/api/adicionales"}
 
 
 @pytest.fixture

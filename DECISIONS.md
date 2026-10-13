@@ -3150,3 +3150,16 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   - Sin migración propia. Con más de un worker, después de un restore en caliente hay que **reiniciar el contenedor** (`docs/varios-procesos.md` del motor).
   - Las serializaciones del arranque cubren las siembras («si no existe, crear»); la creación idempotente del esquema (`CREATE TABLE IF NOT EXISTS` de `ensure_schema`) no se serializa: antes de subir `WEB_CONCURRENCY` a más de 1 hay que medirlo con dos workers.
   - Tests: `tests/test_registro_de_errores.py`, `tests/test_arranque_varios_procesos.py` y el caso de `captcha_usados` en `tests/test_captcha_login.py`; los dobles del captcha de los `conftest` aceptan el segundo argumento que libraauth v0.50.0 pasa a `_captcha_de(request, usados)`.
+
+
+## ADR-082 — Los adicionales de VentaLibra se declaran en el catálogo del motor (`plans.ADICIONALES`) y se cargan por `/api/adicionales`
+
+- Estado: aceptada
+- Fecha: 2026-10-13
+- Contexto: libracore ADR-048 (decisión del humano, 2026-10-13) le da al motor un catálogo de adicionales fuera de la escalera (sí/no y por unidades) con dato en la instancia, router propio y abono por líneas. VentaLibra tenía dos formas sueltas: `ADDONS = {"resguardo_externo"}` y `PLAN_UNIDADES_ADICIONALES` (ADR-073, las sucursales).
+- Qué ya existía (se miró antes): `plans.ADDONS` y `PLAN_UNIDADES_ADICIONALES` (ADR-072/073), `build_limites_router` montado en `app/main.py`, el gancho de alta y reactivación de sucursales (`opciones_de_sucursales`, `verificar_alta_de_sucursal`), `app.database.get_modulos` / `set_addon` (ya exportados para el backoffice). Nada de eso se mueve.
+- Decisión:
+  1. **`plans.ADICIONALES`** declara `sucursal` (precio 19.950, unidad `sucursal`, `incluidas: {"unico": 1}`, límite `sucursales`) y `resguardo_externo` (`precio=None`: a cotizar). Es **exactamente lo que el motor ya sintetizaba** desde las dos formas viejas; `ADDONS` y `PLAN_UNIDADES_ADICIONALES` quedan porque un backoffice con libracore anterior a v1.162.0 todavía los lee. **No se fija ningún precio nuevo.**
+  2. **`app/main.py` monta `build_adicionales_router`** (`GET /api/adicionales`, `PUT /api/adicionales/{clave}`), con las mismas guardas que el de límites (leer: admin o servicio; escribir: sólo el token de servicio) y `medir={"sucursal": len(SucursalService.list())}`; lee y escribe los módulos por `app.database`. `/api/limites/sucursales` sigue andando como alias y los dos escriben `limite_sucursales`.
+  3. **El número cargado sigue siendo el total contratado** (decisión 2 del humano): sin cambio para el ADR-073, ni en el cálculo (`39.900 + (n − 1) × 19.950`) ni en el bloqueo del alta.
+- Consecuencias: MINOR, sin migración. El código importa `libracore.adicionales_router`, que existe desde v1.162.0: **el pin tiene que subir a v1.162.0** (`pyproject.toml` y `uv.lock`) en el mismo PR o antes. Un test fija que el abono de 3 sucursales sea base + 2 × 19.950 por el camino nuevo y por `calcular_abono`.
