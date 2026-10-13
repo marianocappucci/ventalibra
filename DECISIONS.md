@@ -3131,3 +3131,22 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   - `entidad_id` queda entero en la tabla de LibraCommerce (`entidad_id INTEGER`): el registrador manda texto y la base lo asigna al entero (medido en libraauth, sin migración).
   - Sin migración. Pines: libracommerce v0.57.0, libracore v1.157.0, libraauth v0.49.0.
 - Tests: `tests/test_clientes_auditados.py`; `tests/conftest.py` limpia el registrador entre tests (`configurar_auditoria(None)`, global del proceso).
+
+
+## ADR-081 — Varios procesos listos (`WEB_CONCURRENCY`, hoy 1) y el registro de errores de la familia
+
+- Estado: aceptada. **Exige `libracore >= v1.159.0`, `libraauth >= v0.50.0` (con migración `0003_captcha_usados`) y `libra-ui >= v0.142.1`.**
+- Fecha: 2026-10-13
+- Contexto: el dueño decidió (2026-10-13) dejar el código listo para correr con `uvicorn --workers N` **sin prender más workers todavía**: todo sigue en 1 (ADR-044 de libracore, `docs/varios-procesos.md`). Y (2026-10-12) que la familia tenga un registro de errores propio (ADR-045 de libracore, ADR-053 de libra-ui): hasta ahora un 500 iba al stdout de uvicorn y se perdía en cada recreate del contenedor.
+- Qué ya existía (se miró antes): `docs/varios-procesos.md` y `docs/errores.md` del motor, ADR-023 de libraauth (captcha en la base), el `pool_pre_ping` de este producto. `pool_pre_ping=True` en el engine de auth de PostgreSQL (`app/main.py`); el resto de la base es `libracore.db` / SQLite crudo, sin pool de SQLAlchemy.
+- Decisión:
+  - **Siembras de arranque serializadas.** `asegurar_cajas_de_todas`, `ensure_default_admin` y `ensure_demo_user` (`app/main.py`, `create_app`) corren adentro de `una_vez_al_arrancar("ventalibra-sembrar", destino=db_path)` (dos bloques, porque entre las cajas y el admin está la creación del engine de auth); cada uno sigue preguntando adentro.
+  - **Captcha en la base.** `app/main.py` deja `app.state.captcha = Captcha(secreto, usados=UsadosEnBase(auth_sessions))`: `auth_sessions` nace en `create_app()` (la base de LibraCore, la de `usuarios`) y el router de `/auth` (`app/routers/auth.py`) se construye al importar, antes. La migración `0003` es de la cadena `--base core`.
+  - **Nota de crédito.** La nota de crédito sale del router del motor (`build_nota_de_credito_router`), que ya pasa `conn=` al candado (`libracore/facturas_router.py`): no hay emisión propia. Verificado.
+  - **Registro de errores.** Backend: `instalar_registro_de_errores(app, "ventalibra")` al lado de `SecurityHeadersMiddleware`, que monta `POST /api/errores-cliente`. Frontend: `instalarReporteDeErrores()` antes de montar y `<ErrorBoundary>` alrededor de todo en `main.tsx`. Compose de `-dev`: `LIBRA_ENTORNO=dev`, `LIBRA_INSTANCIA=ventalibra-dev`, `LIBRA_VERSION=${LIBRA_VERSION:-dev}`; las instancias de cliente y demo las escribe el panel. La matriz de roles (`tests/test_roles_matriz.py`) no cambia: `POST /api/errores-cliente` es una ruta pública del motor, como `/health`, y la matriz recorre las rutas del esquema del producto.
+  - **Compose de `-dev`**: `exec uvicorn ... --workers ${WEB_CONCURRENCY:-1}`. `uvicorn>=0.30` ya era el piso.
+- Consecuencias:
+  - **La migración `0003` de libraauth corre antes de uvicorn** en todo camino de arranque (la cadena de `scripts/panel_admin.py` y el `command:` del compose ya incluyen `libraauth-migrar upgrade`): `exigir_schema_al_dia` hace que el producto no arranque sin ella, aunque no use `UsadosEnBase`.
+  - Sin migración propia. Con más de un worker, después de un restore en caliente hay que **reiniciar el contenedor** (`docs/varios-procesos.md` del motor).
+  - Las serializaciones del arranque cubren las siembras («si no existe, crear»); la creación idempotente del esquema (`CREATE TABLE IF NOT EXISTS` de `ensure_schema`) no se serializa: antes de subir `WEB_CONCURRENCY` a más de 1 hay que medirlo con dos workers.
+  - Tests: `tests/test_registro_de_errores.py`, `tests/test_arranque_varios_procesos.py` y el caso de `captcha_usados` en `tests/test_captcha_login.py`; los dobles del captcha de los `conftest` aceptan el segundo argumento que libraauth v0.50.0 pasa a `_captcha_de(request, usados)`.

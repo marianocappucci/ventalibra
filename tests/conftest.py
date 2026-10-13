@@ -341,6 +341,8 @@ def _captcha_resuelto(request):
 
     doble = _CaptchaSiempreValido()
     mp = pytest.MonkeyPatch()
-    mp.setattr("libraauth.session_auth._captcha_de", lambda _request: doble)
+    # libraauth v0.50.0 (ADR-023) llama `_captcha_de(request, usados)`: el segundo argumento es el `captcha_usados=` del
+    # router, que el doble ignora.
+    mp.setattr("libraauth.session_auth._captcha_de", lambda _request, _usados=None: doble)
     yield
     mp.undo()

@@ -1,0 +1,134 @@
+name: E2E de dominio
+
+# Tests de navegador de DOMINIO (`frontend/e2e/*.e2e.ts`, Playwright + `libra-ui/e2e`): la venta completa en el POS con un artículo
+# por peso, el 409 `precios_distintos`, la recepción idempotente con la respuesta cortada, lo que ve cada rol, «atrás» en las
+# pestañas y los desbordes a 390 px. Es el piloto de la familia (2026-10-12); el smoke de `smoke-navegador.yml` sigue siendo el de
+# login y primera pantalla.
+#
+# Corre en cada PR que toque `frontend/`, `app/` o los locks, y de noche sobre `develop`. Decisión del humano: a las dos semanas sin
+# flakes pasa a ser requerido para promover a `main` (eso lo decide él: hoy NO es un check requerido).
+#
+# 🔴 Para poder volverse requerido el workflow corre SIEMPRE en un PR y decide adentro si hay algo que probar: un `paths:` a nivel
+# workflow dejaría el check en «Expected» para siempre en un PR que no toca esas carpetas y trabaría el merge. Igual que el job `test` de
+# ci.yml (`steps.cambios`): el job existe y termina en verde con los pasos salteados.
+#
+# 🔴 `schedule` corre el archivo de la rama por defecto (`main`) y por eso la corrida de noche hace checkout de `develop`: el
+# workflow arranca de noche recién cuando este archivo llega a `main`.
+
+on:
+  pull_request:
+    branches: [develop, main]
+  schedule:
+    # 03:17 en Buenos Aires (UTC-3), fuera de la hora pico del runner.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      repetir:
+        description: "--repeat-each, para medir flakes de un spec nuevo (vacío = una corrida)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'develop' || '' }}
+
+      # Un PR que no toca frontend/, app/, los scripts, las migraciones ni los locks no tiene nada que probar acá. Ante cualquier duda
+      # (no es un PR, la API no contesta, lista vacía) corre todo.
+      - name: Qué toca el PR
+        id: cambios
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then echo "correr=true" >> "$GITHUB_OUTPUT"; echo "no es un PR: corre todo"; exit 0; fi
+          if ! archivos=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate --jq '.[].filename'); then
+            echo "correr=true" >> "$GITHUB_OUTPUT"; echo "la API no contestó: corre todo"; exit 0
+          fi
+          correr=false
+          while IFS= read -r f; do
+            case "$f" in
+              frontend/*|app/*|scripts/*|migrations/*|uv.lock|pyproject.toml|plans.py|.github/workflows/e2e.yml|.github/workflows/smoke-navegador.yml) correr=true ;;
+            esac
+          done <<< "$archivos"
+          [ -z "$archivos" ] && correr=true
+          echo "correr=$correr" >> "$GITHUB_OUTPUT"
+          echo "correr=$correr"; echo "$archivos" | head -80
+
+      - name: Los specs no esperan a ciegas
+        if: steps.cambios.outputs.correr == 'true'
+        run: |
+          if grep -rnE "waitForTimeout|networkidle" frontend/e2e; then
+            echo "::error::Sin waitForTimeout ni networkidle: se espera el hecho (esperarApi, un expect sobre la pantalla)."; exit 1
+          fi
+
+      - name: Acceso SSH a los motores y a libra-ui
+        if: steps.cambios.outputs.correr == 'true'
+        env:
+          LIBRACORE_DEPLOY_KEY: ${{ secrets.LIBRACORE_DEPLOY_KEY }}
+          LIBRACOMMERCE_DEPLOY_KEY: ${{ secrets.LIBRACOMMERCE_DEPLOY_KEY }}
+          LIBRAAUTH_DEPLOY_KEY: ${{ secrets.LIBRAAUTH_DEPLOY_KEY }}
+          LIBRA_UI_DEPLOY_KEY: ${{ secrets.LIBRA_UI_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          configurar() {
+            repo=$1; clave=$2
+            if [ -z "$clave" ]; then echo "::error::Falta el secret con la deploy key de $repo."; exit 1; fi
+            printf '%s\n' "$clave" > ~/.ssh/id_"$repo"; chmod 600 ~/.ssh/id_"$repo"
+            printf 'Host github-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_%s\n  IdentitiesOnly yes\n' "$repo" "$repo" >> ~/.ssh/config
+            git config --global url."git@github-$repo:marianocappucci/$repo".insteadOf "https://github.com/marianocappucci/$repo"
+            saludo=$(ssh -o StrictHostKeyChecking=yes -T "git@github-$repo" 2>&1 || true)
+            case "$saludo" in *"marianocappucci/$repo"*) echo "$repo OK" ;; *) echo "::error::La deploy key de $repo no resuelve a marianocappucci/$repo: $saludo"; exit 1 ;; esac
+          }
+          configurar libracore "$LIBRACORE_DEPLOY_KEY"
+          configurar libracommerce "$LIBRACOMMERCE_DEPLOY_KEY"
+          configurar libraauth "$LIBRAAUTH_DEPLOY_KEY"
+          configurar libra-ui "$LIBRA_UI_DEPLOY_KEY"
+
+      # Los Términos se aceptan por la API (`scripts/e2e_usuarios.py terminos`) ANTES de la semilla: mientras estén pendientes el motor corta
+      # con 403 toda llamada gateada por rol, la semilla incluida. La semilla es la de la demo (`seed_demo.py`, por la API) y deja el turno
+      # CERRADO: cada spec abre el suyo. `ENV=development` pone CAE simulado.
+      - name: E2E de dominio en Chromium
+        if: steps.cambios.outputs.correr == 'true'
+        uses: marianocappucci/libra-web-kit/.github/actions/e2e-ci@e2e-ci-v1
+        with:
+          variante: debian
+          base: ventalibra
+          usuario: ventalibra
+          clave: ventalibra-ci
+          proyecto: e2e
+          nocturno: ${{ github.event_name == 'schedule' }}
+          repetir: ${{ inputs.repetir }}
+          uv-sync: --locked
+          env: |
+            ENV=development
+            DATA_DIR=${{ github.workspace }}/e2e-data
+            VENTALIBRA_DATABASE_URL=postgresql+psycopg://ventalibra:ventalibra-ci@localhost:5432/ventalibra
+            VENTALIBRA_LIBRACORE_DATABASE_URL=postgresql+psycopg://ventalibra:ventalibra-ci@localhost:5432/ventalibra
+            SECRET_KEY=e2e-de-navegador-no-es-un-secreto-real-0123456789
+            DOCS_AUTH_SECRET=e2e-docs
+            ADMIN_USER=admin
+            ADMIN_PASSWORD=e2e-admin-1234
+            ADMIN_NOMBRE=Administrador
+            VENTALIBRA_ADMIN_USERNAME=admin
+            VENTALIBRA_ADMIN_PASSWORD=e2e-admin-1234
+            E2E_ADMIN_USUARIO=admin
+            E2E_ADMIN_CLAVE=e2e-admin-1234
+          semilla: |
+            python -m scripts.e2e_usuarios terminos
+            python -m scripts.seed_demo --url "$E2E_BASE_URL" --usuario "$E2E_ADMIN_USUARIO" --password "$E2E_ADMIN_CLAVE"
+          usuarios-por-rol: python -m scripts.e2e_usuarios usuarios
+          artefactos: e2e-playwright

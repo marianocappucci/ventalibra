@@ -35,7 +35,7 @@ import sys
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta
-from http.cookiejar import CookieJar
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from urllib.parse import urlparse
 
 #: Los subdominios que NO son de un cliente. Se compara el host entero o su
@@ -54,9 +54,12 @@ def url_no_productiva(url: str) -> bool:
 class Api:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(CookieJar())
-        )
+        # 🔴 La cookie de sesión de libraauth es siempre `Secure`, y el `CookieJar` por defecto no la manda por `http`:
+        # contra `http://localhost` (el CI de los tests de navegador, `.github/actions/e2e-ci`) cada pedido después
+        # del login daba 401. Contra `https` (dev y demo) no cambia nada. Chromium trata a `localhost` como contexto
+        # seguro y no lo necesita; la semilla, que habla por urllib, sí.
+        jar = CookieJar(DefaultCookiePolicy(secure_protocols=("https", "wss", "http")))
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 
     def _pedir(self, metodo: str, ruta: str, cuerpo=None):
         datos = json.dumps(cuerpo, default=str).encode() if cuerpo is not None else None
