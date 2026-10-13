@@ -1,19 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { tildarCaptcha } from 'libra-ui/e2e'
 
-// El captcha «No soy un robot» (ALTCHA, libraauth v0.40.0 con `captcha=True`):
-// «Ingresar» queda deshabilitado hasta que el widget resuelve el desafío, que
-// es una prueba de trabajo de alrededor de un segundo en el navegador. El tope
-// de 30 s es para un runner de CI lento, no lo esperado.
-//
-// 🔴 Se clickea el LABEL y no el checkbox. Sobre el `<input>` de ALTCHA va el
-// `<svg>` del tilde (absoluto, centrado, sin `pointer-events: none`), y un
-// click al centro del input lo recibe el svg: Playwright reintenta con
-// "<svg> intercepts pointer events" hasta el timeout. El label (`for=` el
-// input) es lo que clickea una persona y tilda sin `force`.
-async function tildarCaptcha(page: Page) {
-  await page.locator('altcha-widget label', { hasText: 'No soy un robot' }).click()
-  await expect(page.getByRole('button', { name: 'Ingresar' })).toBeEnabled({ timeout: 30_000 })
-}
+// El captcha del login («No soy un robot», ALTCHA) lo tilda `tildarCaptcha` de `libra-ui/e2e`: se clickea el label y no el
+// checkbox, que tapa el svg del tilde.
 
 // Lo único que un unitario no puede ver: que la SPA construida, servida por la
 // app real, deje entrar y muestre una pantalla de dominio. Si el bundle quedó

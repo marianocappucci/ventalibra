@@ -328,6 +328,11 @@ jobs:
       - name: El build dejo algo de verdad
         run: test -f dist/index.html
 
+      # Los tests de navegador (`e2e/`, Playwright) no entran en `tsc -b` (el build chequea `src/`): se tipan con su propio tsconfig. Es
+      # lo que ve un error de tipos en un spec o en `libra-ui/e2e` sin tener que levantar la instancia que los corre (`e2e.yml`).
+      - name: Tipos de los tests de navegador
+        run: npm run e2e:tipos
+
       # `--reporter=default` mantiene la salida legible en el log; el `junit`
       # agregado deja además el XML que lee el gate del paso siguiente. Los dos
       # reporters conviven: el `--outputFile.junit` le da destino sólo al

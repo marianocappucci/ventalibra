@@ -108,6 +108,24 @@ def test_forgot_password_tambien_pide_el_captcha(client):
     assert respuesta.json()["detail"] == CAPTCHA_INVALIDO
 
 
+def test_los_desafios_usados_se_anotan_en_la_base_y_no_en_la_memoria_del_proceso(client):
+    """Los usados van a `libraauth_captcha_usados` (libraauth v0.50.0, ADR-023).
+
+    Con `uvicorn --workers N` (hoy N = 1) una lista en memoria deja que un desafio resuelto sirva **una vez por worker**.
+    Sin `captcha_barato`: el `Captcha` lo arma `create_app` con `UsadosEnBase` (costo de produccion, del orden de un
+    segundo). Si alguien saca el `app.state.captcha` de `app/main.py`, la fila no aparece y esto da rojo.
+    """
+    from sqlalchemy import text
+
+    cuerpo = {**CREDENCIALES, "captcha": _resolver(client)}
+
+    assert client.post("/auth/login", json=cuerpo).status_code == 200
+    with client.app.state.auth_engine.connect() as con:
+        assert con.execute(text("SELECT count(*) FROM libraauth_captcha_usados")).scalar() == 1
+    client.post("/auth/logout")
+    assert client.post("/auth/login", json=cuerpo).status_code == 400
+
+
 # ── El seed de la demo ────────────────────────────────────────────────────
 
 def test_el_seed_resuelve_el_captcha_y_entra(client, captcha_barato):

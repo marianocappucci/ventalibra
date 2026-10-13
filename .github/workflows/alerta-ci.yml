@@ -18,7 +18,7 @@ name: Alerta CI
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "E2E de dominio"]
     types: [completed]
   # Para probar el canal sin tener que romper nada a proposito.
   workflow_dispatch:
@@ -26,10 +26,12 @@ on:
 jobs:
   avisar:
     # Solo si la corrida vigilada fallo. `workflow_dispatch` entra siempre,
-    # que es el modo de prueba.
+    # que es el modo de prueba. «E2E de dominio» avisa sólo la corrida de noche: en un PR el rojo lo ve quien lo abrió,
+    # y mientras el check no es requerido (observación de dos semanas) no hace falta además un mensaje por PR.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'failure'
+      (github.event.workflow_run.conclusion == 'failure' &&
+       (github.event.workflow_run.name != 'E2E de dominio' || github.event.workflow_run.event == 'schedule'))
     runs-on: ubuntu-latest
     steps:
       - name: Avisar por Telegram

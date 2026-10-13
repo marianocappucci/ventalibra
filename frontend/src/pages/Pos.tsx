@@ -1085,16 +1085,20 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
       </div>
     )
   }
+  // Las columnas se adaptan al ANCHO DEL TICKET y no al de la pantalla (`@container`): el mismo ticket mide ~340 px en un celular y
+  // ~430 px en la columna izquierda de una notebook angosta, y con las seis columnas de ancho fijo (352 px) el nombre quedaba sin
+  // lugar y la tabla se desbordaba del recuadro. Por debajo de `@lg` (512 px) se van el «#» y el precio unitario (que pasa a
+  // renglón chico bajo el nombre) y la tabla es `table-fixed`: el nombre toma lo que sobra y se parte en vez de empujar.
   return (
-    <div className="overflow-hidden rounded-lg border-2 border-sky-200 lg:max-h-full lg:self-start lg:overflow-y-auto dark:border-sky-900">
-      <table className="w-full text-sm">
+    <div className="@container overflow-hidden rounded-lg border-2 border-sky-200 lg:max-h-full lg:self-start lg:overflow-y-auto dark:border-sky-900">
+      <table className="w-full table-fixed text-sm">
         <thead className="sticky top-0 z-10 border-b bg-sky-100 text-xs font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200">
           <tr>
-            <th className="w-8 p-2 text-left">#</th>
+            <th className="hidden w-8 p-2 text-left @lg:table-cell">#</th>
             <th className="p-2 text-left">Producto</th>
-            <th className="w-16 p-2 text-center">Cant.</th>
-            <th className="w-24 p-2 text-right">P. unit.</th>
-            <th className="w-28 p-2 text-right">Importe</th>
+            <th className="w-14 p-2 text-center @lg:w-16">Cant.</th>
+            <th className="hidden w-24 p-2 text-right @lg:table-cell">P. unit.</th>
+            <th className="w-24 p-2 text-right @lg:w-28">Importe</th>
             <th className="w-12 p-2" />
           </tr>
         </thead>
@@ -1111,14 +1115,18 @@ function Ticket({ items, marcada, reciente, onMarcar, onQuitar }: {
                 i === reciente ? 'bg-exito/15' : '',
               ].join(' ')}
             >
-              <td className="p-2 text-muted-foreground">{i + 1}</td>
-              <td className="p-2">{linea.nombre}</td>
+              <td className="hidden p-2 text-muted-foreground @lg:table-cell">{i + 1}</td>
+              <td className="break-words p-2">
+                {linea.nombre}
+                <span className="block text-xs tabular-nums text-muted-foreground @lg:hidden">${money(linea.precio)} c/u</span>
+              </td>
               <td className="p-2 text-center tabular-nums">{cantidadLegible(linea.qty)}</td>
-              <td className="p-2 text-right tabular-nums">${money(linea.precio)}</td>
+              <td className="hidden p-2 text-right tabular-nums @lg:table-cell">${money(linea.precio)}</td>
               <td className="p-2 text-right tabular-nums">
                 ${money((Number(linea.qty) || 0) * (Number(linea.precio) || 0))}
               </td>
-              <td className="p-2 text-right">
+              {/* `px-1`: el botón de ícono mide 36 px y la columna 48; con `p-2` quedaban 32 y se salía hacia el borde. */}
+              <td className="px-1 py-2 text-center">
                 <Button
                   size="icon" variant="ghost" title="Quitar línea" aria-label="Quitar línea"
                   className="text-destructive hover:text-destructive"
