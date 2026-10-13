@@ -5,8 +5,14 @@
 // con lo que la pantalla trae una columna por sucursal/depósito, el ajuste elige en cuál va y el historial dice
 // cuál; `conFiltros` suma el buscador y «sólo los que tienen stock», que es lo que esta pantalla tenía antes. Los
 // depósitos en cero se muestran a propósito: la pregunta que se le hace es «¿de dónde saco esto?».
+//
+// `puedeAjustar` (libra-ui 0.146.0, ADR-058 del kit; ADR-083 de este repo): el vendedor ve Stock (`stock.ver`) pero no tiene
+// `stock.ajustar`, así que no se le ofrece «Ajustar stock» (el backend le contestaría 403). Queda «Ver movimientos».
 import { Stock as StockComercio } from 'libra-ui/comercio/Stock'
+import { useAuth } from '../context/AuthContext'
+import { puede } from '../lib/permisos'
 
 export function Stock() {
-  return <StockComercio conFiltros rutaDeProductos="/productos" />
+  const { user } = useAuth()
+  return <StockComercio conFiltros rutaDeProductos="/productos" puedeAjustar={puede(user, 'stock.ajustar')} />
 }

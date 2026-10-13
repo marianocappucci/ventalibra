@@ -57,8 +57,12 @@ const sucursal = (id: number, nombre: string, deposito_predeterminado_id: number
 const SUCURSALES = [sucursal(1, 'Centro', 11, true), sucursal(7, 'Norte', 12)]
 
 // Cómo contesta `POST /api/ventas/42/devolver`, en orden (la última se repite): `ok`, `repetida` (el motor ya había aplicado ese intento),
-// `red` (se corta la conexión: no se sabe si escribió), `5xx` (error del servidor) o `409` (la clave ya se usó con otros datos).
-type Respuesta = 'ok' | 'repetida' | 'red' | '5xx' | '409'
+// `red` (se corta la conexión: no se sabe si escribió), `5xx` (error del servidor), `409` (la clave ya se usó con otros datos) o `503` (la base no
+// tiene la revisión 0007 del motor y se pidió devolver un servicio: libracommerce ADR-054).
+type Respuesta = 'ok' | 'repetida' | 'red' | '5xx' | '409' | '503'
+
+/** El `detail` real del 503 de `POST /api/ventas/{id}/devolver` sin la revisión 0007 (`libracommerce/erp/ventas.py`, v0.59.0). */
+const DETAIL_503 = 'Falta la revisión 0007_devoluciones_de_servicio del motor: corré `libracommerce-migrar upgrade` (--prefijo del producto) antes de devolver un servicio.'
 
 function montarRed(opciones: {
   yaDevuelto?: number; depositoId?: number | null; turnoEnSucursal?: number | null; respuestas?: Respuesta[]
@@ -97,6 +101,7 @@ function montarRed(opciones: {
       const cual = respuestas.length > 1 ? respuestas.shift()! : respuestas[0]
       if (cual === 'red') return Promise.reject(new TypeError('Failed to fetch'))
       if (cual === '5xx') return Promise.resolve(json({ detail: 'Error interno' }, 502))
+      if (cual === '503') return Promise.resolve(json({ detail: DETAIL_503 }, 503))
       if (cual === '409') return Promise.resolve(json({ detail: 'la clave_operacion ya se usó en esta venta con otras cantidades' }, 409))
       return Promise.resolve(json({ ...DETALLE, repetida: cual === 'repetida' }))
     }
@@ -340,5 +345,31 @@ describe('La devolución de una venta', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('clave_operacion')
     expect(recargar).not.toHaveBeenCalled()
+  })
+
+  // libra-ui 0.147.0 (ADR-059 del kit, §5) y ADR-083 de este repo: devolver un servicio del catálogo con la base sin la revisión 0007 del motor es un 503 con el
+  // comando que falta. El diálogo muestra ESE texto, no un genérico («Error de conexión.» es lo de un fetch que se cae, y un 503 no es eso), no escribió nada
+  // (el motor avisa antes de escribir) y se puede reintentar con la misma clave cuando se migre.
+  it('un 503 por la revisión 0007 muestra el detalle del motor con el comando, y el diálogo sigue abierto', async () => {
+    const { llamadas } = montarRed({ respuestas: ['503', 'ok'] })
+    const recargar = vi.fn()
+    const user = userEvent.setup()
+    render(<DevolucionDeVenta detalle={DETALLE} recargar={recargar} />)
+    await user.click(screen.getByRole('button', { name: /Devolver productos/ }))
+    await devolverCon(user, '2')
+
+    const alerta = await screen.findByRole('alert')
+    expect(alerta.textContent).toBe(DETAIL_503)
+    expect(alerta.textContent).toContain('libracommerce-migrar upgrade')
+    expect(alerta.textContent).not.toMatch(/Error de conexión|Error interno/)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(recargar).not.toHaveBeenCalled()
+
+    // Migrada la base, el mismo diálogo reintenta con la MISMA clave (el motor no escribió nada en el primer intento).
+    await user.click(screen.getByRole('button', { name: /Confirmar devolución/ }))
+    await waitFor(() => expect(devoluciones(llamadas)).toHaveLength(2))
+    const [primera, segunda] = devoluciones(llamadas)
+    expect(claveDe(segunda)).toBe(claveDe(primera))
+    await waitFor(() => expect(recargar).toHaveBeenCalled())
   })
 })
