@@ -112,12 +112,11 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     expect(screen.getByRole('button', { name: /Eliminar cliente/ })).toBeInTheDocument()
   })
 
-  it('sí ofrece la lista de precios mayorista (ADR-010 de libracommerce: el enganche pasó al motor)', async () => {
+  it('no ofrece la lista de precios del cliente: el POS usa sólo la predeterminada (ADR-084)', async () => {
     montarFicha()
     await screen.findByText('Datos del cliente')
-    expect(await screen.findByText('Lista de precios (mayorista)')).toBeInTheDocument()
-    await waitFor(() => expect(pedidas).toContain('GET /api/listas-precio'))
-    await waitFor(() => expect(pedidas).toContain('GET /api/clientes/1/lista-precio'))
+    expect(screen.queryByText('Lista de precios (mayorista)')).not.toBeInTheDocument()
+    expect(pedidas).not.toContain('GET /api/clientes/1/lista-precio')
   })
 
   it('sí ofrece la consulta de CUIT en ARCA, dentro del modal de edición (fase 14, ADR-040)', async () => {
