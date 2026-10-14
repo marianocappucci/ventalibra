@@ -838,7 +838,8 @@ def create_app(db_path: str) -> FastAPI:
     # Lista de precios asignada a un cliente (ADR-010 de libracommerce, extraído del add-on
     # mayorista de Contalibra): a diferencia de ahí, acá no hay add-on que gatee -- listas de
     # precio es un módulo siempre libre (fase 7) -- así que se monta con el mismo permiso que el
-    # resto de la ficha del cliente. Prende `conListaDePrecio` en `ClienteDetalle.tsx`. Verla es de `clientes.ver`;
+    # resto de la ficha del cliente. La pantalla NO la ofrece desde ADR-084 (el POS sólo usa la lista predeterminada); el
+    # router queda montado. Verla es de `clientes.ver`;
     # ASIGNARLA es una decisión de precio (`clientes.lista_precio`: admin y encargado; el vendedor no).
     app.include_router(
         build_cliente_lista_router(conexion=lc_get_connection),
