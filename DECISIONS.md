@@ -3187,3 +3187,24 @@ que trae las facturas, los presupuestos y los remitos del cliente, y el cajero l
   - Sin migración propia (la 0007 es del motor).
 - Tests: `frontend/src/test/pos-precio-por-sucursal.test.tsx` (`sucursal_id` en la cotización, en la venta y en el QR, con el turno en la sucursal por defecto y en otra; el 409 con `sucursal_id`; `sucursalDeLosPrecios`; **rojo sin el cambio del POS**), `roles-parciales-del-kit.test.tsx` (con el kit de verdad y un usuario de cada rol: el depósito no ve «Nueva compra», «Agregar línea», «Enviar al proveedor», «Cancelar orden», «Recibir mercadería» ni «$NaN»; el vendedor no ve «Ajustar stock»; el encargado sí, de control; **rojo sin los wrappers**), `listas-precio-del-kit.test.tsx` (`conSucursal` pide `/api/sucursales` y ofrece el select), `ventas-devolucion.test.tsx` (el 503 con el texto real); `tests/test_precio_de_venta_por_sucursal.py` (cotización por sucursal; el POS que la declara cobra el de la sucursal y el general es 409 con `sucursal_id`; el POS viejo valida contra el general; la sucursal la decide el depósito) y `tests/test_devolver_servicio.py` (la 0007 aplicada, devolver un servicio sin tocar stock, el 503 sin la tabla); `tests/test_vencimientos.py` fija la cabeza en la 0007.
 - Depende de: libracommerce `>= v0.59.0` (`VentaPayload.sucursal_id`, `OpcionesVentas.sucursal_de_la_venta`, enviar y cancelar órdenes, `contar_borradores`) y libra-ui `>= v0.147.0` (`conSucursal`, `puedeAjustar`/`puedeEscribir`/`puedeRecibir`, `libra-ui/fechas`, `libra-ui/ui/tabs`). **Orden: motor, kit, y recién después el pin de este producto** (ya cumplido). Con el pin viejo del motor un POS que manda `sucursal_id` no rompe (el campo se ignora), pero el kit nuevo ofrecería enviar y cancelar órdenes que el motor no tiene (el kit lo avisa con un mensaje claro).
+
+## ADR-084 — La ficha del cliente no ofrece la lista de precios (el POS sólo usa la predeterminada), y la devolución parcial se puede repetir (libra-ui v0.148.0)
+
+**Estado:** aceptada (2026-10-14). Dos hallazgos de la documentación de uso, decididos por el humano.
+
+### 1. La lista de precios asignada a un cliente: se oculta
+
+**El problema.** La tarjeta «Lista de precios» de la ficha del cliente (`conListaDePrecio`, `PUT /api/clientes/{id}/lista-precio`, permiso `clientes.lista_precio`) deja asignarle una lista a un cliente. Pero el POS cotiza siempre con la lista **predeterminada** (`Pos.tsx`, `listaPrecioDefaultId`) y la validación del precio del servidor (ADR-079) usa esa misma. VentaLibra no pasa el gancho `lista_de_precio_para` del motor. Resultado: una configuración que parece activa y no cambia ni un precio.
+
+**Decisión.** `ClienteDetalle` ya no prende `conListaDePrecio`. El router del motor sigue montado (reversible, sin migración, y los tests del endpoint quedan) y el gancho está listo en `libracommerce`.
+
+**Para volver a ofrecerla** (cuando un comercio pida precios mayoristas) hacen falta **las dos puntas a la vez**, si no cada venta con un cliente con lista daría `409 precios_distintos`: (a) el POS cotiza con la lista del cliente elegido, (b) VentaLibra pasa `lista_de_precio_para` en `OpcionesVentas` para que `validar_precios` compare con la misma. Con tests de las dos.
+
+### 2. Devolver más de una vez
+
+El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta en `devuelta_parcial`. El diálogo de VentaLibra ya consultaba `/ventas/{id}/devuelto` y descuenta lo devuelto, así que ofrece sólo lo que falta. Con esto una venta devuelta en parte tiene salida desde la pantalla (el servidor no deja anularla: «devolvé el resto de las líneas»).
+
+### Consecuencias
+- Pin de libra-ui a v0.148.0.
+- La documentación de uso deja de pedir «cargá todo en una sola devolución» y de describir la tarjeta de lista de precios del cliente.
+
