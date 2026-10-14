@@ -736,11 +736,11 @@ def test_todos_los_roles_que_leen_productos_reciben_vence(escenario):
 
 
 def test_ningun_endpoint_de_vencimientos_revela_costos(escenario):
-    """`/api/vencimientos` no está en los prefijos de `SinCostos` (`app/costos.py`): no hace falta si el endpoint no manda costos. Se
-    prueba mirando lo que ve el ADMIN, que tiene `costos.ver` (el filtro no le sacaría nada aunque los hubiera): ni una clave con
-    costo ni el valor del costo del producto (`precio_costo`) ni el de la recepción (`unit_cost`), en ninguna de las seis rutas. Y el
-    depósito, que no tiene `costos.ver`, recibe exactamente lo mismo: el filtro no interviene."""
-    assert extras_de("/api/vencimientos") is None and extras_de("/api/vencimientos/productos/1/lotes") is None
+    """Las LECTURAS de `/api/vencimientos` no mandan costos. Desde ADR-086 el prefijo está en `SinCostos` (`app/costos.py`) por la baja de un
+    lote, que devuelve su importe; acá se prueba que las lecturas no lo necesitan: lo que ve el ADMIN, que tiene `costos.ver` (el filtro no le
+    sacaría nada), no trae ni una clave con costo ni el valor del costo del producto (`precio_costo`) ni el de la recepción (`unit_cost`), en
+    ninguna de las seis rutas. Y el depósito, que no tiene `costos.ver`, recibe exactamente lo mismo: el filtro no tiene qué sacar."""
+    assert extras_de("/api/vencimientos") == frozenset() and extras_de("/api/vencimientos/productos/1/lotes") == frozenset()
     assert not permisos.condicion("costos.ver")({"role": "deposito"})
 
     def claves(valor, ruta=""):
