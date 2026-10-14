@@ -59,7 +59,10 @@ _ENTERO = TypeAdapter(int)  # mismo modo laxo que los campos `int` del cuerpo de
 #: alterado lotes por la ruta alternativa. La guarda es la costura del motor `OpcionesStock.autorizar_lotes` (libracommerce ADR-047): se consulta por cuerpo,
 #: sólo si el pedido trae `lot_code` o `expires_at`, y es `vencimientos.mover`; el ajuste sin lote sigue siendo el de `stock.ajustar`. El FEFO de las salidas
 #: y de los ajustes SIN lote de un producto marcado no depende de esta opción (es del motor).
-OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True, con_lotes=True, autorizar_lotes=condicion("vencimientos.mover"))
+#: `con_costo_de_merma` (libracommerce ADR-059, ADR-086 de este producto): una merma guarda el costo vigente y el historial la valoriza. El importe
+#: lo filtra `app/costos.py` para quien no tiene `costos.ver` (sólo lo ven el encargado y el admin).
+OPCIONES_DE_STOCK = OpcionesStock(por_deposito=True, con_lotes=True, autorizar_lotes=condicion("vencimientos.mover"),
+                                  con_costo_de_merma=True)
 
 Sucursales = Callable[[], SucursalService]
 #: Quien dice qué módulos tiene la instancia (`ModuleRepository`): se pide en cada request, no al armar el router.

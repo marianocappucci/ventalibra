@@ -44,6 +44,10 @@ PREFIJOS: dict[str, frozenset[str]] = {
     "/api/actualizacion-masiva": frozenset(),
     "/api/purchase-orders": frozenset({"subtotal"}),
     "/api/purchase-receipts": frozenset({"subtotal"}),
+    # ADR-086: la baja de un lote (`POST /api/vencimientos/merma`) devuelve el importe de la merma. El depósito la hace, pero sin plata.
+    "/api/vencimientos": frozenset(),
+    # ADR-086: el reporte de mermas ya es de `costos.ver`; el prefijo es un segundo candado por si cambia el montaje.
+    "/api/reportes/mermas": frozenset(),
 }
 
 #: `costo` o `cost` como palabra de la clave: `precio_costo`, `unit_cost`, `default_cost`, `costo_actual`, `sin_costo`.

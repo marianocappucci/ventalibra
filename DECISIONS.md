@@ -3222,3 +3222,20 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
 - El POS que todavía no conoce la sucursal (la clave no viaja) cotiza el general y puede recibir ese mismo 409; es curable y no cobra un precio equivocado.
 - Sin precios por sucursal (`item_prices.branch_id`) nada cambia. Sin migración.
 - Tests: `tests/test_precio_de_venta_por_sucursal.py::test_un_pedido_sin_sucursal_valida_contra_el_precio_de_la_sucursal` (reemplaza al del POS viejo; **rojo con la llave apagada**, medido).
+
+## ADR-086 — Importes de merma sólo para el encargado y el admin, y conciliar el «sin lote» negativo (libracommerce v0.60.0)
+
+**Estado:** aceptada (2026-10-14). Decisiones del humano: «que los importes de merma los vean el encargado o el administrador» y «construir» la herramienta para conciliar el saldo «sin lote» negativo heredado.
+
+**Qué ya existía.** La merma (la baja de un lote, `POST /api/vencimientos/merma`) guardaba sólo la cantidad: no había importe en ningún lado. `costos.ver` ya era del encargado y del admin, y `app/costos.py` (ADR-049) saca las claves de costo de las respuestas por prefijo. El saldo «sin lote» negativo (salidas de antes de A-4, 2026-10-01) bloqueaba la baja de un lote con un 409 y sólo se curaba con un ajuste manual.
+
+**Decisión.**
+1. **Pin** `libracommerce` v0.59.0 → **v0.60.0** (ADR-059 y ADR-060 del motor, sin migración).
+2. **Importes de merma.** `OpcionesStock(con_costo_de_merma=True)`: la merma guarda el costo vigente y el historial de stock (`GET /api/stock/movimientos`) suma `costo_unitario`, `costo_total` y `sin_costo`. La baja de un lote los devuelve siempre (motor). `build_mermas_router` (`GET /api/reportes/mermas` y `/export`) se monta con `costos.ver`. VentaLibra no ofrece el modo «Merma» del ajuste de stock: se merma dando de baja un lote (y una devolución de un perecedero, que ya guardaba el costo con `guardar_costo`).
+3. **Quién ve la plata.** `PREFIJOS` de `app/costos.py` suma `/api/vencimientos` (el depósito da de baja un lote pero recibe la respuesta sin importe) y `/api/reportes/mermas` (segundo candado). `/api/stock` ya estaba.
+4. **Conciliar.** `GET /api/vencimientos/conciliacion` (vista previa FEFO, `dependencias_conciliacion`) y `POST /api/vencimientos/conciliar` (`dependencias_movimientos`) son de `vencimientos.mover`: encargado y depósito, como dar de baja un lote. El motor escribe un par aditivo de ajustes por tramo; el stock total no cambia.
+
+**Consecuencias.** Las mermas anteriores no tienen importe (no se reconstruye): el reporte las cuenta aparte como «sin costo». Pantallas del kit (libra-ui **v0.151.0**, ADR-063): `pages/Mermas.tsx` en `/mermas` (`ProtectedRoute cap="costos.ver"`, entrada «Mermas» bajo Reportes con `INDICADORES.mermas`), `puedeConciliar` en `pages/Vencimientos.tsx` (`vencimientos.mover`), y el importe en la baja y en el historial, que el kit muestra sólo si la respuesta trae las claves.
+
+**Tests.** `tests/test_merma_valorizada.py`: admin y encargado reciben el importe de la baja; el depósito la hace sin plata (**rojo sin el prefijo `/api/vencimientos`**, medido); el historial valoriza la merma sólo para quien ve costos; el reporte es de admin y encargado y es 403 para depósito, vendedor y cajero; admin, encargado y depósito concilian (vista previa y aplicar) y después la baja de un lote ya no da 409; el mostrador no concilia.
+- `src/test/mermas-del-kit.test.tsx`: el admin llega a `/mermas` (reporte, CSV y menú); el cajero no llega ni pide el reporte.
