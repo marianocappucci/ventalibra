@@ -628,6 +628,10 @@ def create_app(db_path: str) -> FastAPI:
                 # item). 422 si una línea no trae `producto_id` o si el pedido trae un `descuento` manual: `Pos.tsx` no manda
                 # ninguno de los dos, y el ahorro de las promociones lo sigue calculando el servidor.
                 validar_precios=True,
+                # ADR-085 (cierra la transición de ADR-083): el servidor valida contra el precio de la sucursal de la venta
+                # aunque el pedido no traiga `sucursal_id`. Todos los POS desplegados ya la mandan; un pedido que la omite
+                # (un bundle viejo, un cliente armado a mano) ya no elige el precio general: recibe el 409 con el de la sucursal.
+                exigir_precio_de_sucursal=True,
             ),
         ),
         dependencies=[Depends(requiere("ventas.pos"))],

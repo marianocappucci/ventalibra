@@ -6,8 +6,8 @@ promociones) los prueba `libracommerce` (`tests/test_precio_de_venta_por_sucursa
 
 - que **un POS que declara `sucursal_id`** cobra el precio de la sucursal (el que cotiza `POST /api/listas-precio/{id}/precios` con
   esa sucursal) y que el general es un 409 que trae la `sucursal_id` que usó el servidor;
-- que **un POS viejo, que no la manda,** sigue validando contra el precio general (la transición: `exigir_precio_de_sucursal`
-  queda apagada en `app/main.py` hasta que todos los POS desplegados la manden);
+- que **un pedido que no la manda** (un POS viejo, un cliente armado a mano) ya no elige el precio general:
+  `exigir_precio_de_sucursal` está prendida en `app/main.py` (ADR-085) y se valida contra el de la sucursal de la venta;
 - que la sucursal la decide el depósito de la venta (la costura por defecto del motor, que es la sucursal del turno: `validar_deposito`
   de `app/ganchos.py` rechaza un depósito de otra sucursal), no lo que diga el pedido.
 """
@@ -70,18 +70,23 @@ def test_el_precio_general_con_la_sucursal_declarada_es_409_y_dice_que_sucursal_
     assert admin_client.app.state.conn.execute("SELECT COUNT(*) FROM sales").fetchone()[0] == antes
 
 
-def test_un_pos_viejo_sin_sucursal_sigue_validando_contra_el_precio_general(admin_client, cajero_client):
-    """La transición (libracommerce ADR-058): sin `sucursal_id` en el pedido se valida como hasta v0.58."""
-    producto, _, _ = _escenario(admin_client)
+def test_un_pedido_sin_sucursal_valida_contra_el_precio_de_la_sucursal(admin_client, cajero_client):
+    """ADR-085: con `exigir_precio_de_sucursal` prendida, omitir `sucursal_id` no vuelve al precio general."""
+    producto, _, sucursal = _escenario(admin_client)
     abrir_turno(cajero_client)
+    antes = admin_client.app.state.conn.execute("SELECT COUNT(*) FROM sales").fetchone()[0]
 
-    viejo = _venta(cajero_client, GENERAL, producto_id=producto)
-    assert viejo.status_code == 200, viejo.text
-    # Y tampoco puede colar el precio de la sucursal sin declararla: el 409 trae el general y el cuerpo es el de siempre.
-    colado = _venta(cajero_client, DE_LA_SUCURSAL, producto_id=producto)
-    assert colado.status_code == 409
-    assert "sucursal_id" not in colado.json()["detail"]
-    assert [p["esperado"] for p in colado.json()["detail"]["precios"]] == [GENERAL]
+    # El precio general sin declarar la sucursal: 409 con el de la sucursal del turno, sin escribir nada.
+    general = _venta(cajero_client, GENERAL, producto_id=producto)
+    assert general.status_code == 409, general.text
+    assert general.json()["detail"]["sucursal_id"] == sucursal
+    assert [p["esperado"] for p in general.json()["detail"]["precios"]] == [DE_LA_SUCURSAL]
+    assert admin_client.app.state.conn.execute("SELECT COUNT(*) FROM sales").fetchone()[0] == antes
+
+    # Y el de la sucursal se cobra aunque el pedido no la nombre.
+    ok = _venta(cajero_client, DE_LA_SUCURSAL, producto_id=producto)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["total"] == DE_LA_SUCURSAL
 
 
 def test_la_sucursal_la_decide_el_deposito_de_la_venta_no_el_pedido(admin_client, cajero_client):

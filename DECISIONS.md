@@ -3208,3 +3208,17 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
 - Pin de libra-ui a v0.148.0.
 - La documentación de uso deja de pedir «cargá todo en una sola devolución» y de describir la tarjeta de lista de precios del cliente.
 
+
+## ADR-085 — `exigir_precio_de_sucursal` prendida: se cierra la transición del precio por sucursal
+
+**Estado:** aceptada (2026-10-14, pedido del humano). Es el paso (b) de la transición de ADR-083.
+
+**Contexto.** ADR-083 dejó la llave apagada mientras hubiera un POS desplegado que no mandara `sucursal_id`. Hoy corren el POS de ADR-083 dev (`develop`) y demo (`main` `e80044c`, que contiene #595), y VentaLibra no tiene instancias de cliente. Con la llave apagada, un pedido que omitía `sucursal_id` elegía el precio general aunque la sucursal tuviera uno propio.
+
+**Decisión.** `exigir_precio_de_sucursal=True` en el `OpcionesVentas` de `app/main.py`. El servidor valida cada línea contra el precio de la sucursal de la venta (la costura por defecto: la del depósito, que es la del turno) **aunque el pedido no la declare**.
+
+**Consecuencias.**
+- Un pedido sin `sucursal_id` con el precio general, en una sucursal con precio propio, recibe el **409 `precios_distintos`** con el precio de la sucursal y su `sucursal_id`, sin escribir nada. El POS ya cura ese 409 (ADR-079): toma el `esperado` y avisa al cajero. Una pestaña con un bundle viejo cae en ese caso; recargar la SPA alcanza.
+- El POS que todavía no conoce la sucursal (la clave no viaja) cotiza el general y puede recibir ese mismo 409; es curable y no cobra un precio equivocado.
+- Sin precios por sucursal (`item_prices.branch_id`) nada cambia. Sin migración.
+- Tests: `tests/test_precio_de_venta_por_sucursal.py::test_un_pedido_sin_sucursal_valida_contra_el_precio_de_la_sucursal` (reemplaza al del POS viejo; **rojo con la llave apagada**, medido).
