@@ -5,6 +5,7 @@ import {
   ArrowRightLeft, CalendarClock, FileSpreadsheet, PackagePlus, Percent, ScanBarcode, TrendingUp,
 } from 'lucide-react'
 import { ICONOS } from 'libra-ui/iconos-identidad'
+import { INDICADORES } from 'libra-ui/iconos-indicador'
 import { createLayout, type NavSection } from 'libra-ui/Layout'
 import { WORDMARK } from '@/branding'
 import { sinCapacidad } from '@/lib/permisos'
@@ -91,6 +92,8 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
         children: [
           // ADR-046: margen y rotación por producto y por período.
           { to: '/margen', label: 'Margen y rotación', icon: TrendingUp, hideFor: sinCapacidad('margen') },
+          // ADR-086: importes de merma, sólo para quien ve costos (encargado y admin).
+          { to: '/mermas', label: 'Mermas', icon: INDICADORES.mermas, hideFor: sinCapacidad('costos.ver') },
           { to: '/caja-medios', label: 'Caja por medio', icon: ICONOS.cajaPorMedio },
           // Fase 12 (ADR-038): contable-fiscal.
           { to: '/libros-iva', label: 'Libros IVA', icon: ICONOS.librosDeIva, hideFor: sinCapacidad('libros_iva') },

@@ -43,6 +43,7 @@ import { Ventas } from './pages/Ventas'
 import { VentaDetalle } from './pages/VentaDetalle'
 import { Reportes } from './pages/Reportes'
 import { Margen } from './pages/Margen'
+import { Mermas } from './pages/Mermas'
 import { Reposicion } from './pages/Reposicion'
 import { Vencimientos } from './pages/Vencimientos'
 import { Dashboard } from './pages/Dashboard'
@@ -399,6 +400,14 @@ export default function App() {
         element={
           <ProtectedRoute cap="margen">
             <Margen />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/mermas"
+        element={
+          <ProtectedRoute cap="costos.ver">
+            <Mermas />
           </ProtectedRoute>
         }
       />
