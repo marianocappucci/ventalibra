@@ -5,7 +5,9 @@ import { crearPerecedero, depositoPredeterminado, enDias, saldosPorLote, stockDe
 // dé de baja EL lote que se tocó, por la cantidad que se escribió, y no otro; que el stock del producto baje exactamente eso y que
 // la API lo cuente igual que la pantalla. La baja la hace quien mueve la mercadería (`vencimientos.mover`: el depósito y el
 // encargado); el mostrador no puede, y eso lo corta el servidor, no la pantalla.
-test.use({ rol: 'deposito' })
+// Ancho de escritorio amplio: desde libra-ui v0.152.1 (ADR-065) la lista de lotes pasa a tarjetas cuando la tabla no entra (con el menú abierto
+// eso pasa hasta ~1366 px) y este spec lee las FILAS de la tabla. Las tarjetas las prueba el kit.
+test.use({ rol: 'deposito', viewport: { width: 1600, height: 900 } })
 
 test('el depósito da de baja una parte de un lote vencido: baja ese lote y el stock, y el otro lote no se toca', async ({ page, apiDe }) => {
   const admin = await apiDe('admin')
