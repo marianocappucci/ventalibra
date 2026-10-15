@@ -69,6 +69,12 @@ services:
     mem_limit: 768m
     mem_reservation: 256m
     cpus: 1.0
+    # Sin privilegios nuevos (2026-10-15, relevamiento de seguridad de la VPS, punto 8):
+    # un binario setuid (o con capabilities de archivo) dentro de la imagen no le da a
+    # un proceso comprometido más permisos que los que ya tiene. La imagen ya corre como
+    # uid 10001 (ver el `USER` del Dockerfile); esto cierra la escalada.
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       # 🔴 El chequeo mira el CUERPO, no el codigo HTTP. Este backend sirve la SPA
       # con un catch-all, asi que **cualquier** ruta devuelve 200 mientras uvicorn
@@ -94,6 +100,10 @@ services:
       # es la carpeta de datos de dev (config, certificados, logos, PDF), que vive en
       # `dev-data/` del checkout del servidor. Un cambio de código llega con
       # `docker compose up -d --build`, que es como se despliega dev.
+      # 🔴 El proceso corre como uid 10001: `./dev-data` tiene que ser de ese uid. Un bind mount
+      # que ya existe conserva su dueño (root), y la app no podría escribir ahí. Una sola vez, en
+      # el checkout del VPS, ANTES del primer `up -d --build` con esta imagen:
+      #   chown -R 10001:10001 ./dev-data
       - ./dev-data:/app/dev-data
     # 🔴 Las migraciones también acá, no sólo en el deploy.
     # `cmd_actualizar` las corre para las instancias de cliente y la demo,
