@@ -71,6 +71,7 @@ from libracore.db.core import es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
 from libracore.db.url_de_instancia import url_de_instancia
+from libracore.docs_api import cerrar_docs_de_la_api
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
 from libracore.errores import instalar_registro_de_errores
 from libracore.facturas_router import build_nota_de_credito_router
@@ -353,6 +354,7 @@ def create_app(db_path: str) -> FastAPI:
         ensure_demo_user(user_repository, rol=ENCARGADO)
 
     app = FastAPI(title="VentaLibra")
+    cerrar_docs_de_la_api(app)
 
     # 🔴 Colgado de la app para poder SOLTARLO. En produccion la app es una y
     # vive lo que vive el proceso, asi que da igual; en la suite cada test arma
