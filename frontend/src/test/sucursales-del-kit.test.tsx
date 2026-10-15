@@ -130,7 +130,7 @@ describe('Sucursales', () => {
   const leyoElLimite = () => llamadas.some((l) => l.url === '/api/limites/sucursales')
 
   it('el admin lee las contratadas y, en el tope, «Nueva sucursal» queda deshabilitada con el motivo', async () => {
-    respuestas[LIMITE] = { contratadas: 2, activas: 2 }
+    respuestas[LIMITE] = { contratadas: 2, activas: 2, mensaje_de_limite: 'Tu plan incluye 2 sucursales. Para sumar otra, comunicate con nosotros.' }
     enRuta('/sucursales')
     expect(await screen.findByText('2 de 2 sucursales contratadas')).toBeInTheDocument()
     expect(screen.getByText('Tu plan incluye 2 sucursales. Para sumar otra, comunicate con nosotros.')).toBeInTheDocument()
@@ -139,7 +139,7 @@ describe('Sucursales', () => {
   })
 
   it('con cupo muestra «N de M» y deja el alta habilitada', async () => {
-    respuestas[LIMITE] = { contratadas: 3, activas: 2 }
+    respuestas[LIMITE] = { contratadas: 3, activas: 2, mensaje_de_limite: 'Tu plan incluye 3 sucursales. Para sumar otra, comunicate con nosotros.' }
     enRuta('/sucursales')
     expect(await screen.findByText('2 de 3 sucursales contratadas')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Nueva sucursal/ })).toBeEnabled()
