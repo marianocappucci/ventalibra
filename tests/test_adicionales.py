@@ -91,7 +91,7 @@ def test_el_backoffice_carga_las_sucursales_por_el_router_nuevo_y_la_instancia_l
     from libracore import limites
 
     assert limites.sucursales_contratadas() == 1  # el mismo dato que lee el gancho de alta
-    assert sin_sesion.get("/api/limites/sucursales", headers=SERVICIO).json() == {"contratadas": 1, "activas": 1}  # el alias ve lo mismo
+    assert sin_sesion.get("/api/limites/sucursales", headers=SERVICIO).json() == {"contratadas": 1, "activas": 1, "mensaje_de_limite": limites.mensaje_de_limite(1)}  # el alias ve lo mismo
     with pytest.raises(limites.LimiteExcedido):
         limites.verificar_alta_de_sucursal(1)
 
