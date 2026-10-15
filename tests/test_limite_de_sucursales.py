@@ -8,6 +8,7 @@ y la reactivación. Sin dato cargado no hay límite.
 import pytest
 from conftest import https_client
 from libraauth.session_auth import SERVICE_TOKEN_ENV, SERVICE_TOKEN_HEADER
+from libracore import limites
 from motor_de_test import destino_dominio
 from ventas_helpers import crear_sucursal
 
@@ -19,8 +20,6 @@ RUTA = "/api/limites/sucursales"
 
 
 def _contratar(client, n):
-    from libracore import limites
-
     limites.fijar_sucursales_contratadas(n)
 
 
@@ -74,8 +73,6 @@ def test_sin_dato_cargado_no_hay_limite(admin_client):
 
 
 def test_quitar_el_dato_levanta_el_limite(admin_client):
-    from libracore import limites
-
     _contratar(admin_client, 1)
     assert admin_client.post("/api/sucursales", json={"nombre": "Este"}).status_code == 409
     limites.fijar_sucursales_contratadas(None)
@@ -170,21 +167,20 @@ def test_con_el_contrato_por_debajo_de_las_activas_lo_que_existe_sigue_andando_y
 
 
 def test_get_dice_contratadas_y_activas(admin_client):
-    assert admin_client.get(RUTA).json() == {"contratadas": None, "activas": 1}
+    assert admin_client.get(RUTA).json() == {"contratadas": None, "activas": 1, "mensaje_de_limite": None}
     crear_sucursal(admin_client, "Este")
     _contratar(admin_client, 2)
-    assert admin_client.get(RUTA).json() == {"contratadas": 2, "activas": 2}
+    assert admin_client.get(RUTA).json() == {"contratadas": 2, "activas": 2, "mensaje_de_limite": limites.mensaje_de_limite(2)}
 
 
 def test_el_backoffice_carga_lo_contratado_con_el_token_y_la_instancia_lo_hace_cumplir(sin_sesion, monkeypatch):
     monkeypatch.setenv(SERVICE_TOKEN_ENV, TOKEN)
-    assert sin_sesion.get(RUTA, headers=SERVICIO).json() == {"contratadas": None, "activas": 1}
+    assert sin_sesion.get(RUTA, headers=SERVICIO).json() == {"contratadas": None, "activas": 1, "mensaje_de_limite": None}
 
     r = sin_sesion.put(RUTA, json={"contratadas": 1}, headers=SERVICIO)
 
     assert r.status_code == 200, r.text
-    assert r.json() == {"contratadas": 1, "activas": 1}
-    from libracore import limites
+    assert r.json() == {"contratadas": 1, "activas": 1, "mensaje_de_limite": limites.mensaje_de_limite(1)}
 
     assert limites.sucursales_contratadas() == 1  # el dato quedó en la instancia
     with pytest.raises(limites.LimiteExcedido):

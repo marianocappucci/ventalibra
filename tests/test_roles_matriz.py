@@ -309,6 +309,9 @@ GET    /reportes/caja-medios/export                                     GERENCIA
 GET    /api/reportes/margen                                             GERENCIA
 GET    /api/reportes/margen/export/productos                            GERENCIA
 GET    /api/reportes/margen/export/periodos                             GERENCIA
+# ADR-086: importes de merma, `costos.ver` (el encargado y el admin).
+GET    /api/reportes/mermas                                             GERENCIA
+GET    /api/reportes/mermas/export                                      GERENCIA
 GET    /api/reportes/reposicion                                         GERENCIA_Y_DEPOSITO
 GET    /api/reportes/reposicion/export                                  GERENCIA_Y_DEPOSITO
 
@@ -331,6 +334,9 @@ PUT    /api/vencimientos/productos/{producto_id}                        GERENCIA
 POST   /api/vencimientos/asignar                                        GERENCIA_Y_DEPOSITO
 POST   /api/vencimientos/entrada                                        GERENCIA_Y_DEPOSITO
 POST   /api/vencimientos/merma                                          GERENCIA_Y_DEPOSITO
+# ADR-086: conciliar el «sin lote» negativo (vista previa y aplicar), `vencimientos.mover`.
+GET    /api/vencimientos/conciliacion                                   GERENCIA_Y_DEPOSITO
+POST   /api/vencimientos/conciliar                                      GERENCIA_Y_DEPOSITO
 
 # Balanza, ticket, empresa, backup y resguardo: `config`
 GET    /settings/scale                                                  ADMIN

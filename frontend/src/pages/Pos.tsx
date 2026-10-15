@@ -924,7 +924,7 @@ export function Pos() {
             </ul>
           )}
         </div>
-        <Button type="submit" disabled={busy} className="h-12 bg-sky-600 px-6 text-white hover:bg-sky-700">Agregar</Button>
+        <Button type="submit" disabled={busy} className="h-12 bg-sky-700 px-6 text-white hover:bg-sky-800">Agregar</Button>
       </form>
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

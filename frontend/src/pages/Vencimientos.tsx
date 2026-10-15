@@ -21,6 +21,8 @@ export function Vencimientos() {
       puedeMover={puede(user, 'vencimientos.mover')}
       puedeMermar={puede(user, 'vencimientos.mover')}
       puedeMarcar={puede(user, 'vencimientos.marcar')}
+      // ADR-086: conciliar el «sin lote» negativo heredado es un movimiento de lotes (el backend lo cierra con `vencimientos.mover`).
+      puedeConciliar={puede(user, 'vencimientos.mover')}
     />
   )
 }

@@ -7,7 +7,7 @@ import type { Rol } from './roles'
 const ADMIN = [
   '/dashboard', '/pos', '/ventas', '/clientes', '/cuentas-corrientes', '/turnos', '/cierre-diario', '/cajas', '/tesoreria',
   '/egresos', '/productos', '/etiquetas', '/listas-precio', '/actualizacion-masiva-precios', '/promociones', '/stock',
-  '/vencimientos', '/transferencias', '/reposicion', '/sucursales', '/compras', '/proveedores', '/reportes', '/margen',
+  '/vencimientos', '/transferencias', '/reposicion', '/sucursales', '/compras', '/proveedores', '/reportes', '/margen', '/mermas',
   '/caja-medios', '/libros-iva', '/usuarios', '/logs', '/configuracion',
 ]
 

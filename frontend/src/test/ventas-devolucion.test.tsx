@@ -142,7 +142,7 @@ describe('La devolución de una venta', () => {
     }
     // Las cantidades a devolver, también 44 (medían 32).
     for (const campo of within(dialogo).getAllByPlaceholderText(/máx\./)) expect(campo.className).toContain('max-lg:h-11')
-    expect(within(dialogo).getByRole('button', { name: 'Close' }).className).toContain('max-lg:size-11')
+    expect(within(dialogo).getByRole('button', { name: 'Cerrar ventana' }).className).toContain('max-lg:size-11')
   })
 
   it('manda sale_item_id, cantidad, deposito_id y medio_pago, y recarga', async () => {

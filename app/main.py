@@ -38,6 +38,7 @@ from libracommerce.web.listas_router import (
     build_quiebres_router,
 )
 from libracommerce.web.margen_router import build_margen_router
+from libracommerce.web.mermas_router import build_mermas_router
 from libracommerce.web.planillas_router import build_actualizacion_precios_router
 from libracommerce.web.promociones_router import (
     build_promociones_calculo_router,
@@ -628,6 +629,10 @@ def create_app(db_path: str) -> FastAPI:
                 # item). 422 si una línea no trae `producto_id` o si el pedido trae un `descuento` manual: `Pos.tsx` no manda
                 # ninguno de los dos, y el ahorro de las promociones lo sigue calculando el servidor.
                 validar_precios=True,
+                # ADR-085 (cierra la transición de ADR-083): el servidor valida contra el precio de la sucursal de la venta
+                # aunque el pedido no traiga `sucursal_id`. Todos los POS desplegados ya la mandan; un pedido que la omite
+                # (un bundle viejo, un cliente armado a mano) ya no elige el precio general: recibe el 409 con el de la sucursal.
+                exigir_precio_de_sucursal=True,
             ),
         ),
         dependencies=[Depends(requiere("ventas.pos"))],
@@ -958,6 +963,10 @@ def create_app(db_path: str) -> FastAPI:
     # **Sin gate de plan.** El margen es libre (ADR-048) y con el plan único (ADR-072) todo está incluido: no hay plan al que atarlo.
     # Queda disponible para todo el que tenga `margen`, igual que Reportes.
     app.include_router(build_margen_router(conexion=lc_get_connection), dependencies=[Depends(requiere("margen"))])
+    # Reporte de mermas (libracommerce ADR-059, ADR-086): cantidad e importe mermado por producto y período, con export CSV. El humano decidió
+    # (2026-10-14) que los importes de merma los vean sólo el encargado y el admin: `costos.ver`. El importe es un piso: las mermas sin costo
+    # cargado (o anteriores a v0.60.0) se cuentan aparte.
+    app.include_router(build_mermas_router(conexion=lc_get_connection), dependencies=[Depends(requiere("costos.ver"))])
     # Reposición sugerida (roadmap de producto, B-3, ADR-051): el router del motor (`libracommerce.web.reposicion_router`, v0.28.0; sólo
     # lectura: por producto, cuánto conviene pedir según lo que se vende, lo que hay y lo que ya viene en órdenes abiertas, con export
     # CSV). Capacidad `reposicion.ver` (admin y encargado, como `margen`); sin gate de plan (libre, ADR-048). Sólo
@@ -1008,7 +1017,12 @@ def create_app(db_path: str) -> FastAPI:
     # 🔴 Sin la revisión Alembic `0002_vencimientos_lotes` del motor el router contesta 503: se aplica con
     # `libracommerce-migrar upgrade --prefijo ventalibra` (compose, `panel_admin.py`, smoke y suite: ver ADR-052).
     app.include_router(
-        build_vencimientos_router(conexion=lc_get_connection), dependencies=[Depends(requiere("vencimientos.ver"))],
+        build_vencimientos_router(
+            conexion=lc_get_connection,
+            # `GET /conciliacion` (libracommerce ADR-060, ADR-086): la vista previa de conciliar el «sin lote» negativo es de quien concilia.
+            dependencias_conciliacion=[Depends(requiere("vencimientos.mover"))],
+        ),
+        dependencies=[Depends(requiere("vencimientos.ver"))],
     )
     app.include_router(
         build_vencimientos_escritura_router(
@@ -1016,7 +1030,8 @@ def create_app(db_path: str) -> FastAPI:
             dependencias_marcar=[Depends(requiere("vencimientos.marcar"))],
             # `POST /asignar`, `/entrada` y `/merma` (la baja de un lote) mueven el ledger: `vencimientos.mover`. La baja de un lote estuvo
             # deshabilitada hasta A-4 (ADR-052); con libracommerce v0.30.0 todas las salidas de los productos marcados siguen el lote y se
-            # reactivó (ADR-053). La guarda del motor (stock total y saldo «sin lote» negativo heredado) sigue en pie.
+            # reactivó (ADR-053). La guarda del motor (stock total y saldo «sin lote» negativo heredado) sigue en pie; `POST /conciliar`
+            # (libracommerce ADR-060, ADR-086) reparte ese negativo entre los lotes con la misma guarda.
             dependencias_movimientos=[Depends(requiere("vencimientos.mover"))],
         ),
         dependencies=[Depends(requiere("vencimientos.ver"))],
