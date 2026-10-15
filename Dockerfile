@@ -126,7 +126,7 @@ RUN mkdir -p -m 0700 /root/.ssh \
     && printf 'Host github-libracore\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracore.pub\n  IdentityAgent /tmp/ssh-libracore.sock\n  IdentitiesOnly yes\n\nHost github-libracommerce\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libracommerce.pub\n  IdentityAgent /tmp/ssh-libracommerce.sock\n  IdentitiesOnly yes\n\nHost github-libraauth\n  HostName github.com\n  User git\n  HostKeyAlias github.com\n  IdentityFile /root/.ssh/id_libraauth.pub\n  IdentityAgent /tmp/ssh-libraauth.sock\n  IdentitiesOnly yes\n' > /root/.ssh/config \
     && chmod 600 /root/.ssh/config /root/.ssh/id_libracore.pub /root/.ssh/id_libracommerce.pub /root/.ssh/id_libraauth.pub
 
-COPY . .
+COPY --chown=10001:10001 . .
 # Horneado FUERA de /app a proposito (mismo motivo que gestiolibra, ver su
 # DECISIONS.md ADR-022): el docker-compose.yml de dev monta ./:/app entero
 # para el --reload de Python, lo que taparia cualquier build copiado
@@ -143,6 +143,25 @@ RUN --mount=type=ssh,id=libracore,target=/tmp/ssh-libracore.sock \
     && git config --global --unset url."ssh://git@github-libracore/marianocappucci/libracore.git".insteadOf \
     && git config --global --unset url."ssh://git@github-libracommerce/marianocappucci/libracommerce.git".insteadOf \
     && git config --global --unset url."ssh://git@github-libraauth/marianocappucci/libraauth.git".insteadOf
+
+# 🔴 Sin root (2026-10-15, relevamiento de seguridad de la VPS, punto 8): el proceso
+# NO corre como uid 0. Un RCE en la app era root sobre la imagen y sobre los datos
+# del cliente. Mismo modelo que LibraCargo y LibraClub: uid FIJO 10001 (no el que
+# `useradd` elija), porque el deploy le pasa el `chown` a la carpeta `data/` de cada
+# instancia con ese número (`libracore.provisioning.sin_root.UID_APP`).
+#
+# `data/` se crea en la imagen para que nazca con el dueño correcto: Docker le copia
+# el propietario a un volumen NUEVO la primera vez. Un volumen o un bind mount que ya
+# existe conserva su dueño (hoy root): ese `chown` lo hace el deploy, no la imagen.
+# `-m` crea el HOME: algunas librerías escriben caches ahí.
+#
+# `/tmp` queda escribible por cualquiera, y `/opt/venv` y `/opt/frontend-dist` son de
+# root y de sólo lectura para la app, a propósito: la app no instala ni escribe ahí.
+# Después de esta línea no puede haber más `RUN` que necesiten root.
+RUN mkdir -p /app/data \
+ && useradd -m -u 10001 ventalibra \
+ && chown 10001:10001 /app /app/data
+USER ventalibra
 
 EXPOSE 8000
 

@@ -316,6 +316,10 @@ docker exec -i "$CONTENEDOR" sh -c '
     --usuario "${VENTALIBRA_ADMIN_USERNAME:-admin}" \
     --password "$VENTALIBRA_ADMIN_PASSWORD"
 '
-docker exec "$CONTENEDOR" rm -f /tmp/seed.py
+# 🔴 `--user root` y `|| true`. `docker cp` deja el archivo como root y el contenedor corre
+# sin privilegios (uid 10001) desde el 2026-10-15: `/tmp` es sticky, así que sin `--user root`
+# este `rm` falla con "Operation not permitted" y, con `set -e`, el script sale 1 DESPUÉS de
+# haber sembrado bien (mismo defecto que se corrigió en LibraCargo).
+docker exec --user root "$CONTENEDOR" rm -f /tmp/seed.py || true
 
 log "=== listo ==="
