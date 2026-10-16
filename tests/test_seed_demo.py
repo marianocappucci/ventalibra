@@ -290,3 +290,36 @@ def test_donde_si_se_puede_sembrar(url):
 ])
 def test_donde_NO(url):
     assert url_no_productiva(url) is False
+
+
+# ── 🔴 La demo no queda con datos fiscales reales (ADR-061 de libracore) ─────────────────────────────────────────
+
+def test_el_texto_de_la_semilla_no_tiene_cuit_de_forma_real():
+    """Un CUIT con verificador válido y fuera del rango reservado `99999xxx` no se puede distinguir de uno real. Los
+    inventados que no cierran el verificador no existen en el padrón y no cuentan. Este mira el archivo, así que no
+    depende de qué rutas corrieron al sembrar (la bandeja de MercadoPago sólo existe con `DEMO_MODE` al importar)."""
+    from pathlib import Path
+
+    from libracore.demo import auditar_literales
+
+    hallazgos = auditar_literales(Path("scripts/seed_demo.py").read_text(encoding="utf-8"), "scripts/seed_demo.py")
+    assert hallazgos == [], "\n".join(str(h) for h in hallazgos)
+
+
+@pytest.fixture
+def api_de_demo(monkeypatch, request):
+    """`DEMO_MODE=1` ANTES de armar la app, como corre la demo."""
+    monkeypatch.setenv("DEMO_MODE", "1")
+    return request.getfixturevalue("api")
+
+
+def test_la_semilla_no_deja_datos_fiscales_reales_en_la_base(api_de_demo):
+    """Lo que quedó en la base de LibraCore y en `config.json` después de sembrar: un CUIT de forma real, un
+    certificado, ARCA en producción, un token de MercadoPago que no es de prueba."""
+    from libracore.db import core
+    from libracore.demo import auditar_datos_fiscales
+
+    sembrar(api_de_demo)
+    with core.get_connection() as conn:
+        hallazgos = auditar_datos_fiscales(conn)
+    assert hallazgos == [], "\n".join(str(h) for h in hallazgos)
