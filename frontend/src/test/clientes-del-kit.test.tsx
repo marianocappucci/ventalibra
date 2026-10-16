@@ -81,7 +81,7 @@ describe('Clientes (kit sobre /api/clientes)', () => {
     await screen.findByText('Ana Gomez')
     await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
     await screen.findByRole('dialog')
-    expect(screen.getByTitle('Consultar datos en ARCA')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Consultar en ARCA' })).toBeInTheDocument()
   })
 
   // 🔴 Sin el módulo `facturacion` no hay pantalla de ARCA donde cargar el certificado, y `/api/consultar-cuit` da 403
@@ -93,7 +93,7 @@ describe('Clientes (kit sobre /api/clientes)', () => {
     await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
     const dialogo = await screen.findByRole('dialog')
     expect(within(dialogo).getByLabelText('CUIT/DNI')).toBeInTheDocument() // el campo sigue: sólo falta el botón
-    expect(screen.queryByTitle('Consultar datos en ARCA')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consultar en ARCA' })).not.toBeInTheDocument()
   })
 })
 
@@ -138,7 +138,7 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     await screen.findByText('Datos del cliente')
     await user.click(screen.getByRole('button', { name: /Editar/ }))
     await screen.findByRole('dialog')
-    expect(screen.getByTitle('Consultar datos en ARCA')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Consultar en ARCA' })).toBeInTheDocument()
   })
 
   it('sin el módulo `facturacion` la ficha no ofrece consultar el CUIT en ARCA', async () => {
@@ -154,6 +154,6 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     await user.click(screen.getByRole('button', { name: /Editar/ }))
     const dialogo = await screen.findByRole('dialog')
     expect(within(dialogo).getByLabelText(/CUIT/)).toBeInTheDocument()
-    expect(screen.queryByTitle('Consultar datos en ARCA')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consultar en ARCA' })).not.toBeInTheDocument()
   })
 })
