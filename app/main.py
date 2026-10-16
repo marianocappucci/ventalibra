@@ -617,6 +617,8 @@ def create_app(db_path: str) -> FastAPI:
                 # (pago que no cubre el total, sin QR) o un fiado sin cliente,
                 # sin nadie a quien atribuirle la deuda.
                 exigir_pago_completo=True,
+                # Desde libracommerce v0.61.0 (ADR-061) ya es el default (fiar sin cliente da 422): se deja explícito a
+                # propósito, para que esta regla de VentaLibra no dependa de lo que el motor decida por default.
                 exigir_cliente_para_fiar=True,
                 # Vencimientos y lotes (ADR-053, libracommerce v0.30.0): la venta de un producto marcado «vence» sale por FEFO
                 # (eso no depende de esta opción) y, prendida ésta, `POST /api/ventas` y `GET /api/ventas/{id}` agregan la clave
@@ -879,8 +881,14 @@ def create_app(db_path: str) -> FastAPI:
     # Consulta de CUIT en ARCA (fase 14, ADR-040): el router del motor, extraído de Contalibra. Activa
     # `conConsultaCuit` en las pantallas de Clientes del kit (ver frontend/src/pages/Clientes*.tsx).
     # Va con el alta de clientes (`clientes.alta`): es lo que la acompaña. Está fuera del esquema OpenAPI (`include_in_schema=False`).
+    #
+    # 🔴 Y con el módulo `facturacion` (2026-10-16): la consulta usa el certificado y el punto de ARCA de
+    # `arca_config`, y sin el módulo no hay pantalla de ARCA (`/config/arca` da 403, `ConfiguracionSinArca`) ni tutorial donde
+    # cargarlos: el botón daba un 503 «Configurá los certificados» sin dónde arreglarlo. Mismo `require_module` (403) que
+    # `/config/arca` y `/config/mercadopago`; el kit no ofrece el botón (`conConsultaCuit`, ver `Clientes.tsx`).
     app.include_router(
-        build_consultar_cuit_router(usuario_actual=get_current_user), dependencies=[Depends(requiere("clientes.alta"))],
+        build_consultar_cuit_router(usuario_actual=get_current_user),
+        dependencies=[Depends(requiere("clientes.alta")), Depends(require_module("facturacion"))],
     )
     # Tesorería (fase 10, ADR-037): el router del motor, sin ganchos -- las cuentas bancarias y sus
     # movimientos son un problema de cualquier comercio, no del modelo de venta de este producto (`libracore`

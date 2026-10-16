@@ -107,7 +107,8 @@ dependencies = [
     # v0.57.0 -> v0.58.0 (2026-10-13): deposito por defecto siempre activo, relojes con zona y se retira `return_sale_items`. Sin migracion.
     # v0.58.0 -> v0.59.0 (2026-10-13): **migracion 0007** (`sale_service_returns`, ADR-054: devolver un servicio no escribe stock); `enviar`/`cancelar` ordenes de compra (ADR-055); `contar_borradores`/`en_borrador` en la reposicion (ADR-056); ajuste absoluto sin deposito con varios depositos = 422 (ADR-057); `VentaPayload.sucursal_id` y `OpcionesVentas.sucursal_de_la_venta`/`exigir_precio_de_sucursal` (ADR-058). ADR-083 de este repo.
     # v0.59.0 -> v0.60.0 (2026-10-14, ADR-059 y ADR-060 de libracommerce): importes de merma (`OpcionesStock.con_costo_de_merma`, `build_mermas_router`, costo en la baja de un lote) y conciliar el «sin lote» negativo (`/api/vencimientos/conciliacion` y `/conciliar`). Sin migracion (ADR-086).
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.60.0",
+    # v0.60.0 -> v0.62.0 (2026-10-16): v0.61.0 (ADR-061 de libracommerce) fiar sin cliente se rechaza por default (`exigir_cliente_para_fiar=True` es ahora el default; 422) y v0.62.0 (ADR-062) corre el DDL del motor de a un proceso por vez. Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.62.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -269,7 +270,8 @@ dependencies = [
     # v1.164.0 -> v1.166.0 (2026-10-14): incluye v1.165.0 (un proceso sin el almacen de secretos dice la causa) y `GET /api/facturas?envio=enviada|sin_enviar` filtra el listado por el rastro de envios por mail (ADR-051 de libracore). Sin migracion.
     # v1.167.0 -> v1.168.0 (2026-10-15, propuesta; ADR-053 de libracore): `libracore.docs_api.cerrar_docs_de_la_api`: `/docs`, `/redoc` y `/openapi.json` sólo con `ENV=development` (o `LIBRA_DOCS_API=1`); en un cliente real y en la demo dan 404. Sin migracion. `uv.lock` se regenera cuando exista el tag.
     # v1.168.0 -> v1.170.0 (2026-10-15): v1.169.0 suma `fk_de_producto.soltar_fk` (ADR-056; sin efecto en este producto, la usa LibraDesk) y v1.170.0 hace que `delete_client` bloquee la baja de un cliente con cuenta corriente (`cc_pagos`, `cc_debitos`, `recibos` y `cc_asientos` con rol cliente; ADR-057): desactivarlo en vez de borrarlo. Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.170.0",
+    # v1.170.0 -> v1.173.0 (2026-10-16): v1.171.0 (ADR-058) no se puede cobrar mas de lo que falta de una factura (409); v1.172.0 (ADR-059 y ADR-060) las notas de credito restan de lo pendiente (resumen y tablero cuentan tambien las cobradas a medias por lo que falta) y cobro por turno; v1.173.0 (ADR-061) una demo no habla con ARCA ni muestra datos fiscales reales (`libracore.demo`). Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.173.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

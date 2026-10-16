@@ -35,6 +35,18 @@ def test_billing_router_requires_facturacion_module(admin_client):
     assert admin_client.get("/config/arca").status_code == 403
 
 
+def test_la_consulta_de_cuit_exige_el_modulo_facturacion(admin_client):
+    """Usa el certificado de ARCA y, sin el módulo, no hay pantalla de ARCA donde cargarlo: el botón daba un 503 sin dónde
+    arreglarlo. Con el módulo apagado corta antes de mirar la config de ARCA (403, igual que `/config/arca`); con el
+    módulo prendido y sin certificados contesta el 503 «Configurá los certificados» del motor."""
+    cuit = "20123456786"
+    assert admin_client.get(f"/api/consultar-cuit/{cuit}").status_code == 503  # el punto de partida: módulo prendido
+    _disable(admin_client, "facturacion")
+    respuesta = admin_client.get(f"/api/consultar-cuit/{cuit}")
+    assert respuesta.status_code == 403, respuesta.text
+    assert "facturacion" in respuesta.json()["detail"]
+
+
 def test_registrar_venta_sin_facturar_ignora_el_modulo_apagado(admin_client):
     _disable(admin_client, "facturacion")
     item_id = crear_item(admin_client)
