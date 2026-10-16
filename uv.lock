@@ -624,8 +624,8 @@ migrations = [
 
 [[package]]
 name = "libracommerce"
-version = "0.62.0"
-source = { git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.62.0#6a9d40f795c7be8f5d9a93b516f1403de21d15ff" }
+version = "0.63.0"
+source = { git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.63.0#45c8095717d5cc263212c625f94e180e48035bd9" }
 
 [package.optional-dependencies]
 erp = [
@@ -1372,7 +1372,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.111,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "libraauth", extras = ["migrations"], git = "https://github.com/marianocappucci/libraauth.git?rev=v0.51.0" },
-    { name = "libracommerce", extras = ["migrations", "erp", "web", "planillas"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.62.0" },
+    { name = "libracommerce", extras = ["migrations", "erp", "web", "planillas"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.63.0" },
     { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.173.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },

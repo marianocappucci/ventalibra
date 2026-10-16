@@ -108,7 +108,8 @@ dependencies = [
     # v0.58.0 -> v0.59.0 (2026-10-13): **migracion 0007** (`sale_service_returns`, ADR-054: devolver un servicio no escribe stock); `enviar`/`cancelar` ordenes de compra (ADR-055); `contar_borradores`/`en_borrador` en la reposicion (ADR-056); ajuste absoluto sin deposito con varios depositos = 422 (ADR-057); `VentaPayload.sucursal_id` y `OpcionesVentas.sucursal_de_la_venta`/`exigir_precio_de_sucursal` (ADR-058). ADR-083 de este repo.
     # v0.59.0 -> v0.60.0 (2026-10-14, ADR-059 y ADR-060 de libracommerce): importes de merma (`OpcionesStock.con_costo_de_merma`, `build_mermas_router`, costo en la baja de un lote) y conciliar el «sin lote» negativo (`/api/vencimientos/conciliacion` y `/conciliar`). Sin migracion (ADR-086).
     # v0.60.0 -> v0.62.0 (2026-10-16): v0.61.0 (ADR-061 de libracommerce) fiar sin cliente se rechaza por default (`exigir_cliente_para_fiar=True` es ahora el default; 422) y v0.62.0 (ADR-062) corre el DDL del motor de a un proceso por vez. Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.62.0",
+    # v0.62.0 -> v0.63.0 (2026-10-16): la venta anota su sucursal (`sales.branch_id` del deposito); `adoptar_sucursal_unica` y `completar_sucursal_de_ventas` (ADR-063). Sin migracion del motor.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.63.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
