@@ -38,8 +38,10 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
+import { AltaDeCliente } from 'libra-ui/SelectCliente'
+import { CAMPOS_CLIENTE_DEL_MOTOR, crearYSumar } from 'libra-ui/comercio/alta-de-cliente'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Ban, FileText, Hash, LockKeyhole, Plus, Printer, QrCode, Scan, Split, Trash2, User } from 'lucide-react'
+import { Ban, FileText, Hash, LockKeyhole, Plus, Printer, QrCode, Scan, Split, Trash2, User, UserPlus } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
@@ -276,7 +278,9 @@ function lineaVacia(
   }
 }
 
-export function Pos() {
+/** `puedeCrearCliente`: el usuario tiene `clientes.alta` (lo decide `App.tsx` con `puede(user, 'clientes.alta')`; el cajero la tiene). Arranca en `false`: sin
+ *  el permiso confirmado no se ofrece «Nuevo cliente» en el diálogo del cliente de la venta (el backend contestaría 403 igual). */
+export function Pos({ puedeCrearCliente = false }: { puedeCrearCliente?: boolean } = {}) {
   // Las sucursales activas (`/api/sucursales`); `locationId` es el id de la SUCURSAL elegida. El depósito del que
   // descuenta la venta es otro id: el de venta de esa sucursal (`depositoDeVenta`, más abajo).
   const [locations, setLocations] = useState<Sucursal[]>([])
@@ -1043,6 +1047,7 @@ export function Pos() {
       {clienteOpen && (
         <ElegirCliente
           actual={cliente}
+          puedeCrear={puedeCrearCliente}
           onElegir={elegirCliente}
           onCerrar={() => { setClienteOpen(false); enfocarEscaneo() }}
         />
@@ -1252,19 +1257,36 @@ function CambiarCantidad({ linea, onAceptar, onCerrar }: {
 type PagoForm = { medio: string; monto: string; recibido: string }
 
 /** Elegir a quién se le vende. Sólo hace falta para fiar y para facturar; el
- *  resto de las ventas son a consumidor final y no pasan por acá. */
-function ElegirCliente({ actual, onElegir, onCerrar }: {
+ *  resto de las ventas son a consumidor final y no pasan por acá.
+ *
+ *  **«Nuevo cliente» (F10, ADR-071 del kit).** Si el cliente no está cargado, se da de alta acá mismo, con el panel del kit (`AltaDeCliente`), sin salir
+ *  de la venta: al crearlo queda elegido y el diálogo se cierra, igual que al elegir uno de la lista. Es el mismo `POST /api/clientes` de la pantalla
+ *  de Clientes, así que sale normalizado (documento, condición frente al IVA). El nombre que ya se escribió en el buscador viaja precargado.
+ *
+ *  **Teclado.** Con el panel abierto, Enter (en un campo) crea el cliente y Escape cierra sólo el panel; las dos cosas las resuelve el panel
+ *  del kit (desde `v0.158.1` corta Escape antes de que lo vea el diálogo). Sin el panel todo sigue como antes (Escape cierra el diálogo). */
+function ElegirCliente({ actual, puedeCrear, onElegir, onCerrar }: {
   actual: Cliente | null
+  puedeCrear: boolean
   onElegir: (cliente: Cliente | null) => void
   onCerrar: () => void
 }) {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [filtro, setFiltro] = useState('')
+  const [alta, setAlta] = useState(false)
+  const filtroRef = useRef<HTMLInputElement>(null)
+  // El cliente que acaba de crear `AltaDeCliente`: `onCreado` sólo recibe la opción (id y nombre) y acá hace falta el cliente entero.
+  const creadoRef = useRef<Cliente | null>(null)
 
   useEffect(() => {
     // El listado del motor trae también a los inactivos (la pantalla los marca): el POS sólo ofrece los activos.
     api.get<Cliente[]>('/api/clientes').then((todos) => setClientes(todos.filter((c) => c.activo))).catch(() => setClientes([]))
   }, [])
+
+  // Al cerrar el panel (Escape o Cancelar) el foco vuelve al buscador, no al cuerpo de la página.
+  useEffect(() => {
+    if (!alta) filtroRef.current?.focus()
+  }, [alta])
 
   const visibles = filtro
     ? clientes.filter((c) => c.name.toLowerCase().includes(filtro.toLowerCase()))
@@ -1272,43 +1294,67 @@ function ElegirCliente({ actual, onElegir, onCerrar }: {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCerrar()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onKeyDown={(e) => { if (e.key === 'F10' && puedeCrear) { e.preventDefault(); setAlta(true) } }}
+      >
         <DialogHeader><DialogTitle>Cliente de la venta</DialogTitle></DialogHeader>
-        <Input
-          autoFocus
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          placeholder="Buscar por nombre"
-        />
-        <div className="max-h-72 overflow-y-auto">
-          {visibles.length === 0 && (
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              {clientes.length === 0 ? 'No hay clientes cargados.' : 'Sin resultados.'}
-            </p>
-          )}
-          {visibles.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onElegir(c)}
-              className={[
-                'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-accent',
-                actual?.id === c.id ? 'bg-accent' : '',
-              ].join(' ')}
-            >
-              <span>{c.name}</span>
-              {c.cuit_dni && <span className="text-xs text-muted-foreground">{c.cuit_dni}</span>}
-            </button>
-          ))}
-        </div>
-        <DialogFooter>
-          {actual && (
-            <Button variant="ghost" onClick={() => onElegir(null)}>
-              Quitar cliente
-            </Button>
-          )}
-          <Button variant="secondary" onClick={onCerrar}>Cancelar</Button>
-        </DialogFooter>
+        {alta ? (
+          <AltaDeCliente
+            nombreInicial={filtro}
+            campos={CAMPOS_CLIENTE_DEL_MOTOR}
+            crear={(datos) => crearYSumar<Cliente>((c) => { creadoRef.current = c })(datos)}
+            onCreado={() => { if (creadoRef.current) onElegir(creadoRef.current) }}
+            onCancelar={() => setAlta(false)}
+          />
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <Input
+                ref={filtroRef}
+                autoFocus
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+                placeholder="Buscar por nombre"
+              />
+              {puedeCrear && (
+                <Button type="button" variant="outline" className="shrink-0" onClick={() => setAlta(true)}>
+                  <UserPlus />Nuevo cliente
+                  <span className="text-[10px] font-bold opacity-70">F10</span>
+                </Button>
+              )}
+            </div>
+            <div className="max-h-72 overflow-y-auto">
+              {visibles.length === 0 && (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  {clientes.length === 0 ? 'No hay clientes cargados.' : 'Sin resultados.'}
+                </p>
+              )}
+              {visibles.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onElegir(c)}
+                  className={[
+                    'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-accent',
+                    actual?.id === c.id ? 'bg-accent' : '',
+                  ].join(' ')}
+                >
+                  <span>{c.name}</span>
+                  {c.cuit_dni && <span className="text-xs text-muted-foreground">{c.cuit_dni}</span>}
+                </button>
+              ))}
+            </div>
+            <DialogFooter>
+              {actual && (
+                <Button variant="ghost" onClick={() => onElegir(null)}>
+                  Quitar cliente
+                </Button>
+              )}
+              <Button variant="secondary" onClick={onCerrar}>Cancelar</Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )
