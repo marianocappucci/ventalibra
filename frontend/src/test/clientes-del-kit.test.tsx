@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
 
+import { ModulosContext } from '../lib/modulos'
 import { ClienteDetalle } from '../pages/ClienteDetalle'
 import { Clientes } from '../pages/Clientes'
 
@@ -82,6 +83,18 @@ describe('Clientes (kit sobre /api/clientes)', () => {
     await screen.findByRole('dialog')
     expect(screen.getByTitle('Consultar datos en ARCA')).toBeInTheDocument()
   })
+
+  // 🔴 Sin el módulo `facturacion` no hay pantalla de ARCA donde cargar el certificado, y `/api/consultar-cuit` da 403
+  // (`app/main.py`): el botón no se ofrece. Con el campo `modulos` ausente se ofrece (el 403 es el que corta).
+  it('sin el módulo `facturacion` el alta no ofrece consultar el CUIT en ARCA', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><ModulosContext.Provider value={['multisucursal']}><Clientes /></ModulosContext.Provider></MemoryRouter>)
+    await screen.findByText('Ana Gomez')
+    await user.click(screen.getByRole('button', { name: /Nuevo cliente/ }))
+    const dialogo = await screen.findByRole('dialog')
+    expect(within(dialogo).getByLabelText('CUIT/DNI')).toBeInTheDocument() // el campo sigue: sólo falta el botón
+    expect(screen.queryByTitle('Consultar datos en ARCA')).not.toBeInTheDocument()
+  })
 })
 
 describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
@@ -126,5 +139,21 @@ describe('ClienteDetalle (kit sobre /api/clientes/:id)', () => {
     await user.click(screen.getByRole('button', { name: /Editar/ }))
     await screen.findByRole('dialog')
     expect(screen.getByTitle('Consultar datos en ARCA')).toBeInTheDocument()
+  })
+
+  it('sin el módulo `facturacion` la ficha no ofrece consultar el CUIT en ARCA', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/clientes/1']}>
+        <ModulosContext.Provider value={['multisucursal']}>
+          <Routes><Route path="/clientes/:id" element={<ClienteDetalle />} /></Routes>
+        </ModulosContext.Provider>
+      </MemoryRouter>,
+    )
+    await screen.findByText('Datos del cliente')
+    await user.click(screen.getByRole('button', { name: /Editar/ }))
+    const dialogo = await screen.findByRole('dialog')
+    expect(within(dialogo).getByLabelText(/CUIT/)).toBeInTheDocument()
+    expect(screen.queryByTitle('Consultar datos en ARCA')).not.toBeInTheDocument()
   })
 })
