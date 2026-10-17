@@ -109,6 +109,7 @@ from .cajas_ganchos import (
 )
 from .commerce import REGISTRADOR, entidades_del_log
 from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
+from .conexion import ConexionRenovable
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import (
@@ -1080,14 +1081,18 @@ def create_app(db_path: str) -> FastAPI:
         app.state.conn.close()
 
     def _reabrir_conexion():
+        # `db.connect()` corre el esquema sobre la base restaurada (el respaldo puede traer el modelo viejo) y abre una
+        # conexion de mas, que se descarta. La del proceso se RENUEVA EN EL LUGAR (`ConexionRenovable`) y no se
+        # reemplaza: `app.state.modules` y `app.state.auditoria` se construyeron UNA vez, al arrancar, con esta misma
+        # conexion, y reemplazarla los dejaba con la vieja, ya cerrada (un `/config/arca` despues de un restore daba 500).
+        # Los servicios toman `request.app.state.conn` en cada request, asi que tambien la ven.
         nueva = db.connect(db_path)
-        app.state.conn = nueva
-        # ⚠️ Los servicios toman la conexion de `request.app.state.conn` en cada
-        # request, asi que con reemplazarla alcanza para ellos. Pero
-        # `app.state.auditoria` se construyo UNA vez, al arrancar, y se quedo
-        # con la conexion vieja: sin esta linea la pantalla de logs consulta
-        # una conexion cerrada despues de cada restore.
-        app.state.auditoria = ActividadRepository(nueva)
+        if isinstance(app.state.conn, ConexionRenovable):
+            nueva.close()
+            app.state.conn.renovar()
+        else:
+            app.state.conn = nueva
+            app.state.auditoria = ActividadRepository(nueva)
         auth_engine.dispose()
 
     # Una sola variable para los dos routers: el enlace con la nube deja su

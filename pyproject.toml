@@ -322,6 +322,7 @@ packages = ["app"]
 markers = [
     "sin_aceptar_terminos: deja al test afuera de la excepcion autouse del conftest, para medir el gate de Terminos con el corte puesto de verdad",
     "captcha_real: deja al test afuera del doble autouse del captcha del conftest, para medir el login con el captcha ALTCHA de verdad",
+    "varios_procesos: levanta uvicorn con --workers 2 de verdad (unos 15 s por test); se corre solo con `pytest -m varios_procesos`",
 ]
 testpaths = ["tests"]
 

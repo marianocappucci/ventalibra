@@ -12,6 +12,7 @@ factura, seña+saldo de un turno), en retail toda venta cobrada debe
 quedar en caja sin importar si se factura o no -- decision explicita del
 usuario, 2026-07-25.
 """
+from libracore.candados import una_vez_al_arrancar
 from libracore.db import caja as db_caja
 from libracore.db import core as libracore_core
 from libracore.db.schema import init_core_schema
@@ -49,53 +50,58 @@ def configure(db_path: str) -> None:
             "enteros."
         )
     libracore_core.configure(db_path)
-    conn = libracore_core.get_connection()
-    try:
-        init_core_schema(conn)
-        conn.commit()
-        # F3 del plan post-P9 (2026-09-14, ver DECISIONS.md ADR-025): la
-        # capa ERP de LibraCommerce. La migracion `0003` los aplica sobre
-        # una instancia YA EXISTENTE, pero una base nueva (la de la suite,
-        # `admin_client`; o un cliente que se onboardea de cero) nunca corre
-        # esa revision -- nace ya con el schema de `init_*_schema()`. Sin
-        # esto acá, cualquier venta con un pago fallaria con
-        # `ForeignKeyViolation` contra `ventas_pagos_venta_id_fkey`, que
-        # sigue apuntando a la tabla `ventas` legada de LibraCore. Mismo
-        # patron que `app/database.py::init_db()` de Contalibra/Restolibra:
-        # las dos funciones son idempotentes, así que correrlas en cada
-        # arranque es un no-op sobre una base que ya las tiene.
-        from libracommerce.erp.schema import (
-            crear_cliente_lista_precio,
-            crear_promociones,
-            crear_venta_links,
-        )
-        from libracommerce.erp.ventas import repuntar_fk_ventas_pagos
+    # 🔴 De a un proceso por vez (ADR-044 de libracore; hoy `WEB_CONCURRENCY` = 1). `init_core_schema` ya se serializa por
+    # dentro (ADR-053), pero lo que sigue —las tablas de cruce de LibraCommerce, el `repuntar_fk_ventas_pagos` (un `ALTER`
+    # condicional) y la caja por defecto— corre despues de que se suelta ese candado, y con dos workers arrancando juntos
+    # chocan en el catalogo de PostgreSQL o crean la caja dos veces. Cada paso sigue preguntando adentro.
+    with una_vez_al_arrancar("ventalibra-esquema-core", destino=db_path):
+        conn = libracore_core.get_connection()
+        try:
+            init_core_schema(conn)
+            conn.commit()
+            # F3 del plan post-P9 (2026-09-14, ver DECISIONS.md ADR-025): la
+            # capa ERP de LibraCommerce. La migracion `0003` los aplica sobre
+            # una instancia YA EXISTENTE, pero una base nueva (la de la suite,
+            # `admin_client`; o un cliente que se onboardea de cero) nunca corre
+            # esa revision -- nace ya con el schema de `init_*_schema()`. Sin
+            # esto acá, cualquier venta con un pago fallaria con
+            # `ForeignKeyViolation` contra `ventas_pagos_venta_id_fkey`, que
+            # sigue apuntando a la tabla `ventas` legada de LibraCore. Mismo
+            # patron que `app/database.py::init_db()` de Contalibra/Restolibra:
+            # las dos funciones son idempotentes, así que correrlas en cada
+            # arranque es un no-op sobre una base que ya las tiene.
+            from libracommerce.erp.schema import (
+                crear_cliente_lista_precio,
+                crear_promociones,
+                crear_venta_links,
+            )
+            from libracommerce.erp.ventas import repuntar_fk_ventas_pagos
 
-        crear_venta_links(conn)
-        # Lista de precios asignada a un cliente (ADR-010 de libracommerce, el enganche que el
-        # add-on mayorista de Contalibra tenía como tabla propia): sus FK apuntan a `clients`
-        # (recién creada por `init_core_schema` arriba) y a `price_lists` (LibraCommerce, ya
-        # creada por `db.connect()` antes de que arranque `configure()`). Idempotente, mismo
-        # criterio que `crear_venta_links`; la migración `NNNN_cliente_lista_precio` la aplica
-        # sobre una instancia ya existente.
-        crear_cliente_lista_precio(conn)
-        # Promociones (ADR-014 de libracommerce, ADR-043 de este producto): `promotions`,
-        # `promotion_items` y `sale_promotions`; las FK apuntan a `catalog_items` y `sales`
-        # (LibraCommerce). Idempotente; la migración `NNNN_promociones` la aplica sobre una
-        # instancia ya existente.
-        crear_promociones(conn)
-        repuntar_fk_ventas_pagos(conn)
-        # La otra mitad de la normalizacion de grafias: caja, cuenta corriente,
-        # egresos y recibos viven en ESTA base, que contra SQLite es un archivo
-        # distinto del dominio. Ver `app/normalizacion_medios.py`.
-        normalizar_libracore(conn)
-    finally:
-        conn.close()
-    if db_caja.get_default_caja_id() is None:
-        caja_id = db_caja.create_caja_config(
-            "Caja VentaLibra", "", list(db_caja.MEDIOS_PAGO_LABELS),
-        )
-        db_caja.set_default_caja(caja_id)
+            crear_venta_links(conn)
+            # Lista de precios asignada a un cliente (ADR-010 de libracommerce, el enganche que el
+            # add-on mayorista de Contalibra tenía como tabla propia): sus FK apuntan a `clients`
+            # (recién creada por `init_core_schema` arriba) y a `price_lists` (LibraCommerce, ya
+            # creada por `db.connect()` antes de que arranque `configure()`). Idempotente, mismo
+            # criterio que `crear_venta_links`; la migración `NNNN_cliente_lista_precio` la aplica
+            # sobre una instancia ya existente.
+            crear_cliente_lista_precio(conn)
+            # Promociones (ADR-014 de libracommerce, ADR-043 de este producto): `promotions`,
+            # `promotion_items` y `sale_promotions`; las FK apuntan a `catalog_items` y `sales`
+            # (LibraCommerce). Idempotente; la migración `NNNN_promociones` la aplica sobre una
+            # instancia ya existente.
+            crear_promociones(conn)
+            repuntar_fk_ventas_pagos(conn)
+            # La otra mitad de la normalizacion de grafias: caja, cuenta corriente,
+            # egresos y recibos viven en ESTA base, que contra SQLite es un archivo
+            # distinto del dominio. Ver `app/normalizacion_medios.py`.
+            normalizar_libracore(conn)
+        finally:
+            conn.close()
+        if db_caja.get_default_caja_id() is None:
+            caja_id = db_caja.create_caja_config(
+                "Caja VentaLibra", "", list(db_caja.MEDIOS_PAGO_LABELS),
+            )
+            db_caja.set_default_caja(caja_id)
 
 
 #: 🔴 Este módulo tenía `get_arca_config`/`set_arca_config`, `invoice_sale` y
