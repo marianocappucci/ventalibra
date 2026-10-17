@@ -297,6 +297,7 @@ GET    /api/cierre-diario/{cierre_id}/ticket                            GERENCIA
 
 # Nota de crédito de una factura con CAE (LibraCore v1.129.0): `facturas.nota_credito`, sólo admin
 POST   /api/facturas/{factura_id}/nota-credito                          ADMIN
+GET    /api/facturas/{factura_id}/nota-credito/destino                  ADMIN
 GET    /api/cierre-diario/turno/{turno_id}/ticket                       MOSTRADOR
 
 # Reportes, margen y reposición: `reportes`, `margen`, `reposicion.ver`
