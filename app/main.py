@@ -674,10 +674,15 @@ def create_app(db_path: str) -> FastAPI:
     # La nota de crédito de una factura con CAE (`libracore.facturas_router`, ADR-017 del motor): SOLO esa ruta, no
     # los otros once endpoints de comprobantes (alta manual, cobro, borrado), que este producto no usa y que llevarían
     # el cobro sin `turno_id`. La necesita `anular_venta`, que desde libracommerce v0.41.0 no anula una venta con
-    # factura CAE sin nota. No toca la caja. Sólo admin: `facturas.nota_credito`.
+    # factura CAE sin nota. Sólo admin: `facturas.nota_credito`.
+    # 🔴 Desde libracore v1.176.0 (ADR-065) la nota de una factura al contado cobrada puede **devolver la plata por caja**:
+    # ese egreso tiene que entrar por el turno abierto de quien la emite, porque el arqueo de este producto suma
+    # `caja_movimientos` por `turno_id`. Sin `exigir_turno` el egreso saldría suelto y el arqueo no lo contaría. Sin
+    # `destino` (lo que manda la pantalla cuando no hay plata que mover) la nota no toca la caja, como antes.
     app.include_router(
         build_nota_de_credito_router(
             usuario_actual=get_current_user, solo_admin=requiere("facturas.nota_credito"),
+            exigir_turno=True, usuario_del_turno=lambda usuario: int(usuario["id"]),
         ),
     )
     # Cajas y turnos: los routers del motor (`libracore.caja_router`), los mismos de Contalibra y Restolibra,
