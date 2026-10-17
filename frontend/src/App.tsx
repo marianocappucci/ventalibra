@@ -84,6 +84,12 @@ function ProtectedRoute({ children, cap }: { children: ReactNode; cap?: Capacida
   )
 }
 
+// El POS ofrece «Nuevo cliente» en el diálogo del cliente de la venta sólo a quien puede dar de alta (`clientes.alta`: el cajero sí; ADR-071 del kit).
+function PosDeLaSesion() {
+  const { user } = useAuth()
+  return <Pos puedeCrearCliente={puede(user, 'clientes.alta')} />
+}
+
 // La raíz y toda ruta desconocida: a la pantalla inicial del rol (POS o stock), o al login si no hay sesión.
 function Inicio() {
   const { user, loading } = useAuth()
@@ -102,7 +108,7 @@ export default function App() {
         path="/pos"
         element={
           <ProtectedRoute cap="ventas.pos">
-            <Pos />
+            <PosDeLaSesion />
           </ProtectedRoute>
         }
       />

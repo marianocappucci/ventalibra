@@ -3239,3 +3239,19 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
 
 **Tests.** `tests/test_merma_valorizada.py`: admin y encargado reciben el importe de la baja; el depósito la hace sin plata (**rojo sin el prefijo `/api/vencimientos`**, medido); el historial valoriza la merma sólo para quien ve costos; el reporte es de admin y encargado y es 403 para depósito, vendedor y cajero; admin, encargado y depósito concilian (vista previa y aplicar) y después la baja de un lote ya no da 409; el mostrador no concilia.
 - `src/test/mermas-del-kit.test.tsx`: el admin llega a `/mermas` (reporte, CSV y menú); el cajero no llega ni pide el reporte.
+
+## ADR-087 — «Nuevo cliente» dentro del diálogo del cliente de la venta del POS (libra-ui v0.158.1)
+
+**Estado:** aceptada (2026-10-16). Pedido del humano: todo lugar de la suite donde se elige un cliente ofrece darlo de alta ahí mismo, normalizado (ADR-071 del kit).
+
+**Qué ya existía.** El kit v0.158.1 trae `SelectCliente` (buscador + botón de alta), `AltaDeCliente` (el panel solo, para pantallas donde el cliente no se elige de un desplegable), `crearClienteDelMotor`/`crearYSumar`/`CAMPOS_CLIENTE_DEL_MOTOR` (`POST /api/clientes` del motor) y la guarda `auditoria-de-clientes`. Las pantallas del kit que usa VentaLibra (Ventas, Presupuestos, Clientes…) ya lo traen. Lo único propio donde se elige un cliente es el diálogo `ElegirCliente` del POS (F7 y «Elegir cliente» del cobro), que es una lista con teclado y no un `<Select>`.
+
+**Decisión.**
+1. Pin `libra-ui` v0.157.0 → **v0.158.1**.
+2. `ElegirCliente` suma el botón **Nuevo cliente** (atajo **F10**, el de «nuevo» que no choca con las F de la grilla del POS: F2 a F4 y F6 a F9, ni con F5/F11/F12 del navegador). Muestra `AltaDeCliente` con `nombreInicial` = el filtro, `campos={CAMPOS_CLIENTE_DEL_MOTOR}` y `crear=crearYSumar`; al crear, `onElegir(cliente)` (la misma salida que elegir de la lista: queda en la venta y el diálogo se cierra).
+3. **Teclado.** El panel frena Enter/Escape (React), pero Radix escucha Escape en el documento en la fase de captura, antes: sin ayuda, Escape en el panel cerraba el diálogo entero. `DialogContent` lleva `onEscapeKeyDown` que, con el panel abierto, lo cancela y cierra sólo el panel; el foco vuelve al buscador.
+4. **Permiso.** El alta pide `clientes.alta` (`app/main.py`, `requiere_segun_ruta`); `Pos` recibe `puedeCrearCliente` (por defecto `false`) y `App.tsx` lo pasa con `puede(user, 'clientes.alta')`. Sin él no hay botón ni F10 (el backend contestaría 403 igual).
+5. **Guard.** `src/test/campos-de-cliente.test.ts` corre `auditarCamposDeCliente` sobre `src`. **Mide 0 campos** (el POS no es un desplegable, así que no lo ve): el control positivo es «leyó archivos», y el POS se cubre con su test de comportamiento.
+
+**Consecuencias.** Sin migración ni backend. El lock sube `@playwright/test` de 1.63 a 1.64.1 porque el kit v0.158.1 lo declara como peer opcional `^1.64.0` (guarda de e2e del kit). Tests: `pos-nuevo-cliente.test.tsx` (precarga del nombre, `POST /api/clientes` con el payload del motor, la venta sale con `cliente_id`, fiar desde el cobro, F10, Enter, Escape, error del alta, sin permiso, permiso desde `/auth/me`).
+
