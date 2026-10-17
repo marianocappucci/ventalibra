@@ -32,8 +32,16 @@ El problema es del **modelo de conexion de este producto**, no del repositorio.
 Por eso el arreglo vive aca. Si algun dia otro producto adopta una conexion
 unica y larga, ahi si conviene subirlo al motor.
 """
+import contextlib
+import re
 import sqlite3
+import threading
 from contextlib import contextmanager
+
+import psycopg
+from libracore.db import core
+from libracore.db._postgres import ConnectionWrapper, Cursor
+from psycopg.rows import tuple_row
 
 
 @contextmanager
@@ -50,3 +58,124 @@ def conexion_utilizable(conn):
     except sqlite3.Error:
         conn.rollback()
         raise
+
+
+#: Un `SELECT` común (o un `PRAGMA`, que el adaptador ignora o traduce a lectura): no deja nada pendiente en la
+#: transacción, así que si la conexión muere se puede repetir en otra.
+_LECTURA = re.compile(r"\s*(SELECT|PRAGMA)\b", re.IGNORECASE)
+#: ...salvo que tome locks o avance una secuencia: eso es un efecto que se perdería con la conexión.
+_CON_EFECTO = re.compile(
+    r"\bFOR\s+(NO\s+KEY\s+)?(UPDATE|SHARE)\b|\bFOR\s+KEY\s+SHARE\b|\b(nextval|setval|pg_\w*advisory\w*)\s*\(",
+    re.IGNORECASE,
+)
+
+
+def _es_lectura(sql: str) -> bool:
+    return bool(_LECTURA.match(sql)) and not _CON_EFECTO.search(sql)
+
+
+class ConexionRenovable(ConnectionWrapper):
+    """La conexión única del dominio, que se renueva en el lugar si el servidor la mató (ADR-044 de libracore).
+
+    🔴 **El defecto que cierra.** Con `uvicorn --workers N` cada proceso tiene SU conexión (`app.state.conn`). Un restore en
+    caliente lo atiende un worker, y el intercambio de bases (`respaldo_postgres.intercambiar`) **termina las conexiones
+    de la base viva**: la del worker que lo atendió la reabre `_reabrir_conexion`, pero las de los otros quedan muertas
+    (`terminating connection due to administrator command`) y cada request que las toca daba 500 hasta que alguien
+    reiniciaba el contenedor. `libracore.respaldo_postgres.vigilar_pools` no las ve: sólo mira los pools de SQLAlchemy, y el
+    `pool_pre_ping=True` de ADR-044 es de los engines (`auth_engine` lo lleva). Esta conexión no tiene pool.
+
+    **Cómo se renueva** (el equivalente al `pool_pre_ping` para una conexión sola):
+
+    - Si la conexión **se rompió** (`broken`: el servidor la cortó, y psycopg lo sabe recién tras el primer error), la
+      siguiente operación abre otra antes de empezar.
+    - Si el error es justo ése, el de la conexión cortada, y **la transacción en curso no tenía nada pendiente** (sólo
+      `SELECT` comunes desde el último `commit`/`rollback`), se abre otra y **se reintenta una vez**: no hay nada que se
+      pierda. Es lo que le pasa al primer pedido del worker que no atendió el restore, y por eso no lo ve como un 500. Ojo
+      que esta conexión casi nunca está `IDLE`: una lectura deja la transacción abierta (*idle in transaction*), así que
+      el criterio no es el estado de la conexión sino lo que se escribió en ella.
+    - Si **había escrituras pendientes** no se reintenta: se pierden con la conexión (el servidor las deshace), y repetir
+      sólo el último statement confirmaría el resto a medias. El error sube, y la transacción que cruzó la muerte **no se
+      confirma**: el siguiente `commit()` levanta `OperationalError` en lugar de confirmar lo que quedó (una conexión
+      compartida por hilos puede renovarla un hilo mientras otro tiene su transacción a medias).
+    - Un `commit()` que falla por la conexión muerta no se reintenta: no se sabe si llegó.
+    - Una conexión **cerrada a mano** (`close()`, como hace `_cerrar_conexion` antes del intercambio) NO se reabre sola:
+      sigue cerrada hasta que `renovar()` la reabra, así que un pedido que llega a mitad del restore no se cuela.
+
+    Es **el mismo objeto** antes y después: `ModuleRepository`, `ActividadRepository` y todo lo que lo guardó siguen
+    apuntando a una conexión viva, que es lo que `_reabrir_conexion` no lograba reemplazándola (el `app.state.modules`
+    de después de un restore tenía la vieja, ya cerrada).
+
+    Va en el producto y no en `libracore.db.core` porque hoy es el único de la familia con una conexión única y larga
+    (ver el docstring del módulo): los demás abren una por llamada o usan un engine con pool. Si otro la adopta, sube.
+    """
+
+    def __init__(self, destino: str):
+        super().__init__(core.conectar(destino)._connection)
+        self._destino = destino
+        self._renovando = threading.Lock()
+        self._escribio = False       # hay escrituras (o locks) pendientes en la transacción en curso
+        self._perdida = False        # la transacción en curso cruzó una renovación con escrituras pendientes
+
+    def renovar(self, vieja=None) -> None:
+        """Abre una conexión nueva y cierra la anterior. Con `vieja`, sólo si nadie la renovó ya (dos hilos que ven la
+        misma rota no abren dos conexiones)."""
+        with self._renovando:
+            if vieja is not None and self._connection is not vieja:
+                return
+            anterior = self._connection
+            self._connection = core.conectar(self._destino)._connection
+            self._con_id = {}
+            self._perdida = self._escribio     # lo pendiente murió con la conexión: que no se confirme el resto
+            self._escribio = False
+            with contextlib.suppress(Exception):
+                anterior.close()
+
+    def cursor(self):
+        if self._connection.broken:
+            self.renovar(self._connection)
+        return _CursorRenovable(self)
+
+    def commit(self):
+        if self._perdida:
+            self._perdida = False
+            super().rollback()
+            raise sqlite3.OperationalError(
+                "la transaccion empezo en una conexion que se corto: no se confirma lo que quedo a medias"
+            )
+        super().commit()
+        self._escribio = False
+
+    def rollback(self):
+        # En una conexión rota el servidor ya deshizo todo lo que no se confirmó: no hay nada que deshacer, y el
+        # `rollback()` de psycopg levantaría otro error encima del que se está manejando (`conexion_utilizable`).
+        self._perdida = False
+        self._escribio = False
+        if self._connection.broken:
+            return
+        super().rollback()
+
+
+class _CursorRenovable(Cursor):
+    """El cursor de `ConexionRenovable`: reintenta una vez, con la conexión renovada, si la conexión murió y no había
+    nada pendiente en su transacción."""
+
+    def execute(self, sql, params=None):
+        return self._con_renovacion(Cursor.execute, _es_lectura(sql), sql, params)
+
+    def executemany(self, sql, params):
+        return self._con_renovacion(Cursor.executemany, False, sql, params)
+
+    def _con_renovacion(self, metodo, es_lectura, *args):
+        conexion = self._connection
+        viva = conexion._connection
+        try:
+            resultado = metodo(self, *args)
+        except (psycopg.Error, sqlite3.Error):
+            if not viva.broken or conexion._escribio:
+                raise
+            conexion.renovar(viva)
+            self._cursor = conexion._connection.cursor(row_factory=tuple_row)
+            resultado = metodo(self, *args)
+        if not es_lectura:
+            conexion._escribio = True
+        return resultado

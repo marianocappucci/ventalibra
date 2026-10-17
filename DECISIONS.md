@@ -3255,3 +3255,34 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
 
 **Consecuencias.** Sin migración ni backend. El lock sube `@playwright/test` de 1.63 a 1.64.1 porque el kit v0.158.1 lo declara como peer opcional `^1.64.0` (guarda de e2e del kit). Tests: `pos-nuevo-cliente.test.tsx` (precarga del nombre, `POST /api/clientes` con el payload del motor, la venta sale con `cliente_id`, fiar desde el cobro, F10, Enter, Escape, error del alta, sin permiso, permiso desde `/auth/me`).
 
+
+## ADR-088 — El DDL propio y la conexión del dominio, listos para varios workers (`WEB_CONCURRENCY`, hoy 1)
+
+- Estado: aceptada. **Exige `libracore >= v1.168.0` y `libracommerce >= v0.62.0`** (ya están en el pin).
+- Fecha: 2026-10-16
+- Contexto: ADR-081 dejó serializadas las siembras del admin y las cajas, y el motor serializó su propio esquema
+  (`init_core_schema`, ADR-053 de libracore; `init_schema`, ADR-062 de libracommerce). Faltaban dos cosas **del producto**.
+- Qué ya existía (se miró antes): `libracore.candados.una_vez_al_arrancar` (ADR-044/053), `libracommerce.db.candado.serializar_esquema`
+  (ADR-062), `pool_pre_ping=True` en el engine de auth, `docs/varios-procesos.md` del motor y `test_dos_workers_arrancan_...` de MedLibra.
+- Decisión:
+  - **El DDL y las siembras de `db.connect()` corren adentro de `una_vez_al_arrancar("ventalibra-esquema-dominio")`**
+    (`app/db.py`: `init_schema`, `asegurar_minimas`, `init_schema_propio`, `normalizar_dominio`) y los de
+    `billing.configure()` adentro de `una_vez_al_arrancar("ventalibra-esquema-core")` (`app/services/billing.py`: las tablas de cruce de
+    LibraCommerce, `repuntar_fk_ventas_pagos`, la caja por defecto). Un solo candado por base y no uno por función, para que una función
+    nueva no quede afuera. **Medido:** con 2 workers sobre una base sin sembrar `asegurar_minimas` creaba **dos sucursales** (`Sucursal 1`
+    x2): su «¿hay sucursal?» se contesta «no» en los dos workers. `connect()` también corre al restaurar un respaldo
+    (`_reabrir_conexion`) y toma el mismo candado.
+  - **`ConexionRenovable` (`app/conexion.py`)** es la conexión única del dominio contra PostgreSQL (`db.connect()` la devuelve): si el
+    servidor la mata (el intercambio de bases de un restore en caliente termina las conexiones de la base viva, y el worker que no lo
+    atendió no se entera) la reabre en el lugar. Si el error es el de la conexión cortada y la transacción en curso sólo tenía
+    lecturas, reintenta una vez (el primer pedido no ve el 500); si había escrituras pendientes no reintenta y la transacción que
+    cruzó la renovación **no se confirma** (el `commit()` levanta). Una conexión cerrada a mano no se reabre sola.
+  - **`_reabrir_conexion` renueva en el lugar** en vez de reemplazar `app.state.conn`. **Defecto previo, también con 1 worker:**
+    `app.state.modules = ModuleRepository(conn)` guardó la conexión del arranque, y después de un restore quedaba con la cerrada
+    (`/config/arca` y toda ruta con `require_module(...)` daba `psycopg.OperationalError: the connection is closed`; medido).
+- Qué NO cubre: el motor sigue pidiendo **reiniciar el contenedor** después de un restore en caliente (`docs/varios-procesos.md`); esto
+  es la red de abajo, como `pool_pre_ping`. Las conexiones de `libracore.db.core.get_connection()` (billing, caja, facturas) se abren por
+  llamada y no tienen el problema. Hoy este producto es el único de la familia con una conexión única y larga: si otro la adopta, la
+  clase sube a `libracore.db.core`.
+- Tests: `tests/test_varios_procesos.py` (uvicorn `--workers 2` de verdad, base vacía y base «como el deploy»; medido con 2 workers sobre base vacía: sin el arreglo 20 de 20 corridas rojas (18 con 2 sucursales, 2 con error en el log de arranque); con el arreglo 22 de 22 verdes. Sobre la base «como el deploy»: sin el arreglo 7 de 7 rojas (2 sucursales); con el arreglo 5 de 5 verdes),
+  `tests/test_conexion_renovable.py` (mata la conexión con `pg_terminate_backend`; incluye el restore real por `POST /api/config/restore`).

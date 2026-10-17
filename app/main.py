@@ -109,6 +109,7 @@ from .cajas_ganchos import (
 )
 from .commerce import REGISTRADOR, entidades_del_log
 from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
+from .conexion import ConexionRenovable
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import (
@@ -673,10 +674,15 @@ def create_app(db_path: str) -> FastAPI:
     # La nota de crédito de una factura con CAE (`libracore.facturas_router`, ADR-017 del motor): SOLO esa ruta, no
     # los otros once endpoints de comprobantes (alta manual, cobro, borrado), que este producto no usa y que llevarían
     # el cobro sin `turno_id`. La necesita `anular_venta`, que desde libracommerce v0.41.0 no anula una venta con
-    # factura CAE sin nota. No toca la caja. Sólo admin: `facturas.nota_credito`.
+    # factura CAE sin nota. Sólo admin: `facturas.nota_credito`.
+    # 🔴 Desde libracore v1.176.0 (ADR-065) la nota de una factura al contado cobrada puede **devolver la plata por caja**:
+    # ese egreso tiene que entrar por el turno abierto de quien la emite, porque el arqueo de este producto suma
+    # `caja_movimientos` por `turno_id`. Sin `exigir_turno` el egreso saldría suelto y el arqueo no lo contaría. Sin
+    # `destino` (lo que manda la pantalla cuando no hay plata que mover) la nota no toca la caja, como antes.
     app.include_router(
         build_nota_de_credito_router(
             usuario_actual=get_current_user, solo_admin=requiere("facturas.nota_credito"),
+            exigir_turno=True, usuario_del_turno=lambda usuario: int(usuario["id"]),
         ),
     )
     # Cajas y turnos: los routers del motor (`libracore.caja_router`), los mismos de Contalibra y Restolibra,
@@ -1080,14 +1086,18 @@ def create_app(db_path: str) -> FastAPI:
         app.state.conn.close()
 
     def _reabrir_conexion():
+        # `db.connect()` corre el esquema sobre la base restaurada (el respaldo puede traer el modelo viejo) y abre una
+        # conexion de mas, que se descarta. La del proceso se RENUEVA EN EL LUGAR (`ConexionRenovable`) y no se
+        # reemplaza: `app.state.modules` y `app.state.auditoria` se construyeron UNA vez, al arrancar, con esta misma
+        # conexion, y reemplazarla los dejaba con la vieja, ya cerrada (un `/config/arca` despues de un restore daba 500).
+        # Los servicios toman `request.app.state.conn` en cada request, asi que tambien la ven.
         nueva = db.connect(db_path)
-        app.state.conn = nueva
-        # ⚠️ Los servicios toman la conexion de `request.app.state.conn` en cada
-        # request, asi que con reemplazarla alcanza para ellos. Pero
-        # `app.state.auditoria` se construyo UNA vez, al arrancar, y se quedo
-        # con la conexion vieja: sin esta linea la pantalla de logs consulta
-        # una conexion cerrada despues de cada restore.
-        app.state.auditoria = ActividadRepository(nueva)
+        if isinstance(app.state.conn, ConexionRenovable):
+            nueva.close()
+            app.state.conn.renovar()
+        else:
+            app.state.conn = nueva
+            app.state.auditoria = ActividadRepository(nueva)
         auth_engine.dispose()
 
     # Una sola variable para los dos routers: el enlace con la nube deja su
