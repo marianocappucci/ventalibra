@@ -21,12 +21,15 @@ def _venta_facturada(client, quien_vende=None):
 
 
 def test_la_unica_ruta_de_facturas_es_la_nota_de_credito(admin_client):
-    """Los otros once endpoints del router de comprobantes (alta manual, cobro, borrado) no se montan."""
+    """Los otros once endpoints del router de comprobantes (alta manual, cobro, borrado) no se montan. Desde libracore
+    v1.176.0 (ADR-065) el router de la nota trae también su consulta `GET …/nota-credito/destino`, que no escribe: le dice
+    a la pantalla si hay plata que devolver o dejar a favor."""
     # Por el esquema OpenAPI de la app y no por `app.routes`: el TestClient puede traer la app envuelta.
     esquema = admin_client.app.openapi()
     rutas = {(metodo.upper(), ruta) for ruta, ops in esquema["paths"].items()
              if ruta.startswith("/api/facturas") for metodo in ops}
-    assert rutas == {("POST", "/api/facturas/{factura_id}/nota-credito")}
+    assert rutas == {("POST", "/api/facturas/{factura_id}/nota-credito"),
+                     ("GET", "/api/facturas/{factura_id}/nota-credito/destino")}
 
 
 def test_solo_un_admin_emite_la_nota(admin_client, cajero_client):
