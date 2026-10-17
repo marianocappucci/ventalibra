@@ -9,9 +9,11 @@ import logging
 import sqlite3
 
 from libracommerce.db.schema import init_schema
+from libracore.candados import una_vez_al_arrancar
 from libracore.db import core
 from libracore.db.core import Conexion
 
+from .conexion import ConexionRenovable
 from .normalizacion_medios import normalizar_dominio
 
 logger = logging.getLogger(__name__)
@@ -32,42 +34,56 @@ def connect(db_path: str):
     (lo natural seria un pool). Cambiarlo es otro trabajo y no hace falta para
     que el producto se pueda ejercitar contra el motor nuevo, que es lo que
     esta fase necesita.
+
+    Contra PostgreSQL es una `ConexionRenovable` (`app/conexion.py`): con varios
+    workers, la de los que no atendieron un restore en caliente queda muerta, y
+    esa clase la reabre sola en lugar de dar 500 hasta el reinicio.
     """
     if core.es_url_postgres(db_path):
-        conn = core.conectar(db_path)
+        conn = ConexionRenovable(db_path)
     else:
         conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
-    init_schema(conn)
-    # Sucursales y depósitos (jerarquía, 2026-09-28): migra el modelo plano si lo trae la base (también al
-    # restaurar un respaldo viejo) y garantiza una sucursal, un depósito por sucursal y el depósito
-    # predeterminado de la instancia. Sin depósito predeterminado, `libracommerce.erp.stock.
-    # descontar_stock_venta` —que no recibe depósito en el payload— revienta con `NOT NULL location_id` en
-    # la primera venta de una base nueva. Import local: `sucursales_migracion` importa del motor y este
-    # módulo se carga antes.
-    from .sucursales_migracion import asegurar_minimas
+    # 🔴 El DDL y las siembras de este arranque, de a un proceso por vez (ADR-044 y ADR-053 de libracore; hoy
+    # `WEB_CONCURRENCY` = 1). Con `uvicorn --workers N` cada worker corre `connect()`, y todo lo de abajo es un «si no
+    # existe, crear» que PostgreSQL no hace atómico: sobre una base sin las tablas dos `CREATE TABLE IF NOT EXISTS` de la
+    # misma tabla chocan en el catálogo, y la sucursal mínima de `asegurar_minimas` se contestaba «no hay» en los dos
+    # workers y se creaba dos veces (medido: 2 sucursales con 2 workers). `init_schema` ya se serializa por dentro
+    # (`libracommerce.db.candado`, ADR-062); este candado cubre lo que no es del motor y es **uno solo** para que una
+    # función propia que se agregue acá no quede afuera. `una_vez_al_arrancar` toma su propia conexión y no toca la
+    # transacción de `conn`. Cada paso sigue preguntando adentro: el candado los ordena, no los saltea. Lo toma también
+    # `connect()` al restaurar un respaldo (`app/main.py::_reabrir_conexion`).
+    with una_vez_al_arrancar("ventalibra-esquema-dominio", destino=db_path):
+        init_schema(conn)
+        # Sucursales y depósitos (jerarquía, 2026-09-28): migra el modelo plano si lo trae la base (también al
+        # restaurar un respaldo viejo) y garantiza una sucursal, un depósito por sucursal y el depósito
+        # predeterminado de la instancia. Sin depósito predeterminado, `libracommerce.erp.stock.
+        # descontar_stock_venta` —que no recibe depósito en el payload— revienta con `NOT NULL location_id` en
+        # la primera venta de una base nueva. Import local: `sucursales_migracion` importa del motor y este
+        # módulo se carga antes.
+        from .sucursales_migracion import asegurar_minimas
 
-    asegurar_minimas(conn)
-    # Las tablas propias de este producto, por un punto de entrada único. Antes
-    # las seis funciones se enumeraban acá, y la baseline de Alembic
-    # (`migrations/versions/0001_baseline_ventalibra.py`) llama a esa misma
-    # función: enumerarlas en los dos lados haría que una función nueva agregada
-    # en uno solo dejara a las instancias nuevas y a las viejas con esquemas
-    # distintos, sin fallar.
-    #
-    # 🔴 Desde esa revisión las seis son de **sólo lectura**: una columna nueva
-    # va como revisión de Alembic. Ver `app/schema_propio.py`.
-    #
-    # Import local: `schema_propio` importa de este módulo, así que arriba
-    # cerraría el ciclo.
-    from app.schema_propio import init_schema_propio
+        asegurar_minimas(conn)
+        # Las tablas propias de este producto, por un punto de entrada único. Antes
+        # las seis funciones se enumeraban acá, y la baseline de Alembic
+        # (`migrations/versions/0001_baseline_ventalibra.py`) llama a esa misma
+        # función: enumerarlas en los dos lados haría que una función nueva agregada
+        # en uno solo dejara a las instancias nuevas y a las viejas con esquemas
+        # distintos, sin fallar.
+        #
+        # 🔴 Desde esa revisión las seis son de **sólo lectura**: una columna nueva
+        # va como revisión de Alembic. Ver `app/schema_propio.py`.
+        #
+        # Import local: `schema_propio` importa de este módulo, así que arriba
+        # cerraría el ciclo.
+        from app.schema_propio import init_schema_propio
 
-    init_schema_propio(conn)
-    # La grafia vieja de MercadoPago (`mercado_pago`) que este POS escribio
-    # desde siempre, pasada a la canonica de la familia. Va DESPUES de crear el
-    # schema —necesita las tablas— y en cada arranque, no una sola vez: ver el
-    # docstring del modulo para por que.
-    normalizar_dominio(conn)
+        init_schema_propio(conn)
+        # La grafia vieja de MercadoPago (`mercado_pago`) que este POS escribio
+        # desde siempre, pasada a la canonica de la familia. Va DESPUES de crear el
+        # schema —necesita las tablas— y en cada arranque, no una sola vez: ver el
+        # docstring del modulo para por que.
+        normalizar_dominio(conn)
     return conn
 
 
