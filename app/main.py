@@ -3,6 +3,7 @@ los routers con gating por rol (mismo patron que gestiolibra/medlibra:
 dependencias en include_router, no por endpoint suelto)."""
 import logging
 import os
+from functools import partial
 
 from fastapi import Depends, FastAPI
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
@@ -67,7 +68,7 @@ from libracore.config_router import (
 from libracore.consultar_cuit_router import build_consultar_cuit_router
 from libracore.cuenta_corriente_router import build_cuenta_corriente_router
 from libracore.dashboard_router import build_dashboard_router
-from libracore.db.core import es_url_postgres
+from libracore.db.core import conectar, es_url_postgres
 from libracore.db.core import get_connection as lc_get_connection
 from libracore.db.cuenta_corriente import VENTAS_LIBRACOMMERCE
 from libracore.db.url_de_instancia import url_de_instancia
@@ -109,7 +110,7 @@ from .cajas_ganchos import (
 )
 from .commerce import REGISTRADOR, entidades_del_log
 from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
-from .conexion import ConexionRenovable
+from .conexion import ConexionRenovable, PorLlamada
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
 from .depositos_ganchos import (
@@ -366,7 +367,11 @@ def create_app(db_path: str) -> FastAPI:
     # tienen nada que ver con el que los causo.
     app.state.auth_engine = auth_engine
     app.state.secretos = _secretos
+    # 🔴 Una conexión POR REQUEST, no una para toda la app (ADR-089). `app.state.conn` es la de arranque y mantenimiento
+    # (el restore, los tests): ningún request la usa. Lo que necesita el dominio en un request lo abre `abrir_dominio`,
+    # que apunta a la base del dominio por destino explícito (no por la configuración global del motor).
     app.state.conn = conn
+    app.state.abrir_dominio = partial(conectar, db_path)
     app.state.users = user_repository
     app.state.session_auth = build_session_auth(user_repository)
     # Los desafios del captcha ya resueltos se anotan en `libraauth_captcha_usados` (libraauth v0.50.0, ADR-023) y no en la memoria
@@ -401,7 +406,9 @@ def create_app(db_path: str) -> FastAPI:
         # la instancia se comporta igual que antes hasta que se cargue algo.
         smtp_config=lambda: resolver_smtp_config(auth_sessions),
     )
-    app.state.modules = ModuleRepository(conn)
+    # `PorLlamada`: cada consulta abre y cierra su conexión. El gate lo lee el motor en CADA request (`require_module`), en
+    # los hilos del threadpool: con la conexión única, dos requests se pisaban la transacción (ADR-089).
+    app.state.modules = PorLlamada(ModuleRepository, app.state.abrir_dominio)
 
     def _facturacion_habilitada() -> bool:
         """Mismo chequeo que `require_module("facturacion")` (`app.state.
@@ -418,7 +425,7 @@ def create_app(db_path: str) -> FastAPI:
     # No cuelga de un flush como en Gestiolibra o MedLibra —este producto no
     # tiene SQLAlchemy en el dominio— sino del repositorio envuelto: ver
     # `app/commerce.py`, que es por donde pasan los diez servicios.
-    app.state.auditoria = ActividadRepository(conn)
+    app.state.auditoria = PorLlamada(ActividadRepository, app.state.abrir_dominio)
     # Accesos: la base de LibraCore, la misma donde vive `usuarios` y donde
     # `auth_log` ya existe. Esto no crea la tabla: empieza a escribirla.
     app.state.auth_events = AuthEventRepository(auth_sessions)
@@ -689,10 +696,11 @@ def create_app(db_path: str) -> FastAPI:
     # con las reglas de VentaLibra como ganchos (`app/cajas_ganchos.py`, ADR-032). Reemplazan a `/shifts` y al
     # ABM propio de `/api/cajas`. Leer las cajas y llevar el turno propio es de quien tiene `caja.propia` (se elige la
     # caja al abrir turno); escribir en las cajas es `caja.admin` (sólo admin), lo dice `requiere_segun_metodo` y también
-    # `autorizar_escritura`. Los turnos ajenos los ve `turnos.todos` (`usuario_de_turnos`). Las sucursales se leen de
-    # `app.state.conn` en cada pedido: la app la reemplaza al restaurar un respaldo.
+    # `autorizar_escritura`. Los turnos ajenos los ve `turnos.todos` (`usuario_de_turnos`). Las sucursales se leen con una
+    # conexión propia en cada consulta (`PorLlamada`, ADR-089): los ganchos corren dentro del request de un router del
+    # motor, que tiene SU conexión, y no comparten la de nadie.
     def _sucursales() -> SucursalService:
-        return SucursalService(app.state.conn)
+        return PorLlamada(SucursalService, app.state.abrir_dominio)
 
     app.include_router(
         build_turnos_router(
@@ -930,10 +938,7 @@ def create_app(db_path: str) -> FastAPI:
     # endpoints del router -- incluido `POST /cerrar` -- por el `dependencies=` de este mismo
     # `include_router`. Con UNA excepción: `GET /turno/{id}/ticket` es el ticket que el POS imprime
     # al cerrar el turno propio, así que lo pide `caja.propia` (el cajero lo necesita).
-    # `resolver_sucursal_nombre` cierra sobre `app.state`
-    # (no sobre `conn`, la variable local) para seguir viendo la conexión
-    # correcta después de un restore de backup (`_reabrir_conexion` la
-    # reemplaza, no la muta).
+    # `resolver_sucursal_nombre` consulta con una conexión propia (`_sucursales`, ADR-089), no con la de arranque (`conn`).
     # `autorizar_reabrir` (LibraCore v1.107.0, "Reabrir día") SÍ se pasa:
     # reabrir un día ya cerrado es más sensible que cerrarlo, así que se le
     # exige la capacidad `cierre_diario.reabrir` (sólo admin) en vez de heredar la del
@@ -941,7 +946,7 @@ def create_app(db_path: str) -> FastAPI:
     def _resolver_sucursal_nombre(sucursal_id: int | None) -> str:
         if sucursal_id is None:
             return ""
-        sucursal = SucursalService(app.state.conn).get(sucursal_id)
+        sucursal = _sucursales().get(sucursal_id)
         return sucursal.name if sucursal else ""
 
     app.include_router(
@@ -1080,24 +1085,22 @@ def create_app(db_path: str) -> FastAPI:
     instancia = _instancia_de_respaldo(db_path, libracore_db_path, config_manager.LOGO_DIR)
 
     def _cerrar_conexion():
-        # El dominio es sqlite3 crudo con UNA conexion compartida por toda la
-        # app. Sin cerrarla, el restore reemplaza el archivo y el proceso sigue
-        # leyendo el inodo viejo — devuelve `ok` y no pasa nada.
+        # Cierra la conexión de arranque del proceso. Las de los requests en vuelo no hace falta cerrarlas: el intercambio
+        # de bases (`respaldo_postgres.intercambiar`) termina todas las de la base viva, y cada request abre la suya
+        # (ADR-089) -- un pedido que llega después ya conecta a la base restaurada, sin conexión vieja que renovar.
         app.state.conn.close()
 
     def _reabrir_conexion():
         # `db.connect()` corre el esquema sobre la base restaurada (el respaldo puede traer el modelo viejo) y abre una
-        # conexion de mas, que se descarta. La del proceso se RENUEVA EN EL LUGAR (`ConexionRenovable`) y no se
-        # reemplaza: `app.state.modules` y `app.state.auditoria` se construyeron UNA vez, al arrancar, con esta misma
-        # conexion, y reemplazarla los dejaba con la vieja, ya cerrada (un `/config/arca` despues de un restore daba 500).
-        # Los servicios toman `request.app.state.conn` en cada request, asi que tambien la ven.
+        # conexion de mas, que se descarta. La de arranque del proceso se RENUEVA EN EL LUGAR (`ConexionRenovable`) y no se
+        # reemplaza: es el mismo objeto que tienen en la mano los tests y el mantenimiento. `app.state.modules` y
+        # `app.state.auditoria` ya no guardan ninguna conexión (`PorLlamada`): abren la suya en cada consulta.
         nueva = db.connect(db_path)
         if isinstance(app.state.conn, ConexionRenovable):
             nueva.close()
             app.state.conn.renovar()
         else:
             app.state.conn = nueva
-            app.state.auditoria = ActividadRepository(nueva)
         auth_engine.dispose()
 
     # Una sola variable para los dos routers: el enlace con la nube deja su

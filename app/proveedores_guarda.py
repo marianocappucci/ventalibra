@@ -22,8 +22,10 @@ def no_eliminar_con_compras(request: Request) -> None:
     coincide = _BAJA.match(request.url.path)
     if not coincide:
         return
-    conn, proveedor_id = request.app.state.conn, int(coincide.group(1))
-    if tiene_compras(conn, proveedor_id):
-        raise HTTPException(409, "No se puede eliminar un proveedor con compras registradas.")
-    if es_proveedor_habitual(conn, proveedor_id):
-        raise HTTPException(409, "No se puede eliminar un proveedor que es el habitual de algún producto: soltalo primero en la reposición del producto.")
+    proveedor_id = int(coincide.group(1))
+    # Una conexión propia y sólo para la baja: la guarda cuelga de todo el router y casi todos sus pedidos no la necesitan.
+    with request.app.state.abrir_dominio() as conn:
+        if tiene_compras(conn, proveedor_id):
+            raise HTTPException(409, "No se puede eliminar un proveedor con compras registradas.")
+        if es_proveedor_habitual(conn, proveedor_id):
+            raise HTTPException(409, "No se puede eliminar un proveedor que es el habitual de algún producto: soltalo primero en la reposición del producto.")

@@ -3286,3 +3286,48 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
   clase sube a `libracore.db.core`.
 - Tests: `tests/test_varios_procesos.py` (uvicorn `--workers 2` de verdad, base vacía y base «como el deploy»; medido con 2 workers sobre base vacía: sin el arreglo 20 de 20 corridas rojas (18 con 2 sucursales, 2 con error en el log de arranque); con el arreglo 22 de 22 verdes. Sobre la base «como el deploy»: sin el arreglo 7 de 7 rojas (2 sucursales); con el arreglo 5 de 5 verdes),
   `tests/test_conexion_renovable.py` (mata la conexión con `pg_terminate_backend`; incluye el restore real por `POST /api/config/restore`).
+
+
+## ADR-089 — Una conexión del dominio por request, no una para toda la app
+
+- Estado: aceptada. Sin cambios de pines ni migración.
+- Fecha: 2026-10-18
+- Contexto: desde el 2026-10-17 la suite corre con **2 workers** de uvicorn (ADR-088). La app sostenía **una sola conexión del
+  dominio** (`app.state.conn`, `app/db.py::connect`) que leían todos los requests de un proceso, y FastAPI corre los endpoints `def` en un
+  threadpool: dos requests concurrentes del mismo worker escribían en **la misma transacción**. El `rollback()` de uno (el 409 de una unidad
+  repetida) deshacía el `INSERT` que el otro todavía no había confirmado, y el `commit()` de uno confirmaba lo que el otro dejó a medias.
+  `ConexionRenovable` (ADR-088) sólo cubría que el servidor matara la conexión, no que dos hilos la compartieran.
+- **Medido** (`tests/test_requests_concurrentes.py`, contra el código anterior): (1) la intercalación exacta —A inserta una categoría,
+  B revierte por una unidad repetida, A confirma— da **200 al request A y la categoría no está en la base**; (2) 8 hilos × 12 vueltas de
+  alta de categoría + unidad repetida + lectura: **66 o 67 de 96 vueltas dieron 500** (según la corrida) (`sqlite3.InternalError: current transaction is
+  aborted, commands ignored until end of transaction block`: el 409 de un hilo aborta la transacción de todos). Las lecturas solas
+  (`/catalog/categories`, `/catalog/units`, `/api/logs`, 6 hilos × 10) no fallaron: psycopg serializa los comandos de una conexión.
+- Qué ya existía (se miró antes): `libracore.db.core.get_connection()`/`conectar()` abren una conexión por llamada y el `ConnectionWrapper`
+  hace de `with` (confirma, o revierte si levantó, y cierra); es lo que usan **todos los routers del motor** (`conexion=lc_get_connection`,
+  ya dos tercios de las rutas de este producto) y los otros productos de la familia, que no tienen conexión única. No hay pool en el motor y
+  no se agregó uno. **El arreglo es de este producto y no del motor**: el motor ya ofrece la pieza.
+- Decisión:
+  - **`app.conexion.conexion_del_request`**, una dependencia de FastAPI: abre una conexión (`app.state.abrir_dominio`, que es
+    `conectar(db_path)`), la entrega, y al terminar el request **confirma si el endpoint volvió normal, revierte si levantó** (una
+    `HTTPException` incluida) y cierra. Los routers `catalog`, `settings` (balanza) y `ventas_extra` (ticket, devuelto) la piden con
+    `Depends`; los servicios que confirman por su cuenta siguen igual (el `commit()` final es la red). `app/proveedores_guarda.py` abre una
+    sola cuando el pedido es la baja de un proveedor (la guarda cuelga de todo el router).
+  - **`app.conexion.PorLlamada(clase, abrir)`** para lo que se consulta **sin request a mano**: abre una conexión por método llamado
+    (`with abrir() as conn: clase(conn).metodo(...)`). Lo usan `app.state.modules` (el gate de módulos que lee el motor en cada request),
+    `app.state.auditoria` (la pantalla de Logs) y `_sucursales()` (los ganchos de cajas, depósitos y sucursales de `app/cajas_ganchos.py` y
+    `app/depositos_ganchos.py`, y el cierre diario). Expone sólo los métodos públicos de la clase.
+  - **`app.state.conn` queda** como la conexión de **arranque y mantenimiento** (la siembra de `create_app`, el restore, y los tests, que la
+    usan para armar datos): **ningún request la toca**. `tests/test_ningun_request_usa_la_conexion_global.py` falla si un módulo de `app/`
+    (salvo `main.py` y `conexion.py`) vuelve a nombrarla.
+  - **Restore en caliente**: `_cerrar_conexion` cierra la de arranque y el intercambio de bases termina el resto; un request que llega
+    después abre su conexión contra la base restaurada, así que ya no hay conexión de request que renovar ni holder viejo
+    (`app.state.modules`/`auditoria`). `_reabrir_conexion` sigue renovando la de arranque en el lugar.
+- Qué NO cubre / costo:
+  - Cada consulta del gate de módulos abre una conexión: **~15 ms** medidos contra el PostgreSQL local (`conectar` + `SELECT 1` + cerrar;
+    un `SELECT` en una conexión abierta, 0,2 ms). Es el mismo costo que ya pagan los routers del motor por llamada; si pesa en producción, el
+    paso siguiente es un pool (psycopg_pool) en el motor y no una caché del gate, que hoy se relee en cada request a propósito.
+  - Un request en vuelo cuando se hace el intercambio de bases pierde su conexión (la termina el servidor): es lo de siempre.
+  - `app.state.conn` y `ConexionRenovable` siguen existiendo por los ~35 archivos de test que arman datos con ella; retirarlas es otro trabajo.
+- Tests: `tests/test_requests_concurrentes.py` (rojo sin el arreglo: la intercalación exacta y la carga; verde con él),
+  `tests/test_ningun_request_usa_la_conexion_global.py`, y `tests/test_conexion_renovable.py` adaptado (matar todas las conexiones de la
+  base y que el primer request no dé 500; el restore real por `POST /api/config/restore`).

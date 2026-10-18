@@ -4,12 +4,14 @@ Las tres son configuración que no se puede adivinar desde el código y que el
 dueño tiene que poder ajustar sin un redeploy: qué balanza usa el local, qué
 ancho de papel tiene la ticketeadora, y con qué cuenta de MercadoPago cobra.
 """
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from libracommerce.domain.scale import ScaleFormat, ScaleValueKind
 from libracommerce.web._validacion import sin_booleanos
 from libracore import config_manager
+from libracore.db.core import Conexion
 from pydantic import BaseModel
 
+from ..conexion import conexion_del_request
 from ..services.scale import ScaleService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -30,19 +32,19 @@ class ScaleFormatOut(ScaleFormatIn):
     pass
 
 
-def _service(request: Request) -> ScaleService:
-    return ScaleService(request.app.state.conn)
+def _service(conn: Conexion = Depends(conexion_del_request)) -> ScaleService:
+    return ScaleService(conn)
 
 
 @router.get("/scale", response_model=ScaleFormatOut | None)
-def get_scale(request: Request):
+def get_scale(service: ScaleService = Depends(_service)):
     """La configuracion vigente, o null si el local no usa balanza."""
-    fmt = _service(request).get_format()
+    fmt = service.get_format()
     return None if fmt is None else ScaleFormatOut(**_to_dict(fmt))
 
 
 @router.put("/scale", response_model=ScaleFormatOut)
-def set_scale(data: ScaleFormatIn, request: Request):
+def set_scale(data: ScaleFormatIn, service: ScaleService = Depends(_service)):
     try:
         fmt = ScaleFormat(
             prefix=data.prefix,
@@ -56,14 +58,14 @@ def set_scale(data: ScaleFormatIn, request: Request):
         # Un formato incoherente se rechaza al guardarlo: si entrara, cada
         # etiqueta de la balanza se leeria mal hasta que alguien lo note.
         raise HTTPException(422, str(exc))
-    _service(request).set_format(fmt)
+    service.set_format(fmt)
     return ScaleFormatOut(**_to_dict(fmt))
 
 
 @router.delete("/scale", status_code=204)
-def clear_scale(request: Request):
+def clear_scale(service: ScaleService = Depends(_service)):
     """Apaga la balanza: los codigos vuelven a leerse todos como comunes."""
-    _service(request).set_format(None)
+    service.set_format(None)
 
 
 class TicketConfigIn(BaseModel):

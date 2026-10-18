@@ -7,10 +7,12 @@ las activas.
 """
 import sqlite3
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from libracommerce.web._validacion import sin_booleanos
+from libracore.db.core import Conexion
 from pydantic import BaseModel
 
+from ..conexion import conexion_del_request
 from ..services.catalog import CatalogService, CategoryInvalido, CategoryNotFound
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -53,14 +55,14 @@ class UnitOut(BaseModel):
     decimal_scale: int
 
 
-def _service(request: Request) -> CatalogService:
-    return CatalogService(request.app.state.conn)
+def _service(conn: Conexion = Depends(conexion_del_request)) -> CatalogService:
+    return CatalogService(conn)
 
 
 @router.post("/categories", response_model=CategoryOut)
-def create_category(data: CategoryCreate, request: Request):
+def create_category(data: CategoryCreate, service: CatalogService = Depends(_service)):
     try:
-        category = _service(request).create_category(data.name, data.parent_id)
+        category = service.create_category(data.name, data.parent_id)
     except CategoryInvalido as exc:
         # nombre vacio o repetido entre categorias activas -- ver
         # _validar_category_name.
@@ -69,9 +71,9 @@ def create_category(data: CategoryCreate, request: Request):
 
 
 @router.put("/categories/{category_id}", response_model=CategoryOut)
-def update_category(category_id: int, data: CategoryUpdate, request: Request):
+def update_category(category_id: int, data: CategoryUpdate, service: CatalogService = Depends(_service)):
     try:
-        category = _service(request).update_category(category_id, name=data.name, active=data.active)
+        category = service.update_category(category_id, name=data.name, active=data.active)
     except CategoryNotFound:
         raise HTTPException(404, "category not found")
     except CategoryInvalido as exc:
@@ -81,17 +83,17 @@ def update_category(category_id: int, data: CategoryUpdate, request: Request):
 
 
 @router.get("/categories", response_model=list[CategoryOut])
-def list_categories(request: Request):
+def list_categories(service: CatalogService = Depends(_service)):
     return [
         CategoryOut(id=c.id, name=c.name, parent_id=c.parent_id, active=c.active)
-        for c in _service(request).list_categories()
+        for c in service.list_categories()
     ]
 
 
 @router.post("/units", response_model=UnitOut)
-def create_unit(data: UnitCreate, request: Request):
+def create_unit(data: UnitCreate, service: CatalogService = Depends(_service)):
     try:
-        unit = _service(request).create_unit(data.code, data.name, data.allows_fraction, data.decimal_scale)
+        unit = service.create_unit(data.code, data.name, data.allows_fraction, data.decimal_scale)
     except sqlite3.IntegrityError:
         # UNIQUE(code). A diferencia de los otros 409 de este router el
         # mensaje no es el de sqlite: "units.code" no le dice nada a quien
@@ -101,5 +103,5 @@ def create_unit(data: UnitCreate, request: Request):
 
 
 @router.get("/units", response_model=list[UnitOut])
-def list_units(request: Request):
-    return [UnitOut(**u.__dict__) for u in _service(request).list_units()]
+def list_units(service: CatalogService = Depends(_service)):
+    return [UnitOut(**u.__dict__) for u in service.list_units()]
