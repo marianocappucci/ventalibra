@@ -45,8 +45,8 @@ from .services.sucursales import SucursalService
 #: El medio de pago que marca una venta a crédito: no es plata que entra en la caja.
 MEDIO_CUENTA_CORRIENTE = "cuenta_corriente"
 
-#: Cómo se llega al `SucursalService` de la conexión del dominio. Un callable y no la conexión: la app la
-#: reemplaza al restaurar un respaldo (`app.state.conn`), así que se lee en cada pedido.
+#: Cómo se llega al `SucursalService` del dominio. Un callable y no el servicio: cada consulta abre su propia conexión
+#: (`app.conexion.PorLlamada`, ADR-089), así que dos requests no comparten transacción.
 Sucursales = Callable[[], SucursalService]
 
 

@@ -12,7 +12,7 @@ sólo se evita que UN MISMO usuario tenga dos turnos.
 Las sucursales son los `Location` de LibraCommerce, en la base del DOMINIO —
 `cajas.sucursal_id` es un entero sin FK (dos bases distintas, ver
 `app/services/sucursales.py`). La validación "existe y está activa" la hace el
-router, que sí tiene la conexión del dominio a mano (`request.app.state.conn`).
+router, que sí tiene la conexión del dominio a mano (`app.conexion.PorLlamada`, ADR-089).
 """
 from __future__ import annotations
 
