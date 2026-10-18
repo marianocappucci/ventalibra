@@ -47,9 +47,11 @@ Una lectura nueva de F4 (no reemplaza nada de `/sales`, que nunca la tuvo):
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from libracommerce.erp import promociones as promos
 from libracore.db import clients as db_clients
+from libracore.db.core import Conexion
 from pydantic import BaseModel
 
 from ..auth import get_current_user
+from ..conexion import conexion_del_request
 from ..modules_gate import get_module_repository
 from ..services import mp_qr
 from ..services.sales import SaleNotFound, SaleService
@@ -58,12 +60,12 @@ from ..services.tickets import ticket_de_venta
 router = APIRouter(tags=["ventas"])
 
 
-def _service(request: Request) -> SaleService:
-    return SaleService(request.app.state.conn)
+def _service(conn: Conexion = Depends(conexion_del_request)) -> SaleService:
+    return SaleService(conn)
 
 
 @router.get("/ventas/{sale_id}/ticket")
-def ticket(sale_id: int, request: Request):
+def ticket(sale_id: int, conn: Conexion = Depends(conexion_del_request), service: SaleService = Depends(_service)):
     """PDF del ticket térmico de una venta confirmada. Lectura, sin cambios
     de comportamiento desde antes de F3 -- sólo cambió de ruta.
 
@@ -72,7 +74,7 @@ def ticket(sale_id: int, request: Request):
     comprobante que miente.
     """
     try:
-        sale = _service(request).get(sale_id)
+        sale = service.get(sale_id)
     except SaleNotFound:
         raise HTTPException(404, "sale not found")
     if sale.status != "confirmed":
@@ -84,7 +86,7 @@ def ticket(sale_id: int, request: Request):
         nombre = (cliente or {}).get("name", "")
 
     # Qué promociones se aplicaron a esta venta (`sale_promotions`): el ticket las imprime una por fila.
-    promociones = promos.promociones_de_venta(request.app.state.conn, sale_id)
+    promociones = promos.promociones_de_venta(conn, sale_id)
     pdf = ticket_de_venta(sale, nombre, promociones)
     return Response(
         content=pdf,
@@ -129,8 +131,7 @@ class DevueltoOut(BaseModel):
 
 
 @router.get("/ventas/{sale_id}/devuelto", response_model=DevueltoOut)
-def devuelto(sale_id: int, request: Request):
-    conn = request.app.state.conn
+def devuelto(sale_id: int, conn: Conexion = Depends(conexion_del_request)):
     por_clave = conn.execute(
         """SELECT item_id, variant_id, SUM(quantity_delta) AS cantidad
              FROM stock_movements

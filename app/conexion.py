@@ -1,8 +1,19 @@
-"""Que un dato repetido no deje la app sin poder escribir.
+"""La conexión del dominio: una por request, y lo que queda de la única de arranque.
 
-🔴 **El defecto que este modulo cierra.** Este producto sostiene **una sola
-conexion para toda la app** (`app.state.conn`, sin pool, abierta al arrancar y
-nunca cerrada — es su diseño, heredado de SQLite). Contra PostgreSQL un error
+🔴 **Una conexión por request (ADR-089).** Hasta ADR-089 este producto sostenía **una sola conexión para toda la app**
+(`app.state.conn`, sin pool, abierta al arrancar —su diseño, heredado de SQLite—) y todos los requests de un proceso la
+compartían: FastAPI corre los endpoints `def` en un threadpool, así que dos requests concurrentes escribían en la MISMA
+transacción (el `rollback()` de uno deshacía el `INSERT` del otro, el `commit()` de uno confirmaba lo que el otro dejó a
+medias). Ahora `conexion_del_request` abre una por request y `PorLlamada` abre una por consulta a quien no tiene request
+(el gate de módulos, los ganchos del motor, el log); `app.state.conn` queda sólo para el arranque y el mantenimiento
+(restore, tests): **ningún request la toca** (`tests/test_ningun_request_usa_la_conexion_global.py`). Es la forma del resto
+de la familia: `libracore.db.core.get_connection()` abre, `with` confirma o revierte y cierra.
+
+Lo que sigue es del modelo anterior y se queda mientras exista `app.state.conn`.
+
+## Que un dato repetido no deje la app sin poder escribir
+
+🔴 **El defecto que cierra `conexion_utilizable`.** Contra PostgreSQL un error
 **aborta la transaccion**, y toda consulta posterior sobre esa conexion muere
 con *"current transaction is aborted, commands ignored until end of transaction
 block"*.
@@ -36,12 +47,62 @@ import contextlib
 import re
 import sqlite3
 import threading
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 
 import psycopg
+from fastapi import Request
 from libracore.db import core
 from libracore.db._postgres import ConnectionWrapper, Cursor
+from libracore.db.core import Conexion
 from psycopg.rows import tuple_row
+
+#: Cómo se abre una conexión nueva del dominio: lo que `create_app` deja en `app.state.abrir_dominio`. El objeto que
+#: devuelve es el de la familia (`ConnectionWrapper`): `with` confirma si todo salió bien, revierte si no, y cierra.
+Abrir = Callable[[], AbstractContextManager[Conexion]]
+
+
+def conexion_del_request(request: Request) -> Iterator[Conexion]:
+    """Dependencia de FastAPI: **la conexión de este request**, que nadie más usa.
+
+    La abre `app.state.abrir_dominio` y se cierra al terminar el request: se confirma si el endpoint volvió normal y se
+    revierte si levantó (una `HTTPException` incluida: un 409 no deja a medias lo que escribió antes de decidirlo). Es la
+    transacción del request, de punta a punta, y por eso un request no puede deshacer ni confirmar lo del otro. Los
+    servicios que confirman por su cuenta (`CatalogService`) siguen haciéndolo: el `commit()` final es sólo la red.
+
+    Se usa con `Depends(conexion_del_request)`; FastAPI la comparte entre todas las dependencias del mismo request.
+    """
+    with request.app.state.abrir_dominio() as conn:
+        yield conn
+
+
+class PorLlamada:
+    """Un repositorio o servicio que **abre su propia conexión en cada llamada** y la cierra al volver.
+
+    Es para lo que se consulta sin tener un request a mano: el gate de módulos (`app.state.modules`, que lee el motor en
+    cada request), el log (`app.state.auditoria`) y los ganchos de sucursales que reciben los routers del motor. Antes
+    guardaban la conexión única de la app; ahora cada método es `with abrir() as conn: clase(conn).metodo(...)`, el mismo
+    gesto que hacen los routers del motor (`with conexion() as conn`). Lo que devuelve el método ya está leído cuando la
+    conexión se cierra: ninguno de estos servicios devuelve un cursor.
+
+    Sólo expone los **métodos públicos** de `clase`: un atributo que no es un método (o uno privado) levanta
+    `AttributeError`, como el objeto real, en lugar de abrir una conexión para nada.
+    """
+
+    def __init__(self, clase: Callable[[Conexion], object], abrir: Abrir):
+        self._clase = clase
+        self._abrir = abrir
+
+    def __getattr__(self, nombre: str):
+        if nombre.startswith("_") or not callable(getattr(self._clase, nombre, None)):
+            raise AttributeError(nombre)
+
+        def llamar(*args, **kwargs):
+            with self._abrir() as conn:
+                return getattr(self._clase(conn), nombre)(*args, **kwargs)
+
+        llamar.__name__ = nombre
+        return llamar
 
 
 @contextmanager

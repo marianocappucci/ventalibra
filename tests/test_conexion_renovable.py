@@ -1,9 +1,10 @@
-"""La conexión única del dominio sobrevive a que el servidor la mate (libracore ADR-044, varios workers).
+"""La conexión de arranque del dominio sobrevive a que el servidor la mate (libracore ADR-044, varios workers).
 
 Con `uvicorn --workers N`, un restore en caliente lo atiende UN worker; el intercambio de bases termina las conexiones de
 la base viva, y la conexión de cada uno de los otros (`app.state.conn`, sin pool) queda muerta. Sin `ConexionRenovable`
-cada request que la toca daba 500 hasta que alguien reiniciaba el contenedor. Estos tests matan la conexión con
-`pg_terminate_backend` —lo mismo que hace el intercambio— y miran que el worker se recupere solo.
+cada request que la tocaba daba 500 hasta que alguien reiniciaba el contenedor. Desde ADR-089 los requests ya no la usan
+(cada uno abre la suya), y `ConexionRenovable` queda para la conexión de arranque y el mantenimiento. Estos tests matan la
+conexión con `pg_terminate_backend` —lo mismo que hace el intercambio— y miran que el worker se recupere solo.
 """
 import io
 import sqlite3
@@ -50,18 +51,39 @@ def _filas(conn) -> int:
     return conn.execute("SELECT count(*) FROM prueba_renovable").fetchone()[0]
 
 
-def test_el_worker_que_no_atendio_el_restore_se_recupera_solo(admin_client):
-    """El caso real: la conexión de la app murió y el PRIMER request de después no se entera (ni da 500)."""
-    app = admin_client.app
-    vieja = _pid(app.state.conn)
-    _matar(vieja)
+def _matar_todas_las_demas() -> None:
+    """Lo que hace el intercambio de un restore: termina TODAS las conexiones de la base viva (menos la que lo hace)."""
+    with psycopg.connect(_cruda(), autocommit=True) as otra:
+        pids = [
+            fila[0] for fila in otra.execute(
+                "SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            ).fetchall()
+        ]
+        for pid in pids:
+            otra.execute("SELECT pg_terminate_backend(%s)", (pid,))
+        limite = time.monotonic() + 10
+        while otra.execute(
+            "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND pid = ANY(%s)", (pids,)
+        ).fetchone():
+            assert time.monotonic() < limite, "el servidor no terminó las conexiones"
+            time.sleep(0.05)
 
-    respuesta = admin_client.get("/catalog/categories")   # `CatalogService(request.app.state.conn)`
+
+def test_el_worker_que_no_atendio_el_restore_se_recupera_solo(admin_client):
+    """El caso real: las conexiones de la app murieron y el PRIMER request de después no se entera (ni da 500).
+
+    Desde ADR-089 cada request abre la suya, así que no hay conexión de request que renovar: la de arranque
+    (`app.state.conn`) muere y no la usa nadie."""
+    app = admin_client.app
+    _matar_todas_las_demas()
+
+    respuesta = admin_client.get("/catalog/categories")   # su conexión es nueva (`conexion_del_request`)
 
     assert respuesta.status_code == 200, respuesta.text
-    assert _pid(app.state.conn) != vieja
-    # `app.state.modules` guarda la MISMA conexión (se construyó una vez, al arrancar): también quedó viva.
+    # `app.state.modules` (el gate) abre una por consulta: tampoco guarda ninguna que se pueda morir.
     assert app.state.modules.is_enabled("facturacion") in (True, False)
+    # Y la de arranque, que ningún request toca, sigue renovándose sola para el mantenimiento y los tests.
+    assert app.state.conn.execute("SELECT 1").fetchone()[0] == 1
 
 
 def test_con_solo_lecturas_pendientes_el_statement_se_reintenta_sin_duplicar(conn):
@@ -121,7 +143,7 @@ def test_un_commit_sobre_una_conexion_muerta_levanta_y_no_finge_haber_confirmado
 
 
 def test_una_conexion_cerrada_a_mano_no_se_reabre_sola_pero_renovar_la_reabre_en_el_lugar(conn):
-    modulos = ModuleRepository(conn)              # guarda la conexión, como `app.state.modules`
+    modulos = ModuleRepository(conn)              # guarda la conexión, como lo hacía `app.state.modules` antes de ADR-089
     conn.close()
 
     with pytest.raises(Exception):  # noqa: B017 - un pedido a mitad del restore no se cuela
@@ -150,8 +172,8 @@ def test_un_error_comun_no_renueva_la_conexion(conn):
 
 
 def test_el_restore_en_caliente_deja_viva_la_app(admin_client, monkeypatch):
-    """El restore de verdad (`POST /api/config/restore`): `_reabrir_conexion` renueva la conexión en el lugar, y
-    `app.state.modules` —que la guardó al arrancar— no queda con la vieja, ya cerrada (un `/config/arca` daba 500)."""
+    """El restore de verdad (`POST /api/config/restore`): `_reabrir_conexion` renueva la conexión de arranque en el lugar, y
+    los requests de después (gate de módulos, log) abren la suya contra la base restaurada (un `/config/arca` daba 500)."""
     for variable in ("VENTALIBRA_DATABASE_URL", "VENTALIBRA_LIBRACORE_DATABASE_URL", "VENTALIBRA_DB_PATH"):
         monkeypatch.setenv(variable, TEST_DATABASE_URL)       # las migraciones del restore buscan la base por variable
     bajada = admin_client.get("/api/config/backup-ahora")
@@ -165,5 +187,5 @@ def test_el_restore_en_caliente_deja_viva_la_app(admin_client, monkeypatch):
 
     assert restaurado.status_code == 200, restaurado.text
     assert app.state.conn is antes
-    assert admin_client.get("/config/arca").status_code == 200   # gate `require_module("facturacion")` -> app.state.modules
+    assert admin_client.get("/config/arca").status_code == 200   # gate `require_module("facturacion")` -> app.state.modules (PorLlamada)
     assert admin_client.get("/api/logs").status_code == 200       # app.state.auditoria
