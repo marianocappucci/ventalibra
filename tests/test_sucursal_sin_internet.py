@@ -37,6 +37,8 @@ def test_el_admin_ve_el_estado_del_producto(admin_client):
     assert datos["central_url"] == "https://demo.ventalibra.com.ar"
     assert datos["contratado"] is False  # el adicional `offline` no viene en el plan único
     assert datos["nodos"] == []
+    # El menú (libra-ui ADR-080): sin el adicional ni nodos activos, la entrada no se ve.
+    assert admin_client.get(f"{RUTA}/menu").json() == {"contratado": False, "nodos_activos": 0, "visible": False}
     assert any(s["activa"] for s in datos["sucursales"])
 
 
