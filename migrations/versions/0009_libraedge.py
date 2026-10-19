@@ -36,9 +36,8 @@ def upgrade():
 
 
 def downgrade():
-    # Bajar esta revisión es tirar el outbox: las operaciones que un nodo generó durante un corte y todavía no confirmó
-    # no están en ningún otro lado.
-    raise NotImplementedError(
-        "No se baja: el outbox puede tener operaciones sin sincronizar, que no existen en ninguna otra parte. "
-        "Para volver atrás, restaurar el backup."
-    )
+    # 🔴 Bajar esta revisión NO borra las tablas: el outbox puede tener operaciones que un nodo generó durante un corte y
+    # todavía no confirmó, y no están en ningún otro lado. Las tablas quedan y volver a subir es idempotente (`CREATE
+    # TABLE IF NOT EXISTS`). No levanta, a diferencia de `0003_libraedge` de Restolibra: la cadena tiene que poder bajar
+    # por debajo de esta revisión para deshacer las anteriores (`tests/test_created_at_hora_ar.py` baja hasta la `0001`).
+    pass

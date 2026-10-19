@@ -3372,7 +3372,9 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
   6. **Adicional `offline`** en `plans.ADICIONALES` (por sucursal, a cotizar, límite `sucursales_offline`, módulo
      `offline` fuera de `ADDONS`), igual que RestoLibra; el router de adicionales lo mide con `sucursales_con_nodo`.
   7. **Tablas de LibraEdge en toda instancia**: `db.connect()` y la revisión `0009_libraedge` llaman a las mismas dos
-     funciones del paquete (`init_schema` e `init_changelog_schema`); `test_schema_propio_congelado` compara las dos.
+     funciones del paquete (`init_schema` e `init_changelog_schema`); `test_schema_propio_congelado` compara las dos. Bajar
+     la revisión no borra nada (el outbox puede tener operaciones sin subir) y no levanta, para que la cadena pueda bajar
+     por debajo de ella.
 - **Tablas de referencia** (el reparto de autoridad: el central manda y el nodo espeja; el nodo agrega ventas y las sube).
   Se relevó qué lee el POS y lo que necesita una venta, un cobro y una factura en el nodo:
   - `usuarios` y `aceptaciones_terminos`: la sesión del nodo y el gate de Términos de libraauth (sin la aceptación
