@@ -79,6 +79,15 @@ def connect(db_path: str):
         from app.schema_propio import init_schema_propio
 
         init_schema_propio(conn)
+        # Las tablas del nodo offline (LibraEdge, ADR-090). Van acá **y** en la revisión `0009_libraedge`, que llama a
+        # estas mismas dos funciones: el trato de `tests/test_schema_propio_congelado.py` es que el arranque y la cadena
+        # dejen el MISMO schema. Se crean en toda instancia, sea nodo o no: el central las necesita igual
+        # (`node_identity` para autenticar a los nodos, `sync_inbox` para deduplicar, `sync_changelog` para la bajada).
+        from libraedge.db.changelog import init_changelog_schema
+        from libraedge.db.schema import init_schema as init_edge_schema
+
+        init_edge_schema(conn)
+        init_changelog_schema(conn)
         # La grafia vieja de MercadoPago (`mercado_pago`) que este POS escribio
         # desde siempre, pasada a la canonica de la familia. Va DESPUES de crear el
         # schema —necesita las tablas— y en cada arranque, no una sola vez: ver el

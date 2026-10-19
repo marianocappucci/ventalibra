@@ -166,8 +166,9 @@ jobs:
       # verifica libraauth: libracore y libracommerce, que son justo los que
       # llevan extras, no matchean y pasan sin mirarse (medido el 2026-09-11).
       # Por eso tambien el control: TODA dependencia `git+` tiene que haber
-      # matcheado, y los tres motores tienen que estar. Un verde con cero pines
-      # leidos no prueba nada.
+      # matcheado, y los cuatro motores tienen que estar. Un verde con cero pines
+      # leidos no prueba nada. libraedge (el nodo offline, ADR-090) es publico:
+      # no lleva deploy key, pero su pin se verifica igual.
       - name: Verify installed engine versions match the pins
         if: steps.cambios.outputs.backend == 'true'
         run: |
@@ -187,7 +188,7 @@ jobs:
           if sin_leer:
               print("::error::Dependencias git+ que este paso no sabe leer:", sin_leer)
               sys.exit(1)
-          faltan = {"libracore", "libracommerce", "libraauth"} - pins.keys()
+          faltan = {"libracore", "libracommerce", "libraauth", "libraedge"} - pins.keys()
           if faltan:
               print(f"::error::No se encontro el pin de {sorted(faltan)} en pyproject.toml")
               sys.exit(1)

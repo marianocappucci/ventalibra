@@ -110,6 +110,14 @@ POST   /catalog/units                                                   ADMIN
 GET    /ventas/{sale_id}/ticket                                         MOSTRADOR
 GET    /pos/mp-estado                                                   MOSTRADOR
 GET    /ventas/{sale_id}/devuelto                                       MOSTRADOR
+# Nodo offline (ADR-090): la conexión del nodo y su bandeja de comprobantes pendientes, con el gate del cobro
+GET    /api/nodo/conexion                                               MOSTRADOR
+POST   /api/nodo/facturar-pendientes                                    MOSTRADOR
+# La sincronización de LibraEdge: no la decide el rol, la autentica el secreto del nodo (401 sin él; ver
+# `test_libraedge_de_punta_a_punta.py`)
+POST   /sync/v1/push                                                    PUBLICA
+GET    /sync/v1/pull                                                    PUBLICA
+POST   /sync/v1/ticket-arca                                             PUBLICA
 GET    /api/ventas/medios-pago                                          MOSTRADOR
 GET    /api/ventas                                                      MOSTRADOR
 POST   /api/ventas                                                      MOSTRADOR

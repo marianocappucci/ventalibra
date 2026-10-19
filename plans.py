@@ -111,6 +111,14 @@ ADICIONALES = {
         "label": "Sucursales adicionales", "precio": 19950, "unidad": "sucursal", "incluidas": {"unico": 1}, "limite": "sucursales",
     },
     "resguardo_externo": {"label": "Resguardo externo", "precio": None},
+    # El modulo offline (LibraEdge, ADR-090) se cobra POR SUCURSAL CON OFFLINE y se contrata desde el plan unico. La unidad es la sucursal; el
+    # limite que se hace cumplir es la cantidad de sucursales DISTINTAS con al menos un nodo activo (`node_identity.branch_id`): varios nodos en
+    # la misma sucursal no suman. Sin precio fijado: «a cotizar» (`precio=None`), como en Restolibra. El modulo `offline` vive en `modulos`
+    # (`plan="addon"`, apagado mientras no se contrate: sin fila no se registra ningun nodo) y la cantidad en `config.json` ->
+    # `adicionales.offline`. Lo hace cumplir `libraedge-central nodo registrar` (`app/offline.py`).
+    "offline": {
+        "label": "Modo offline (LibraEdge)", "precio": None, "modulos": {"offline"}, "unidad": "sucursal", "limite": "sucursales_offline",
+    },
 }
 
 
