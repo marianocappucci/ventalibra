@@ -109,6 +109,12 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
       { to: '/logs', label: 'Logs', icon: ICONOS.logDeActividad, hideFor: sinCapacidad('logs') },
       // ARCA, Balanza, Ticket, datos de empresa, correo y backup: secciones de una sola pantalla.
       { to: '/configuracion', label: 'Configuración', icon: ICONOS.configuracion, hideFor: sinCapacidad('config') },
+      // LibraEdge (libra-ui ADR-080): el nodo de cada sucursal. Del admin, y se ve con el adicional `offline` contratado o mientras
+      // queden nodos activos (para poder darlos de baja); lo decide el kit con una consulta por página. El backend corta igual.
+      {
+        to: '/sucursal-sin-internet', label: 'Sucursal sin internet', icon: ICONOS.sucursalSinInternet,
+        hideFor: sinCapacidad('sucursales.admin'), nodosOffline: true,
+      },
     ],
   },
 ]

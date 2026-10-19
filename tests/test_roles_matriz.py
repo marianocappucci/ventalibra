@@ -156,6 +156,12 @@ PUT    /api/limites/sucursales                                          SOLO_SER
 # Adicionales fuera de la escalera (ADR-082): mismas guardas que las sucursales contratadas (el router nuevo las generaliza)
 GET    /api/adicionales                                                 ADMIN
 PUT    /api/adicionales/{clave}                                         SOLO_SERVICIO
+# «Sucursal sin internet» (libraedge ADR-011): alta, carga y baja de nodos de LibraEdge, sólo admin (`sucursales.admin`)
+GET    /api/nodos-offline                                               ADMIN
+GET    /api/nodos-offline/menu                                          ADMIN
+POST   /api/nodos-offline                                               ADMIN
+POST   /api/nodos-offline/{node_id}/carga                               ADMIN
+DELETE /api/nodos-offline/{node_id}                                     ADMIN
 GET    /api/depositos                                                   TODOS
 POST   /api/depositos                                                   ADMIN
 PUT    /api/depositos/{did}                                             ADMIN
@@ -388,6 +394,10 @@ OPCIONALES_PUBLICAS = {("GET", "/auth/demo"), ("POST", "/auth/demo")}
 NO_EJECUTAR = {
     ("POST", "/api/config/backups"),
     ("GET", "/api/config/backup-ahora"),
+    # Emiten el secreto de un nodo o lo dan de baja: que el admin pase lo prueban los tests de la costura.
+    ("POST", "/api/nodos-offline"),
+    ("POST", "/api/nodos-offline/{node_id}/carga"),
+    ("DELETE", "/api/nodos-offline/{node_id}"),
 }
 
 

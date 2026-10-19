@@ -88,6 +88,7 @@ from libracore.smtp_router import build_smtp_probe_router
 from libracore.tema_router import build_tema_admin_router, build_tema_router
 from libracore.tesoreria_router import build_tesoreria_router
 from libracore.ventas_cobro_router import build_cobro_de_ventas_router, build_facturacion_del_nodo_router
+from libraedge.pantalla_del_central import create_nodos_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -122,6 +123,7 @@ from .depositos_ganchos import (
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .offline import OUTBOX, sucursales_con_nodo
+from .offline import aprovisionamiento as aprovisionamiento_offline
 from .permisos import (
     ENCARGADO,
     ROLES,
@@ -458,6 +460,15 @@ def create_app(db_path: str) -> FastAPI:
     # Se monta siempre: sin un nodo registrado no hay ningún secreto válido y todo contesta 401. La autenticación es el
     # secreto del nodo, no la sesión: por eso no lleva ningún `requiere(...)`.
     app.include_router(sincronizacion_offline.router)
+    # «Sucursal sin internet» (libraedge ADR-011, libra-ui ADR-080): el admin da de alta el nodo de una sucursal y descarga su
+    # carga (`carga-nodo-….json`, con el secreto del nodo: sólo viaja como adjunto de ese POST), ve los nodos y los da de baja.
+    # Toda la lógica es de LibraEdge (las mismas funciones que `libraedge-central nodo registrar --carga`); acá sólo la guarda
+    # (`sucursales.admin`: cambia la estructura de la instancia, sólo admin) y el aprovisionamiento de `app/offline.py`. El
+    # adicional `offline` lo hace cumplir el alta.
+    app.include_router(
+        create_nodos_router(aprovisionamiento_offline, lc_get_connection),
+        dependencies=[Depends(requiere("sucursales.admin"))],
+    )
     app.include_router(auth_router.router)
     # `GET`/`PUT`/`DELETE /admin/smtp`. El router exige rol admin por dentro:
     # quien pueda escribir ahí puede redirigir a dónde salen los enlaces de
