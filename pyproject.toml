@@ -311,7 +311,8 @@ dependencies = [
     # extra, como en Restolibra: el central monta `/sync/v1/*` (push, pull y el ticket de ARCA prestado) aunque no tenga
     # nodos, y las tablas de LibraEdge se crean en toda instancia (migracion `0009_libraedge`). El repo es publico: no hace
     # falta deploy key ni en el CI ni en el build del VPS. La costura es `app/offline.py` (ADR-090).
-    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.9.0",
+    # v0.9.0 -> v0.10.0 (2026-10-19): instalador del nodo por producto (E7, ADR-010) y `nodo registrar --carga`. Sin migracion.
+    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.10.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
