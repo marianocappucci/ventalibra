@@ -13,6 +13,8 @@ import { createContext, useContext } from 'react'
 export const MULTISUCURSAL = 'multisucursal'
 /** Facturación electrónica ARCA (incluida en el plan único). */
 export const FACTURACION = 'facturacion'
+/** El adicional de LibraEdge por sucursal (ADR-090): «Sucursal sin internet». NO viene en el plan único. */
+export const OFFLINE = 'offline'
 
 /** La lista de módulos habilitados del usuario, o `undefined` si el backend no la mandó. */
 export function modulosDe(user: unknown): string[] | undefined {

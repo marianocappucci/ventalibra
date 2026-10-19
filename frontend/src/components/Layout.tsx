@@ -9,6 +9,7 @@ import { INDICADORES } from 'libra-ui/iconos-indicador'
 import { createLayout, type NavSection } from 'libra-ui/Layout'
 import { WORDMARK } from '@/branding'
 import { sinCapacidad } from '@/lib/permisos'
+import { modulosDe, OFFLINE, tieneModulo } from '@/lib/modulos'
 
 const NAV_SECCIONES: NavSection<unknown>[] = [
   { items: [{ to: '/dashboard', label: 'Dashboard', icon: ICONOS.dashboard, hideFor: sinCapacidad('dashboard') }] },
@@ -109,6 +110,11 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
       { to: '/logs', label: 'Logs', icon: ICONOS.logDeActividad, hideFor: sinCapacidad('logs') },
       // ARCA, Balanza, Ticket, datos de empresa, correo y backup: secciones de una sola pantalla.
       { to: '/configuracion', label: 'Configuración', icon: ICONOS.configuracion, hideFor: sinCapacidad('config') },
+      // LibraEdge (libra-ui ADR-080): el nodo de cada sucursal. Del admin y sólo con el adicional `offline`; el backend corta igual.
+      {
+        to: '/sucursal-sin-internet', label: 'Sucursal sin internet', icon: ICONOS.sucursalSinInternet,
+        hideFor: (u) => sinCapacidad('sucursales.admin')(u) || !tieneModulo(modulosDe(u), OFFLINE),
+      },
     ],
   },
 ]
