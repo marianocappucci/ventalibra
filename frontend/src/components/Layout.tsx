@@ -137,4 +137,7 @@ export const Layout = createLayout({
   navSections: NAV_SECCIONES,
   // El nombre del negocio, debajo de «VentaLibra» (viene de Configuración > Datos de empresa, vía `/auth/me`).
   getUserSubtitle: (u) => (u as { empresa_nombre?: string }).empresa_nombre,
+  // Nodo offline de LibraEdge (libra-ui ADR-077, ADR-090 de este producto): el cartel «sin conexión» arriba del contenido,
+  // que consulta `GET /api/nodo/conexion`. Fuera de un nodo el backend contesta `es_nodo: false` y no se muestra nada.
+  conexionDelNodo: true,
 })

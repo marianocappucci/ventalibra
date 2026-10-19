@@ -50,6 +50,7 @@ from libracore.db import clients as db_clients
 from libracore.db.core import Conexion
 from pydantic import BaseModel
 
+from .. import offline, venta_facturacion
 from ..auth import get_current_user
 from ..conexion import conexion_del_request
 from ..modules_gate import get_module_repository
@@ -87,7 +88,10 @@ def ticket(sale_id: int, conn: Conexion = Depends(conexion_del_request), service
 
     # Qué promociones se aplicaron a esta venta (`sale_promotions`): el ticket las imprime una por fila.
     promociones = promos.promociones_de_venta(conn, sale_id)
-    pdf = ticket_de_venta(sale, nombre, promociones)
+    # En un nodo offline sin conexión la factura queda en la bandeja y sale al volver: el ticket lo dice («NO VÁLIDO
+    # COMO FACTURA», libracore ADR-074; ADR-090). Fuera de un nodo no consulta nada.
+    factura_pendiente = venta_facturacion.pendiente_de_facturar(sale_id) is not None
+    pdf = ticket_de_venta(sale, nombre, promociones, factura_pendiente=factura_pendiente)
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -106,9 +110,13 @@ class MpDisponible(BaseModel):
 @router.get("/pos/mp-estado", response_model=MpDisponible)
 def mp_disponible(request: Request, user: dict = Depends(get_current_user)):
     """Si este mostrador puede cobrar por QR, y si eso factura solo. Lo
-    pregunta el POS al abrir la pantalla, una sola vez."""
+    pregunta el POS al abrir la pantalla, una sola vez.
+
+    En un nodo offline sin conexión el QR no está disponible (libracore
+    ADR-074, ADR-090): `POST /api/ventas/{id}/mp-qr` contesta 409
+    `sin_conexion`, y acá se dice antes para que el POS no lo ofrezca."""
     return MpDisponible(
-        disponible=mp_qr.esta_configurado(user.get("id")),
+        disponible=mp_qr.esta_configurado(user.get("id")) and not offline.CONEXION.sin_conexion(),
         auto_facturar=mp_qr.auto_facturar_prendida()
         and get_module_repository(request).is_enabled("facturacion"),
     )

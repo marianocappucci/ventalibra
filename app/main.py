@@ -87,7 +87,7 @@ from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
 from libracore.tema_router import build_tema_admin_router, build_tema_router
 from libracore.tesoreria_router import build_tesoreria_router
-from libracore.ventas_cobro_router import build_cobro_de_ventas_router
+from libracore.ventas_cobro_router import build_cobro_de_ventas_router, build_facturacion_del_nodo_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -121,6 +121,7 @@ from .depositos_ganchos import (
 )
 from .ganchos import GANCHOS
 from .modules_gate import require_module
+from .offline import OUTBOX, sucursales_con_nodo
 from .permisos import (
     ENCARGADO,
     ROLES,
@@ -137,11 +138,13 @@ from .routers import auth as auth_router
 from .routers import (
     catalog,
     health,
+    sincronizacion_offline,
     ventas_extra,
 )
 from .routers import (
     settings as settings_router,
 )
+from .routers.detalle_de_venta import build_detalle_con_factura_pendiente
 from .services import billing
 from .services import cajas as cajas_service
 from .services.modules import ModuleRepository
@@ -451,6 +454,10 @@ def create_app(db_path: str) -> FastAPI:
     instalar_registro_de_errores(app, "ventalibra")
 
     app.include_router(health.router)
+    # La sincronización del nodo offline (LibraEdge, ADR-090): `/sync/v1/push`, `/sync/v1/pull` y `/sync/v1/ticket-arca`.
+    # Se monta siempre: sin un nodo registrado no hay ningún secreto válido y todo contesta 401. La autenticación es el
+    # secreto del nodo, no la sesión: por eso no lleva ningún `requiere(...)`.
+    app.include_router(sincronizacion_offline.router)
     app.include_router(auth_router.router)
     # `GET`/`PUT`/`DELETE /admin/smtp`. El router exige rol admin por dentro:
     # quien pueda escribir ahí puede redirigir a dónde salen los enlaces de
@@ -587,68 +594,73 @@ def create_app(db_path: str) -> FastAPI:
     # registra la venta (mismo criterio que el `confirm_sale` legado), y el
     # arqueo por turno de este producto suma `caja_movimientos` por
     # `turno_id` -- sin esto daría siempre cero (ver `app/db_ventas.py`).
-    app.include_router(
-        build_ventas_router(
-            conexion=lc_get_connection,
-            usuario_actual=get_current_user,
-            # 🔴 SIN `solo_admin`, a propósito. La factory sólo lo usa para
-            # gatear `POST /{vid}/anular` y `.../devolver` (verificado en el
-            # código instalado, `libracommerce/web/ventas_router.py`: el
-            # `gate_anular` que arma con `solo_admin` no cuelga de ninguna
-            # otra ruta). Hasta hoy, en este producto, un cajero
-            # podía anular (`/sales/{id}/cancel`, retirado) y devolver
-            # (`/sales/{id}/returns`, retirado): el router llevaba `staff_or_
-            # admin` y el endpoint en sí sólo pedía `get_current_user`, sin
-            # ningún chequeo de rol propio. Se conserva: **decisión del humano del
-            # 2026-09-15** ("dejá anular y devolver para el cajero también"). No pasar
-            # `require_admin` acá (ni una capacidad más estricta que `ventas.pos`); lo custodia
-            # `test_un_cajero_puede_anular_y_devolver`.
-            opciones=OpcionesVentas(
-                stock_habilitado=lambda: True,
-                hooks=GANCHOS,
-                exigir_turno=True,
-                caja_con_turno=True,
-                # Las promociones vigentes se calculan en el servidor con las líneas que llegan y su
-                # ahorro se suma al descuento de la venta (libracommerce v0.25.0, ADR-014; ADR-043).
-                promociones=True,
-                # La venta guarda el costo vigente de cada línea (`sale_items.unit_cost_snapshot` = `default_cost` de
-                # ese momento; NULL si el producto no tiene costo, y los servicios no llevan) para que el margen deje
-                # de ser estimado en las ventas nuevas (libracommerce v0.27.0, ADR-016 del motor; ADR-050). Sin
-                # backfill: las ventas anteriores siguen en NULL y el reporte de margen las marca `costo_estimado`.
-                guardar_costo=True,
-                # ADR-068: el cajero y el vendedor listan, abren, anulan y devuelven sólo las ventas de sus turnos.
-                solo_sus_turnos=_solo_sus_turnos,
-                # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
-                # retirado) rechazaba estos dos casos antes de confirmar --
-                # ADR-020. Con las dos apagadas (el default) `POST /api/ventas`
-                # registraba una venta 'pendiente' que nadie iba a acreditar
-                # (pago que no cubre el total, sin QR) o un fiado sin cliente,
-                # sin nadie a quien atribuirle la deuda.
-                exigir_pago_completo=True,
-                # Desde libracommerce v0.61.0 (ADR-061) ya es el default (fiar sin cliente da 422): se deja explícito a
-                # propósito, para que esta regla de VentaLibra no dependa de lo que el motor decida por default.
-                exigir_cliente_para_fiar=True,
-                # Vencimientos y lotes (ADR-053, libracommerce v0.30.0): la venta de un producto marcado «vence» sale por FEFO
-                # (eso no depende de esta opción) y, prendida ésta, `POST /api/ventas` y `GET /api/ventas/{id}` agregan la clave
-                # `avisos` (lote vencido, por vencer, faltante sin lote) sólo si hay alguno, y existe `POST /api/ventas/plan-salida`
-                # (lectura pura: de qué lote saldría cada línea) para que el POS confirme antes de cobrar. Las dos rutas cuelgan
-                # del router de ventas, así que heredan `ventas.pos`: quien puede vender puede consultarlo.
-                con_avisos_de_vencimiento=True,
-                # El servidor valida el precio de cada línea en vez de guardar el que manda el POS (libracommerce ADR-049; ADR-079 de
-                # este producto): lo recalcula con la lista predeterminada activa (el quiebre cuenta por producto) o con el precio
-                # plano, y si alguna línea no coincide contesta 409 `precios_distintos` con los precios esperados SIN escribir nada
-                # (el POS los toma y le avisa al cajero). Una línea de balanza se valida contra su etiqueta (`etiqueta` en el
-                # item). 422 si una línea no trae `producto_id` o si el pedido trae un `descuento` manual: `Pos.tsx` no manda
-                # ninguno de los dos, y el ahorro de las promociones lo sigue calculando el servidor.
-                validar_precios=True,
-                # ADR-085 (cierra la transición de ADR-083): el servidor valida contra el precio de la sucursal de la venta
-                # aunque el pedido no traiga `sucursal_id`. Todos los POS desplegados ya la mandan; un pedido que la omite
-                # (un bundle viejo, un cliente armado a mano) ya no elige el precio general: recibe el 409 con el de la sucursal.
-                exigir_precio_de_sucursal=True,
-            ),
+    ventas_del_motor = build_ventas_router(
+        conexion=lc_get_connection,
+        usuario_actual=get_current_user,
+        # 🔴 SIN `solo_admin`, a propósito. La factory sólo lo usa para
+        # gatear `POST /{vid}/anular` y `.../devolver` (verificado en el
+        # código instalado, `libracommerce/web/ventas_router.py`: el
+        # `gate_anular` que arma con `solo_admin` no cuelga de ninguna
+        # otra ruta). Hasta hoy, en este producto, un cajero
+        # podía anular (`/sales/{id}/cancel`, retirado) y devolver
+        # (`/sales/{id}/returns`, retirado): el router llevaba `staff_or_
+        # admin` y el endpoint en sí sólo pedía `get_current_user`, sin
+        # ningún chequeo de rol propio. Se conserva: **decisión del humano del
+        # 2026-09-15** ("dejá anular y devolver para el cajero también"). No pasar
+        # `require_admin` acá (ni una capacidad más estricta que `ventas.pos`); lo custodia
+        # `test_un_cajero_puede_anular_y_devolver`.
+        opciones=OpcionesVentas(
+            stock_habilitado=lambda: True,
+            hooks=GANCHOS,
+            exigir_turno=True,
+            caja_con_turno=True,
+            # Las promociones vigentes se calculan en el servidor con las líneas que llegan y su
+            # ahorro se suma al descuento de la venta (libracommerce v0.25.0, ADR-014; ADR-043).
+            promociones=True,
+            # La venta guarda el costo vigente de cada línea (`sale_items.unit_cost_snapshot` = `default_cost` de
+            # ese momento; NULL si el producto no tiene costo, y los servicios no llevan) para que el margen deje
+            # de ser estimado en las ventas nuevas (libracommerce v0.27.0, ADR-016 del motor; ADR-050). Sin
+            # backfill: las ventas anteriores siguen en NULL y el reporte de margen las marca `costo_estimado`.
+            guardar_costo=True,
+            # ADR-068: el cajero y el vendedor listan, abren, anulan y devuelven sólo las ventas de sus turnos.
+            solo_sus_turnos=_solo_sus_turnos,
+            # libracommerce v0.16.2: el modelo viejo (`/sales/{id}/confirm`,
+            # retirado) rechazaba estos dos casos antes de confirmar --
+            # ADR-020. Con las dos apagadas (el default) `POST /api/ventas`
+            # registraba una venta 'pendiente' que nadie iba a acreditar
+            # (pago que no cubre el total, sin QR) o un fiado sin cliente,
+            # sin nadie a quien atribuirle la deuda.
+            exigir_pago_completo=True,
+            # Desde libracommerce v0.61.0 (ADR-061) ya es el default (fiar sin cliente da 422): se deja explícito a
+            # propósito, para que esta regla de VentaLibra no dependa de lo que el motor decida por default.
+            exigir_cliente_para_fiar=True,
+            # Vencimientos y lotes (ADR-053, libracommerce v0.30.0): la venta de un producto marcado «vence» sale por FEFO
+            # (eso no depende de esta opción) y, prendida ésta, `POST /api/ventas` y `GET /api/ventas/{id}` agregan la clave
+            # `avisos` (lote vencido, por vencer, faltante sin lote) sólo si hay alguno, y existe `POST /api/ventas/plan-salida`
+            # (lectura pura: de qué lote saldría cada línea) para que el POS confirme antes de cobrar. Las dos rutas cuelgan
+            # del router de ventas, así que heredan `ventas.pos`: quien puede vender puede consultarlo.
+            con_avisos_de_vencimiento=True,
+            # El servidor valida el precio de cada línea en vez de guardar el que manda el POS (libracommerce ADR-049; ADR-079 de
+            # este producto): lo recalcula con la lista predeterminada activa (el quiebre cuenta por producto) o con el precio
+            # plano, y si alguna línea no coincide contesta 409 `precios_distintos` con los precios esperados SIN escribir nada
+            # (el POS los toma y le avisa al cajero). Una línea de balanza se valida contra su etiqueta (`etiqueta` en el
+            # item). 422 si una línea no trae `producto_id` o si el pedido trae un `descuento` manual: `Pos.tsx` no manda
+            # ninguno de los dos, y el ahorro de las promociones lo sigue calculando el servidor.
+            validar_precios=True,
+            # ADR-085 (cierra la transición de ADR-083): el servidor valida contra el precio de la sucursal de la venta
+            # aunque el pedido no traiga `sucursal_id`. Todos los POS desplegados ya la mandan; un pedido que la omite
+            # (un bundle viejo, un cliente armado a mano) ya no elige el precio general: recibe el 409 con el de la sucursal.
+            exigir_precio_de_sucursal=True,
         ),
-        dependencies=[Depends(requiere("ventas.pos"))],
     )
+    # El detalle con `factura_pendiente` (nodo offline, libracore ADR-074; ADR-090) va ANTES que el router del motor: gana
+    # el mismo `GET /api/ventas/{id}`. Envuelve el detalle del motor (promociones y avisos incluidos) y lleva la misma
+    # guarda por turno (ADR-068), que en el motor cuelga de la ruta y no del endpoint.
+    app.include_router(
+        build_detalle_con_factura_pendiente(ventas_del_motor),
+        dependencies=[Depends(requiere("ventas.pos")), Depends(_guarda_de_venta("vid"))],
+    )
+    app.include_router(ventas_del_motor, dependencies=[Depends(requiere("ventas.pos"))])
     # `POST /api/ventas/{vid}/facturar`, `/mp-qr`, `GET /mp-status` -- dinero y
     # comprobantes, de LibraCore (D2: modelo de la familia, venta pendiente +
     # `acreditar_pago_qr`).
@@ -677,6 +689,16 @@ def create_app(db_path: str) -> FastAPI:
         ),
         # ADR-068: facturar y cobrar por QR una venta ajena es 404 para quien sólo ve sus turnos.
         dependencies=[Depends(requiere("ventas.pos")), Depends(_guarda_de_venta("vid"))],
+    )
+    # La facturación del nodo offline (libracore ADR-074, ADR-090): `GET /api/nodo/conexion` (el cartel «sin conexión»
+    # de la pantalla, libra-ui ADR-077) y `POST /api/nodo/facturar-pendientes`. Mismo gate que el cobro: quien vende.
+    # Fuera de un nodo contestan `es_nodo: false` y no hacen nada.
+    app.include_router(
+        build_facturacion_del_nodo_router(
+            ventas=venta_facturacion.PUERTO, usuario_actual=get_current_user,
+            facturacion_habilitada=_facturacion_habilitada,
+        ),
+        dependencies=[Depends(requiere("ventas.pos"))],
     )
     # La nota de crédito de una factura con CAE (`libracore.facturas_router`, ADR-017 del motor): SOLO esa ruta, no
     # los otros once endpoints de comprobantes (alta manual, cobro, borrado), que este producto no usa y que llevarían
@@ -744,7 +766,10 @@ def create_app(db_path: str) -> FastAPI:
     # mismo motivo que el router de arriba, que sigue andando como alias de `PUT /api/adicionales/sucursal` (los dos escriben `limite_sucursales`).
     app.include_router(
         build_adicionales_router(
-            requiere_o_servicio("sucursales.admin"), requiere_solo_servicio(), medir={"sucursal": lambda: len(_sucursales().list())},
+            requiere_o_servicio("sucursales.admin"), requiere_solo_servicio(),
+            # `offline` (ADR-090) se mide en sucursales DISTINTAS con un nodo activo: lo que cobra y lo que hace cumplir
+            # `libraedge-central nodo registrar` (`app/offline.py`).
+            medir={"sucursal": lambda: len(_sucursales().list()), "offline": sucursales_con_nodo},
             plans=plans, leer_modulos=database.get_modulos, escribir_modulo=database.set_addon,
         ),
     )
@@ -1146,5 +1171,26 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(
         build_logs_router(entidades_del_log(), prefix="/api/logs"), dependencies=[Depends(requiere("logs"))],
     )
+
+    # Nodo offline (libracore ADR-074, libracommerce ADR-068; ADR-090): la bandeja de comprobantes pendientes se factura
+    # sola al volver la conexión, y en cada vuelta se encola la `venta.facturada` que `al_facturar` no llegó a encolar.
+    # Fuera de un nodo no arranca nada. Con varios workers cada uno arranca el suyo: el candado por venta evita la doble
+    # factura. `habilitada` es el mismo gate del módulo de facturación que el router del cobro.
+    def _arrancar_facturacion_al_volver():
+        from libracommerce.erp.offline import reconciliador
+        from libracore.venta_facturacion import arrancar_facturacion_al_volver
+
+        app.state.parar_facturacion_al_volver = arrancar_facturacion_al_volver(
+            venta_facturacion.PUERTO, habilitada=_facturacion_habilitada,
+            en_cada_vuelta=reconciliador(OUTBOX, lc_get_connection),
+        )
+
+    def _parar_facturacion_al_volver():
+        parar = getattr(app.state, "parar_facturacion_al_volver", None)
+        if parar is not None:
+            parar.set()
+
+    app.router.add_event_handler("startup", _arrancar_facturacion_al_volver)
+    app.router.add_event_handler("shutdown", _parar_facturacion_al_volver)
 
     return app

@@ -19,10 +19,12 @@ por `venta_links`. Sin esto el arqueo por turno daría siempre cero -- medido
 en el relevamiento de F0/F1 del plan (`wiki/analyses/plan-ventalibra-a-libracommerce.md`).
 """
 from libracommerce.erp import ventas as _v
+from libracommerce.erp.offline import al_facturar_con_outbox
 from libracore.db.core import get_connection
 from libracore.venta_facturacion import PuertoDeVentas
 
 from app.ganchos import GANCHOS
+from app.offline import CONEXION, OUTBOX, PRODUCTO
 
 
 def get_venta(vid: int) -> dict | None:
@@ -100,6 +102,12 @@ def acreditar_pago_qr(venta_id: int, payment_id: str, usuario_id: int | None = N
 #: confirmó que el IVA no cambia (siempre 21% default, `IVA_RATE_DEFAULT`) --
 #: no hay alícuota propia que traer, a diferencia de Contalibra (que sí recibe
 #: ventas con alícuota propia desde otro producto, `ventas_origen_externo`).
+#:
+#: En un nodo offline (libracore ADR-074, E6 de LibraEdge, ADR-090): `conexion`
+#: dice si el nodo ve al central (sin conexión, la factura va a la bandeja y el
+#: QR se apaga), `producto` es el origen de la bandeja y del candado por venta,
+#: y `al_facturar` encola la `venta.facturada` para el central (libracommerce
+#: ADR-068). Fuera de un nodo los tres no cambian nada.
 PUERTO = PuertoDeVentas(
     obtener=get_venta,
     vincular_factura=vincular_venta_factura,
@@ -108,4 +116,7 @@ PUERTO = PuertoDeVentas(
     acreditar=acreditar_pago_qr,
     sellar_referencia_mp=add_venta_pago_referencia_mp,
     set_orden_mp=set_venta_mp_order,
+    conexion=CONEXION,
+    producto=PRODUCTO,
+    al_facturar=al_facturar_con_outbox(OUTBOX, get_connection),
 )

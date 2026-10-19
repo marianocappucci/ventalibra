@@ -228,6 +228,49 @@ aplicación.
 > VentaLibra **no tiene integración con MercadoPago**. Si el cliente la pide, el producto que
 > la tiene es Contalibra/Restolibra.
 
+### Nodo offline (LibraEdge)
+
+Adicional **por sucursal** (`plans.ADICIONALES["offline"]`, a cotizar): una PC en el local con su
+propia copia de VentaLibra que sigue vendiendo sin internet y sincroniza con la instancia del VPS
+(el «central») cuando vuelve la conexión. Lo propio de VentaLibra está en `app/offline.py`; el
+porqué de cada decisión, en `DECISIONS.md` ADR-090. Hoy no hay ningún nodo instalado: el instalador
+de la PC (E7 de LibraEdge) todavía no está probado.
+
+**En el central**, adentro del contenedor del cliente (con su `VENTALIBRA_DATABASE_URL`; ningún
+secreto pasa por la línea de comandos). Antes, el backoffice tiene que haber contratado el
+adicional `offline` con la cantidad de sucursales (`PUT /api/adicionales/offline`): sin eso
+`registrar` rechaza el alta.
+
+```bash
+export LIBRAEDGE_APROVISIONAMIENTO=app.offline:aprovisionamiento
+libraedge-central nodo publicar                      # triggers del changelog y siembra de la referencia
+libraedge-central nodo sucursales                    # las sucursales y cuál ya tiene nodo
+libraedge-central nodo registrar <node_id> --sucursal <id o nombre>   # secreto (se ve UNA vez) y prefijo
+libraedge-central nodo estado | dar-de-baja <node_id> | vigilar --umbral 15
+```
+
+`publicar` se vuelve a correr cada vez que cambia la lista de tablas de referencia
+(`TABLAS_DE_REFERENCIA` en `app/offline.py`): converge sola y sale 1 si alguna tabla quedó sin
+publicar. Lo que el central no pudo aplicar de un nodo queda en revisión manual:
+
+```bash
+export LIBRAEDGE_DESPACHADOR=app.routers.sincronizacion_offline:despachador
+libraedge-central revision listar | reintentar <operation_id> --por <quién> | descartar <operation_id> --por <quién> --motivo "..."
+```
+
+**En la PC del local**, el entorno que imprime `registrar`: `LIBRAEDGE_NODE_ID`,
+`LIBRAEDGE_NODE_SECRET`, `LIBRAEDGE_PREFIJO` (las ventas se numeran `S02-POS-000123`; un nodo sin
+prefijo no vende) y `LIBRAEDGE_TABLAS_ESPEJO`, más `LIBRAEDGE_CENTRAL_URL` y `LIBRAEDGE_ESTADO` (el
+archivo de estado del proceso del nodo: sin él, el nodo está siempre «sin conexión» y no factura).
+
+**Qué hace el nodo:** vende, cobra (efectivo, tarjeta, transferencia, fiado), descuenta su stock e
+imprime el ticket sin internet; cada venta, pago acreditado, anulación y devolución sube sola al
+central. **Facturar:** con conexión, el nodo pide el número a ARCA con el ticket que le presta el
+central (la clave no sale del VPS). Sin conexión, la venta queda en la bandeja con un ticket «no
+válido como factura» y se factura sola al volver, con la fecha de la venta si ARCA todavía la
+admite (5 días). **El punto de venta de una sucursal con nodo lo usa sólo el nodo.** Lo facturado
+no se anula sin conexión, y el QR de MercadoPago no está disponible en el nodo.
+
 ---
 
 ## 8. Usuarios

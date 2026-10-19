@@ -29,12 +29,16 @@ _AR = timezone(timedelta(hours=-3))
 # escribirla. `label()` la devuelve cruda justamente para que se vea.
 # Ver wiki/concepts/medios-de-pago-familia-libra.md.
 
-def ticket_de_venta(sale, cliente_nombre: str = "", promociones: list[dict] | None = None) -> bytes:
+def ticket_de_venta(sale, cliente_nombre: str = "", promociones: list[dict] | None = None, *,
+                    factura_pendiente: bool = False) -> bytes:
     """PDF del ticket de una venta confirmada, listo para la ticketeadora.
 
     `promociones` es lo que quedó en `sale_promotions` (`erp.promociones.promociones_de_venta`): el
     ticket las imprime una por fila y el `descuento` de la venta, que ya las incluye, muestra sólo el
-    resto. Sin ellas (una venta anterior a las promociones) el ticket sale como siempre."""
+    resto. Sin ellas (una venta anterior a las promociones) el ticket sale como siempre.
+
+    `factura_pendiente`: en un nodo offline sin conexión la factura quedó en la bandeja y sale al
+    volver (libracore ADR-074, ADR-090); el ticket lo dice («NO VÁLIDO COMO FACTURA»)."""
     fecha = ""
     if sale.confirmed_at:
         dt = sale.confirmed_at
@@ -91,4 +95,5 @@ def ticket_de_venta(sale, cliente_nombre: str = "", promociones: list[dict] | No
             }
             for pago in sale.payments
         ],
+        "factura_pendiente": factura_pendiente,
     })

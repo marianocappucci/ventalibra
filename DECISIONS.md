@@ -3331,3 +3331,90 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
 - Tests: `tests/test_requests_concurrentes.py` (rojo sin el arreglo: la intercalación exacta y la carga; verde con él),
   `tests/test_ningun_request_usa_la_conexion_global.py`, y `tests/test_conexion_renovable.py` adaptado (matar todas las conexiones de la
   base y que el primer request no dé 500; el restore real por `POST /api/config/restore`).
+
+## ADR-090 — Nodo offline de LibraEdge en VentaLibra (E6 de la fase 1)
+
+- Estado: aceptada. Pin nuevo: **libraedge `v0.9.0`** (dependencia normal). **Con migración propia**: `0009_libraedge`.
+- Fecha: 2026-10-19
+- Contexto: fase 1 de LibraEdge en toda la suite («vender sin internet en RestoLibra, VentaLibra y ContaLibra»; decisiones
+  del humano en `wiki/analyses/libraedge-toda-la-suite-2026-10-18.md`). VentaLibra no tiene cliente con nodo: el humano
+  decidió llevarlo igual. Los motores ya traen todo lo genérico y RestoLibra fue el primer adoptante (restolibra #511).
+- Qué ya existía (se miró antes): libraedge v0.9.0 (ADR-007 despacho por tipo y versión, revisión manual y 409 de esquema;
+  ADR-008 aprovisionamiento genérico, identidad y prefijo por nodo; ADR-009 ticket de ARCA prestado), libracommerce v0.68.0
+  (`libracommerce.erp.offline`: `con_outbox`, `registrar_en`, `al_facturar_con_outbox`, `reconciliador`; ADR-067 y ADR-068),
+  libracore v1.186.0 (`libracore.nodo_offline` y la bandeja al volver; ADR-074) y libra-ui v0.163.0
+  (`createLayout({conexionDelNodo})`; ADR-077). **Nada de fondo se escribió acá**: el producto aporta costuras.
+- Decisión:
+  1. **Costura `app/offline.py`**, el mismo molde que RestoLibra: identidad `nodo_actual("VENTALIBRA")`
+     (`LIBRAEDGE_NODE_ID`), «en línea» por el archivo de estado (`LIBRAEDGE_ESTADO`), `OUTBOX` (sin `extra_de_venta`: la
+     venta de mostrador no lleva nada propio), `CONEXION` para el `PuertoDeVentas`, el numerador de facturas del nodo con
+     el ticket prestado (`TicketRechazado` → `RechazoDelCentral`, 422 `nodo_sin_arca`) y el `Aprovisionamiento`
+     (`prefijo="VENTALIBRA"`, sucursales de `branches`, guarda del adicional `offline` de libracore, `conectar` con la URL
+     de la instancia).
+  2. **Ventas**: `GANCHOS = con_outbox(GANCHOS_PROPIOS, OUTBOX)` respeta `numerador` (`POS-`), `turno_para` y
+     `validar_deposito`; en un nodo el número sale `S02-POS-000123`. Las ventas usan la conexión del motor
+     (`libracore.db.core.get_connection`, la de `build_ventas_router` y `app/db_ventas.py`), no la del request de
+     ADR-089: el outbox encola en la misma transacción que la venta sin coordinar nada.
+  3. **Central**: `/sync/v1/*` montado siempre (`app/routers/sincronizacion_offline.py`): `registrar_en(Despachador(),
+     GANCHOS)`, `version_de_alembic` y `prestar_ticket=ta_para_el_nodo`. Sin la compatibilidad del piloto de RestoLibra:
+     VentaLibra nunca tuvo nodo.
+  4. **Facturar en el nodo**: `PuertoDeVentas(conexion=CONEXION, producto="ventalibra", al_facturar=al_facturar_con_outbox(...))`;
+     `venta_facturacion._numerar` pide el número con el ticket prestado en un nodo; `build_facturacion_del_nodo_router`
+     (`/api/nodo/conexion` y `/api/nodo/facturar-pendientes`, gate `ventas.pos` y el del módulo de facturación);
+     `arrancar_facturacion_al_volver(..., habilitada=..., en_cada_vuelta=reconciliador(...))` al arrancar.
+     `GET /api/ventas/{id}` suma `factura_pendiente` **envolviendo** el detalle del motor (`app/routers/detalle_de_venta.py`:
+     este producto prende promociones y avisos de vencimiento en ese detalle, así que reescribirlo como RestoLibra dejaría
+     dos versiones), con la misma guarda por turno (ADR-068). El ticket dice «NO VÁLIDO COMO FACTURA» si la venta espera en
+     la bandeja.
+  5. **QR**: lo bloquea el motor (`/api/ventas/{id}/mp-qr` contesta 409 `sin_conexion` en un nodo sin conexión, porque el
+     puerto lleva `conexion`); `GET /pos/mp-estado` además dice `disponible: false` sin conexión, para que el POS no lo
+     ofrezca (lo lee al abrir). Frontend: `conexionDelNodo: true` en el layout.
+  6. **Adicional `offline`** en `plans.ADICIONALES` (por sucursal, a cotizar, límite `sucursales_offline`, módulo
+     `offline` fuera de `ADDONS`), igual que RestoLibra; el router de adicionales lo mide con `sucursales_con_nodo`.
+  7. **Tablas de LibraEdge en toda instancia**: `db.connect()` y la revisión `0009_libraedge` llaman a las mismas dos
+     funciones del paquete (`init_schema` e `init_changelog_schema`); `test_schema_propio_congelado` compara las dos.
+- **Tablas de referencia** (el reparto de autoridad: el central manda y el nodo espeja; el nodo agrega ventas y las sube).
+  Se relevó qué lee el POS y lo que necesita una venta, un cobro y una factura en el nodo:
+  - `usuarios` y `aceptaciones_terminos`: la sesión del nodo y el gate de Términos de libraauth (sin la aceptación
+    espejada el nodo cortaría todo con 403 hasta que alguien aceptara ahí). Es la misma instancia, así que la aceptación
+    del central vale.
+  - `modulos`: el gate de módulos (facturación, multisucursal) y el adicional.
+  - `clients`: el cliente de la venta, el fiado y la factura (`clients.id == parties.id`).
+  - `cajas`: el turno se abre en una caja; trae `medios_pago` (los medios de cada caja), `punto_venta` y `sucursal_id`.
+  - `arca_config`: para facturar con conexión (CUIT, punto de venta, ambiente; las rutas del certificado no se usan en el
+    nodo).
+  - `branches` y `locations`: sucursales y depósitos (la venta y `validar_deposito`).
+  - `units`, `categories`, `catalog_items`, `item_variants`, `item_codes`: el catálogo, las variantes y los códigos de
+    barras que escanea el POS.
+  - `price_lists`, `item_prices` (con `branch_id`: los precios por sucursal), `cliente_lista_precio`: la validación de
+    precios del servidor (ADR-079, ADR-085).
+  - `promotions`, `promotion_items`: las promociones se calculan en el servidor.
+  - `commerce_settings`: el formato de la balanza.
+  - `parties`, `party_roles` (clave compuesta `party_id + role`) y `party_billing`: las personas del motor y sus dos
+    extensiones propias. Hoy ninguna de las dos se escribe ni se lee en el código (quedaron de antes de la migración `0004`),
+    pero las instancias viejas tienen filas: se espejan para que el nodo sea una copia fiel (cuestan poco y no tienen hijos).
+  - **No** se espejan: las tablas legadas de LibraCore que este producto no usa (`productos`, `categorias_producto`,
+    `listas_precio`, `lista_precio_items`, `depositos`, `users`); `proveedores`, `cuentas_tesoreria`,
+    `item_branch_min_stock` (compras, tesorería y reposición se hacen en el central); MercadoPago (credenciales en el
+    almacén cifrado; sin conexión el QR está apagado). Son del nodo: `sales` y sus tablas, `caja_movimientos`,
+    `turnos_caja`, `stock_movements` (los lotes viven ahí), `facturas`, la bandeja y `sequences`.
+- Qué NO cubre:
+  - **Altas de referencia en el nodo** (un cliente nuevo desde el POS, ADR-087; un producto, un precio): el nodo las
+    escribe en tablas que el central pisa por clave primaria al espejar, y su id puede chocar con uno del central. Ningún
+    motor lo impide hoy (tampoco en RestoLibra). Es una decisión de producto (prohibirlas en un nodo, o que suban como
+    operaciones) y el arreglo de fondo es de libraedge/libracommerce.
+  - **El stock inicial del nodo**: `stock_movements` no se espeja; una PC nueva arranca sin existencias (la venta no exige
+    stock, así que vende igual). Es la decisión 8 de la fase 2.
+  - **El QR en el nodo con conexión**: sin las credenciales de MercadoPago espejadas, `mp-estado` dice que no hay QR; y el
+    webhook llegaría al central, no al nodo. Fase 2.
+  - **Caja y turnos** no suben al central (decisión 9, fase 2): la caja del central sólo ve los ingresos de las ventas que
+    subieron, sin turno.
+  - El instalador de la PC (E7) y la bandeja de comprobantes pendientes como pantalla (es de ContaLibra; acá sólo
+    `/api/nodo/facturar-pendientes` y la tanda automática).
+- Tests: `tests/test_libraedge_de_punta_a_punta.py` (dos bases: aprovisionamiento real con el adicional contratado,
+  `publicar` y `registrar`; venta cobrada y parcial con el prefijo del nodo, el QR acreditado después, stock y caja en el
+  central; un cliente nuevo del central baja al nodo con su `party_roles` por clave compuesta y se le vende; factura con
+  internet y ticket prestado; sin conexión a la bandeja, ticket «no válido como factura», QR 409 y al volver con la fecha
+  de la venta; anulación y lo facturado no se anula sin conexión; nodo dado de baja, 422; sin secreto, 401; la tanda de
+  facturar al volver arranca sólo en un nodo y se para al cerrar). Ajustados
+  `test_schema_propio_congelado.py`, `test_adicionales.py` y `test_roles_matriz.py`.
