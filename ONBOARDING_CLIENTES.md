@@ -236,6 +236,12 @@ propia copia de VentaLibra que sigue vendiendo sin internet y sincroniza con la 
 porqué de cada decisión, en `DECISIONS.md` ADR-090. Hoy no hay ningún nodo instalado: el instalador
 de la PC (E7 de LibraEdge) todavía no está probado.
 
+**Desde la pantalla (libraedge v0.11.0, libra-ui v0.166.0):** «Sucursal sin internet» (menú Administración, sólo admin; se ve
+con el adicional `offline` o mientras queden nodos activos, que sin el adicional sólo se pueden dar de baja) hace lo mismo que `registrar --carga` sin entrar al VPS: el admin da de alta el nodo de una
+sucursal y descarga la carga del nodo (con el secreto: se baja una sola vez y no se muestra), descarga el instalador
+(`libraedge-nodo-<producto>.exe` de los Releases de LibraEdge), ve los nodos con su última sincronización y los da de baja.
+La URL del central que va en la carga sale de `LIBRAEDGE_CENTRAL_URL` o, si no está, del origen de `<PRODUCTO>_RESET_URL_BASE`.
+
 **En el central**, adentro del contenedor del cliente (con su `VENTALIBRA_DATABASE_URL`; ningún
 secreto pasa por la línea de comandos). Antes, el backoffice tiene que haber contratado el
 adicional `offline` con la cantidad de sucursales (`PUT /api/adicionales/offline`): sin eso

@@ -49,6 +49,7 @@ import { Vencimientos } from './pages/Vencimientos'
 import { Dashboard } from './pages/Dashboard'
 import { CajaPorMedio } from './pages/CajaPorMedio'
 import { Logs } from './pages/Logs'
+import { SucursalSinInternet } from './pages/SucursalSinInternet'
 
 // `cap`: la capacidad (o cualquiera de una lista) que pide la ruta (`lib/permisos.ts`, ADR-049). Sin `cap` alcanza con
 // estar en sesión. Quien no la tiene va a su pantalla inicial (el POS si vende, el stock si es del depósito) y, si su
@@ -349,6 +350,14 @@ export default function App() {
         element={
           <ProtectedRoute cap="cierre_diario">
             <CierreDiario />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sucursal-sin-internet"
+        element={
+          <ProtectedRoute cap="sucursales.admin">
+            <SucursalSinInternet />
           </ProtectedRoute>
         }
       />
