@@ -17,6 +17,16 @@ comercial, expresado como los puntos de extensión que declara
 - `validar_deposito`: la venta y la devolución salen del depósito de la
   sucursal de la caja del turno (libracommerce v0.17.0). Hasta el 2026-09-17
   lo garantizaba sólo el POS.
+
+Desde E6 de LibraEdge (2026-10-19, ADR-090) los ganchos que se usan son
+`con_outbox(GANCHOS_PROPIOS, offline.OUTBOX)`: en un nodo offline cada venta
+(en cualquier estado: la parcial también), cada pago acreditado, cada anulación
+y cada devolución se encolan para el central **en la transacción de la venta**
+(los ganchos reciben la conexión del motor), y el número lleva el prefijo del
+nodo (`S02-POS-000123`). Fuera de un nodo son exactamente los propios. Las
+ventas usan la conexión del motor (`libracore.db.core.get_connection`, la de
+`build_ventas_router` y `app/db_ventas.py`), no la del request de ADR-089, así
+que no hay dos transacciones que coordinar.
 """
 from __future__ import annotations
 
@@ -24,10 +34,12 @@ from typing import Any
 
 from libracommerce.erp import Hooks
 from libracommerce.erp.catalogo import get_default_deposito_id
+from libracommerce.erp.offline import con_outbox
 from libracommerce.erp.ventas import DepositoNoPermitido
 from libracore.db import turnos as db_turnos
 
 from app.db import next_sequence
+from app.offline import OUTBOX
 
 #: La secuencia propia de este producto para la numeración del punto de
 #: venta. Ya existía antes de esta fase (ADR-005); F3 no la cambia, sólo pasa
@@ -112,6 +124,10 @@ def validar_deposito(conn: Any, *, operacion: str, turno: Any | None,
     )
 
 
-GANCHOS = Hooks(
+#: Los ganchos de este producto, sin el outbox.
+GANCHOS_PROPIOS = Hooks(
     numerador=numerador, turno_para=turno_para, validar_deposito=validar_deposito,
 )
+
+#: Los que usan las ventas y el central: los propios con el outbox de LibraEdge (no-op fuera de un nodo).
+GANCHOS = con_outbox(GANCHOS_PROPIOS, OUTBOX)

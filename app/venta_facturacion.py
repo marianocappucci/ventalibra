@@ -30,19 +30,32 @@ o la factura salía con los datos de otro cliente.
 import dataclasses
 
 from libracore import arca_facturacion
+from libracore import venta_facturacion as _vf
 from libracore.venta_facturacion import (  # noqa: F401
     CONSUMIDOR_FINAL,
     IVA_RATE_DEFAULT,
     VentaNoFacturable,
 )
 
-from app import db_ventas
+from app import db_ventas, offline
 
 
 async def _numerar(punto_venta: int, tipo: int):
+    # 🔴 En un nodo offline no: el número lo pide a ARCA con el ticket que presta
+    # el central (`offline.numerar_en_el_nodo`, libracore ADR-074). El nodo no
+    # tiene la clave, y `get_next_numero_with_arca` caería a la numeración
+    # local, que choca con la de ARCA y con la del central.
+    if offline.CONEXION.es_nodo():
+        return await offline.numerar_en_el_nodo(punto_venta, tipo)
     return await arca_facturacion.get_next_numero_with_arca(punto_venta, tipo)
 
 
 #: El puerto completo de este producto: las ventas de `db_ventas` más el numerador. Es el
 #: que montan el router del cobro y el webhook (a futuro).
 PUERTO = dataclasses.replace(db_ventas.PUERTO, numerar_comprobante=_numerar)
+
+
+def pendiente_de_facturar(venta_id: int) -> dict | None:
+    """La fila abierta de la bandeja del nodo para esta venta, o `None` (siempre fuera de un nodo): el ticket dice «no
+    válido como factura» y `GET /api/ventas/{id}` la devuelve en `factura_pendiente` (libracore ADR-074)."""
+    return _vf.pendiente_de_facturar(PUERTO, venta_id)

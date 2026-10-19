@@ -42,16 +42,25 @@ from tests.motor_de_test import TEST_DATABASE_URL, limpiar_entre_tests
 #: arranque en un test, que no corre el motor, es la de acá. Meterla en esta
 #: comparación pondría el test en rojo por una ambigüedad que existe desde antes
 #: y que esta cadena no introduce. Ver `app/schema_propio.py`.
+#:
+#: Las cinco de LibraEdge (`node_identity`, `local_sequences`, `sync_outbox`, `sync_inbox`, `sync_changelog`) no son
+#: propias pero entran por la misma puerta: la revisión `0009_libraedge` y `db.connect()` llaman a las mismas dos
+#: funciones del paquete (ADR-090), y lo que se compara es que las dos dejen lo mismo.
 TABLAS_PROPIAS = (
+    "local_sequences",
+    "node_identity",
     "party_billing",
     "party_roles",
     "sale_mp_orders",
     "sequences",
+    "sync_changelog",
+    "sync_inbox",
+    "sync_outbox",
     "users",
 )
 
 #: La cabeza de la cadena propia. Sube con cada revision nueva.
-CABEZA = "0008_backfill_cc_pago_id"
+CABEZA = "0009_libraedge"
 
 
 def _schema_de_las_propias() -> str:
@@ -141,7 +150,7 @@ def test_la_secuencia_declarada_levanta_el_schema_desde_cero():
     _correr_la_cadena()
 
     assert [f[0] for f in _version("alembic_version_ventalibra")] == [CABEZA]
-    _schema_de_las_propias()  # exige que estén las cinco
+    _schema_de_las_propias()  # exige que estén todas
 
 
 def test_la_baseline_y_el_arranque_dejan_el_mismo_schema():
