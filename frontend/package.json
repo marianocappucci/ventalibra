@@ -20,7 +20,7 @@
     "@hookform/resolvers": "^5.9.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "libra-ui": "github:marianocappucci/libra-ui#65fa4d455eecbe7e065afe30803308a2348079b3",
+    "libra-ui": "github:marianocappucci/libra-ui#22ed608cc15473043ab2d2b6c32420e795fa186e",
     "lucide-react": "^1.48.0",
     "radix-ui": "^1.6.5",
     "react": "^19.3.0",
