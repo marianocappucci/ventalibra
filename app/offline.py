@@ -193,6 +193,17 @@ def sucursales_con_nodo() -> int:
         return contar(conn)
 
 
+def nodos_del_central() -> list[dict]:
+    """Los nodos registrados en esta instancia, para la barra de estado del pie (libracore ADR-075): la misma lista que
+    «Sucursal sin internet» (`libraedge.pantalla_del_central.nodos_de_la_instancia`, sin el hash del secreto). El motor
+    usa sólo `activo` y `estado`."""
+    from libracore.db.core import get_connection
+    from libraedge.pantalla_del_central import nodos_de_la_instancia
+
+    with get_connection() as conn:
+        return nodos_de_la_instancia(conn, [])
+
+
 def _listar_sucursales(conn) -> list[dict]:
     from libracommerce.erp.catalogo import get_all_sucursales
 

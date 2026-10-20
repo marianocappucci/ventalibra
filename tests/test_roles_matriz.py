@@ -113,6 +113,9 @@ GET    /ventas/{sale_id}/devuelto                                       MOSTRADO
 # Nodo offline (ADR-090): la conexión del nodo y su bandeja de comprobantes pendientes, con el gate del cobro
 GET    /api/nodo/conexion                                               MOSTRADOR
 POST   /api/nodo/facturar-pendientes                                    MOSTRADOR
+# La barra de estado del pie (libracore ADR-075): la abren todos los roles (`estado_del_sistema`); ARCA, respaldo y nodos del central
+# los recorta el motor con `es_admin` (`config`), no la guarda
+GET    /api/estado-del-sistema                                          TODOS
 # La sincronización de LibraEdge: no la decide el rol, la autentica el secreto del nodo (401 sin él; ver
 # `test_libraedge_de_punta_a_punta.py`)
 POST   /sync/v1/push                                                    PUBLICA

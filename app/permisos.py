@@ -109,6 +109,11 @@ _ROLES_DE: dict[str, frozenset[str]] = {
     # La pantalla de etiquetas de góndola. Es SOLO de la SPA: no hay endpoint propio (lee productos y
     # listas, que ya gatean las capacidades de arriba). Existe aparte para poder separarla algún día.
     "etiquetas": frozenset({_E}),
+    # ── Todos ──
+    # La barra de estado del pie (`GET /api/estado-del-sistema`, libracore ADR-075): LibraEdge, usuario, versión. Lo que es
+    # de administración (ARCA, respaldo, nodos del central) lo recorta el motor con `config`. Es una capacidad y no «cualquier
+    # sesión» para que un rol retirado (el `staff` de una base vieja, ADR-071) no entre tampoco acá.
+    "estado_del_sistema": frozenset({_E, _V, _C, _D}),
     # ── Mostrador ──
     # POS: registrar y cobrar ventas, facturar, cobro por QR, tickets, ver el detalle de una venta y anular o
     # devolver (decisión del humano, 2026-09-15: el cajero también anula y devuelve).
