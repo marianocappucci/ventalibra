@@ -314,7 +314,9 @@ dependencies = [
     # falta deploy key ni en el CI ni en el build del VPS. La costura es `app/offline.py` (ADR-090).
     # v0.9.0 -> v0.10.0 (2026-10-19): instalador del nodo por producto (E7, ADR-010) y `nodo registrar --carga`. Sin migracion.
     # v0.10.x -> v0.11.0 (2026-10-19): pantalla «Sucursal sin internet» del central (ADR-011). Sin migracion.
-    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.11.0",
+    # v0.11.0 -> v0.14.0 (2026-10-20): instalador de Linux y accesos directos (v0.12/v0.13, ADR-012/013) y LibraEdge incluido en
+    # todos los planes con el codigo de vinculacion (ADR-014: `create_canje_router`, dos tablas que crea `init_schema`). Sin migracion.
+    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.14.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.

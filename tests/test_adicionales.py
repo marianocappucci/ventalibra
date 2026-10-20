@@ -33,17 +33,14 @@ def sin_sesion(tmp_path):
 def test_el_catalogo_declarado_es_el_mismo_que_se_sintetizaba():
     """`ADICIONALES` no inventa nada: dice lo que ya decían `ADDONS` y `PLAN_UNIDADES_ADICIONALES` (precio y sucursal incluida)."""
     cat = ad.catalogo(plans)
-    assert sorted(cat) == ["offline", "resguardo_externo", "sucursal"]
+    assert sorted(cat) == ["resguardo_externo", "sucursal"]
     sucursal = cat["sucursal"]
     assert (sucursal.precio, sucursal.unidad, sucursal.incluidas, sucursal.limite, sucursal.modulos) == (
         ADICIONAL, "sucursal", {"unico": plans.PLAN_UNIDADES_ADICIONALES["unico"]["incluidas"]}, "sucursales", frozenset())
     assert (cat["resguardo_externo"].precio, cat["resguardo_externo"].modulos) == (None, frozenset({"resguardo_externo"}))
     assert plans.ADDONS == {"resguardo_externo"}
-    # `offline` (ADR-090) es un adicional por sucursal con su módulo, fuera de `ADDONS` como en Restolibra: a cotizar.
-    offline = cat["offline"]
-    assert (offline.precio, offline.unidad, offline.limite, offline.modulos) == (
-        None, "sucursal", "sucursales_offline", frozenset({"offline"}))
-    assert ad.modulos_de_adicionales(plans) == {"resguardo_externo", "offline"}
+    # `offline` (ADR-090) ya no es un adicional: LibraEdge está incluido en todos los planes (libraedge ADR-014).
+    assert ad.modulos_de_adicionales(plans) == {"resguardo_externo"}
 
 
 def test_los_adicionales_no_estan_en_la_escalera():

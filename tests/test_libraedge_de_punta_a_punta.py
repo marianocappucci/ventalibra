@@ -164,10 +164,9 @@ def _cable(escenario):
 
 @pytest.fixture()
 def escenario(admin_client, monkeypatch, tmp_path):
-    from libracore import adicionales, arca_credenciales, arca_wsaa, arca_wsfe
+    from libracore import arca_credenciales, arca_wsaa, arca_wsfe
     from libracore.db import arca_config as db_arca
     from libracore.db import core
-    from libracore.db.modulos import set_addon
     from libracore.respaldo_postgres import con_base
     from libraedge import aprovisionamiento as aprov
     from libraedge.sync import http as http_module
@@ -199,11 +198,9 @@ def escenario(admin_client, monkeypatch, tmp_path):
     esc = _Escenario(admin_client, url_central, node_conn, ruta_estado)
     esc.producto = producto
 
-    # En el central, como lo haría el backoffice y `libraedge-central nodo`: el adicional contratado, la referencia
-    # publicada y el nodo registrado en la sucursal principal.
+    # En el central, como lo haría `libraedge-central nodo`: la referencia publicada y el nodo registrado en la sucursal
+    # principal. Sin contratar nada: LibraEdge está incluido en todos los planes (libraedge ADR-014).
     with esc.central(), core.get_connection() as conn:
-        set_addon("offline", True)
-        adicionales.fijar_cantidad("offline", 1)
         sucursal = str(conn.execute("SELECT id FROM branches WHERE is_default = 1").fetchone()[0])
         salida = []
         assert aprov.publicar(conn, offline.aprovisionamiento, salida=salida.append) == 0, salida

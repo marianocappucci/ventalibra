@@ -22,7 +22,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CLAVE_DE_LA_SECCION, TEXTO_SIN_ADICIONAL } from 'libra-ui/SucursalSinInternet'
+import { CLAVE_DE_LA_SECCION } from 'libra-ui/SucursalSinInternet'
 
 import { ModulosContext } from '../lib/modulos'
 import { Configuracion } from '../pages/Configuracion'
@@ -54,10 +54,10 @@ beforeEach(() => {
     const metodo = init?.method ?? 'GET'
     pedidos.push({ url: u, metodo, cuerpo: init?.body ?? null })
 
-    // «Sucursal sin internet»: sin el adicional contratado y sin nodos (la instancia común, plan único).
+    // «Sucursal sin internet»: sin nodos (LibraEdge está incluido en todos los planes, libra-ui ADR-085).
     if (u.includes('/api/nodos-offline')) {
       return Promise.resolve(json({
-        producto: 'ventalibra', contratado: false, instalador_url: '', central_url: null, central_url_error: null,
+        producto: 'ventalibra', contratado: true, instalador_url: 'https://ejemplo.test/libraedge-nodo-ventalibra.exe', central_url: null, central_url_error: null,
         emisor_faltan: [], emisor_error: null, umbral_minutos: 30, sucursales: [], nodos: [], nodos_activos: 0,
       }))
     }
@@ -125,11 +125,11 @@ describe('la Configuración de VentaLibra', () => {
     expect(pedidos.some((p) => p.url.includes('/api/nodos-offline'))).toBe(false)
   })
 
-  it('la sección del administrador abre «Sucursal sin internet» con su estado (sin el adicional: cómo contratarlo)', async () => {
+  it('la sección del administrador abre «Sucursal sin internet» con su estado (incluido: el instalador)', async () => {
     montar(`/configuracion?seccion=${CLAVE_DE_LA_SECCION}`)
 
     expect(await screen.findByRole('tab', { name: /Sucursal sin internet/ })).toHaveAttribute('aria-selected', 'true')
-    expect(await screen.findByText(TEXTO_SIN_ADICIONAL)).toBeInTheDocument()
+    expect(await screen.findByText('1. El instalador')).toBeInTheDocument()
   })
 
   it('sin el módulo `facturacion` la sección de LibraEdge sigue estando (las dos variantes se combinan)', async () => {

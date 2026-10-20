@@ -3431,3 +3431,9 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
   adicional `offline` lo hace cumplir el alta. Lo que se ve con y sin el adicional (explicación, o sólo la baja de nodos activos)
   lo decide la sección del kit, ya sin la consulta del menú (`nodosOffline`). Tests: `configuracion-forma.test.tsx` (el admin ve la
   pestaña; un rol con `config` y sin `sucursales.admin` no, ni pidiéndola por la URL) y `configuracion.test.tsx` (la redirección).
+
+- **Nota 2026-10-20 (libraedge ADR-014, libra-ui ADR-085):** LibraEdge pasa a estar **incluido en todos los planes**
+  (decisión del humano): el adicional `offline` sale de `plans.ADICIONALES`, el aprovisionamiento usa `sin_guarda` y el
+  router de adicionales ya no lo mide. El nodo se activa con «dirección + código de vinculación» que muestra «Sucursal sin
+  internet»; el canje es `POST /sync/v1/vinculacion`, montado **sin guarda** (público, sólo https, un solo uso, límite de
+  intentos del motor) con `ip_del_request` de libraauth. El archivo de carga queda para soporte.
