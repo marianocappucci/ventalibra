@@ -8,16 +8,16 @@ de LibraCommerce (ADR-067 y ADR-068, `libracommerce.erp.offline`) y la facturaci
 
 | Pieza | Qué aporta este producto |
 |---|---|
-| `aprovisionamiento` | las tablas de referencia (el reparto de autoridad), las sucursales y la guarda del adicional `offline` |
+| `aprovisionamiento` | las tablas de referencia (el reparto de autoridad) y las sucursales |
 | `OUTBOX` | la identidad del nodo y si está en línea (VentaLibra no manda nada propio con la venta) |
 | `CONEXION` / `numerar_en_el_nodo` | en el nodo, facturar con el ticket de ARCA que presta el central |
 
 ## Identidad: `LIBRAEDGE_NODE_ID` (y `VENTALIBRA_EDGE_NODE_ID`, por la regla del motor)
 
 `nodo()` es `libraedge.identidad.nodo_actual("VENTALIBRA")`: lee la variable general y la del producto; si están las dos
-y difieren, `IdentidadEnConflicto`. Es la **identidad** del nodo (la escribe el instalador), no el opt-in comercial: eso
-es el adicional `offline` por sucursal (libracore ADR-048), que se hace cumplir al registrar el nodo
-(`guarda_offline_de_libracore`). Un nodo ya registrado sigue sincronizando aunque el adicional se dé de baja.
+y difieren, `IdentidadEnConflicto`. Es la **identidad** del nodo (la escribe el instalador). **LibraEdge está incluido en
+todos los planes** (decisión del humano, 2026-10-20; libraedge ADR-014): no hay adicional `offline` ni guarda comercial al
+registrar un nodo (`sin_guarda`).
 
 El prefijo de numeración (`LIBRAEDGE_PREFIJO`, `S02`) lo asigna el central al registrar el nodo. **Un nodo sin prefijo no
 vende**: `NodoLocal` levanta `ValueError` en la primera venta, porque numeraría igual que el central. Con prefijo, la
@@ -184,8 +184,8 @@ def _conectar():
 
 
 def sucursales_con_nodo() -> int:
-    """Cuántas sucursales distintas tienen un nodo activo: lo que el adicional `offline` cobra y limita. Es la del
-    motor con su propia conexión, para el `medir={"offline": ...}` del router de adicionales."""
+    """Cuántas sucursales distintas tienen un nodo activo, con su propia conexión (hasta ADR-014 la medía el router de
+    adicionales; LibraEdge ya no es un adicional, queda para quien la consulte)."""
     from libracore.db.core import get_connection
     from libraedge.aprovisionamiento import sucursales_con_nodo as contar
 
@@ -211,11 +211,12 @@ def _listar_sucursales(conn) -> list[dict]:
 
 
 def _aprovisionamiento():
-    from libraedge.aprovisionamiento import Aprovisionamiento, guarda_offline_de_libracore
+    from libraedge.aprovisionamiento import Aprovisionamiento, sin_guarda
 
     return Aprovisionamiento(
         prefijo=PREFIJO, tablas_de_referencia=TABLAS_DE_REFERENCIA, listar_sucursales=_listar_sucursales,
-        verificar_alta=guarda_offline_de_libracore(plans="plans"), conectar=_conectar,
+        # Sin guarda comercial: LibraEdge está incluido en todos los planes (libraedge ADR-014).
+        verificar_alta=sin_guarda, conectar=_conectar,
     )
 
 

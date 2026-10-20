@@ -237,15 +237,18 @@ porqué de cada decisión, en `DECISIONS.md` ADR-090. Hoy no hay ningún nodo in
 de la PC (E7 de LibraEdge) todavía no está probado.
 
 **Desde la pantalla (libraedge v0.11.0, libra-ui v0.166.0):** «Sucursal sin internet» (pestaña de Configuración desde el 2026-10-20, sólo para quien tiene
-`sucursales.admin`, o sea el admin; con el adicional `offline` hace el alta, y sin él explica cómo contratarlo y, mientras queden nodos activos, sólo los da de baja) hace lo mismo que `registrar --carga` sin entrar al VPS: el admin da de alta el nodo de una
-sucursal y descarga la carga del nodo (con el secreto: se baja una sola vez y no se muestra), descarga el instalador
-(`libraedge-nodo-<producto>.exe` de los Releases de LibraEdge), ve los nodos con su última sincronización y los da de baja.
+`sucursales.admin`, o sea el admin) hace lo mismo que `registrar --carga` sin entrar al VPS. **Desde libraedge v0.14.0 /
+libra-ui v0.171.0 (ADR-014 / ADR-085) LibraEdge está incluido en todos los planes** (no hay adicional `offline`) y el alta
+muestra **la dirección del sistema y un código de vinculación** (un solo uso, 15 minutos) que se escriben en el instalador;
+el instalador canjea el código por la carga en `POST /sync/v1/vinculacion` (público, sólo https, con límite de intentos).
+El archivo de carga queda para soporte («Archivo de carga» en cada nodo: se baja una sola vez y no se muestra). También se
+descarga el instalador (`libraedge-nodo-<producto>.exe` de los Releases de LibraEdge), se ven los nodos con su última
+sincronización, se pide otro código, se anula y se dan de baja.
 La URL del central que va en la carga sale de `LIBRAEDGE_CENTRAL_URL` o, si no está, del origen de `<PRODUCTO>_RESET_URL_BASE`.
 
 **En el central**, adentro del contenedor del cliente (con su `VENTALIBRA_DATABASE_URL`; ningún
-secreto pasa por la línea de comandos). Antes, el backoffice tiene que haber contratado el
-adicional `offline` con la cantidad de sucursales (`PUT /api/adicionales/offline`): sin eso
-`registrar` rechaza el alta.
+secreto pasa por la línea de comandos). No hace falta contratar nada: LibraEdge está incluido
+en todos los planes (libraedge ADR-014).
 
 ```bash
 export LIBRAEDGE_APROVISIONAMIENTO=app.offline:aprovisionamiento

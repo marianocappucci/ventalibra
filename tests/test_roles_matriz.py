@@ -121,6 +121,9 @@ GET    /api/estado-del-sistema                                          TODOS
 POST   /sync/v1/push                                                    PUBLICA
 GET    /sync/v1/pull                                                    PUBLICA
 POST   /sync/v1/ticket-arca                                             PUBLICA
+# El canje del código de vinculación (libraedge ADR-014): lo llama el instalador del nodo, sin sesión; lo protegen el código
+# (un solo uso, 15 minutos), el https y el límite de intentos del motor
+POST   /sync/v1/vinculacion                                             PUBLICA
 GET    /api/ventas/medios-pago                                          MOSTRADOR
 GET    /api/ventas                                                      MOSTRADOR
 POST   /api/ventas                                                      MOSTRADOR
@@ -159,11 +162,15 @@ PUT    /api/limites/sucursales                                          SOLO_SER
 # Adicionales fuera de la escalera (ADR-082): mismas guardas que las sucursales contratadas (el router nuevo las generaliza)
 GET    /api/adicionales                                                 ADMIN
 PUT    /api/adicionales/{clave}                                         SOLO_SERVICIO
-# «Sucursal sin internet» (libraedge ADR-011): alta, carga y baja de nodos de LibraEdge, sólo admin (`sucursales.admin`)
+# «Sucursal sin internet» (libraedge ADR-011 y ADR-014): alta con código o con archivo, código nuevo, anularlo y baja de nodos
+# de LibraEdge, sólo admin (`sucursales.admin`)
 GET    /api/nodos-offline                                               ADMIN
 GET    /api/nodos-offline/menu                                          ADMIN
 POST   /api/nodos-offline                                               ADMIN
+POST   /api/nodos-offline/vinculacion                                   ADMIN
 POST   /api/nodos-offline/{node_id}/carga                               ADMIN
+POST   /api/nodos-offline/{node_id}/vinculacion                         ADMIN
+DELETE /api/nodos-offline/{node_id}/vinculacion                         ADMIN
 DELETE /api/nodos-offline/{node_id}                                     ADMIN
 GET    /api/depositos                                                   TODOS
 POST   /api/depositos                                                   ADMIN
@@ -401,6 +408,10 @@ NO_EJECUTAR = {
     ("POST", "/api/nodos-offline"),
     ("POST", "/api/nodos-offline/{node_id}/carga"),
     ("DELETE", "/api/nodos-offline/{node_id}"),
+    # Registran un nodo y emiten su código, o lo anulan (libraedge ADR-014).
+    ("POST", "/api/nodos-offline/vinculacion"),
+    ("POST", "/api/nodos-offline/{node_id}/vinculacion"),
+    ("DELETE", "/api/nodos-offline/{node_id}/vinculacion"),
 }
 
 
