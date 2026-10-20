@@ -38,8 +38,6 @@ const RUTA_A_CONCEPTO: Record<string, Concepto> = {
   '/caja-medios': 'cajaPorMedio',
   '/libros-iva': 'librosDeIva',
   '/usuarios': 'usuarios',
-  // LibraEdge (libra-ui ADR-080).
-  '/sucursal-sin-internet': 'sucursalSinInternet',
   '/logs': 'logDeActividad',
   '/configuracion': 'configuracion',
 }

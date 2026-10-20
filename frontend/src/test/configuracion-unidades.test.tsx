@@ -10,6 +10,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Configuracion } from '../pages/Configuracion'
 
+// La sesión: `Configuracion` mira `sucursales.admin` para ofrecer «Sucursal sin internet» (sin `capacidades`, sólo el admin la
+// tiene; ver `puede`).
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', username: 'u', name: 'U', role: 'admin' }, loading: false }),
+}))
+
 // jsdom no implementa la API de pointer capture y Radix la toca al abrir un
 // `Select` -- acá no hay ninguno, pero el resto de las secciones de
 // Configuración que se montan igual (Integraciones) sí, y sin esto el

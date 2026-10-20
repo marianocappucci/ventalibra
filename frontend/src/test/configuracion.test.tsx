@@ -12,7 +12,7 @@
 // 1. Que estén las seis secciones que le corresponden — el "según corresponda"
 //    del pedido se declara en `pages/Configuracion.tsx`, y una sección que
 //    falte no rompe nada: simplemente no aparece, y nadie lo nota.
-// 2. Que las tres pantallas viejas redirijan en vez de dar 404. Eran entradas
+// 2. Que las pantallas viejas redirijan en vez de dar 404. Eran entradas
 //    del menú lateral: pueden estar en un favorito o en un mensaje, y un 404
 //    en Configuración parece que se rompió el sistema.
 import { render, screen, waitFor } from '@testing-library/react'
@@ -20,6 +20,12 @@ import { MemoryRouter, Route, Routes, Navigate } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Configuracion } from '../pages/Configuracion'
+
+// La sesión: `Configuracion` mira `sucursales.admin` para ofrecer «Sucursal sin internet» (sin `capacidades`, sólo el admin la
+// tiene; ver `puede`).
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', username: 'u', name: 'U', role: 'admin' }, loading: false }),
+}))
 import { REDIRECCIONES_DE_CONFIGURACION } from '../rutas-viejas'
 
 function json(body: unknown) {
@@ -42,6 +48,12 @@ beforeEach(() => {
       }))
     }
     if (u.includes('/api/config/backups')) return Promise.resolve(json([]))
+    if (u.includes('/api/nodos-offline')) {
+      return Promise.resolve(json({
+        producto: 'ventalibra', contratado: false, instalador_url: '', central_url: null, central_url_error: null,
+        emisor_faltan: [], emisor_error: null, umbral_minutos: 30, sucursales: [], nodos: [], nodos_activos: 0,
+      }))
+    }
     return Promise.resolve(json(null))
   }))
 })
@@ -81,7 +93,7 @@ describe('Las secciones de VentaLibra', () => {
 })
 
 
-describe('Las tres pantallas viejas', () => {
+describe('Las pantallas viejas', () => {
   it('/config-arca lleva a la sección de ARCA, adentro de Integraciones', async () => {
     // ⚠️ Con `?seccion=arca` a secas la redirección NO falla: aterriza en
     // Empresa. Por eso se afirman las dos cosas —la pestaña marcada y el
@@ -109,6 +121,16 @@ describe('Las tres pantallas viejas', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: /Ticket/ }))
+        .toHaveAttribute('aria-selected', 'true')
+    })
+  })
+
+  it('/sucursal-sin-internet (LibraEdge) lleva a su sección, ahora de Configuración', async () => {
+    // El administrador (el mock de la sesión) la tiene: la redirección tiene que aterrizar en ella, no en Empresa.
+    montar('/sucursal-sin-internet')
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Sucursal sin internet/ }))
         .toHaveAttribute('aria-selected', 'true')
     })
   })
