@@ -647,8 +647,8 @@ web = [
 
 [[package]]
 name = "libracore"
-version = "1.186.3.dev1"
-source = { git = "https://github.com/marianocappucci/libracore.git?rev=2d0319a042028e549cbc1f1d2ddbd0517e85059f#2d0319a042028e549cbc1f1d2ddbd0517e85059f" }
+version = "1.187.0"
+source = { git = "https://github.com/marianocappucci/libracore.git?rev=v1.187.0#ed1f5fa4d96e3208e1dd191602798b533b1ab491" }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
@@ -1379,7 +1379,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "libraauth", extras = ["migrations"], git = "https://github.com/marianocappucci/libraauth.git?rev=v0.52.0" },
     { name = "libracommerce", extras = ["migrations", "erp", "web", "planillas"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.68.0" },
-    { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=2d0319a042028e549cbc1f1d2ddbd0517e85059f" },
+    { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.187.0" },
     { name = "libraedge", git = "https://github.com/marianocappucci/libraedge.git?rev=v0.11.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
