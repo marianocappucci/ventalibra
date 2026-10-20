@@ -22,7 +22,21 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CLAVE_DE_LA_SECCION, TEXTO_SIN_ADICIONAL } from 'libra-ui/SucursalSinInternet'
+
+import { ModulosContext } from '../lib/modulos'
 import { Configuracion } from '../pages/Configuracion'
+import { REDIRECCIONES_DE_CONFIGURACION } from '../rutas-viejas'
+
+// La sesión, cambiable por test: `Configuracion` mira `sucursales.admin` (y no `config`) para ofrecer «Sucursal sin internet».
+const sesion = vi.hoisted(() => ({
+  capacidades: ['config', 'sucursales.admin'] as string[],
+}))
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', username: 'u', name: 'U', role: 'admin', capacidades: sesion.capacidades }, loading: false,
+  }),
+}))
 
 let pedidos: { url: string; metodo: string; cuerpo: unknown }[] = []
 
@@ -34,11 +48,19 @@ function json(body: unknown) {
 
 beforeEach(() => {
   pedidos = []
+  sesion.capacidades = ['config', 'sucursales.admin']
   vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
     const metodo = init?.method ?? 'GET'
     pedidos.push({ url: u, metodo, cuerpo: init?.body ?? null })
 
+    // «Sucursal sin internet»: sin el adicional contratado y sin nodos (la instancia común, plan único).
+    if (u.includes('/api/nodos-offline')) {
+      return Promise.resolve(json({
+        producto: 'ventalibra', contratado: false, instalador_url: '', central_url: null, central_url_error: null,
+        emisor_faltan: [], emisor_error: null, umbral_minutos: 30, sucursales: [], nodos: [], nodos_activos: 0,
+      }))
+    }
     if (u.includes('/logo')) return Promise.resolve(new Response('', { status: 404 }))
     if (u.includes('/admin/smtp')) {
       return Promise.resolve(json({
@@ -72,13 +94,57 @@ const montar = (ruta = '/configuracion') =>
   render(<MemoryRouter initialEntries={[ruta]}><Configuracion /></MemoryRouter>)
 
 describe('la Configuración de VentaLibra', () => {
-  it('tiene las pestañas de la familia, con las tres propias del mostrador', async () => {
+  it('el administrador tiene las pestañas de la familia, las propias del mostrador y «Sucursal sin internet»', async () => {
+    montar()
+
+    const pestanias = (await screen.findAllByRole('tab')).map((t) => t.textContent)
+    expect(pestanias).toEqual([
+      'Empresa', 'Integraciones', 'Balanza', 'Ticket', 'Unidades de medida', 'Categorías', 'Sucursal sin internet',
+      'Datos / Backup',
+    ])
+  })
+
+  it('🔴 un rol con `config` pero sin `sucursales.admin` no ve «Sucursal sin internet»', async () => {
+    // Son dos capacidades distintas: entrar a Configuración no alcanza para dar de alta nodos de LibraEdge.
+    sesion.capacidades = ['config']
     montar()
 
     const pestanias = (await screen.findAllByRole('tab')).map((t) => t.textContent)
     expect(pestanias).toEqual([
       'Empresa', 'Integraciones', 'Balanza', 'Ticket', 'Unidades de medida', 'Categorías', 'Datos / Backup',
     ])
+    expect(screen.queryByRole('tab', { name: /Sucursal sin internet/ })).toBeNull()
+  })
+
+  it('sin `sucursales.admin`, ni pidiéndola por la URL aparece la sección ni se consulta a los nodos', async () => {
+    sesion.capacidades = ['config']
+    montar(`/configuracion?seccion=${CLAVE_DE_LA_SECCION}`)
+
+    // Cae en la primera (Empresa), como cualquier `?seccion=` que no existe.
+    expect(await screen.findByRole('tab', { name: /Empresa/ })).toHaveAttribute('aria-selected', 'true')
+    expect(pedidos.some((p) => p.url.includes('/api/nodos-offline'))).toBe(false)
+  })
+
+  it('la sección del administrador abre «Sucursal sin internet» con su estado (sin el adicional: cómo contratarlo)', async () => {
+    montar(`/configuracion?seccion=${CLAVE_DE_LA_SECCION}`)
+
+    expect(await screen.findByRole('tab', { name: /Sucursal sin internet/ })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByText(TEXTO_SIN_ADICIONAL)).toBeInTheDocument()
+  })
+
+  it('sin el módulo `facturacion` la sección de LibraEdge sigue estando (las dos variantes se combinan)', async () => {
+    render(
+      <MemoryRouter initialEntries={['/configuracion']}>
+        <ModulosContext.Provider value={['multisucursal']}><Configuracion /></ModulosContext.Provider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('tab', { name: /Sucursal sin internet/ })).toBeInTheDocument()
+  })
+
+  it('la ruta vieja `/sucursal-sin-internet` redirige a la clave que usa el kit para la sección', () => {
+    expect(REDIRECCIONES_DE_CONFIGURACION['/sucursal-sin-internet'])
+      .toBe(`/configuracion?seccion=${CLAVE_DE_LA_SECCION}`)
   })
 
   it('las tres integraciones están, en la sub-navegación', async () => {

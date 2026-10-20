@@ -36,16 +36,20 @@
  *  después a buscar por qué "no anda".
  */
 import { createConfiguracion } from 'libra-ui/Configuracion'
+import { seccionSucursalSinInternet } from 'libra-ui/SucursalSinInternet'
 import { Printer, Ruler, Scale, ShieldCheck, Tags } from 'lucide-react'
 
 import { AvisoModulo } from '../components/aviso-modulo'
+import { useAuth } from '../context/AuthContext'
+import { puede } from '../lib/permisos'
 import { FACTURACION, useTieneModulo } from '../lib/modulos'
 import { ConfigBalanza } from './ConfigBalanza'
 import { ConfigCategorias } from './ConfigCategorias'
 import { ConfigTicket } from './ConfigTicket'
 import { ConfigUnidades } from './ConfigUnidades'
 
-// Todo lo que las dos variantes comparten: lo único que cambia entre planes es la integración con ARCA.
+// Todo lo que las variantes comparten. Cambian dos cosas: la integración con ARCA (según el plan) y la sección «Sucursal
+// sin internet» (según quién mira).
 const COMUN = {
   // Sin `icono`: el kit usa el del catálogo (`ICONOS.configuracion`, ADR-035), el mismo que el sidebar le da a /configuracion.
   // Sale en el tutorial de Gmail —es el nombre que hay que ponerle a la
@@ -71,41 +75,57 @@ const COMUN = {
 // Ver el docstring: acá no hay webhook, y es deliberado.
 const MERCADOPAGO = { webhook: false }
 
+// «Sucursal sin internet» (LibraEdge, libra-ui ADR-082; nota del ADR-090 de este producto): antes era una entrada propia del menú, desde el
+// 2026-10-20 es una sección de Configuración **sólo para quien puede administrar sucursales** (`sucursales.admin`, hoy el admin).
+// Es una capacidad distinta de `config`: un rol con `config` y sin `sucursales.admin` no la ve (el backend corta igual).
+const SUCURSAL_SIN_INTERNET = seccionSucursalSinInternet()
+
 // Con el módulo `facturacion` prendido (el plan único lo trae): ARCA completa.
-const ConfiguracionConArca = createConfiguracion({
-  ...COMUN,
-  integraciones: {
-    mercadopago: MERCADOPAGO,
-    // 🔴 `empresa` es el slug de la fila de `arca_config`, el mismo que usa
-    // `services/billing.py`. En una instancia sin fila, sin esto el primer
-    // guardado la crearía como `default` — donde ese servicio no mira nunca.
-    arca: { empresa: 'venta' },
-    email: true,
-  },
-})
+const integracionesConArca = {
+  mercadopago: MERCADOPAGO,
+  // 🔴 `empresa` es el slug de la fila de `arca_config`, el mismo que usa
+  // `services/billing.py`. En una instancia sin fila, sin esto el primer
+  // guardado la crearía como `default` — donde ese servicio no mira nunca.
+  arca: { empresa: 'venta' },
+  email: true,
+}
 
 // Sin el módulo `facturacion` (ADR-048; con el plan único, ADR-072, sólo si se lo apagó): `/config/arca` contesta 403, así
 // que el kit no la ofrece: en su lugar, en el mismo lugar de la barra, el aviso. Las otras dos integraciones no
 // cambian.
-const ConfiguracionSinArca = createConfiguracion({
-  ...COMUN,
-  integraciones: {
-    mercadopago: MERCADOPAGO,
-    email: true,
-    extra: [{
-      clave: 'arca',
-      label: 'ARCA / AFIP',
-      icono: ShieldCheck,
-      contenido: (
-        <AvisoModulo titulo="Facturación electrónica ARCA">
-          Emitir facturas y configurar el certificado y el punto de venta no está habilitado en esta instancia;
-          escribinos para activarlo.
-        </AvisoModulo>
-      ),
-    }],
-  },
-})
+const integracionesSinArca = {
+  mercadopago: MERCADOPAGO,
+  email: true,
+  extra: [{
+    clave: 'arca',
+    label: 'ARCA / AFIP',
+    icono: ShieldCheck,
+    contenido: (
+      <AvisoModulo titulo="Facturación electrónica ARCA">
+        Emitir facturas y configurar el certificado y el punto de venta no está habilitado en esta instancia;
+        escribinos para activarlo.
+      </AvisoModulo>
+    ),
+  }],
+}
+
+/** Las cuatro variantes (con/sin ARCA × con/sin la sección de LibraEdge), armadas una vez a nivel de módulo: el componente que
+ *  devuelve `createConfiguracion` no puede crearse en cada render (se remontaría la pantalla entera). */
+const variante = (conArca: boolean, conSucursalSinInternet: boolean) =>
+  createConfiguracion({
+    ...COMUN,
+    propias: conSucursalSinInternet ? [...COMUN.propias, SUCURSAL_SIN_INTERNET] : COMUN.propias,
+    integraciones: conArca ? integracionesConArca : integracionesSinArca,
+  })
+
+const VARIANTES = {
+  conArca: { conEdge: variante(true, true), sinEdge: variante(true, false) },
+  sinArca: { conEdge: variante(false, true), sinEdge: variante(false, false) },
+}
 
 export function Configuracion() {
-  return useTieneModulo(FACTURACION) ? <ConfiguracionConArca /> : <ConfiguracionSinArca />
+  const { user } = useAuth()
+  const conArca = useTieneModulo(FACTURACION)
+  const Pantalla = VARIANTES[conArca ? 'conArca' : 'sinArca'][puede(user, 'sucursales.admin') ? 'conEdge' : 'sinEdge']
+  return <Pantalla />
 }
