@@ -75,6 +75,7 @@ from libracore.db.url_de_instancia import url_de_instancia
 from libracore.docs_api import cerrar_docs_de_la_api
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
 from libracore.errores import instalar_registro_de_errores
+from libracore.estado_del_sistema import build_estado_del_sistema_router
 from libracore.facturas_router import build_nota_de_credito_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.limites import build_limites_router
@@ -122,7 +123,7 @@ from .depositos_ganchos import (
 )
 from .ganchos import GANCHOS
 from .modules_gate import require_module
-from .offline import OUTBOX, sucursales_con_nodo
+from .offline import OUTBOX, nodos_del_central, sucursales_con_nodo
 from .offline import aprovisionamiento as aprovisionamiento_offline
 from .permisos import (
     ENCARGADO,
@@ -1151,6 +1152,17 @@ def create_app(db_path: str) -> FastAPI:
             reabrir_conexiones=_reabrir_conexion,
         ),
         dependencies=[Depends(requiere("config"))],
+    )
+    # La barra de estado del pie (libracore ADR-075, libra-ui ADR-083): LibraEdge (el nodo con su bandeja, o los nodos
+    # del central), usuario, versión, el certificado de ARCA y el último respaldo, en una consulta. La abre cualquier
+    # rol (`estado_del_sistema`, fila `TODOS` de la matriz); lo que ve cada uno lo decide el motor con `es_admin`: ARCA,
+    # respaldo y nodos del central, sólo quien tiene `config` (hoy, admin).
+    app.include_router(
+        build_estado_del_sistema_router(
+            usuario_actual=get_current_user, es_admin=condicion("config"), ventas=venta_facturacion.PUERTO,
+            nodos_del_central=nodos_del_central, backups_dir=backups_dir,
+        ),
+        dependencies=[Depends(requiere("estado_del_sistema"))],
     )
     # Enlace de la copia externa con la nube del cliente (LibraCore v1.93.0):
     # `GET`/`DELETE /api/config/resguardo-externo/enlace`, `POST .../{proveedor}`

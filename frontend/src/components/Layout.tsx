@@ -140,4 +140,7 @@ export const Layout = createLayout({
   // Nodo offline de LibraEdge (libra-ui ADR-077, ADR-090 de este producto): el cartel «sin conexión» arriba del contenido,
   // que consulta `GET /api/nodo/conexion`. Fuera de un nodo el backend contesta `es_nodo: false` y no se muestra nada.
   conexionDelNodo: true,
+  // La barra de estado del pie (libra-ui ADR-083, libracore ADR-075): LibraEdge, usuario y sucursal, ARCA, respaldo y versión, con
+  // `GET /api/estado-del-sistema` al cargar y cada pocos minutos. Igual en el central y en un nodo.
+  barraDeEstado: true,
 })
