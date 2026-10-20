@@ -3420,3 +3420,14 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
   de la venta; anulación y lo facturado no se anula sin conexión; nodo dado de baja, 422; sin secreto, 401; la tanda de
   facturar al volver arranca sólo en un nodo y se para al cerrar). Ajustados
   `test_schema_propio_congelado.py`, `test_adicionales.py` y `test_roles_matriz.py`.
+- **Nota 2026-10-20 — «Sucursal sin internet» pasa a ser una sección de Configuración** (decisión del humano; libra-ui v0.168.0,
+  ADR-082 del kit). Antes era una entrada propia de Administración, con la ruta `/sucursal-sin-internet` y la página
+  `pages/SucursalSinInternet.tsx`. Ahora `pages/Configuracion.tsx` suma `seccionSucursalSinInternet()` a `propias` **sólo si el
+  usuario tiene `sucursales.admin`** (hoy el admin): `config` no alcanza, porque entrar a Configuración no es administrar la
+  estructura de la instancia. El componente que devuelve `createConfiguracion` no puede armarse en cada render, así que se arman a
+  nivel de módulo las cuatro variantes (con/sin ARCA × con/sin la sección) y se elige según el módulo `facturacion` y la capacidad.
+  La ruta vieja redirige (`REDIRECCIONES_DE_CONFIGURACION`) a `/configuracion?seccion=sucursal-sin-internet`; quien no tiene la
+  capacidad cae en Empresa, sin error. El backend no cambia: `/api/nodos-offline` sigue con `requiere("sucursales.admin")` y el
+  adicional `offline` lo hace cumplir el alta. Lo que se ve con y sin el adicional (explicación, o sólo la baja de nodos activos)
+  lo decide la sección del kit, ya sin la consulta del menú (`nodosOffline`). Tests: `configuracion-forma.test.tsx` (el admin ve la
+  pestaña; un rol con `config` y sin `sucursales.admin` no, ni pidiéndola por la URL) y `configuracion.test.tsx` (la redirección).

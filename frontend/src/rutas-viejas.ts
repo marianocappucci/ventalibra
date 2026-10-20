@@ -1,6 +1,7 @@
-/** Las tres pantallas de configuración que fueron ítems del menú lateral.
+/** Las pantallas de configuración que fueron ítems del menú lateral.
  *
- *  Eran `/config-arca`, `/config-balanza` y `/config-ticket`. Al unificarse en
+ *  Eran `/config-arca`, `/config-balanza` y `/config-ticket`; desde el 2026-10-20 también `/sucursal-sin-internet`
+ *  (LibraEdge, libra-ui ADR-082: pasó a ser una sección de Configuración, sólo para quien tiene `sucursales.admin`). Al unificarse en
  *  una sola pantalla (2026-08-05) quedaron como redirecciones y no se borraron:
  *  pueden estar en un favorito o en un mensaje, y un 404 en Configuración
  *  parece que se rompió el sistema.
@@ -21,6 +22,9 @@ export const REDIRECCIONES_DE_CONFIGURACION: Record<string, string> = {
   '/config-arca': '/configuracion?seccion=integraciones&integracion=arca',
   '/config-balanza': '/configuracion?seccion=balanza',
   '/config-ticket': '/configuracion?seccion=ticket',
+  // 🔑 La clave es `CLAVE_DE_LA_SECCION` del kit (un test la compara). Si quien entra no es administrador de sucursales, la
+  // pantalla no tiene esa sección y cae en la primera (Empresa), sin error.
+  '/sucursal-sin-internet': '/configuracion?seccion=sucursal-sin-internet',
 }
 
 /** El ítem del menú lateral "Catálogo" pasó a llamarse "Productos"
