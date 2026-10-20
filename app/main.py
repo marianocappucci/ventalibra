@@ -7,7 +7,7 @@ from functools import partial
 
 from fastapi import Depends, FastAPI
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
-from libraauth.auth_events import AuthEventRepository
+from libraauth.auth_events import AuthEventRepository, ip_del_request
 from libraauth.bootstrap import ensure_demo_user
 from libraauth.captcha import Captcha, UsadosEnBase
 from libraauth.demo_codigos import DemoCodigoRepository
@@ -75,6 +75,7 @@ from libracore.db.url_de_instancia import url_de_instancia
 from libracore.docs_api import cerrar_docs_de_la_api
 from libracore.egresos_router import build_egresos_router, build_proveedores_router
 from libracore.errores import instalar_registro_de_errores
+from libracore.estado_del_sistema import build_estado_del_sistema_router
 from libracore.facturas_router import build_nota_de_credito_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.limites import build_limites_router
@@ -88,7 +89,7 @@ from libracore.smtp_router import build_smtp_probe_router
 from libracore.tema_router import build_tema_admin_router, build_tema_router
 from libracore.tesoreria_router import build_tesoreria_router
 from libracore.ventas_cobro_router import build_cobro_de_ventas_router, build_facturacion_del_nodo_router
-from libraedge.pantalla_del_central import create_nodos_router
+from libraedge.pantalla_del_central import create_canje_router, create_nodos_router
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -122,7 +123,7 @@ from .depositos_ganchos import (
 )
 from .ganchos import GANCHOS
 from .modules_gate import require_module
-from .offline import OUTBOX, sucursales_con_nodo
+from .offline import OUTBOX, nodos_del_central
 from .offline import aprovisionamiento as aprovisionamiento_offline
 from .permisos import (
     ENCARGADO,
@@ -460,15 +461,19 @@ def create_app(db_path: str) -> FastAPI:
     # Se monta siempre: sin un nodo registrado no hay ningún secreto válido y todo contesta 401. La autenticación es el
     # secreto del nodo, no la sesión: por eso no lleva ningún `requiere(...)`.
     app.include_router(sincronizacion_offline.router)
-    # «Sucursal sin internet» (libraedge ADR-011, libra-ui ADR-080): el admin da de alta el nodo de una sucursal y descarga su
-    # carga (`carga-nodo-….json`, con el secreto del nodo: sólo viaja como adjunto de ese POST), ve los nodos y los da de baja.
-    # Toda la lógica es de LibraEdge (las mismas funciones que `libraedge-central nodo registrar --carga`); acá sólo la guarda
-    # (`sucursales.admin`: cambia la estructura de la instancia, sólo admin) y el aprovisionamiento de `app/offline.py`. El
-    # adicional `offline` lo hace cumplir el alta.
+    # «Sucursal sin internet» (libraedge ADR-011 y ADR-014, libra-ui ADR-080 y ADR-085): el admin da de alta el nodo de una
+    # sucursal y se lleva la dirección y un código de vinculación (o, para soporte, el archivo de carga), ve los nodos y los da
+    # de baja. LibraEdge está incluido en todos los planes: no hay adicional que lo frene. Toda la lógica es de LibraEdge; acá
+    # sólo la guarda (`sucursales.admin`: cambia la estructura de la instancia, sólo admin) y el aprovisionamiento de
+    # `app/offline.py`.
     app.include_router(
         create_nodos_router(aprovisionamiento_offline, lc_get_connection),
         dependencies=[Depends(requiere("sucursales.admin"))],
     )
+    # El canje del código (libraedge ADR-014): `POST /sync/v1/vinculacion`. **Sin guarda a propósito**: lo llama el instalador
+    # del nodo, que no tiene sesión; lo protegen el código (un solo uso, 15 minutos) y el límite de intentos del motor. La IP
+    # real detrás del proxy es la de libraauth.
+    app.include_router(create_canje_router(aprovisionamiento_offline, lc_get_connection, ip_del_request=ip_del_request))
     app.include_router(auth_router.router)
     # `GET`/`PUT`/`DELETE /admin/smtp`. El router exige rol admin por dentro:
     # quien pueda escribir ahí puede redirigir a dónde salen los enlaces de
@@ -778,9 +783,8 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(
         build_adicionales_router(
             requiere_o_servicio("sucursales.admin"), requiere_solo_servicio(),
-            # `offline` (ADR-090) se mide en sucursales DISTINTAS con un nodo activo: lo que cobra y lo que hace cumplir
-            # `libraedge-central nodo registrar` (`app/offline.py`).
-            medir={"sucursal": lambda: len(_sucursales().list()), "offline": sucursales_con_nodo},
+            # LibraEdge ya no es un adicional (libraedge ADR-014: incluido en todos los planes): sólo se miden las sucursales.
+            medir={"sucursal": lambda: len(_sucursales().list())},
             plans=plans, leer_modulos=database.get_modulos, escribir_modulo=database.set_addon,
         ),
     )
@@ -1151,6 +1155,17 @@ def create_app(db_path: str) -> FastAPI:
             reabrir_conexiones=_reabrir_conexion,
         ),
         dependencies=[Depends(requiere("config"))],
+    )
+    # La barra de estado del pie (libracore ADR-075, libra-ui ADR-083): LibraEdge (el nodo con su bandeja, o los nodos
+    # del central), usuario, versión, el certificado de ARCA y el último respaldo, en una consulta. La abre cualquier
+    # rol (`estado_del_sistema`, fila `TODOS` de la matriz); lo que ve cada uno lo decide el motor con `es_admin`: ARCA,
+    # respaldo y nodos del central, sólo quien tiene `config` (hoy, admin).
+    app.include_router(
+        build_estado_del_sistema_router(
+            usuario_actual=get_current_user, es_admin=condicion("config"), ventas=venta_facturacion.PUERTO,
+            nodos_del_central=nodos_del_central, backups_dir=backups_dir,
+        ),
+        dependencies=[Depends(requiere("estado_del_sistema"))],
     )
     # Enlace de la copia externa con la nube del cliente (LibraCore v1.93.0):
     # `GET`/`DELETE /api/config/resguardo-externo/enlace`, `POST .../{proveedor}`

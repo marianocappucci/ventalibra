@@ -28,6 +28,7 @@ export const CAPACIDADES = [
   'precios.consultar',
   'precios.escribir',
   'etiquetas',
+  'estado_del_sistema',
   'ventas.pos',
   'ventas.todas',
   'caja.propia',
