@@ -116,7 +116,8 @@ dependencies = [
     # v0.68.0 -> v0.69.0 (2026-10-21): la caja y los turnos del nodo suben al central (ADR-069). Sin migracion.
     # v0.69.0 -> v0.69.1 (2026-10-21): `erp.ventas.cerrar_turno` acepta `ganchos=` (el cierre del turno sube desde un nodo). Sin migracion.
     # v0.69.1 -> v0.70.0 (2026-10-21): cliente.alta: las altas de clientes del nodo suben al central (ADR-070); incluye v0.69.1 (cerrar_turno con ganchos). Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.70.0",
+    # v0.70.0 -> v0.70.1 (2026-10-21): el central recalcula el arqueo del turno como el nodo (ventas o caja); ya no marca [REVISAR ARQUEO] siempre en ContaLibra y RestoLibra. Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.70.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -315,7 +316,8 @@ dependencies = [
     # v0.50.0 -> v0.51.0 (2026-10-15, ADR-024): el responsable acepta por adelantado la proxima version de los Terminos (`GET /terminos` suma `proxima`, `POST /aceptar` acepta la vigente o la proxima). Sin migracion; el aviso pide libra-ui v0.153.0.
     # v0.52.0 -> v0.53.0 (2026-10-20): la marca Secure de la cookie de sesion es configurable (LIBRAAUTH_COOKIE_SECURE, ADR-026); sin la variable no cambia nada. Sin migracion.
     # v0.53.0 -> v0.54.0 (2026-10-21): en un nodo de LibraEdge los usuarios son los del central (ADR-027); fuera de un nodo no cambia nada. Sin migracion.
-    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.54.0",
+    # v0.54.0 -> v0.55.0 (2026-10-21): en un nodo de LibraEdge no se pide captcha y la IP del bloqueo es el par directo (ADR-028); fuera de un nodo no cambia nada. Sin migracion.
+    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.55.0",
     # libraedge v0.9.0 (2026-10-19, E6 de la fase 1 de LibraEdge en toda la suite): el nodo offline. Dependencia NORMAL y no
     # extra, como en Restolibra: el central monta `/sync/v1/*` (push, pull y el ticket de ARCA prestado) aunque no tenga
     # nodos, y las tablas de LibraEdge se crean en toda instancia (migracion `0009_libraedge`). El repo es publico: no hace
