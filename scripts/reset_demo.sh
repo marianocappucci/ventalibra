@@ -40,6 +40,75 @@ log_lineas() {
   return 0
 }
 
+# --- LibraEdge: que la demo conserve sus nodos -----------------------------
+# El reset borra la base entera, `node_identity` incluida: la PC que alguien vinculo a la demo amanecia con 401 todos
+# los dias, y aunque se la volviera a vincular, el changelog nuevo numera desde 1 y un nodo con cursor 500 no baja nada
+# nunca mas. `libraedge-central nodo conservar` guarda los nodos (con el HASH de su secreto, nunca el secreto) y el
+# cursor maximo del changelog ANTES de borrar; `restaurar` los devuelve DESPUES de sembrar, deja la numeracion del
+# changelog por encima de ese cursor y vuelve a publicar la referencia, asi el nodo baja el estado nuevo entero
+# (libraedge ADR-022, v0.19.0).
+#
+# 🔴 **La demo es mas importante que el nodo:** nada de esto aborta el reset. Si falla --o si el libraedge del
+# contenedor es de un pin anterior a v0.19.0 y no tiene los subcomandos-- se registra en el log y el reset sigue
+# igual que antes.
+#
+# El archivo tiene hashes de secretos: permisos 600, bajo /root, y se borra al restaurar. Si una corrida no llega a
+# restaurarlo (el seed fallo), queda: la proxima lo usa en vez de conservar de nuevo, porque la base de esa noche ya no
+# tiene los nodos y conservar escribiria una lista vacia.
+NODOS_DUMP="/root/libraedge-nodos-$CONTENEDOR.json"
+NODOS_EN_CONTENEDOR=/tmp/libraedge-nodos.json
+NODOS_PARA_RESTAURAR=0
+
+# `libraedge-central nodo ...` ADENTRO del contenedor, con el aprovisionamiento del producto. La base va por
+# VENTALIBRA_DB_PATH: el contenedor no define LIBRAEDGE_DATABASE_URL.
+edge_central() {
+  docker exec "$CONTENEDOR" sh -c '
+    LIBRAEDGE_APROVISIONAMIENTO=app.offline:aprovisionamiento \
+    LIBRAEDGE_DATABASE_URL="$VENTALIBRA_DB_PATH" \
+    libraedge-central nodo "$@"
+  ' sh "$@"
+}
+
+conservar_nodos() {
+  # Uno vacio (una corrida cortada a mitad de la copia) no sirve y no tiene que trabar la conservacion de hoy.
+  [ -s "$NODOS_DUMP" ] || rm -f "$NODOS_DUMP"
+  if [ -e "$NODOS_DUMP" ]; then
+    log "OJO: quedo $NODOS_DUMP de una corrida que no llego a restaurar los nodos: se usa ese (borrarlo si ya no sirve)."
+    NODOS_PARA_RESTAURAR=1
+    return 0
+  fi
+  if ! edge_central conservar --help >/dev/null 2>&1; then
+    log "OJO: el libraedge de $CONTENEDOR no tiene \`nodo conservar\` (pin anterior a v0.19.0): los nodos no se conservan."
+    return 0
+  fi
+  docker exec --user root "$CONTENEDOR" rm -f "$NODOS_EN_CONTENEDOR" || true
+  if ! edge_central conservar --a "$NODOS_EN_CONTENEDOR" 2>&1 | log_lineas; then
+    log "OJO: no se pudieron conservar los nodos: fallo \`conservar\`. El reset sigue."
+    return 0
+  fi
+  # `umask 077` para que el archivo nazca 600: sale del contenedor por la redireccion, no por `docker cp`.
+  if (umask 077; docker exec --user root "$CONTENEDOR" cat "$NODOS_EN_CONTENEDOR" > "$NODOS_DUMP") && [ -s "$NODOS_DUMP" ]; then
+    NODOS_PARA_RESTAURAR=1
+  else
+    log "OJO: no se pudo sacar el archivo de nodos del contenedor. El reset sigue."
+    rm -f "$NODOS_DUMP"
+  fi
+  docker exec --user root "$CONTENEDOR" rm -f "$NODOS_EN_CONTENEDOR" || true
+}
+
+restaurar_nodos() {
+  [ "$NODOS_PARA_RESTAURAR" = 1 ] || return 0
+  log "LibraEdge: restaurando los nodos de la demo"
+  if docker exec -i "$CONTENEDOR" sh -c 'umask 077; cat > "$1"' sh "$NODOS_EN_CONTENEDOR" < "$NODOS_DUMP" \
+      && edge_central restaurar --de "$NODOS_EN_CONTENEDOR" 2>&1 | log_lineas; then
+    rm -f "$NODOS_DUMP"
+    log "LibraEdge: nodos restaurados, archivo borrado"
+  else
+    log "OJO: no se pudieron restaurar los nodos; el archivo queda en $NODOS_DUMP y la proxima corrida lo usa."
+  fi
+  docker exec --user root "$CONTENEDOR" rm -f "$NODOS_EN_CONTENEDOR" || true
+}
+
 # --- La guarda ------------------------------------------------------------
 # Si el nombre no es el de una demo, no se sigue. Es barato, y es lo unico que
 # separa "resetear la demo" de "borrarle la base a un cliente".
@@ -165,6 +234,10 @@ case "$URL_BASE" in
     else
       log "OJO: no se pudieron guardar los codigos de acceso: no existe $DEMO_CODIGOS"
     fi
+
+    # --- LibraEdge: guardar los nodos ---------------------------------------------
+    # Con la app todavia arriba (el CLI corre adentro del contenedor) y ANTES de pararla y borrar. Si falla NO se aborta.
+    conservar_nodos || log "OJO: fallo la conservacion de los nodos de LibraEdge. El reset sigue."
 
     # Se para la app ANTES de tocar el schema. Con el contenedor arriba, sus
     # conexiones abiertas dejan el `DROP SCHEMA` esperando un lock: no falla,
@@ -321,5 +394,10 @@ docker exec -i "$CONTENEDOR" sh -c '
 # este `rm` falla con "Operation not permitted" y, con `set -e`, el script sale 1 DESPUÉS de
 # haber sembrado bien (mismo defecto que se corrigió en LibraCargo).
 docker exec --user root "$CONTENEDOR" rm -f /tmp/seed.py || true
+
+# --- LibraEdge: devolver los nodos --------------------------------------------
+# DESPUES de sembrar: `restaurar` vuelve a publicar la referencia y siembra el changelog con la demo ya cargada, con
+# cursores mayores a los que el nodo ya tiene. Si falla NO se aborta: la demo ya quedo sembrada.
+restaurar_nodos || log "OJO: fallo la restauracion de los nodos de LibraEdge."
 
 log "=== listo ==="

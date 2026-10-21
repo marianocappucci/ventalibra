@@ -326,7 +326,8 @@ dependencies = [
     # todos los planes con el codigo de vinculacion (ADR-014: `create_canje_router`, dos tablas que crea `init_schema`). Sin migracion.
     # v0.14.0 -> v0.17.0 (2026-10-21): orden causal del outbox, salud para uptime-kuma y guarda del espejo opt-in (ADR-018 a 020). Sin migracion.
     # v0.17.0 -> v0.18.0 (2026-10-21): altas en el nodo: id provisorio, mapeo y reapuntado en el espejo (ADR-021). Sin migracion.
-    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.18.0",
+    # v0.18.0 -> v0.19.0 (2026-10-21): `libraedge-central nodo conservar/restaurar` (ADR-022), para que el reset de la demo conserve los nodos. Sin migracion.
+    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.19.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
