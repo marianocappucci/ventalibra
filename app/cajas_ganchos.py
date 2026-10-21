@@ -160,8 +160,12 @@ def resumen_del_turno(turno_id: int) -> dict:
     return {**_sin_fiado(db_turnos.get_resumen_turno_caja(turno_id)), "ventas": ventas}
 
 
-def cerrar_turno(turno_id: int, monto_declarado: float, notas: str = "") -> None:
-    db_turnos.cerrar_turno_caja(turno_id, monto_declarado, notas)
+def cerrar_turno(turno_id: int, monto_declarado: float, notas: str = "", *, ganchos=None) -> None:
+    """Cierra el turno arqueando sobre la caja (`cerrar_turno_caja`, el mismo arqueo de `resumen_del_turno`).
+
+    `ganchos` (`GanchosDeCaja`) lo pasa `build_turnos_router(ganchos_de_caja=)`: en un nodo de LibraEdge `al_cerrar_turno`
+    encola `turno.cerrado` adentro de la misma transacción del cierre (libracore ADR-076); sin ellos no cambia nada."""
+    db_turnos.cerrar_turno_caja(turno_id, monto_declarado, notas, ganchos=ganchos)
 
 
 def validar_apertura_de(sucursales: Sucursales) -> Callable[[AbrirPayload, dict], None]:

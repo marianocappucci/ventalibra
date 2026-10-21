@@ -5,7 +5,7 @@ import type { Rol } from './roles'
 // esto se pone rojo a propósito y hay que decidir, mirando la matriz de `app/permisos.py` (ADR-049), si está bien.
 
 const ADMIN = [
-  '/dashboard', '/pos', '/ventas', '/clientes', '/cuentas-corrientes', '/turnos', '/cierre-diario', '/cajas', '/tesoreria',
+  '/dashboard', '/pos', '/ventas', '/comprobantes-pendientes', '/clientes', '/cuentas-corrientes', '/turnos', '/cierre-diario', '/cajas', '/tesoreria',
   '/egresos', '/productos', '/etiquetas', '/listas-precio', '/actualizacion-masiva-precios', '/promociones', '/stock',
   '/vencimientos', '/transferencias', '/reposicion', '/sucursales', '/compras', '/proveedores', '/reportes', '/margen', '/mermas',
   '/caja-medios', '/libros-iva', '/usuarios', '/logs', '/configuracion',

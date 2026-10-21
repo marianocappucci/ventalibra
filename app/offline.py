@@ -9,7 +9,10 @@ de LibraCommerce (ADR-067 y ADR-068, `libracommerce.erp.offline`) y la facturaci
 | Pieza | Qué aporta este producto |
 |---|---|
 | `aprovisionamiento` | las tablas de referencia (el reparto de autoridad) y las sucursales |
-| `OUTBOX` | la identidad del nodo y si está en línea (VentaLibra no manda nada propio con la venta) |
+| `OUTBOX` | la identidad del nodo, si está en línea y que la caja de la venta lleva el turno (`caja_con_turno=True`) |
+| `GANCHOS_DE_CAJA` | la caja del nodo (turnos y cierre del día) sube al central como operaciones (ADR-091) |
+| `altas_en_nodo` | los clientes que se dan de alta en el nodo (id provisorio y `cliente.alta`) suben al central (ADR-092) |
+| `solo_en_el_central` | la guarda de lo que el nodo no hace: reabrir un día cerrado |
 | `CONEXION` / `numerar_en_el_nodo` | en el nodo, facturar con el ticket de ARCA que presta el central |
 
 ## Identidad: `LIBRAEDGE_NODE_ID` (y `VENTALIBRA_EDGE_NODE_ID`, por la regla del motor)
@@ -38,7 +41,12 @@ from __future__ import annotations
 import os
 
 from libracommerce.erp.offline import NodoLocal, Outbox
-from libracore.nodo_offline import VARIABLE_ESTADO, ConexionDelNodo, esta_en_linea
+from libracommerce.erp.offline_caja import caja_con_outbox
+from libracommerce.erp.offline_clientes import altas_en_nodo as altas_de_clientes
+from libracore import altas_en_nodo
+from libracore.altas_en_nodo import REFERENCIAS_DE_CLIENTES
+from libracore.ganchos_de_caja import GanchosDeCaja
+from libracore.nodo_offline import VARIABLE_ESTADO, ConexionDelNodo, esta_en_linea, guarda_solo_en_el_central
 from libraedge.identidad import nodo_actual, prefijo_actual
 
 #: El prefijo de las variables del producto (`VENTALIBRA_DATABASE_URL`, `VENTALIBRA_EDGE_NODE_ID`).
@@ -106,7 +114,34 @@ CONEXION = ConexionDelNodo(nodo=nodo, en_linea=en_linea)
 #: El outbox de LibraEdge para `libracommerce.erp.offline.con_outbox`. El mismo en el nodo y en el central: fuera de un
 #: nodo (`nodo_local()` es `None`) no encola nada. Sin `extra_de_venta`: la venta de mostrador de VentaLibra no lleva
 #: nada propio que el central necesite (el turno viaja como dato en `turno_id_nodo`).
-OUTBOX = Outbox(nodo=nodo_local, en_linea=en_linea)
+#:
+#: 🔑 `caja_con_turno=True`: VentaLibra escribe el turno en los movimientos de caja de la venta (`registrar_venta`,
+#: `anular_venta`, `devolver_items` y `acreditar_pago_qr` van con `caja_con_turno=True`, `app/db_ventas.py` y
+#: `OpcionesVentas` en `app/main.py`), así que el central tiene que hacer lo mismo para que el arqueo del turno dé igual en
+#: las dos puntas (libracommerce ADR-069).
+OUTBOX = Outbox(nodo=nodo_local, en_linea=en_linea, caja_con_turno=True)
+
+#: Las altas de clientes en un nodo (libracore ADR-077, libracommerce ADR-070, ADR-092 de este producto): en un nodo,
+#: `POST /api/clientes` (y cualquier alta de `libracore.db.clients`) guarda al cliente con un **id provisorio negativo** y
+#: encola `cliente.alta` en el `OUTBOX`, en la misma transacción del alta; el central le asigna su id y las ventas
+#: posteriores a ese cliente suben traducidas (`venta.registrada`). Se registra al importar este módulo, que importa la app
+#: (`app/main.py`) y el CLI del central (`LIBRAEDGE_APROVISIONAMIENTO`): en las dos puntas. **Fuera de un nodo**
+#: (`nodo_local()` es `None`) el motor no pide ids provisorios ni avisa a nadie, y el alta es la de siempre.
+altas_en_nodo.configurar(altas_de_clientes(OUTBOX))
+
+#: Los ganchos de la caja para `build_turnos_router` y `build_cierre_diario_router` (`ganchos_de_caja=`): en un nodo
+#: encolan en el `OUTBOX` el turno que se abre o se cierra y el cierre del día (libracore ADR-076, libracommerce ADR-069);
+#: **fuera de un nodo** (`nodo_local()` es `None`) no hacen nada, como `GanchosDeCaja()`. Se pasan por llamada y no se
+#: registran globalmente: la caja de una venta no sube acá sino con la venta (`venta.registrada`, `venta.pago_acreditado`,
+#: `venta.anulada`, `venta.devolucion`); si además subiera como `caja.movimiento` quedaría duplicada en el central. Este
+#: producto no monta `build_caja_router` (no hay ingresos ni egresos a mano): `caja.movimiento` y
+#: `caja.movimiento_anulado` no se encolan nunca acá. Mismos ganchos en el central: el despachador de
+#: `app/routers/sincronizacion_offline.py` ya registra todos los tipos (`registrar_en`; con `cliente.alta`, once).
+GANCHOS_DE_CAJA = caja_con_outbox(GanchosDeCaja(), OUTBOX)
+
+#: Lo que el nodo no hace: `Depends(solo_en_el_central)` contesta 409 `solo_en_el_central` en un nodo y no hace nada en el
+#: central ni en una instalación común. La identidad se lee en cada pedido (`nodo()`, que mira las dos variables).
+solo_en_el_central = guarda_solo_en_el_central(nodo=nodo)
 
 
 # ── Facturar en el nodo con el ticket prestado ──────────────────────────────────────────────────────────────────────
@@ -215,6 +250,9 @@ def _aprovisionamiento():
 
     return Aprovisionamiento(
         prefijo=PREFIJO, tablas_de_referencia=TABLAS_DE_REFERENCIA, listar_sucursales=_listar_sucursales,
+        # Los clientes se dan de alta en el nodo (id provisorio, ADR-092): `clients` con lo que lo referencia sin FK
+        # (`cc_asientos.tercero_id`) y su `parties` espejo, que es a lo que apunta `sales.customer_party_id`.
+        altas_en_nodo=[("clients", REFERENCIAS_DE_CLIENTES), "parties"],
         # Sin guarda comercial: LibraEdge está incluido en todos los planes (libraedge ADR-014).
         verificar_alta=sin_guarda, conectar=_conectar,
     )

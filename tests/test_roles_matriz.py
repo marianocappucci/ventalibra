@@ -113,6 +113,13 @@ GET    /ventas/{sale_id}/devuelto                                       MOSTRADO
 # Nodo offline (ADR-090): la conexión del nodo y su bandeja de comprobantes pendientes, con el gate del cobro
 GET    /api/nodo/conexion                                               MOSTRADOR
 POST   /api/nodo/facturar-pendientes                                    MOSTRADOR
+# La bandeja de comprobantes pendientes del nodo (libra-ui ADR-087, ADR-091): lista las ventas de TODOS los turnos, así que es de
+# quien ve las ventas ajenas (`ventas.todas`: admin y encargado), no del mostrador (ADR-068)
+GET    /api/comprobantes-pendientes                                     GERENCIA
+GET    /api/comprobantes-pendientes/{comprobante_id}                    GERENCIA
+POST   /api/comprobantes-pendientes/facturar-prefill                    GERENCIA
+POST   /api/comprobantes-pendientes/marcar-facturado                    GERENCIA
+POST   /api/comprobantes-pendientes/{comprobante_id}/descartar          GERENCIA
 # La barra de estado del pie (libracore ADR-075): la abren todos los roles (`estado_del_sistema`); ARCA, respaldo y nodos del central
 # los recorta el motor con `es_admin` (`config`), no la guarda
 GET    /api/estado-del-sistema                                          TODOS
@@ -124,6 +131,10 @@ POST   /sync/v1/ticket-arca                                             PUBLICA
 # El canje del código de vinculación (libraedge ADR-014): lo llama el instalador del nodo, sin sesión; lo protegen el código
 # (un solo uso, 15 minutos), el https y el límite de intentos del motor
 POST   /sync/v1/vinculacion                                             PUBLICA
+# La salud de los nodos para uptime-kuma (libraedge ADR-018): sin sesión; la protege LIBRAEDGE_TOKEN_MONITOREO (sin la variable
+# la ruta da 404, con un token malo 401)
+GET    /sync/v1/salud                                                   PUBLICA
+GET    /sync/v1/salud/{node_id}                                         PUBLICA
 GET    /api/ventas/medios-pago                                          MOSTRADOR
 GET    /api/ventas                                                      MOSTRADOR
 POST   /api/ventas                                                      MOSTRADOR

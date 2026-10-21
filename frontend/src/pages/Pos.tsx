@@ -24,6 +24,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { hoyISO } from 'libra-ui/fechas'
+import {
+  CODIGO_SIN_CONEXION, MENSAJE_QR_SIN_CONEXION, codigoDelError, marcarSinConexion, useConexionDelNodo,
+} from 'libra-ui/nodo-offline'
 import { hora } from '@/lib/fechas'
 import type { CalculoPromociones, ListaPrecio } from 'libra-ui/comercio/tipos'
 import {
@@ -41,7 +44,7 @@ import { SelectBuscable } from 'libra-ui/SelectBuscable'
 import { AltaDeCliente } from 'libra-ui/SelectCliente'
 import { CAMPOS_CLIENTE_DEL_MOTOR, crearYSumar } from 'libra-ui/comercio/alta-de-cliente'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Ban, FileText, Hash, LockKeyhole, Plus, Printer, QrCode, Scan, Split, Trash2, User, UserPlus } from 'lucide-react'
+import { Ban, FileText, Hash, LockKeyhole, Plus, Printer, QrCode, Scan, Split, Trash2, User, UserPlus, WifiOff } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useMediosPago } from '@/lib/medios-pago'
 import { abrirTicket } from '@/lib/tickets'
@@ -366,13 +369,22 @@ export function Pos({ puedeCrearCliente = false }: { puedeCrearCliente?: boolean
   // siempre, sin bloquear nada (mismo criterio que `mp-estado`, arriba).
   const [listaPrecioDefaultId, setListaPrecioDefaultId] = useState<number | null>(null)
 
+  //
+  // 🔑 **Nodo offline (libra-ui ADR-077, ADR-090/ADR-091 de este producto).** Esa respuesta es una foto: en un nodo, un corte
+  // posterior la dejaba vieja y el QR creaba la venta, recibía el 409 `sin_conexion` y la anulaba. Por eso el QR también
+  // mira la conexión EN VIVO (`useConexionDelNodo`, el mismo estado que el cartel del layout; ver `Cobro`). Y como en un
+  // nodo sin conexión el servidor contesta `disponible: false` aunque el QR esté configurado, **se vuelve a preguntar cuando
+  // vuelve la conexión**: un POS abierto durante un corte recupera el QR solo. Sin conexión no se pregunta de nuevo: vale lo
+  // que se sabía (preguntar ahora lo apagaría y le sacaría el aviso al cajero).
+  const { sinConexion } = useConexionDelNodo()
   useEffect(() => {
+    if (sinConexion) return
     api.get<MpDisponible>('/pos/mp-estado')
       .then(setMp)
       // Sin respuesta, el POS sigue cobrando por los medios de siempre: el QR
       // es una forma más de cobrar, no un requisito para vender.
       .catch(() => setMp({ disponible: false, auto_facturar: false }))
-  }, [])
+  }, [sinConexion])
 
   useEffect(() => {
     api.get<ListaPrecio[]>('/api/listas-precio')
@@ -1396,6 +1408,9 @@ function Cobro({ cart, total, depositoId, sucursalId, cliente, mp, dividir = fal
   onRegistrado: (venta: Venta, facturaError: string | null, aviso?: string | null) => void
 }) {
   const { medios } = useMediosPago()
+  // Nodo offline: sin conexión el QR no puede salir (el servidor lo rechaza con 409 `sin_conexion`). Se lee en vivo, no de
+  // `mp` (que se preguntó al abrir): el botón se apaga con el aviso del kit y vuelve solo cuando vuelve la conexión.
+  const { sinConexion } = useConexionDelNodo()
   const [pagos, setPagos] = useState<PagoForm[]>(() => {
     if (dividir) {
       const mitad = Math.floor((total / 2) * 100) / 100
@@ -1701,7 +1716,7 @@ function Cobro({ cart, total, depositoId, sucursalId, cliente, mp, dividir = fal
   }
 
   async function cobrarConQr() {
-    if (enviandoRef.current) return
+    if (enviandoRef.current || sinConexion) return
     enviandoRef.current = true
     try {
       // Acá, con el click todavía en curso, es el único momento en que el
@@ -1741,6 +1756,13 @@ function Cobro({ cart, total, depositoId, sucursalId, cliente, mp, dividir = fal
         // queda huérfana -- nadie la vuelve a mencionar, y no tiene ticket
         // ni aparece como cobrada. Mismo camino que cualquier otra salida
         // sin acreditar.
+        // Un corte que el cartel todavía no vio (se consulta cada tanto): el 409 `sin_conexion` lo dice antes. Se lo cuenta
+        // al estado compartido para que el botón se apague ya, sin esperar la consulta siguiente.
+        if (codigoDelError(err) === CODIGO_SIN_CONEXION) {
+          marcarSinConexion()
+          await anularPendiente(`${MENSAJE_QR_SIN_CONEXION} La venta se anuló.`)
+          return
+        }
         const detalle = describeError(err)
         await anularPendiente(`No se pudo poner el monto en el QR: ${detalle} La venta se anuló.`)
         return
@@ -1879,19 +1901,27 @@ function Cobro({ cart, total, depositoId, sucursalId, cliente, mp, dividir = fal
                 <>
                   <Button
                     type="button" size="sm" variant="secondary"
-                    disabled={qrEstado === 'creando' || registrando}
+                    disabled={qrEstado === 'creando' || registrando || sinConexion}
+                    title={sinConexion ? MENSAJE_QR_SIN_CONEXION : undefined}
+                    aria-describedby={sinConexion ? 'qr-sin-conexion' : undefined}
                     onClick={cobrarConQr}
                   >
                     <QrCode />
                     {qrEstado === 'creando' ? 'Preparando el QR…' : 'Cobrar con QR'}
                   </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Registra la venta, pone el total en el QR impreso del mostrador
-                    y espera a que MercadoPago avise. La venta se cierra sola cuando
-                    se acredita
-                    {mp?.auto_facturar ? ', con la factura emitida' : ''}. Cancelar
-                    anula la venta.
-                  </p>
+                  {sinConexion ? (
+                    <p id="qr-sin-conexion" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <WifiOff className="size-3.5 shrink-0" />{MENSAJE_QR_SIN_CONEXION}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Registra la venta, pone el total en el QR impreso del mostrador
+                      y espera a que MercadoPago avise. La venta se cierra sola cuando
+                      se acredita
+                      {mp?.auto_facturar ? ', con la factura emitida' : ''}. Cancelar
+                      anula la venta.
+                    </p>
+                  )}
                 </>
               )}
               {qrError && <p className="text-sm text-destructive">{qrError}</p>}
