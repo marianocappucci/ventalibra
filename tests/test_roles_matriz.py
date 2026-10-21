@@ -124,6 +124,10 @@ POST   /sync/v1/ticket-arca                                             PUBLICA
 # El canje del código de vinculación (libraedge ADR-014): lo llama el instalador del nodo, sin sesión; lo protegen el código
 # (un solo uso, 15 minutos), el https y el límite de intentos del motor
 POST   /sync/v1/vinculacion                                             PUBLICA
+# La salud de los nodos para uptime-kuma (libraedge ADR-018): sin sesión; la protege LIBRAEDGE_TOKEN_MONITOREO (sin la variable
+# la ruta da 404, con un token malo 401)
+GET    /sync/v1/salud                                                   PUBLICA
+GET    /sync/v1/salud/{node_id}                                         PUBLICA
 GET    /api/ventas/medios-pago                                          MOSTRADOR
 GET    /api/ventas                                                      MOSTRADOR
 POST   /api/ventas                                                      MOSTRADOR
