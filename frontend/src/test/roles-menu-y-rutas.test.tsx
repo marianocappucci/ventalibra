@@ -25,12 +25,13 @@ vi.mock('../pages/Reportes', () => ({ Reportes: () => <div>PANTALLA-REPORTES</di
 vi.mock('../pages/Reposicion', () => ({ Reposicion: () => <div>PANTALLA-REPOSICION</div> }))
 vi.mock('../pages/Vencimientos', () => ({ Vencimientos: () => <div>PANTALLA-VENCIMIENTOS</div> }))
 vi.mock('../pages/Usuarios', () => ({ Usuarios: () => <div>PANTALLA-USUARIOS</div> }))
+vi.mock('libra-ui/BandejaDeComprobantes', () => ({ BandejaDeComprobantes: () => <div>PANTALLA-BANDEJA</div> }))
 
 type Rol = keyof typeof CAPACIDADES_POR_ROL
 
 /** Todas las entradas del menú, tal como se leen en la barra lateral. */
 const MENU = [
-  'POS (Caja)', 'Ventas', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
+  'POS (Caja)', 'Ventas', 'Comprobantes a facturar', 'Productos', 'Compras', 'Proveedores', 'Egresos', 'Clientes', 'Cuentas corrientes',
   'Sucursales y depósitos', 'Listas de precio', 'Actualización de precios', 'Promociones', 'Etiquetas', 'Stock', 'Transferencias',
   'Cajas', 'Tesorería', 'Turnos', 'Cierre diario', 'Dashboard', 'Reportes', 'Margen y rotación', 'Reposición sugerida', 'Vencimientos y lotes', 'Libros IVA',
   'Caja por medio', 'Usuarios', 'Logs', 'Configuración',
@@ -119,6 +120,8 @@ describe('el ruteo por rol', () => {
     ['vendedor', '/margen'], ['vendedor', '/reposicion'], ['vendedor', '/vencimientos'], ['vendedor', '/tesoreria'], ['vendedor', '/logs'], ['vendedor', '/'],
     // El cajero no tiene las pantallas de gestión aunque el backend le deje leer el catálogo, el stock y los clientes.
     ['cajero', '/productos'], ['cajero', '/stock'], ['cajero', '/clientes'], ['cajero', '/proveedores'],
+    // La bandeja del nodo lista las ventas de todos los turnos (`ventas.todas`): el mostrador no la ve ni por la URL (ADR-091).
+    ['cajero', '/comprobantes-pendientes'], ['vendedor', '/comprobantes-pendientes'],
   ] as [Rol, string][])('%s en %s vuelve al POS', async (rol, ruta) => {
     expect(await iraDe(rol, ruta)).toBe('/pos')
   })
@@ -142,6 +145,8 @@ describe('el ruteo por rol', () => {
     ['encargado', '/reposicion'], ['admin', '/reposicion'], ['deposito', '/reposicion'],
     // Las tres capacidades de vencimientos: el depósito llega a la pantalla (que ve y mueve, pero no marca).
     ['encargado', '/vencimientos'], ['admin', '/vencimientos'], ['deposito', '/vencimientos'],
+    // La bandeja del nodo: quien ve las ventas de todos (ADR-091).
+    ['encargado', '/comprobantes-pendientes'], ['admin', '/comprobantes-pendientes'],
   ] as [Rol, string][])('%s entra a %s sin que lo muevan', async (rol, ruta) => {
     entrar(usuarioDe(rol), ruta)
     await waitFor(() => expect(screen.getByTestId('ruta')).toHaveTextContent(ruta))

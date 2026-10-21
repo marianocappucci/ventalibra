@@ -5,7 +5,7 @@ import logging
 import os
 from functools import partial
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from libraauth.auditoria import agregar_middleware_de_usuario, build_logs_router
 from libraauth.auth_events import AuthEventRepository, ip_del_request
 from libraauth.bootstrap import ensure_demo_user
@@ -60,6 +60,7 @@ from libracore.arca_router import build_arca_router
 from libracore.caja_router import build_cajas_router, build_cierre_diario_router, build_turnos_router
 from libracore.candados import una_vez_al_arrancar
 from libracore.clientes_router import build_clientes_router
+from libracore.comprobantes_router import build_comprobantes_bandeja_router
 from libracore.config_router import (
     build_backup_router,
     build_empresa_admin_router,
@@ -99,6 +100,7 @@ from . import database, db, db_ventas, venta_facturacion
 from .auth import (
     build_session_auth,
     get_current_user,
+    get_session_auth,
 )
 from .cajas_ganchos import (
     cerrar_turno,
@@ -123,7 +125,7 @@ from .depositos_ganchos import (
 )
 from .ganchos import GANCHOS
 from .modules_gate import require_module
-from .offline import OUTBOX, nodos_del_central
+from .offline import GANCHOS_DE_CAJA, OUTBOX, nodos_del_central, solo_en_el_central
 from .offline import aprovisionamiento as aprovisionamiento_offline
 from .permisos import (
     ENCARGADO,
@@ -716,6 +718,27 @@ def create_app(db_path: str) -> FastAPI:
         ),
         dependencies=[Depends(requiere("ventas.pos"))],
     )
+    # La bandeja de comprobantes pendientes (libracore ADR-074, libra-ui ADR-087): en un nodo offline son las ventas cobradas
+    # sin conexión que esperan su factura (`GET /api/comprobantes-pendientes`; «Facturar ahora» es el
+    # `POST /api/nodo/facturar-pendientes` de arriba, que ya estaba). Este producto no monta la ingesta de otros sistemas
+    # (`build_comprobantes_ingesta_router`), así que fuera de un nodo la bandeja está vacía y `facturar-prefill`,
+    # `marcar-facturado` y `descartar` no tienen nada que resolver (con una venta del nodo contestan 409). Capacidad
+    # `ventas.todas` (admin y encargado), no `ventas.pos`: la bandeja lista las ventas de TODOS los turnos y quien sólo ve
+    # las suyas (el cajero y el vendedor, ADR-068) no tiene por qué ver las ajenas. Con el módulo de facturación, como
+    # «Facturar ahora».
+    def _quien_resolvio(request: Request) -> str:
+        """Con qué nombre se firma la resolución de un comprobante de la bandeja. Se lee de la sesión y no del payload
+        (sería un campo que elige el cliente); vacío, y no un error, si no hay sesión: el gate del router ya la exigió."""
+        try:
+            usuario = get_current_user(request, get_session_auth(request))
+        except HTTPException:
+            return ""
+        return usuario.get("name") or usuario.get("username") or ""
+
+    app.include_router(
+        build_comprobantes_bandeja_router(usuario_actual=_quien_resolvio),
+        dependencies=[Depends(requiere("ventas.todas")), Depends(require_module("facturacion"))],
+    )
     # La nota de crédito de una factura con CAE (`libracore.facturas_router`, ADR-017 del motor): SOLO esa ruta, no
     # los otros once endpoints de comprobantes (alta manual, cobro, borrado), que este producto no usa y que llevarían
     # el cobro sin `turno_id`. La necesita `anular_venta`, que desde libracommerce v0.41.0 no anula una venta con
@@ -744,6 +767,9 @@ def create_app(db_path: str) -> FastAPI:
         build_turnos_router(
             usuario_actual=usuario_de_turnos, resumen_turno=resumen_del_turno, cerrar_turno=cerrar_turno,
             validar_apertura=validar_apertura_de(_sucursales), enriquecer=enriquecer_turno_de(_sucursales),
+            # En un nodo offline abrir y cerrar un turno sube al central (libracore ADR-076, ADR-091 de este producto);
+            # fuera de un nodo no hace nada. `cerrar_turno` de `cajas_ganchos` acepta `ganchos=` por eso.
+            ganchos_de_caja=GANCHOS_DE_CAJA,
         ),
         dependencies=[Depends(requiere("caja.propia"))],
     )
@@ -989,11 +1015,23 @@ def create_app(db_path: str) -> FastAPI:
         sucursal = _sucursales().get(sucursal_id)
         return sucursal.name if sucursal else ""
 
+    # 🔑 La caja del nodo (libracore ADR-076, ADR-091 de este producto): cerrar el día en un nodo sube al central
+    # (`ganchos_de_caja`, `dia.cerrado`). **Reabrir** no tiene gancho (el nodo lo reabriría y el central seguiría cerrado), así
+    # que en un nodo es 409 `solo_en_el_central`: se hace en el central. Primero el rol (403) y después el nodo (409), para
+    # que quien no puede reabrir no se entere de nada más.
+    _puede_reabrir = requiere("cierre_diario.reabrir")
+
+    def _reabrir_dia(
+        usuario: dict = Depends(_puede_reabrir), _central: None = Depends(solo_en_el_central),
+    ) -> dict:
+        return usuario
+
     app.include_router(
         build_cierre_diario_router(
             usuario_actual=get_current_user,
             resolver_sucursal_nombre=_resolver_sucursal_nombre,
-            autorizar_reabrir=Depends(requiere("cierre_diario.reabrir")),
+            autorizar_reabrir=Depends(_reabrir_dia),
+            ganchos_de_caja=GANCHOS_DE_CAJA,
         ),
         dependencies=[
             Depends(requiere_segun_ruta(
