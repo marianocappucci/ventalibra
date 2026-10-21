@@ -5,6 +5,7 @@ import { REDIRECCIONES_DE_CATALOGO, REDIRECCIONES_DE_CONFIGURACION, REDIRECCIONE
 import { Layout } from './components/Layout'
 import { ModulosContext, modulosDe } from './lib/modulos'
 import { type Capacidad, inicioDe, puede } from './lib/permisos'
+import { BandejaDeComprobantes } from 'libra-ui/BandejaDeComprobantes'
 import { Login } from './pages/Login'
 import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import { Pos } from './pages/Pos'
@@ -188,6 +189,18 @@ export default function App() {
         element={
           <ProtectedRoute cap="ventas.pos">
             <VentaDetalle />
+          </ProtectedRoute>
+        }
+      />
+      {/* La bandeja de comprobantes pendientes del nodo offline (libra-ui ADR-087, ADR-091 de este producto): las ventas cobradas
+          sin conexión que esperan su factura, con «Facturar ahora». Sin `alFacturar` (VentaLibra no recibe comprobantes de otros
+          sistemas y no tiene formulario de factura suelta): es de consulta y de las ventas del nodo. Es de quien ve las ventas
+          de todos (`ventas.todas`): lista las de todos los turnos. Fuera de un nodo está vacía. */}
+      <Route
+        path="/comprobantes-pendientes"
+        element={
+          <ProtectedRoute cap="ventas.todas">
+            <BandejaDeComprobantes />
           </ProtectedRoute>
         }
       />

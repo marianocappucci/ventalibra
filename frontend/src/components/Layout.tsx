@@ -19,6 +19,9 @@ const NAV_SECCIONES: NavSection<unknown>[] = [
       { to: '/pos', label: 'POS (Caja)', icon: ICONOS.ventas, hideFor: sinCapacidad('ventas.pos') },
       // Para el cajero es también donde se reimprime un comprobante.
       { to: '/ventas', label: 'Ventas', icon: ICONOS.ventas, hideFor: sinCapacidad('ventas.pos') },
+      // La bandeja del nodo offline (libra-ui ADR-087, ADR-091): las ventas cobradas sin conexión que esperan su factura. Lista las
+      // de todos los turnos, así que es de quien ve las ventas ajenas (`ventas.todas`: admin y encargado). Fuera de un nodo está vacía.
+      { to: '/comprobantes-pendientes', label: 'Comprobantes a facturar', icon: ICONOS.comprobantesAFacturar, hideFor: sinCapacidad('ventas.todas') },
       {
         to: '/clientes', label: 'Clientes', icon: ICONOS.clientes, hideFor: sinCapacidad('clientes.pantalla'),
         children: [{ to: '/cuentas-corrientes', label: 'Cuentas corrientes', icon: ICONOS.cuentaCorriente, hideFor: sinCapacidad('cuenta_corriente') }],

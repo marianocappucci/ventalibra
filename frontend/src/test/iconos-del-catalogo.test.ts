@@ -21,6 +21,8 @@ const RUTA_A_CONCEPTO: Record<string, Concepto> = {
   // El POS y la lista de ventas son el mismo concepto del catálogo («Ventas / POS»): comparten ícono.
   '/pos': 'ventas',
   '/ventas': 'ventas',
+  // La bandeja del nodo offline (libra-ui ADR-087): el concepto del catálogo, el mismo ícono que el título de la pantalla del kit.
+  '/comprobantes-pendientes': 'comprobantesAFacturar',
   '/clientes': 'clientes',
   '/cuentas-corrientes': 'cuentaCorriente',
   '/turnos': 'turnosDeCaja',

@@ -255,6 +255,12 @@ def _en_el_central(esc, sql, params=()):
         return [tuple(f) for f in conn.execute(sql, params).fetchall()]
 
 
+def _en_el_nodo(esc, sql, params=()):
+    filas = [tuple(f) for f in esc.node_conn.execute(sql, params).fetchall()]
+    esc.node_conn.commit()
+    return filas
+
+
 def _venta_del_central(esc, venta_id_nodo):
     filas = _en_el_central(
         esc, "SELECT id, number, status_detail, customer_party_id FROM sales WHERE source_type = ? AND source_id = ?",
@@ -287,7 +293,8 @@ def test_las_ventas_suben_con_el_prefijo_del_nodo_y_el_qr_posterior_cierra_la_pa
     assert parcial["estado"] == "parcial"
 
     resultado = esc.subir()
-    assert resultado.confirmadas == 2 and esc.en_revision_en_el_nodo() == ()
+    # El turno que abrió el nodo (`turno.abierto`, ADR-091) y las dos ventas.
+    assert resultado.confirmadas == 3 and esc.en_revision_en_el_nodo() == ()
 
     vid, numero, estado, _ = _venta_del_central(esc, cobrada["id"])
     assert numero == cobrada["numero"] and estado == "cobrada"
@@ -313,6 +320,48 @@ def test_las_ventas_suben_con_el_prefijo_del_nodo_y_el_qr_posterior_cierra_la_pa
     esc.subir()
     assert len(_en_el_central(esc, "SELECT id FROM sales")) == 2
     assert esc.pendientes_en_el_nodo() == []
+
+
+def test_la_caja_del_nodo_sube_con_su_turno_y_la_de_la_venta_no_se_duplica(escenario):
+    """ADR-091 (libracore ADR-076, libracommerce ADR-069): el turno que abre y cierra el nodo y el cierre del día suben al
+    central con su arqueo; la venta cae en el turno del central y su caja se escribe UNA vez (la reproduce la venta, no un
+    `caja.movimiento`)."""
+    esc = escenario
+    nodo_turno = esc.node_conn.execute("SELECT id FROM turnos_caja ORDER BY id DESC LIMIT 1").fetchone()[0]
+    esc.node_conn.commit()
+    total = 2 * float(PRECIO)
+    venta = esc.vender()
+    r = esc.client.post(f"/api/turnos/{nodo_turno}/cerrar", json={"monto_declarado": total, "notas": ""})
+    assert r.status_code == 200, r.text
+    sucursal = esc.client.get("/api/sucursales").json()
+    r = esc.client.post("/api/cierre-diario/cerrar", json={
+        "sucursal_id": next(s["id"] for s in sucursal if s["es_default"]), "notas": ""})
+    assert r.status_code == 200, r.text
+    assert esc.pendientes_en_el_nodo() == [
+        "dia.cerrado", "turno.abierto", "turno.cerrado", "venta.registrada"]
+
+    resultado = esc.subir()
+    assert resultado.confirmadas == 4 and esc.en_revision_en_el_nodo() == ()
+
+    turnos = _en_el_central(
+        esc, "SELECT id, estado, monto_declarado_cierre, monto_esperado_cierre, notas FROM turnos_caja WHERE origen = ?"
+             " AND origen_id = ?", (NODO, nodo_turno))
+    assert len(turnos) == 1
+    turno_central, estado, declarado, esperado, notas = turnos[0]
+    assert estado == "cerrado" and float(declarado) == total and float(esperado) == total
+    assert "[REVISAR ARQUEO]" not in (notas or ""), "el central recalcula el arqueo y coincide con el del nodo"
+
+    vid, _, _, _ = _venta_del_central(esc, venta["id"])
+    assert _en_el_central(esc, "SELECT turno_id FROM venta_links WHERE venta_id = ?", (vid,)) == [(turno_central,)]
+    ingresos = _en_el_central(
+        esc, "SELECT monto, turno_id FROM caja_movimientos WHERE tipo = 'ingreso' AND anulado = 0")
+    assert [(float(m), t) for m, t in ingresos] == [(total, turno_central)], "la caja de la venta, una vez y en el turno"
+    assert _en_el_central(esc, "SELECT origen, origen_id FROM cierres_diarios") == [
+        (NODO, _en_el_nodo(esc, "SELECT id FROM cierres_diarios")[0][0])]
+
+    # Un segundo ciclo no repite nada.
+    assert esc.subir().confirmadas == 0
+    assert len(_en_el_central(esc, "SELECT id FROM turnos_caja WHERE origen = ?", (NODO,))) == 1
 
 
 def test_un_cliente_nuevo_del_central_baja_al_nodo_con_su_rol_y_se_le_vende(escenario):

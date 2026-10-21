@@ -114,7 +114,8 @@ dependencies = [
     # v0.65.0 -> v0.66.0 (2026-10-18): los reportes por dia leen el dia de Argentina; se sigue guardando el instante UTC (ADR-066). Sin migracion.
     # v0.66.0 -> v0.68.0 (2026-10-19): ventas de la capa ERP en un nodo offline (ADR-067) y venta.facturada con reconciliacion (ADR-068). Sin migracion.
     # v0.68.0 -> v0.69.0 (2026-10-21): la caja y los turnos del nodo suben al central (ADR-069). Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.69.0",
+    # v0.69.0 -> v0.69.1 (2026-10-21): `erp.ventas.cerrar_turno` acepta `ganchos=` (el cierre del turno sube desde un nodo). Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.69.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -289,7 +290,8 @@ dependencies = [
     # v1.186.1 -> v1.186.2 (2026-10-19): el motor se puede importar en Windows (bloqueo de archivo portable, nodo de LibraEdge). Sin migracion.
     # v1.186.2 -> v1.187.0 (2026-10-20): la barra de estado del pie, `GET /api/estado-del-sistema` (ADR-075). Sin migracion.
     # v1.187.0 -> v1.188.0 (2026-10-21): ganchos de caja para que la caja del nodo suba al central (ADR-076). Migracion 0028 aditiva (origen/origen_id).
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.188.0",
+    # v1.188.0 -> v1.188.1 (2026-10-21): `db.turnos.cerrar_turno_con`, el cierre comun de un turno, publico. Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.188.1",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale

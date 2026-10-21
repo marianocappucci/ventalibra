@@ -274,7 +274,10 @@ archivo de estado del proceso del nodo: sin él, el nodo está siempre «sin con
 
 **Qué hace el nodo:** vende, cobra (efectivo, tarjeta, transferencia, fiado), descuenta su stock e
 imprime el ticket sin internet; cada venta, pago acreditado, anulación y devolución sube sola al
-central. **Facturar:** con conexión, el nodo pide el número a ARCA con el ticket que le presta el
+central. **La caja también sube** (ADR-091): abrir y cerrar un turno y cerrar el día llegan al central con su arqueo
+(el esperado es el que vio el cajero; si el central lo recalcula distinto, deja la marca `[REVISAR ARQUEO]` en las notas del turno).
+**Reabrir un día cerrado no se hace en el nodo** (409 `solo_en_el_central`): se hace en el central. Las ventas cobradas
+sin conexión se ven en «Comprobantes a facturar» (admin y encargado), con «Facturar ahora». **Facturar:** con conexión, el nodo pide el número a ARCA con el ticket que le presta el
 central (la clave no sale del VPS). Sin conexión, la venta queda en la bandeja con un ticket «no
 válido como factura» y se factura sola al volver, con la fecha de la venta si ARCA todavía la
 admite (5 días). **El punto de venta de una sucursal con nodo lo usa sólo el nodo.** Lo facturado
