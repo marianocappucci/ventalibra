@@ -60,7 +60,7 @@ TABLAS_PROPIAS = (
 )
 
 #: La cabeza de la cadena propia. Sube con cada revision nueva.
-CABEZA = "0009_libraedge"
+CABEZA = "0010_party_de_proveedores"
 
 
 def _schema_de_las_propias() -> str:
@@ -211,3 +211,40 @@ def test_las_dos_cadenas_no_comparten_la_tabla_de_version():
         f"la tabla del motor quedó en {del_motor!r}, que no parece una revisión "
         "de LibraCore"
     )
+
+
+def test_la_0010_completa_el_party_de_los_proveedores_que_ya_existian():
+    """ADR-093: el party de un proveedor (`id = proveedores.id + 100000`) nacía al comprarle; ahora nace con el proveedor y la
+    `0010_party_de_proveedores` completa a los que ya estaban cargados. Se fabrica el estado «viejo» (un proveedor sin party)
+    sobre la base ya migrada, se baja la cabeza y se vuelve a subir: el party aparece, y volver a correrla no lo reescribe."""
+    limpiar_entre_tests()
+    _correr_la_cadena()
+    url = TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(url) as conexion:
+        proveedor = conexion.execute(
+            "INSERT INTO proveedores (nombre, cuit_dni, email) VALUES ('Proveedor viejo', '30-00000000-1', 'v@ficticio.test') "
+            "RETURNING id").fetchone()[0]
+        conexion.commit()
+        assert conexion.execute("SELECT COUNT(*) FROM parties WHERE id = %s", (100_000 + proveedor,)).fetchone()[0] == 0
+
+    entorno = os.environ.copy()
+    entorno["VENTALIBRA_DATABASE_URL"] = TEST_DATABASE_URL
+    entorno["VENTALIBRA_LIBRACORE_DATABASE_URL"] = TEST_DATABASE_URL
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for argumentos in (("downgrade", "0009_libraedge"), ("upgrade", "head")):
+        r = subprocess.run(["alembic", *argumentos], cwd=raiz, capture_output=True, text=True, env=entorno)
+        assert r.returncode == 0, f"falló `alembic {' '.join(argumentos)}`:\n{(r.stderr or r.stdout)[-2000:]}"
+
+    assert [f[0] for f in _version("alembic_version_ventalibra")] == [CABEZA]
+    with psycopg.connect(url) as conexion:
+        fila = conexion.execute(
+            "SELECT display_name, tax_id, email, party_type, active, xmin::text FROM parties WHERE id = %s",
+            (100_000 + proveedor,)).fetchone()
+        assert fila[:5] == ("Proveedor viejo", "30-00000000-1", "v@ficticio.test", "organization", 1)
+
+    # Volver a correrla no reescribe lo que ya está al día (si lo hiciera, dispararía el changelog de LibraEdge).
+    for argumentos in (("downgrade", "0009_libraedge"), ("upgrade", "head")):
+        r = subprocess.run(["alembic", *argumentos], cwd=raiz, capture_output=True, text=True, env=entorno)
+        assert r.returncode == 0, (r.stderr or r.stdout)[-2000:]
+    with psycopg.connect(url) as conexion:
+        assert conexion.execute("SELECT xmin::text FROM parties WHERE id = %s", (100_000 + proveedor,)).fetchone()[0] == fila[5]

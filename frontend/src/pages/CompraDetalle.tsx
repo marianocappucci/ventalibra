@@ -6,16 +6,25 @@
 //  - `puedeRecibir` (`compras.recibir`): «Recibir mercadería» y «Confirmar recepción». El depósito no la tiene (decisión del
 //    humano, 2026-09-29): quien recibe fija el costo.
 // El que corta de verdad es el backend; esto sólo decide qué se ofrece.
+//
+// En un nodo offline (ADR-093) `puedeEscribir` es `false`: la orden se carga, se envía y se cancela en la versión web; en el equipo
+// del local queda «Recibir mercadería» (lote, vencimiento y costo), que sube al central como `compra.recibida`.
 import { CompraDetalle as CompraDetalleComercio } from 'libra-ui/comercio/CompraDetalle'
+import { useConexionDelNodo } from 'libra-ui/nodo-offline'
+import { AvisoComprasEnElNodo } from '../components/aviso-compras-en-el-nodo'
 import { useAuth } from '../context/AuthContext'
 import { puede } from '../lib/permisos'
 
 export function CompraDetalle() {
   const { user } = useAuth()
+  const { esNodo } = useConexionDelNodo()
   return (
-    <CompraDetalleComercio
-      puedeEscribir={puede(user, 'compras.escribir')}
-      puedeRecibir={puede(user, 'compras.recibir')}
-    />
+    <>
+      <AvisoComprasEnElNodo>Acá se recibe la mercadería contra esta orden; los cambios de la orden se hacen en la web.</AvisoComprasEnElNodo>
+      <CompraDetalleComercio
+        puedeEscribir={puede(user, 'compras.escribir') && !esNodo}
+        puedeRecibir={puede(user, 'compras.recibir')}
+      />
+    </>
   )
 }

@@ -12,7 +12,9 @@ de LibraCommerce (ADR-067 y ADR-068, `libracommerce.erp.offline`) y la facturaci
 | `OUTBOX` | la identidad del nodo, si está en línea y que la caja de la venta lleva el turno (`caja_con_turno=True`) |
 | `GANCHOS_DE_CAJA` | la caja del nodo (turnos y cierre del día) sube al central como operaciones (ADR-091) |
 | `altas_en_nodo` | los clientes que se dan de alta en el nodo (id provisorio y `cliente.alta`) suben al central (ADR-092) |
+| `offline_stock` | el stock de la sucursal lo mueve sólo el nodo: `stock.movimiento` y `compra.recibida` suben, el central contesta 409, carga inicial (ADR-093) |
 | `solo_en_el_central` | la guarda de lo que el nodo no hace: reabrir un día cerrado |
+| `compras_solo_en_el_central` | los proveedores y las órdenes de compra se cargan en la web; en el nodo sólo se recibe contra ellas (ADR-093) |
 | `CONEXION` / `numerar_en_el_nodo` | en el nodo, facturar con el ticket de ARCA que presta el central |
 
 ## Identidad: `LIBRAEDGE_NODE_ID` (y `VENTALIBRA_EDGE_NODE_ID`, por la regla del motor)
@@ -40,6 +42,7 @@ from __future__ import annotations
 
 import os
 
+from libracommerce.erp import offline_stock
 from libracommerce.erp.offline import NodoLocal, Outbox
 from libracommerce.erp.offline_caja import caja_con_outbox
 from libracommerce.erp.offline_clientes import altas_en_nodo as altas_de_clientes
@@ -57,13 +60,16 @@ PRODUCTO = "ventalibra"
 
 #: El reparto de autoridad: qué tablas manda el central y el nodo sólo espeja. **Sólo los nombres**: la clave la lee
 #: LibraEdge de la base (`party_roles` tiene clave compuesta `(party_id, role)`, `units` es `code`, `commerce_settings`
-#: es `key`, `modulos` es `modulo`). El porqué de cada una, en DECISIONS.md ADR-090.
+#: es `key`, `modulos` es `modulo`). El porqué de cada una, en DECISIONS.md ADR-090 (y ADR-093 para las de compras).
 #:
 #: 🔴 NO están `productos`, `categorias_producto`, `listas_precio`, `lista_precio_items` ni `depositos`: existen porque
 #: el DDL de LibraCore las crea, pero el catálogo, los precios y los depósitos de este producto viven en LibraCommerce
 #: (`catalog_items`, `price_lists`, `item_prices`, `locations`). Tampoco `users` (la tabla propia de antes de libraauth,
-#: que ya nadie lee) ni `proveedores`, `cuentas_tesoreria` o `item_branch_min_stock`: compras, tesorería y reposición
-#: se hacen en el central.
+#: que ya nadie lee) ni `cuentas_tesoreria` o `item_branch_min_stock`: tesorería y reposición se hacen en el central.
+#: **Compras, desde el ADR-093**: los proveedores y las órdenes de compra se cargan en la web y bajan al nodo
+#: (`proveedores`, `purchase_orders`, `purchase_order_items`); en el nodo sólo se recibe contra una orden, y la recepción
+#: (`purchase_receipts`, de autoridad del nodo) sube como `compra.recibida`. El orden del espejo por FK lo resuelve
+#: LibraEdge (`orden_de_siembra`), no esta lista.
 #:
 #: Las de **autoridad del nodo** (`sales` y sus tablas, `caja_movimientos`, `turnos_caja`, `stock_movements`, `facturas`,
 #: la bandeja de comprobantes, `sequences`) no se publican: el nodo las genera y las ventas suben como operaciones. Los
@@ -76,6 +82,9 @@ TABLAS_DE_REFERENCIA = frozenset({
     "branches", "locations", "units", "categories", "catalog_items", "item_variants", "item_codes",
     "price_lists", "item_prices", "cliente_lista_precio", "promotions", "promotion_items", "commerce_settings",
     "parties",
+    # Compras (ADR-093): se cargan en la web y bajan; el nodo recibe contra la orden. El party de cada proveedor
+    # (`id = proveedores.id + 100000`) baja por `parties`.
+    "proveedores", "purchase_orders", "purchase_order_items",
     # Propias de VentaLibra (extensiones de `parties`).
     "party_roles", "party_billing",
 })
@@ -139,9 +148,22 @@ altas_en_nodo.configurar(altas_de_clientes(OUTBOX))
 #: `app/routers/sincronizacion_offline.py` ya registra todos los tipos (`registrar_en`; con `cliente.alta`, once).
 GANCHOS_DE_CAJA = caja_con_outbox(GanchosDeCaja(), OUTBOX)
 
+#: El stock de la sucursal de un nodo (libracommerce ADR-071, ADR-093 de este producto): desde la carga inicial **lo mueve
+#: sólo el nodo**. `configurar` arma las dos mitades en el proceso, una vez y en las dos puntas (como `altas_en_nodo`): en un
+#: nodo encola `stock.movimiento` por cada fila del ledger que no viaja con una venta ni con una recepción, y en el central
+#: se niega (`DepositoDeSucursalConNodo`, 409 por `offline_stock.instalar_manejador_409(app)` en `app/main.py`) a mover un
+#: depósito de una sucursal con nodo activo. La recepción de compras sube por `OpcionesCompras(al_recibir=...)`
+#: (`app/compras_ganchos.py`). Fuera de un nodo y de una sucursal con nodo no cambia nada.
+offline_stock.configurar(OUTBOX)
+
 #: Lo que el nodo no hace: `Depends(solo_en_el_central)` contesta 409 `solo_en_el_central` en un nodo y no hace nada en el
 #: central ni en una instalación común. La identidad se lee en cada pedido (`nodo()`, que mira las dos variables).
 solo_en_el_central = guarda_solo_en_el_central(nodo=nodo)
+
+#: Lo mismo, con el motivo de las compras (ADR-093): los proveedores y las órdenes de compra se cargan en la versión web y bajan
+#: al nodo por el espejo; el nodo sólo recibe mercadería contra una orden ya cargada. Es el mensaje que ve quien lo intenta.
+MENSAJE_COMPRAS_SOLO_EN_EL_CENTRAL = "Las órdenes de compra y los proveedores se cargan en la versión web."
+compras_solo_en_el_central = guarda_solo_en_el_central(nodo=nodo, mensaje=MENSAJE_COMPRAS_SOLO_EN_EL_CENTRAL)
 
 
 # ── Facturar en el nodo con el ticket prestado ──────────────────────────────────────────────────────────────────────
@@ -255,6 +277,9 @@ def _aprovisionamiento():
         altas_en_nodo=[("clients", REFERENCIAS_DE_CLIENTES), "parties"],
         # Sin guarda comercial: LibraEdge está incluido en todos los planes (libraedge ADR-014).
         verificar_alta=sin_guarda, conectar=_conectar,
+        # Un depósito sin sucursal no es de ningún nodo: la guarda del central no lo ve y la carga inicial no lo trae
+        # (libracommerce ADR-071, libraedge ADR-023). Registrar un nodo se niega hasta que cada depósito tenga sucursal.
+        validar_registro=offline_stock.depositos_sin_sucursal,
     )
 
 

@@ -117,7 +117,8 @@ dependencies = [
     # v0.69.0 -> v0.69.1 (2026-10-21): `erp.ventas.cerrar_turno` acepta `ganchos=` (el cierre del turno sube desde un nodo). Sin migracion.
     # v0.69.1 -> v0.70.0 (2026-10-21): cliente.alta: las altas de clientes del nodo suben al central (ADR-070); incluye v0.69.1 (cerrar_turno con ganchos). Sin migracion.
     # v0.70.0 -> v0.70.1 (2026-10-21): el central recalcula el arqueo del turno como el nodo (ventas o caja); ya no marca [REVISAR ARQUEO] siempre en ContaLibra y RestoLibra. Sin migracion.
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.70.1",
+    # v0.70.1 -> v0.71.0 (2026-10-21): el stock de una sucursal con nodo lo mueve sólo el nodo (ADR-071, `erp.offline_stock`): ajustes y movimientos suben como `stock.movimiento`, la recepción contra una orden como `compra.recibida`, el central contesta 409 sobre los depósitos de una sucursal con nodo y hay carga inicial (`carga_inicial_del_central`). **Migración 0008** de libracommerce. ADR-093 de este repo.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.71.0",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -329,7 +330,8 @@ dependencies = [
     # v0.14.0 -> v0.17.0 (2026-10-21): orden causal del outbox, salud para uptime-kuma y guarda del espejo opt-in (ADR-018 a 020). Sin migracion.
     # v0.17.0 -> v0.18.0 (2026-10-21): altas en el nodo: id provisorio, mapeo y reapuntado en el espejo (ADR-021). Sin migracion.
     # v0.18.0 -> v0.19.0 (2026-10-21): `libraedge-central nodo conservar/restaurar` (ADR-022), para que el reset de la demo conserve los nodos. Sin migracion.
-    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.19.0",
+    # v0.19.0 -> v0.20.0 (2026-10-21): carga inicial del stock del central (ADR-023: `create_sync_router(carga_inicial=)`, `GET /sync/v1/carga-inicial`, `Aprovisionamiento(validar_registro=)` y `LIBRAEDGE_CARGA_INICIAL` en el instalador). Sin migracion.
+    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.20.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
