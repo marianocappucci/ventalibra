@@ -298,7 +298,8 @@ dependencies = [
     # v1.188.0 -> v1.188.1 (2026-10-21): `db.turnos.cerrar_turno_con`, el cierre comun de un turno, publico. Sin migracion.
     # v1.188.1 -> v1.189.0 (2026-10-21): altas de clientes en un nodo: id provisorio y gancho al crear (ADR-077). Sin migracion.
     # v1.189.0 -> v1.190.0 (2026-10-22): libracore-unir-bases para unir la base core dentro de la del dominio (ADR-078). Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.190.0",
+    # v1.190.0 -> v1.190.1 (2026-10-22): LibraCargo y LibraClub en _UNA_SOLA_BASE (ADR-078). Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.190.1",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
