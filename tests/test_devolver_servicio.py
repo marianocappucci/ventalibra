@@ -32,8 +32,9 @@ def _devolver(client, sale_id, sale_item_id, cantidad, deposito):
 
 def test_la_instancia_de_pruebas_tiene_la_revision_0007_del_motor(admin_client):
     conn = admin_client.app.state.conn
+    # La cabeza es hoy la 0008 (v0.71.0, `stock_movements.origen`, ADR-093): que la 0007 esté aplicada se prueba con su tabla, abajo.
     assert [tuple(v) for v in conn.execute("SELECT version_num FROM alembic_version_libracommerce").fetchall()] == [
-        ("0007_devoluciones_de_servicio",)]
+        ("0008_origen_del_stock",)]
     columnas = {c[0] for c in conn.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'sale_service_returns'").fetchall()}
     assert {"sale_id", "item_id", "quantity", "note"} <= columnas

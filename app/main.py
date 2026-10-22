@@ -24,6 +24,7 @@ from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
 from libraauth.usuarios import build_users_router
 from libracommerce.db.auditoria import ActividadRepository
+from libracommerce.erp import offline_stock
 from libracommerce.erp.reportes import puerto_de_reportes
 from libracommerce.web.catalogo_router import (
     build_depositos_router,
@@ -113,7 +114,12 @@ from .cajas_ganchos import (
     validar_apertura_de,
 )
 from .commerce import REGISTRADOR, entidades_del_log
-from .compras_ganchos import OPCIONES_DE_COMPRAS, proveedor_del_producto, resolver_proveedor_del_producto
+from .compras_ganchos import (
+    OPCIONES_DE_COMPRAS,
+    compras_del_nodo,
+    proveedor_del_producto,
+    resolver_proveedor_del_producto,
+)
 from .conexion import ConexionRenovable, PorLlamada
 from .costos import SinCostos
 from .cuenta_corriente_ganchos import OPCIONES as CC_OPCIONES
@@ -125,7 +131,7 @@ from .depositos_ganchos import (
 )
 from .ganchos import GANCHOS
 from .modules_gate import require_module
-from .offline import GANCHOS_DE_CAJA, OUTBOX, nodos_del_central, solo_en_el_central
+from .offline import GANCHOS_DE_CAJA, OUTBOX, compras_solo_en_el_central, nodos_del_central, solo_en_el_central
 from .offline import aprovisionamiento as aprovisionamiento_offline
 from .permisos import (
     ENCARGADO,
@@ -138,7 +144,7 @@ from .permisos import (
     requiere_solo_servicio,
 )
 from .productos_ganchos import OPCIONES_DE_CATALOGO
-from .proveedores_guarda import no_eliminar_con_compras
+from .proveedores_guarda import no_eliminar_con_compras, party_al_guardar, proveedores_solo_en_el_central
 from .routers import auth as auth_router
 from .routers import (
     catalog,
@@ -457,6 +463,9 @@ def create_app(db_path: str) -> FastAPI:
     # responde con un `ref`; monta `POST /api/errores-cliente` para los errores del navegador. Una sola línea, **al construir
     # la app**: Starlette no deja sumar handlers después.
     instalar_registro_de_errores(app, "ventalibra")
+    # El central se niega a mover el stock de una sucursal con nodo (libracommerce ADR-071, ADR-093): `DepositoDeSucursalConNodo` no es un
+    # `ValueError` (los routers los pasan a 422) y acá es un 409 `deposito_de_sucursal_con_nodo`. Misma regla de arriba: una vez, al construir.
+    offline_stock.instalar_manejador_409(app)
 
     app.include_router(health.router)
     # La sincronización del nodo offline (LibraEdge, ADR-090): `/sync/v1/push`, `/sync/v1/pull` y `/sync/v1/ticket-arca`.
@@ -888,11 +897,15 @@ def create_app(db_path: str) -> FastAPI:
     # sobre la tabla `proveedores` (ADR-030). Reemplaza a `/suppliers`. La baja se guarda: el motor sólo
     # mira los egresos, y acá un proveedor con compras no se elimina (`app/proveedores_guarda.py`). Leerlos es de
     # `compras.ver` (también el depósito, que los lee); escribirlos, de `compras.escribir`.
+    # En un nodo se leen (los espeja) pero no se escriben: 409 `solo_en_el_central` (ADR-093). En el central, el alta y la edición
+    # dejan el party del proveedor al día (`party_al_guardar`).
     app.include_router(
         build_proveedores_router(),
         dependencies=[
             Depends(requiere_segun_metodo(lectura="compras.ver", escritura="compras.escribir")),
+            Depends(proveedores_solo_en_el_central),
             Depends(no_eliminar_con_compras),
+            Depends(party_al_guardar),
         ],
     )
     # Compras (fase 9, ADR-036): el router del motor con la numeración y la traducción de `proveedor_id` de
@@ -902,13 +915,18 @@ def create_app(db_path: str) -> FastAPI:
     # Leer es de `compras.ver`; emitir órdenes de compra, de `compras.escribir`; y la RECEPCIÓN de mercadería
     # (`/api/purchase-receipts`: crear, cargar líneas, confirmar) es de `compras.recibir` (encargado, más
     # admin), NO del depósito: confirmar una recepción fija el costo del producto (`default_cost`) y el depósito no maneja plata.
+    # En un nodo (ADR-093) las órdenes se leen y se recibe contra ellas («Recibir mercadería», que sube como `compra.recibida`); crearlas,
+    # cargarlas, enviarlas, cancelarlas y la recepción en tres pasos son 409 `solo_en_el_central` (`compras_del_nodo`, después del rol).
     app.include_router(
         build_compras_router(conexion=lc_get_connection, usuario_actual=usuario_actual, opciones=OPCIONES_DE_COMPRAS),
-        dependencies=[Depends(requiere_segun_ruta(
-            ("GET", r"/api/purchase-(orders|receipts)(/.*)?", "compras.ver"),
-            ("POST", r"/api/purchase-receipts(/.*)?", "compras.recibir"),
-            por_defecto="compras.escribir",
-        ))],
+        dependencies=[
+            Depends(requiere_segun_ruta(
+                ("GET", r"/api/purchase-(orders|receipts)(/.*)?", "compras.ver"),
+                ("POST", r"/api/purchase-receipts(/.*)?", "compras.recibir"),
+                por_defecto="compras.escribir",
+            )),
+            Depends(compras_del_nodo),
+        ],
     )
     # Clientes: el router del motor (`libracore.clientes_router`), el mismo que montan Contalibra y
     # Restolibra sobre la tabla `clients`. Reemplaza a `/customers` (ADR-029). Leer es de `clientes.ver`; el ALTA
@@ -1101,7 +1119,10 @@ def create_app(db_path: str) -> FastAPI:
     # Numeración y ids de proveedor, los ganchos de Compras (`app/compras_ganchos.py`).
     app.include_router(build_reposicion_ordenes_router(
         conexion=lc_get_connection, usuario_actual=get_current_user,
-        dependencias_escribir=[Depends(requiere("reposicion.ver")), Depends(requiere("compras.escribir"))],
+        # Crea órdenes de compra: en un nodo, 409 `solo_en_el_central` (ADR-093), después de los roles.
+        dependencias_escribir=[
+            Depends(requiere("reposicion.ver")), Depends(requiere("compras.escribir")), Depends(compras_solo_en_el_central),
+        ],
         numerador=OPCIONES_DE_COMPRAS.numerador,
         resolver_proveedor=resolver_proveedor_del_producto, proveedor_de=proveedor_del_producto,
     ))

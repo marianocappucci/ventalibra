@@ -1,4 +1,4 @@
-"""El central expone la sincronización del nodo offline: `/sync/v1/push`, `/sync/v1/pull` y `/sync/v1/ticket-arca`.
+"""El central expone la sincronización del nodo offline: `/sync/v1/push`, `/sync/v1/pull`, `/sync/v1/ticket-arca` y `/sync/v1/carga-inicial`.
 
 E6 de LibraEdge (2026-10-19, ADR-090). Es el mismo armado que RestoLibra (#511), sin la compatibilidad de su piloto:
 VentaLibra nunca tuvo un nodo, así que no hay operaciones viejas que aplicar.
@@ -18,8 +18,9 @@ En VentaLibra el dominio y LibraCore son la misma base, así que esa conexión v
 
 ## Qué se aplica
 
-Un `Despachador` (libraedge ADR-007) con las cinco operaciones de venta de la capa ERP (`venta.registrada`,
-`venta.pago_acreditado`, `venta.anulada`, `venta.devolucion`, `venta.facturada`; libracommerce ADR-067 y ADR-068), con
+Un `Despachador` (libraedge ADR-007) con las operaciones de la capa ERP: las cinco de venta (`venta.registrada`,
+`venta.pago_acreditado`, `venta.anulada`, `venta.devolucion`, `venta.facturada`; libracommerce ADR-067 y ADR-068), las de caja
+y clientes, y las dos de stock (`stock.movimiento` y `compra.recibida`; libracommerce ADR-071, ADR-093 de este producto), con
 los ganchos del producto. Lo que no tiene aplicador **no se marca aplicado**: va a revisión manual
 (`libraedge-central revision listar|reintentar|descartar`, con
 `LIBRAEDGE_DESPACHADOR=app.routers.sincronizacion_offline:despachador`).
@@ -30,6 +31,7 @@ no sale del VPS.
 """
 
 from libracommerce.erp.offline import registrar_en
+from libracommerce.erp.offline_stock import carga_inicial_del_central
 from libracore.db.core import get_connection
 from libracore.nodo_offline import ta_para_el_nodo
 from libraedge.sync.api import create_sync_router
@@ -49,4 +51,7 @@ despachador = armar_despachador()
 router = create_sync_router(
     get_connection, despachador=despachador, version_esquema=version_de_alembic,
     prestar_ticket=ta_para_el_nodo,
+    # `GET /sync/v1/carga-inicial` (libraedge ADR-023, libracommerce ADR-071): las existencias de la sucursal del nodo, que trae al
+    # vincular. Autenticada con el secreto del nodo, como push y pull.
+    carga_inicial=carga_inicial_del_central,
 )

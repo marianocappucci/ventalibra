@@ -283,6 +283,15 @@ válido como factura» y se factura sola al volver, con la fecha de la venta si 
 admite (5 días). **El punto de venta de una sucursal con nodo lo usa sólo el nodo.** Lo facturado
 no se anula sin conexión, y el QR de MercadoPago no está disponible en el nodo.
 
+**Stock y compras en el nodo (ADR-093):** el stock de una sucursal con nodo lo mueve **sólo el nodo**: el ajuste, la merma, la
+transferencia dentro de la sucursal y la recepción de mercadería suben solos al central, y el central contesta 409 a cualquier
+movimiento sobre los depósitos de esa sucursal (hay que hacerlo desde el equipo del local). **Antes de registrar un nodo, todos
+los depósitos tienen que tener sucursal**: si alguno no la tiene, el alta se niega y dice cuál. Al vincular, el nodo trae las
+existencias de su sucursal del central (una sola vez; el instalador pone `LIBRAEDGE_CARGA_INICIAL`). Los **proveedores y las
+órdenes de compra se cargan en la versión web** y bajan al nodo; en el nodo sólo se recibe mercadería contra una orden («Recibir
+mercadería»: lote, vencimiento y costo). Al agregar las tablas de compras al espejo, un nodo ya registrado necesita
+`libraedge-central nodo publicar` y reinstalar su configuración (`LIBRAEDGE_TABLAS_ESPEJO`).
+
 ---
 
 ## 8. Usuarios
