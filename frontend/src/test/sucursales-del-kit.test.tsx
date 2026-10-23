@@ -266,15 +266,18 @@ describe('Stock', () => {
     }
   })
 
-  it('una columna por sucursal/depósito y el total; los depósitos en cero se ven en cero', async () => {
+  it('la fila dice el total; desplegada, cuánto hay en cada sucursal/depósito, y los que están en cero se ven en cero (libra-ui ADR-093)', async () => {
+    const user = userEvent.setup()
     render(<MemoryRouter><Stock /></MemoryRouter>)
     await screen.findByText('Yerba')
-    for (const columna of ['Salón', 'Bodega', 'Total']) expect(screen.getByText(columna)).toBeInTheDocument()
-    const fila = screen.getByText('Yerba').closest('tr')!
-    expect(within(fila).getByText('10')).toBeInTheDocument()
-    expect(within(fila).getByText('13')).toBeInTheDocument()
-    // Azúcar no tiene nada en ningún lado: sus dos columnas dicen 0 (no quedan vacías).
-    expect(within(screen.getByText('Azúcar').closest('tr')!).getAllByText('0').length).toBeGreaterThanOrEqual(3)
+    expect(within(screen.getByText('Yerba').closest('tr')!).getByText('13')).toBeInTheDocument()
+    await user.click(screen.getByText('Yerba'))
+    const yerba = screen.getByLabelText('Stock por depósito')
+    expect(within(yerba).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Salón:10', 'Bodega:3'])
+    await user.click(screen.getByText('Yerba'))
+    // Azúcar no tiene nada en ningún lado: sus dos depósitos dicen 0 (no quedan vacíos).
+    await user.click(screen.getByText('Azúcar'))
+    expect(within(screen.getByLabelText('Stock por depósito')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Salón:0', 'Bodega:0'])
   })
 
   it('trae el buscador y «sólo los que tienen stock», que era lo que esta pantalla tenía', async () => {
