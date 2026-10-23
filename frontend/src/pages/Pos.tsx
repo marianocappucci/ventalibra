@@ -921,7 +921,9 @@ export function Pos({ puedeCrearCliente = false }: { puedeCrearCliente?: boolean
               id="pos-sugerencias"
               role="listbox"
               aria-label="Sugerencias"
-              className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+              // z-50 y no z-10: el encabezado del carrito (`sticky z-10`) viene después en la página y, con la misma capa,
+              // se pintaba encima de las sugerencias (se veía «Producto · Cant. · P. unit.» tapando la lista).
+              className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
             >
               {sugerencias.map((item) => (
                 <li key={item.id}>
