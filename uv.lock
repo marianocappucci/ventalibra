@@ -672,8 +672,8 @@ migrations = [
 
 [[package]]
 name = "libraedge"
-version = "0.21.0"
-source = { git = "https://github.com/marianocappucci/libraedge.git?rev=v0.21.0#e77418ef7ab1dd6bdafd95e6f279f2a6e8925dbf" }
+version = "0.22.0"
+source = { git = "https://github.com/marianocappucci/libraedge.git?rev=v0.22.0#3998f2fed5498ee7b0c1996744afa28ff41742fd" }
 
 [[package]]
 name = "mako"
@@ -1380,7 +1380,7 @@ requires-dist = [
     { name = "libraauth", extras = ["migrations"], git = "https://github.com/marianocappucci/libraauth.git?rev=v0.55.0" },
     { name = "libracommerce", extras = ["migrations", "erp", "web", "planillas"], git = "https://github.com/marianocappucci/libracommerce.git?rev=v0.73.0" },
     { name = "libracore", extras = ["migrations"], git = "https://github.com/marianocappucci/libracore.git?rev=v1.192.0" },
-    { name = "libraedge", git = "https://github.com/marianocappucci/libraedge.git?rev=v0.21.0" },
+    { name = "libraedge", git = "https://github.com/marianocappucci/libraedge.git?rev=v0.22.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6" },

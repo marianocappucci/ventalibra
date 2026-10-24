@@ -339,7 +339,8 @@ dependencies = [
     # v0.18.0 -> v0.19.0 (2026-10-21): `libraedge-central nodo conservar/restaurar` (ADR-022), para que el reset de la demo conserve los nodos. Sin migracion.
     # v0.19.0 -> v0.20.0 (2026-10-21): carga inicial del stock del central (ADR-023: `create_sync_router(carga_inicial=)`, `GET /sync/v1/carga-inicial`, `Aprovisionamiento(validar_registro=)` y `LIBRAEDGE_CARGA_INICIAL` en el instalador). Sin migracion.
     # v0.20.0 -> v0.21.0 (2026-10-22): libraedge-nodo revision descartar (ADR-024). Sin migracion.
-    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.21.0",
+    # v0.21.0 -> v0.22.0 (2026-10-24): ticket de ARCA por servicio y LibraCargo/LibraClub en el instalador (ADR-025). Sin migracion.
+    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.22.0",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
