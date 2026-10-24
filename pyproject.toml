@@ -121,7 +121,8 @@ dependencies = [
     # v0.71.0 -> v0.72.0 (2026-10-22): en un nodo de LibraEdge el deposito por defecto es el de su sucursal. Migracion 0009 aditiva (nodo_local); fuera de un nodo no cambia nada.
     # v0.72.0 -> v0.72.1 (2026-10-22): la carga inicial lleva a cero los depositos ajenos del nodo (PC que cambia de sucursal). Sin migracion.
     # v0.72.1 -> v0.73.0 (2026-10-23): el vinculo del producto viaja con la venta del nodo (ADR-072). Migracion 0010 aditiva (venta_origen_nodo).
-    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.73.0",
+    # v0.73.0 -> v0.73.1 (2026-10-24): serializar_esquema toma antes el candado del core (ADR-073). Sin migracion.
+    "libracommerce[migrations,erp,web,planillas] @ git+https://github.com/marianocappucci/libracommerce.git@v0.73.1",
     # libracore sigue proveyendo facturacion/caja/ARCA -- y la base donde vive
     # `usuarios`. El auth SALIO de aca el 2026-07-30 y ahora lo da libraauth.
     #
@@ -302,7 +303,8 @@ dependencies = [
     # v1.190.0 -> v1.190.1 (2026-10-22): LibraCargo y LibraClub en _UNA_SOLA_BASE (ADR-078). Sin migracion.
     # v1.190.1 -> v1.191.0 (2026-10-23): cola de comprobantes del nodo offline (cola_arca, ADR-079). Migracion 0029 aditiva.
     # v1.191.0 -> v1.192.0 (2026-10-24): costuras de caja: corregir, extra y gancho del central (ADR-080). Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.192.0",
+    # v1.192.0 -> v1.192.1 (2026-10-24): un ciclo con el candado del esquema da deadlock en 1 s, no a los 120 s (ADR-081). Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.192.1",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
@@ -340,7 +342,8 @@ dependencies = [
     # v0.19.0 -> v0.20.0 (2026-10-21): carga inicial del stock del central (ADR-023: `create_sync_router(carga_inicial=)`, `GET /sync/v1/carga-inicial`, `Aprovisionamiento(validar_registro=)` y `LIBRAEDGE_CARGA_INICIAL` en el instalador). Sin migracion.
     # v0.20.0 -> v0.21.0 (2026-10-22): libraedge-nodo revision descartar (ADR-024). Sin migracion.
     # v0.21.0 -> v0.22.0 (2026-10-24): ticket de ARCA por servicio y LibraCargo/LibraClub en el instalador (ADR-025). Sin migracion.
-    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.22.0",
+    # v0.22.0 -> v0.22.1 (2026-10-24): LibraCargo y LibraClub en el instalador publicado. Sin migracion.
+    "libraedge @ git+https://github.com/marianocappucci/libraedge.git@v0.22.1",
     # SQLAlchemy entra SOLO para el engine de `usuarios` de libraauth: el resto
     # de VentaLibra es sqlite3 crudo (app/db.py). El engine va contra la base de
     # libracore, no contra la del dominio -- ver create_app() en app/main.py.
