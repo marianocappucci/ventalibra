@@ -168,7 +168,7 @@ def test_la_instancia_de_pruebas_tiene_la_revision_0002_del_motor(admin_client):
     # la 0006 (v0.53.0) la clave de las recepciones, la 0007 (v0.59.0, devoluciones de servicio, ADR-054 del motor) `sale_service_returns` y la 0008
     # (v0.71.0, ADR-071 del motor, ADR-093 de este repo) `stock_movements.origen`/`origen_id`, con las que el central aplica `stock.movimiento` de un nodo sin duplicar: es la cabeza.
     assert [tuple(v) for v in conn.execute("SELECT version_num FROM alembic_version_libracommerce").fetchall()] == [
-        ("0009_sucursal_del_nodo",)]
+        ("0010_vinculo_de_la_venta",)]
     origen = conn.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'stock_movements' "
         "AND column_name IN ('origen', 'origen_id') ORDER BY column_name"
