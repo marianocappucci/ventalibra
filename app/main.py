@@ -273,9 +273,14 @@ def create_app(db_path: str) -> FastAPI:
     #
     # Este engine es la unica pieza SQLAlchemy del producto (el resto es sqlite3
     # crudo, app/db.py) y no mueve ni un dato: las filas ya estan ahi.
-    libracore_db_path = url_de_instancia(
-        "ventalibra", core=True, default="./data/ventalibra_libracore.db"
-    )
+    #
+    # 🔑 **Sin `VENTALIBRA_LIBRACORE_DATABASE_URL` (ni su histórico `..._DB_PATH`) el core es la base del dominio**
+    # (`db_path`): VentaLibra es de una sola base (`_UNA_SOLA_BASE`, ADR-078 del motor) y `libracore-migrar`/`libraauth-migrar
+    # --base core` ya caen ahí sin la variable. El default era `./data/ventalibra_libracore.db`, una ruta SQLite que
+    # `billing.configure` rechaza: una instancia sin la variable no arrancaba, y por eso el alta del motor seguía
+    # escribiéndola (`_EXIGEN_LA_VARIABLE_DEL_CORE`, ADR-084 del motor). Si la variable existe se respeta, aun con otra base
+    # (`_instancia_de_respaldo` respalda las dos). ADR-094 de este repo.
+    libracore_db_path = url_de_instancia("ventalibra", core=True, default=db_path)
     billing.configure(libracore_db_path)
     # Las escrituras de `clients` (`/api/clientes`, el fiado) son del motor de core y le avisan a este registrador dentro de
     # la misma transaccion (libracore v1.157.0, ADR-043): el MISMO que usa el repositorio de LibraCommerce (`app/commerce.py`),
