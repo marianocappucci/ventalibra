@@ -33,9 +33,8 @@ if DATA_DIR:
     db_path = url_de_instancia(
         "ventalibra", default=f"{DATA_DIR}/ventalibra.db"
     )
-    os.environ.setdefault(
-        "VENTALIBRA_LIBRACORE_DB_PATH", f"{DATA_DIR}/ventalibra_libracore.db"
-    )
+    # Ya no se puentea `VENTALIBRA_LIBRACORE_DB_PATH` a un archivo SQLite de DATA_DIR: `create_app()` resuelve el core con la
+    # base del dominio cuando no hay variable (ADR-094), y un archivo SQLite lo rechaza `billing.configure`.
     if os.environ.get("ADMIN_USER"):
         os.environ.setdefault("VENTALIBRA_ADMIN_USERNAME", os.environ["ADMIN_USER"])
     if os.environ.get("ADMIN_PASSWORD"):
