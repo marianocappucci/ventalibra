@@ -72,7 +72,8 @@ def _construir_armada(url: str) -> None:
     mp = pytest.MonkeyPatch()
     try:
         mp.setenv("ENV", "development")
-        mp.setenv("VENTALIBRA_LIBRACORE_DB_PATH", url)
+        mp.delenv("VENTALIBRA_LIBRACORE_DATABASE_URL", raising=False)   # el core cae a la base del dominio (ADR-094)
+        mp.delenv("VENTALIBRA_LIBRACORE_DB_PATH", raising=False)
         mp.setenv("DATA_DIR", f"{carpeta}/data")
         mp.setattr(config_manager, "CONFIG_PATH", f"{carpeta}/config.json")
         mp.setattr(config_manager, "LOGO_DIR", f"{carpeta}/logos")
@@ -101,13 +102,11 @@ def _dev_env(request, monkeypatch, tmp_path):
     # fail closed unless ENV=development -- see app/auth.py y
     # app/services/users.py::ensure_default_admin.
     monkeypatch.setenv("ENV", "development")
-    # libracore.db es sqlite3 crudo (una conexion nueva por llamada, no un
-    # engine con pool) -- ":memory:" le daria a cada llamada una base vacia
-    # distinta. Un archivo temporal real por test, igual que medlibra/gestiolibra.
-    monkeypatch.setenv(
-        "VENTALIBRA_LIBRACORE_DB_PATH",
-        destino_libracore(tmp_path / "ventalibra_libracore.db"),
-    )
+    # 🔴 Sin `VENTALIBRA_LIBRACORE_DATABASE_URL` ni su historico (ADR-094): una instancia de VentaLibra no la lleva, y el core
+    # cae a la base del dominio (`create_app(db_path)`). La suite corre asi a proposito; si hubiera una en el entorno de quien
+    # corre los tests, se saca para que no la pise (`tests/test_core_en_el_dominio.py` prueba cada caso con la variable puesta).
+    monkeypatch.delenv("VENTALIBRA_LIBRACORE_DATABASE_URL", raising=False)
+    monkeypatch.delenv("VENTALIBRA_LIBRACORE_DB_PATH", raising=False)
     # `libracore.config_manager` resuelve su ruta AL IMPORTARSE, desde
     # DATA_DIR o el cwd -- setear la variable acá ya llega tarde. Sin este
     # parche, cualquier test que guarde configuración (ticket, empresa)

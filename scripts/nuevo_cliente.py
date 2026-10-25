@@ -59,11 +59,11 @@ configure(
     #    ese día: de las instancias de este producto, la de dev estaba en `0002`
     #    y las otras en `0001_baseline` o **sin `alembic_version` ninguna**.
     #
-    #    Resuelve la base por `VENTALIBRA_LIBRACORE_DB_PATH`, que este producto
-    #    SÍ declara — aunque medido apunta a la **misma** base que
-    #    `VENTALIBRA_DB_PATH`, porque acá el schema del core y el del dominio
-    #    conviven. O sea que la variable existe y no hace falta la caída al
-    #    dominio; ver `libracore.migrar.url_de_core`.
+    #    Resuelve la base por `VENTALIBRA_LIBRACORE_DATABASE_URL` si existe y, si
+    #    no, cae a la del dominio (`VENTALIBRA_DATABASE_URL`): el schema del core
+    #    y el del dominio conviven en una sola base (`_UNA_SOLA_BASE`; ver
+    #    `libracore.migrar.url_de_core`). Una instancia nueva ya no lleva la
+    #    variable del core (ADR-094); las que la tienen apuntan a la misma base.
     #
     # 2. `alembic` — la cadena **propia**, agregada el 2026-08-25. Gobierna las
     #    5 tablas que son sólo de este producto (`users`, `sequences`,

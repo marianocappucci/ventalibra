@@ -19,8 +19,9 @@ de la familia. Aca no se copia logica: se cumple el contrato.
 ⚠️ **Escriben por `libracore.db.core`, no por la conexion del dominio.** Dentro
 de la app el core apunta a la base de LibraCore (`billing.configure`) y
 `ModuleRepository` lee `modulos` por la conexion del dominio; en VentaLibra las
-dos son **la misma base** (`VENTALIBRA_DB_PATH` y `VENTALIBRA_LIBRACORE_DB_PATH`
-apuntan al mismo PostgreSQL, medido en `ventalibra-demo` el 2026-09-10). Lo
+dos son **la misma base** (el core cae a `VENTALIBRA_DB_PATH` cuando no hay
+`VENTALIBRA_LIBRACORE_DATABASE_URL`, ADR-094; antes las dos variables apuntaban al
+mismo PostgreSQL, medido en `ventalibra-demo` el 2026-09-10). Lo
 sostiene `tests/test_resguardo_externo_addon.py`: si un dia se separaran, el
 backoffice prenderia el add-on en una base y el gate lo leeria en la otra.
 """
