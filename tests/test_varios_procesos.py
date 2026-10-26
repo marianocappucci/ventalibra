@@ -69,7 +69,7 @@ def _arrancar_dos_workers(tmp_path) -> str:
     puerto = puerto_libre()
     env = {
         **os.environ, "PYTHONPATH": str(RAIZ / "tests"), "ENV": "development", "DATA_DIR": str(tmp_path / "data"),
-        "VENTALIBRA_DB_PATH": TEST_DATABASE_URL, "VENTALIBRA_LIBRACORE_DB_PATH": TEST_DATABASE_URL,
+        "VENTALIBRA_DB_PATH": TEST_DATABASE_URL,
     }
     with tempfile.TemporaryFile() as log:
         proceso = subprocess.Popen(

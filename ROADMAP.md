@@ -51,7 +51,8 @@ Dirección estratégica del producto. No usar para tareas pequeñas del sprint
 
 - Segunda base SQLite dedicada a `libracore.db` (`app/services/billing.py::configure()`,
   mismo patrón exacto que `medlibra`/`gestiolibra`): `init_core_schema`,
-  `caja`, `arca_facturacion`. Path por `VENTALIBRA_LIBRACORE_DB_PATH`.
+  `caja`, `arca_facturacion`. Path por `VENTALIBRA_LIBRACORE_DB_PATH` (histórico: desde ADR-094 el core vive en
+  la base del dominio y ni el compose ni los tests la nombran).
 - **Clientes** (`app/services/customers.py`/`app/routers/customers.py`):
   `Party` con extensión opcional `party_billing` (`cuit`/`condicion_iva`),
   mismo patrón que `client_billing` de Gestiolibra — tabla propia con FK,
