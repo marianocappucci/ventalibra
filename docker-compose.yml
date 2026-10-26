@@ -160,7 +160,6 @@ services:
       # `python -m libracore.db.schema_dump` sobre el archivo, que lo abre en
       # modo lectura sin tocarlo.
       - VENTALIBRA_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
-      - VENTALIBRA_LIBRACORE_DB_PATH=postgresql://ventalibra:${VENTALIBRA_POSTGRES_PASSWORD:?hay que definirla en el .env del VPS}@ventalibra-postgres:5432/ventalibra
       - ENV=development
       # Recuperacion de contrasena (libraauth v0.5.0). Sin SMTP la app
       # levanta igual y POST /auth/forgot-password devuelve 503: cargar
