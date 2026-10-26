@@ -130,6 +130,7 @@ GET    /sync/v1/pull                                                    PUBLICA
 POST   /sync/v1/ticket-arca                                             PUBLICA
 # Las existencias de la sucursal del nodo al vincular (libraedge ADR-023, libracommerce ADR-071): la autentica el secreto del nodo, como push y pull
 GET    /sync/v1/carga-inicial                                           PUBLICA
+POST   /sync/v1/estado-operaciones                                      PUBLICA
 # El canje del código de vinculación (libraedge ADR-014): lo llama el instalador del nodo, sin sesión; lo protegen el código
 # (un solo uso, 15 minutos), el https y el límite de intentos del motor
 POST   /sync/v1/vinculacion                                             PUBLICA
