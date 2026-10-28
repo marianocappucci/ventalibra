@@ -202,9 +202,14 @@ describe('El quiebre cuenta por producto (ADR-078)', () => {
     soltar()
     await waitFor(() => expect(precioDe(fila(/Talle M/))).toMatch(/2\.000,00/))
     expect(screen.getByText('Total').nextElementSibling).toHaveTextContent('$4.000,00')
-    // Ya con los precios, F2 abre el cobro por el total del quiebre.
-    fireEvent.keyDown(window, { key: 'F2' })
-    expect(await screen.findByText('Cobrar $4.000,00')).toBeInTheDocument()
+    // Ya con los precios, F2 abre el cobro por el total del quiebre. 🔑 F2 se repite adentro del `waitFor`: el carrito
+    // repreciado vuelve a calcular las promociones y `puedeCobrar` espera también a `calculandoPromos`; con el CI lento,
+    // un F2 único caía en esa ventana, se ignoraba (bien) y el test daba rojo (falló así tres veces, 5,3 a 5,5 s).
+    // Repetirlo es inocuo: con el cobro abierto, F2 sólo lo vuelve a abrir.
+    await waitFor(() => {
+      fireEvent.keyDown(window, { key: 'F2' })
+      expect(screen.getByText('Cobrar $4.000,00')).toBeInTheDocument()
+    })
   })
 
   it('una etiqueta de balanza suma sus kilos al producto pero conserva su precio', async () => {
