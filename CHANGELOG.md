@@ -5,6 +5,8 @@ Cambios funcionales y releases publicados. Para tareas internas usar
 
 ## [Unreleased]
 
+- **Marca blanca** (2026-10-30; ADR-095; `libracore` v1.206.0, `libraauth` v0.57.0, `libra-ui` v0.185.0): la instancia puede llevar el nombre, el logo, el color y los Términos y Condiciones propios de un revendedor (`/api/marca`, `/manifest.webmanifest`). Con marca propia exige los términos del revendedor y nunca cae a los de la familia; el mail de recuperación sale con su nombre. Sin marca cargada no cambia nada. Variable a definir en una instancia de revendedor: `VENTALIBRA_RESET_URL_BASE`.
+
 - **Sin `VENTALIBRA_LIBRACORE_DB_PATH` en el compose de dev ni en `tests/test_varios_procesos.py`** (2026-10-26, cierre de ADR-094): el core cae a la base del dominio, que es la misma URL. Los `delenv` defensivos de `conftest.py` y el test que prueba el histórico con la variable puesta (`test_core_en_el_dominio.py`) se quedan: el motor todavía la acepta.
 
 - **Sin `VENTALIBRA_LIBRACORE_DATABASE_URL`, el core es la base del dominio** (2026-10-25; ADR-094; pin libracore `v1.195.0`, antes `v1.194.0`; sin migración). `create_app()` resolvía el core con un default SQLite (`./data/ventalibra_libracore.db`) que `billing.configure` rechaza, y `app/asgi.py` puenteaba la variable histórica a un archivo de `DATA_DIR`: una instancia sin la variable no arrancaba, y el alta del motor seguía escribiéndola sólo para este producto. Ahora el default es la base del dominio y se saca el puente; si la variable existe (misma base u otra) se respeta. Las instancias vivas no cambian. La suite corre sin la variable y `tests/test_core_en_el_dominio.py` fija los casos. LibraEdge: `instalador/productos/ventalibra.json` ya no necesita declararla (ver ADR-094).

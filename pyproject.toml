@@ -320,7 +320,8 @@ dependencies = [
     # v1.200.0 -> v1.201.0 (2026-10-28): nota de credito con motivo y emision sin HTTP (ADR-089). Sin migracion.
     # v1.201.0 -> v1.202.0 (2026-10-28): libracore.avisos: WhatsApp por Evolution, mail y registro (ADR-090). Migracion 0032 (avisos_envios).
     # v1.202.0 -> v1.202.1 (2026-10-28): avisos: la demo no manda mails y espera entre reintentos (addendum ADR-090). Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.202.1",
+    # v1.202.1 -> v1.206.0 (2026-10-30): la marca de la instancia y sus Términos propios (ADR-092 y ADR-093, marca blanca). Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.206.0",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
@@ -344,7 +345,8 @@ dependencies = [
     # v0.53.0 -> v0.54.0 (2026-10-21): en un nodo de LibraEdge los usuarios son los del central (ADR-027); fuera de un nodo no cambia nada. Sin migracion.
     # v0.54.0 -> v0.55.0 (2026-10-21): en un nodo de LibraEdge no se pide captcha y la IP del bloqueo es el par directo (ADR-028); fuera de un nodo no cambia nada. Sin migracion.
     # v0.55.0 -> v0.56.0 (2026-10-28): `verificar_captcha` publica para rutas propias del producto (ADR-029). Sin migracion.
-    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.56.0",
+    # v0.56.0 -> v0.57.0 (2026-10-30): Términos propios de la instancia y textos de marca en el reseteo (ADR-030, marca blanca). Sin migracion.
+    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.57.0",
     # libraedge v0.9.0 (2026-10-19, E6 de la fase 1 de LibraEdge en toda la suite): el nodo offline. Dependencia NORMAL y no
     # extra, como en Restolibra: el central monta `/sync/v1/*` (push, pull y el ticket de ARCA prestado) aunque no tenga
     # nodos, y las tablas de LibraEdge se crean en toda instancia (migracion `0009_libraedge`). El repo es publico: no hace
