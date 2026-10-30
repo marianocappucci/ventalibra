@@ -323,7 +323,8 @@ dependencies = [
     # v1.202.1 -> v1.206.0 (2026-10-30): la marca de la instancia y sus Términos propios (ADR-092 y ADR-093, marca blanca). Sin migracion.
     # v1.206.0 -> v1.207.0 (2026-10-30): el index.html sale con la marca de la instancia (ADR-095) y el resguardo lleva el nombre de la marca (ADR-094). Sin migracion.
     # v1.207.0 -> v1.207.1 (2026-10-30): la marca y los Terminos propios se leen sin el almacen de secretos (addendum ADR-095); v1.207.0 trae el index.html con la marca (ADR-095) y la carpeta del resguardo con el nombre de la marca (ADR-094). Sin migracion.
-    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.207.1",
+    # v1.207.1 -> v1.207.2 (2026-10-30): index_con_marca deja un solo icono, el de la marca (addendum 2 ADR-095); v1.207.1 lee la marca sin el almacen de secretos; v1.207.0 trae el index.html con la marca (ADR-095) y la carpeta del resguardo con el nombre de la marca (ADR-094). Sin migracion.
+    "libracore[migrations] @ git+https://github.com/marianocappucci/libracore.git@v1.207.2",
     # v0.7.0 -> v0.12.0 (2026-08-05). De aca sale la mitad de accesos del log
     # (v0.8.0 `auth_events`), el router que lee las dos mitades (v0.10.0) y el
     # middleware que sella el usuario de la request. La actividad en si NO sale
