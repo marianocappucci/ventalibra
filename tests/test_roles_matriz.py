@@ -388,6 +388,14 @@ PUT    /api/config/empresa                                              ADMIN
 POST   /api/config/empresa/logo                                         ADMIN
 GET    /api/tema                                                        PUBLICA
 PUT    /api/tema                                                        ADMIN
+GET    /api/marca                                                       PUBLICA
+PUT    /api/marca                                                       ADMIN
+DELETE /api/marca                                                       ADMIN
+POST   /api/marca/logo                                                  ADMIN
+DELETE /api/marca/logo                                                  ADMIN
+GET    /api/marca/terminos                                              ADMIN
+PUT    /api/marca/terminos                                              ADMIN
+DELETE /api/marca/terminos                                              ADMIN
 DELETE /api/config/empresa/logo                                         ADMIN
 GET    /api/config/backups                                              ADMIN
 POST   /api/config/backups                                              ADMIN

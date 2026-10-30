@@ -3510,3 +3510,24 @@ El kit (libra-ui v0.148.0, ADR-060) vuelve a ofrecer «Devolver» con la venta e
   - **Las instancias vivas** llevan `VENTALIBRA_LIBRACORE_DATABASE_URL`/`..._DB_PATH` en su compose, apuntando a la misma base; se respeta y siguen igual. Sacarla de un compose es una decisión de cada despliegue, no de este cambio. `docker-compose.yml` (dev) la sigue declarando.
   - **LibraEdge:** `instalador/productos/ventalibra.json` (repo de libraedge) declara `VENTALIBRA_LIBRACORE_DATABASE_URL` como variable obligatoria de la base y su `_nota` dice que sin ella «cae a un SQLite». Con este cambio ya no es necesaria; mientras la declare sigue andando (misma URL). Quitarla es del repo de libraedge y conviene hacerlo cuando el paquete del instalador se arme con una revisión de este producto que ya incluya el cambio.
   - **El motor:** con este producto resuelto, `libracore.db.url_de_instancia._EXIGEN_LA_VARIABLE_DEL_CORE` puede quedar vacía (se saca `ventalibra`) en un patch del motor; el alta de una instancia nueva dejaría de escribir la variable. Esa instancia necesita una imagen con este cambio.
+
+
+## ADR-095 — La marca blanca: la instancia puede llevar el nombre, el logo, el color y los términos de un revendedor
+
+**Estado:** aceptada (2026-10-30). Tercer producto del piloto de marca blanca (libracore ADR-092 y ADR-093, libraauth
+ADR-030, libra-ui ADR-098; antes, LibraInmo y LibraDesk).
+
+**Decisión.**
+1. `app/main.py` monta `build_marca_router(dist=…)` (lectura pública, manifest e íconos) y `build_marca_admin_router()`
+   detrás de `requiere_o_servicio("config")`, igual que el tema: lo cambia el admin o el backoffice. 🔴 Con `requiere`
+   a secas el backoffice no entraría.
+2. 🔴 `TerminosRepository(contrato_propio=leer_terminos_propios, exigir_propio=es_marca_propia)`: con marca propia la
+   instancia **exige** los términos del revendedor y, sin ellos, queda frenada; nunca cae a los de la familia.
+3. `PasswordResetService(product_name=lambda: nombre_de_marca("VentaLibra"))`: el mail de recuperación sale con el
+   nombre de la marca.
+4. El manifest tiene que ganarle al catch-all de la SPA. `create_app` no conoce el dist (lo monta `asgi.py` después), así
+   que `app/frontend_dist.py` lo resuelve una sola vez y lo usan `main.py` y `asgi.py`.
+5. `main.tsx` espera `cargarMarca()` (tope de 2 s, no falla) antes de montar la SPA.
+
+**Pendiente a propósito.** `VENTALIBRA_RESET_URL_BASE` tiene por defecto `dev.ventalibra.com.ar`: una instancia de
+revendedor tiene que definirla. Tests: `tests/test_marca_blanca.py` y `tests/test_marca_blanca_terminos.py`.

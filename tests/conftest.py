@@ -115,6 +115,8 @@ def _dev_env(request, monkeypatch, tmp_path):
     from libracore import config_manager
     monkeypatch.setattr(config_manager, "CONFIG_PATH", str(tmp_path / "config.json"))
     monkeypatch.setattr(config_manager, "LOGO_DIR", str(tmp_path / "logos"))
+    # La marca de la instancia (logo y Términos propios, libracore ADR-092/093) también resuelve su ruta al importarse.
+    monkeypatch.setattr(config_manager, "MARCA_DIR", str(tmp_path / "marca"))
     # Con la base en PostgreSQL la carpeta de backups sale de `DATA_DIR`
     # (`app.main._carpeta_de_backups`), y sin la variable cae en
     # `./data/backups`, adentro del checkout. Los dos tests de

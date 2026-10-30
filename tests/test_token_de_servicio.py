@@ -24,7 +24,8 @@ TOKEN = "un-token-de-servicio-de-prueba"
 RUTA_USERS = "/users"
 
 # Lo que SI acepta el token, a proposito. El resto no.
-ACEPTAN_TOKEN = {RUTA_USERS, "/admin/smtp", "/api/limites/sucursales", "/api/adicionales"}
+# `/api/marca/terminos`: la marca blanca (libracore ADR-092/093) la carga el backoffice con el token, igual que el tema.
+ACEPTAN_TOKEN = {RUTA_USERS, "/admin/smtp", "/api/limites/sucursales", "/api/adicionales", "/api/marca/terminos"}
 
 
 @pytest.fixture

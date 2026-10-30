@@ -81,6 +81,7 @@ from libracore.estado_del_sistema import build_estado_del_sistema_router
 from libracore.facturas_router import build_nota_de_credito_router
 from libracore.libros_iva_router import build_libros_iva_export_router, build_libros_iva_router
 from libracore.limites import build_limites_router
+from libracore.marca_router import build_marca_admin_router, build_marca_router, es_marca_propia, nombre_de_marca
 from libracore.mp_config_router import build_mp_config_router
 from libracore.recibos_router import build_recibos_router
 from libracore.reportes_router import build_reportes_export_router, build_reportes_router
@@ -89,6 +90,7 @@ from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
 from libracore.tema_router import build_tema_admin_router, build_tema_router
+from libracore.terminos_propios import leer_terminos_propios
 from libracore.tesoreria_router import build_tesoreria_router
 from libracore.ventas_cobro_router import build_cobro_de_ventas_router, build_facturacion_del_nodo_router
 from libraedge.pantalla_del_central import create_canje_router, create_nodos_router
@@ -129,6 +131,7 @@ from .depositos_ganchos import (
     opciones_de_depositos,
     opciones_de_sucursales,
 )
+from .frontend_dist import frontend_dist
 from .ganchos import GANCHOS
 from .modules_gate import require_module
 from .offline import GANCHOS_DE_CAJA, OUTBOX, compras_solo_en_el_central, nodos_del_central, solo_en_el_central
@@ -412,10 +415,16 @@ def create_app(db_path: str) -> FastAPI:
     #
     # 🔴 Sin esta linea el gate NO corta y la instancia no falla: se queda sin
     # gate, en silencio. Por eso cada producto tiene un test que lo prueba.
-    app.state.terminos = TerminosRepository(auth_sessions)
+    #
+    # Marca blanca (ADR-092/093 del motor): una instancia con marca propia **exige** los Términos de su revendedor
+    # y, sin ellos, queda frenada; nunca cae a los de la familia.
+    app.state.terminos = TerminosRepository(
+        auth_sessions, contrato_propio=leer_terminos_propios, exigir_propio=es_marca_propia
+    )
     app.state.password_reset = PasswordResetService(
         auth_sessions,
-        product_name="VentaLibra",
+        # CALLABLE: con marca propia el mail de recuperación sale con el nombre del revendedor.
+        product_name=lambda: nombre_de_marca("VentaLibra"),
         reset_url_base=os.environ.get(
             "VENTALIBRA_RESET_URL_BASE", "https://dev.ventalibra.com.ar/reset-password"
         ),
@@ -1179,6 +1188,11 @@ def create_app(db_path: str) -> FastAPI:
     # 🔴 Con `requiere("config")` a secas el backoffice NO entraría: esa guarda no conoce el token.
     app.include_router(build_tema_router())
     app.include_router(build_tema_admin_router(), dependencies=[Depends(requiere_o_servicio("config"))])
+    # La marca de la instancia (nombre, logo, color, íconos y manifest), para venderla a marca blanca. La lectura es
+    # pública (el login también lleva la marca) y se monta **antes** del catch-all de la SPA (`asgi.py`): si no,
+    # `/manifest.webmanifest` devolvería el `index.html`. Escribir es de `config` O del token de servicio del backoffice.
+    app.include_router(build_marca_router(dist=frontend_dist()))
+    app.include_router(build_marca_admin_router(), dependencies=[Depends(requiere_o_servicio("config"))])
 
     # 🔴 DOS bases, y las dos tienen que entrar al backup: `usuarios` vive en
     # la de LibraCore, separada de la del dominio (ver el comentario largo
